@@ -45,6 +45,14 @@ export function FeaturedImageGenerator({
       });
 
       if (error) throw error;
+      if (data?.code === 'IMAGE_GEN_REGION_UNAVAILABLE') {
+        toast({
+          title: 'Region unavailable',
+          description: 'AI cover image generation is currently unavailable in the deployed edge region. Please upload a cover image manually.',
+          variant: 'destructive',
+        });
+        return;
+      }
       if (!data?.imageUrl) throw new Error('No image returned');
 
       setGeneratedAlt(data.altText || title);

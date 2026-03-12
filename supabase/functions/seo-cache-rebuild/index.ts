@@ -1,3 +1,22 @@
+/**
+ * SEO Cache Rebuild Edge Function
+ *
+ * TEMPORARY WORKAROUND: Authentication for the pg_cron scheduled job currently
+ * uses SEO_REBUILD_SECRET stored as BOTH a Supabase edge-function secret AND
+ * in the `app_settings` table (key = 'seo_rebuild_secret', is_internal = true).
+ * This duplication exists because pg_cron's net.http_post cannot access Vault
+ * secrets directly and must inline the token in its SQL command.
+ *
+ * TODO: Replace this pattern with one of:
+ *   1. Supabase pg_cron → direct DB function call (bypassing HTTP entirely)
+ *   2. A signed internal webhook token with short TTL
+ *   3. Supabase Cron Jobs native feature (when available in Lovable Cloud)
+ *
+ * The `app_settings.seo_rebuild_secret` row is protected by:
+ *   - `is_internal = true` flag, excluded from authenticated SELECT policy
+ *   - Only admin RLS (ALL) and service_role can read it
+ *   - Value is NEVER returned in any API response or admin UI
+ */
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {

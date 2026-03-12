@@ -1,3 +1,11 @@
+/**
+ * Build SEO Cache (Manual/Bulk) Edge Function
+ *
+ * TEMPORARY WORKAROUND NOTE: The SEO_REBUILD_SECRET used by the companion
+ * seo-cache-rebuild function is duplicated in app_settings for pg_cron access.
+ * See seo-cache-rebuild/index.ts header comment for the full rationale and
+ * planned migration path.
+ */
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {

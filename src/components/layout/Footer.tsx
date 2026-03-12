@@ -5,20 +5,6 @@ import truejobsLogo from '@/assets/truejobs-logo.png';
 import { INSURANCE_STATES } from '@/pages/jobs/cityData';
 import { NEAR_ME_PAGES } from '@/pages/jobs/nearMeData';
 import { MSMECredibility } from '@/components/MSMECredibility';
-import { useCookieConsent } from '@/hooks/useCookieConsent';
-
-function CookieSettingsButton() {
-  const { resetConsent } = useCookieConsent();
-  return (
-    <button
-      onClick={resetConsent}
-      className="hover:text-foreground transition-colors inline-flex items-center gap-1"
-    >
-      <Cookie className="h-3 w-3" />
-      Cookie Settings
-    </button>
-  );
-}
 
 export function Footer() {
   const { t } = useLanguage();

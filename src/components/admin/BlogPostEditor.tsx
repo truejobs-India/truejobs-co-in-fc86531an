@@ -396,6 +396,7 @@ export function BlogPostEditor() {
                   <span className="text-xs">Last edited: {formatDistanceToNow(new Date(editingPost.updated_at), { addSuffix: true })}</span>
                   {hasUnsavedChanges && <Badge variant="secondary" className="text-xs">Unsaved</Badge>}
                   {currentReadiness && <PublishReadinessBadge status={currentReadiness} />}
+                  {complianceStatus && <ComplianceReadinessBadge status={complianceStatus} />}
                 </DialogDescription>
               )}
             </DialogHeader>

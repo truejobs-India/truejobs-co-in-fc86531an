@@ -51,6 +51,7 @@ export function BulkPublishModal({ open, onOpenChange, articles, onPublished }: 
   const [publishedUrls, setPublishedUrls] = useState<string[]>([]);
   const [fixedArticles, setFixedArticles] = useState<Record<string, string>>({});
   const [overrideScoreCheck, setOverrideScoreCheck] = useState(false);
+  const [overrideBlocked, setOverrideBlocked] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -59,6 +60,7 @@ export function BulkPublishModal({ open, onOpenChange, articles, onPublished }: 
       setPublishedUrls([]);
       setFixedArticles({});
       setOverrideScoreCheck(false);
+      setOverrideBlocked(false);
     }
   }, [open]);
 

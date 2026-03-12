@@ -223,6 +223,7 @@ export function SEOCacheManager() {
           <TabsList>
             <TabsTrigger value="pages">All Pages</TabsTrigger>
             <TabsTrigger value="audit">Global Audit</TabsTrigger>
+            <TabsTrigger value="validation">Validation</TabsTrigger>
             <TabsTrigger value="log">Build Log</TabsTrigger>
             <TabsTrigger value="failed">
               Failed{failedItems.length > 0 ? ` (${failedItems.length})` : ''}
@@ -249,6 +250,15 @@ export function SEOCacheManager() {
 
           <TabsContent value="audit" className="mt-3">
             <CacheGlobalAudit inventory={inventory} />
+          </TabsContent>
+
+          <TabsContent value="validation" className="mt-3">
+            <SEOValidationDashboard
+              allMergedPages={allMergedPages}
+              inventory={inventory}
+              loadPageHtml={loadPageHtml}
+              handleRebuildSlugs={handleRebuildSlugs}
+            />
           </TabsContent>
 
           <TabsContent value="log" className="mt-3">

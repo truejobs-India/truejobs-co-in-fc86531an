@@ -40,7 +40,7 @@ import { SurveysManager } from '@/components/admin/SurveysManager';
 import { JobPlansManager } from '@/components/admin/JobPlansManager';
 import { EnrollmentsManager } from '@/components/admin/EnrollmentsManager';
 import { GSCUrlExport } from '@/components/admin/GSCUrlExport';
-import { SEOCacheBuilder } from '@/components/admin/SEOCacheBuilder';
+import { SEOCacheManager } from '@/components/admin/seo-cache/SEOCacheManager';
 import { SEOContentHealth } from '@/components/admin/SEOContentHealth';
 import { BulkBlogUpload } from '@/components/admin/BulkBlogUpload';
 import { GovtExamsManager } from '@/components/admin/GovtExamsManager';
@@ -345,7 +345,7 @@ export default function AdminDashboard() {
 
               <TabsContent value="seo" className="space-y-6">
                 <SEOContentHealth />
-                <SEOCacheBuilder />
+                <SEOCacheManager />
                 <GuideGenerator />
                 <GSCUrlExport />
               </TabsContent>

@@ -8,7 +8,7 @@ import { Loader2, Globe, CheckCircle, AlertCircle, RefreshCw, RotateCcw, Clock, 
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 
-interface PageData {
+export interface PageData {
   slug: string;
   pageType: string;
   title: string;
@@ -23,7 +23,7 @@ interface PageData {
 
 const DATE_DEFAULTS = { datePublished: '2026-01-15', lastUpdated: '2026-02-21' };
 
-async function collectAllPages(): Promise<PageData[]> {
+export async function collectAllPages(): Promise<PageData[]> {
   const pages: PageData[] = [];
 
   const standalonePages: PageData[] = [

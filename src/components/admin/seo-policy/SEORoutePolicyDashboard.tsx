@@ -186,7 +186,7 @@ export function SEORoutePolicyDashboard() {
         <Alert className="border-amber-400 bg-amber-50/50 dark:bg-amber-950/20">
           <AlertTriangle className="h-4 w-4 text-amber-600" />
           <AlertDescription className="text-amber-800 dark:text-amber-200">
-            <strong>{stats.fallback} route(s)</strong> are classified via fallback logic — they have no explicit policy mapping and should be reviewed.
+            <strong>{stats.fallback} route(s)</strong> classified via conservative fallback — noindex, no sitemap, no cache until explicitly mapped.
             <Button variant="link" size="sm" className="ml-2 text-amber-700 p-0 h-auto" onClick={() => setOnlyFallback(true)}>
               Show fallback routes →
             </Button>

@@ -219,7 +219,6 @@ export function Footer() {
             <Link to="/privacypolicy" className="hover:text-foreground transition-colors">{t('footer.privacy')}</Link>
             <Link to="/termsofuse" className="hover:text-foreground transition-colors">{t('footer.terms')}</Link>
             <Link to="/disclaimer" className="hover:text-foreground transition-colors">Disclaimer</Link>
-            <CookieSettingsButton />
           </div>
         </div>
       </div>

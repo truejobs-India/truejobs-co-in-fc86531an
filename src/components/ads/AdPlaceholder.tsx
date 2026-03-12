@@ -1,11 +1,9 @@
 /**
- * Ad-ready placeholder component — consent-aware, policy-compliant.
- * Renders actual ad slots only after consent interaction.
- * Always renders for both granted and denied ad_storage (Google serves non-personalized ads).
+ * Ad-ready placeholder component — policy-compliant.
+ * Renders ad slots respecting noAds and adVisibility signals.
  */
 
 import { useContext, useState, useEffect } from 'react';
-import { useCookieConsent } from '@/hooks/useCookieConsent';
 import { NoAdsContext } from '@/components/layout/Layout';
 
 interface AdPlaceholderProps {
@@ -53,7 +51,6 @@ function AdPlaceholderSkeleton({ variant, className = '' }: AdPlaceholderProps) 
 }
 
 export function AdPlaceholder({ variant, className = '' }: AdPlaceholderProps) {
-  const { consent, isLoaded } = useCookieConsent();
   const noAds = useContext(NoAdsContext);
   const [adsVisible, setAdsVisible] = useState(true);
   const config = variantConfig[variant];
@@ -68,16 +65,8 @@ export function AdPlaceholder({ variant, className = '' }: AdPlaceholderProps) {
     return () => window.removeEventListener('adVisibility', handler);
   }, []);
 
-  // Don't render until consent state is known
-  if (!isLoaded) return null;
-
   // Developer policy flag — no ads on this page
   if (noAds) return null;
-
-  // Consent not yet given — show skeleton to prevent CLS
-  if (consent === null) {
-    return <AdPlaceholderSkeleton variant={variant} className={className} />;
-  }
 
   // Exit intent popup is active — show skeleton instead of ad
   if (!adsVisible) {

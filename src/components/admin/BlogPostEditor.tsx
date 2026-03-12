@@ -213,6 +213,7 @@ export function BlogPostEditor() {
     published_at: formData.is_published ? new Date().toISOString() : null,
     meta_title: formData.meta_title.trim() || null,
     meta_description: formData.meta_description.trim() || null,
+    author_name: formData.author_name.trim() || null,
     author_id: user!.id,
   });
 

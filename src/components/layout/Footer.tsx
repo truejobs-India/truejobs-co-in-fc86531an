@@ -1,24 +1,10 @@
 import { Link } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { Mail, MapPin, Phone, Shield, Lock, Facebook, Instagram, Twitter, Linkedin, Youtube, Cookie } from 'lucide-react';
+import { Mail, MapPin, Shield, Lock, Facebook, Instagram, Twitter, Linkedin, Youtube } from 'lucide-react';
 import truejobsLogo from '@/assets/truejobs-logo.png';
 import { INSURANCE_STATES } from '@/pages/jobs/cityData';
 import { NEAR_ME_PAGES } from '@/pages/jobs/nearMeData';
 import { MSMECredibility } from '@/components/MSMECredibility';
-import { useCookieConsent } from '@/hooks/useCookieConsent';
-
-function CookieSettingsButton() {
-  const { resetConsent } = useCookieConsent();
-  return (
-    <button
-      onClick={resetConsent}
-      className="hover:text-foreground transition-colors inline-flex items-center gap-1"
-    >
-      <Cookie className="h-3 w-3" />
-      Cookie Settings
-    </button>
-  );
-}
 
 export function Footer() {
   const { t } = useLanguage();
@@ -233,7 +219,6 @@ export function Footer() {
             <Link to="/privacypolicy" className="hover:text-foreground transition-colors">{t('footer.privacy')}</Link>
             <Link to="/termsofuse" className="hover:text-foreground transition-colors">{t('footer.terms')}</Link>
             <Link to="/disclaimer" className="hover:text-foreground transition-colors">Disclaimer</Link>
-            <CookieSettingsButton />
           </div>
         </div>
       </div>

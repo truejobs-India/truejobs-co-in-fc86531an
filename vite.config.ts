@@ -48,6 +48,8 @@ export default defineConfig(({ mode }) => ({
         dir: "ltr",
       },
       workbox: {
+        skipWaiting: true,
+        clientsClaim: true,
         globPatterns: ["**/*.{js,css,html,ico,png,svg,jpg,jpeg,webp}"],
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5 MB limit for large images
         runtimeCaching: [

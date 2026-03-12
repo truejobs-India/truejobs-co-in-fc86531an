@@ -281,6 +281,35 @@ export function BulkPublishModal({ open, onOpenChange, articles, onPublished }: 
                 ))}
               </div>
             )}
+
+            {/* Blocked articles */}
+            {blockedArticles.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-destructive">Blocked articles ({blockedArticles.length}):</p>
+                {blockedArticles.map(d => (
+                  <div key={d.articleId} className="border border-destructive/20 rounded p-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-medium truncate">{d.title}</p>
+                      <ComplianceReadinessBadge status={d.complianceStatus} />
+                    </div>
+                    {d.topFails.map(f => (
+                      <p key={f.key} className="text-xs text-destructive flex items-start gap-1">
+                        <XCircle className="h-3 w-3 mt-0.5 shrink-0" />
+                        <span>
+                          {f.label}
+                          {f.recommendation && <span className="text-muted-foreground"> — {f.recommendation}</span>}
+                        </span>
+                      </p>
+                    ))}
+                  </div>
+                ))}
+                <div className="flex items-center gap-2 text-sm">
+                  <Switch checked={overrideBlocked} onCheckedChange={setOverrideBlocked} />
+                  <Label className="text-xs">Override blocked articles</Label>
+                </div>
+              </div>
+            )}
+
             <DialogFooter className="gap-2">
               <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
               <Button onClick={handlePublish} disabled={readyArticles.length === 0}>

@@ -28,8 +28,8 @@ describe('City Jobs Data - Duplicate Check', () => {
     expect(duplicates, `Duplicate cities found: ${duplicates.join(', ')}`).toHaveLength(0);
   });
 
-  it('should have exactly 100 entries', () => {
-    expect(CITY_JOBS_DATA).toHaveLength(100);
+  it('should have exactly 104 entries', () => {
+    expect(CITY_JOBS_DATA).toHaveLength(104);
   });
 
   it('all slugs should start with jobs-in-', () => {

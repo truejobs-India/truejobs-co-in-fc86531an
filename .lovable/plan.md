@@ -1,303 +1,117 @@
 
 
-## Phase 5: AI Features + Current Affairs — Implementation Plan
+# Automatic SEO Cache Rebuild System — Implementation Plan
 
-### Architecture
+## Overview
 
-```
-Frontend (React)
-    ↓ supabase.functions.invoke() with auth token
-Edge Function (Deno)
-    ↓ JWT validated via getClaims()
-    ↓ DB queries via Supabase client
-AWS Bedrock (SigV4 signing)
-    ↓
-Mistral Models
-    ├─ mistral.mixtral-8x7b-instruct-v0:1  → Question generation
-    └─ mistral.mistral-large-2402-v1:0      → Answer evaluation + Reports
-```
+Three-tier system: DB triggers queue changes → pg_cron processes queue every 5 min → `seo-cache-rebuild` edge function rebuilds affected pages, computes content hashes, purges Cloudflare cache, and logs results.
 
-Reuses existing `callBedrockConverse()` + SigV4 signing from `enrich-job-descriptions/index.ts`.
+## 1. Database Migration
 
----
+### New table: `seo_rebuild_queue`
+- `id uuid PK`, `slug text NOT NULL`, `page_type text DEFAULT 'unknown'`, `reason text DEFAULT 'manual'`
+- `status text DEFAULT 'pending'` (pending/processing/done/failed)
+- `retry_count integer DEFAULT 0`, `max_retries integer DEFAULT 3`, `last_retry_at timestamptz`
+- `created_at timestamptz DEFAULT now()`, `processed_at timestamptz`, `error_message text`
+- Partial unique index: `CREATE UNIQUE INDEX idx_rebuild_queue_pending_slug ON seo_rebuild_queue(slug) WHERE status = 'pending'` — ensures one pending entry per slug
 
-### Batch 1: Database + Current Affairs (5B)
+### New table: `seo_rebuild_log`
+- `id uuid PK`, `rebuild_type text` (single/batch/full), `slugs_requested int`, `slugs_rebuilt int`, `slugs_skipped int`, `slugs_failed int`, `cf_purged int`, `duration_ms int`, `error_details jsonb`, `trigger_source text`, `created_at timestamptz DEFAULT now()`
 
-**Migration — 5 tables:**
+### Alter `seo_page_cache`
+- Add `content_hash text` column
 
-1. `current_affairs`: id, date, slug, title, content, category, tags (text[]), source_url, created_at
-2. `daily_quiz_questions`: id, date, question_text, options (jsonb), correct_option_id, explanation, category, difficulty_level, created_at
-   - RLS: public SELECT, admin ALL via `has_role()`
-3. `ai_interview_sessions`: id, user_id, exam_type, interview_mode, subject_area, candidate_profile (jsonb), questions_count, overall_score, timer_seconds (nullable), status (default 'in_progress'), created_at, updated_at
-4. `ai_interview_messages`: id, session_id (FK), board_member, question, answer, score, knowledge_score, communication_score, confidence_score, structure_score, relevance_score, feedback, question_order, created_at
-5. `ai_interview_reports`: id, session_id (FK), user_id, exam_type, mode, report_json (jsonb), overall_score, knowledge_score, communication_score, confidence_score, structure_score, presence_score, strengths (text[]), improvements (text[]), recommended_topics (text[]), created_at
-   - RLS on 3-5: users CRUD own rows, admin SELECT all
+### Trigger function: `queue_seo_rebuild()`
+- SECURITY DEFINER, handles `govt_exams`, `blog_posts`, `employment_news_jobs`
+- Uses `INSERT ... ON CONFLICT (slug) WHERE status = 'pending' DO UPDATE SET reason = reason || ' + ' || EXCLUDED.reason, created_at = now()`
+- For `govt_exams`: queues new slug, old slug (if changed, as `-stale`), old/new department pages, old/new state pages
+- For `blog_posts`: queues on publish/update, queues old slug as `-stale` on unpublish/slug-change/delete
+- For `employment_news_jobs`: same pattern — publish queues rebuild, unpublish/delete/slug-change queues stale
 
-**Frontend — `/current-affairs`:** Date picker, category tabs, CA cards, 10-question daily quiz, monthly PDF download, JSON-LD.
+### Three triggers
+- `trg_govt_exams_seo_rebuild` AFTER INSERT/UPDATE/DELETE
+- `trg_blog_posts_seo_rebuild` AFTER INSERT/UPDATE/DELETE
+- `trg_employment_news_seo_rebuild` AFTER INSERT/UPDATE/DELETE
 
-**Admin — `CurrentAffairsManager`:** CRUD + bulk add in AdminDashboard.
+## 2. New Edge Function: `seo-cache-rebuild`
 
----
+**Security**: Protected by dual auth — admin JWT OR `SEO_REBUILD_SECRET` bearer token. `verify_jwt = false` in config (validated in code).
 
-### Batch 2: AI Interview Edge Function (5A — Backend)
+**Three modes**:
+- `mode: 'queue'` — claim pending rows (up to 50), set to `processing`, rebuild each, mark `done`/`failed`. Failed items increment `retry_count`; items exceeding `max_retries` are marked `failed` permanently.
+- `mode: 'slugs'` — rebuild specific slugs passed in body
+- `mode: 'full'` — rebuild all programmatic pages (reuses `build-seo-cache` HTML generation logic, duplicated server-side for the standalone/static pages; for DB-sourced pages like blog/govt-exams, fetches from DB)
 
-**Edge function: `ai-interview`**
-- `verify_jwt = false` in config.toml but validates JWT in code via `getClaims()` — returns 401 if unauthenticated
-- Models: Mixtral 8x7B for questions, Mistral Large for evaluation + reports
-- Actions: `start_interview`, `next_question`, `evaluate_answer`, `generate_report`
-- Queries `current_affairs` for question context
-- DB filtering before any AI call
+**Processing logic per slug**:
+1. If page_type ends in `-stale`: DELETE from `seo_page_cache`, purge CF cache, done
+2. Otherwise: generate `head_html` + `body_html` using same `generateHeadHTML`/`generateBodyHTML` functions (copied from `build-seo-cache`)
+3. Compute `content_hash = MD5(head_html + body_html)` — if hash matches existing row, skip upsert (mark as skipped)
+4. If hash changed: upsert to `seo_page_cache`, purge CF cache for that URL
+5. Log results to `seo_rebuild_log`
 
----
+**Cloudflare purge**: Calls `POST https://api.cloudflare.com/client/v4/zones/{zone_id}/purge_cache` with changed URLs. Skips silently if `CLOUDFLARE_ZONE_ID` or `CLOUDFLARE_API_TOKEN` secrets are missing.
 
-### Batch 3: AI Interview Frontend (5A — UI)
+**Concurrency**: Uses `pg_advisory_xact_lock(hashtext(slug))` when processing each slug.
 
-**`/ai-interview`:** Step 1 exam type → Step 2 mode → Step 3 profile → Timer config (60/90/120s/unlimited) → Chat interface with board member labels → Post-interview report with recharts + PDF download + save.
+## 3. Update `build-seo-cache`
 
-**`/dashboard/interview-history`:**
-- Paginated table (20/page) with next/previous
-- Progress tracking: score trend, skill radar, subject-wise bar charts
-- Interview comparison: side-by-side skill table
-- **AI progress analysis:** Button that sends **max 5** most recent session summaries (scores + metadata only, not full Q&A) to Bedrock (Mistral Large) for textual insights. Hard cap enforced server-side in the edge function — reject requests exceeding 5 sessions.
+Add `content_hash` (MD5 of head_html + body_html) to each upserted row.
 
-Voice-ready architecture: input via `onSubmit(text: string)` for future speech-to-text.
+## 4. Update `SEOCacheBuilder.tsx` Admin UI
 
----
+Add below existing "Build SEO Cache" button:
+- **Rebuild Slug** — text input + button, calls `seo-cache-rebuild` with `mode: 'slugs'`
+- **Queue Status** — badge showing pending queue count
+- **Recent Rebuild Log** — table showing last 10 entries from `seo_rebuild_log` (type, rebuilt/skipped/failed counts, duration, trigger source, timestamp)
+- **Failed Queue Items** — if any items with `retry_count >= max_retries`, show them with slug, reason, error, and a "Retry" button that resets retry_count
 
-### Batch 4: AI Exam Matcher (5C)
+## 5. Config Changes
 
-**Edge function: `ai-exam-matcher`** (public, no auth)
-- Step 1: DB filter `govt_exams` by age/qualification/category (SQL WHERE)
-- Step 2: Send filtered list (max ~30) to Mixtral 8x7B for ranking
-
-**`/ai-exam-matcher`:** Multi-step form → loading animation → sorted result cards with match %, reasons, "View Details" link.
-
----
-
-### Batch 5: Tools Page + Polish
-
-- Add "AI-Powered Tools" and "Exam Preparation" sections to Tools.tsx
-- Cross-links from Sarkari Jobs and Govt Exam Detail pages
-
----
-
-## Phase 6 Addendum — SEO & Feature Enhancements
-
-### 1. Telegram Bot (Replaces Widget)
-
-- **Edge function: `telegram-bot-webhook`** — handles `/start`, `/subscribe`, `/unsubscribe`, `/categories`, `/state`, `/qualification`
-- **Edge function: `send-telegram-alerts`** — triggered on new job/admit card/result/deadline
-- **Database:** `telegram_subscribers` table (`id`, `telegram_user_id` bigint unique, `categories` jsonb, `qualification` text, `state` text, `is_active` boolean default true, `created_at`). RLS: service_role ALL.
-- **Frontend:** Update `TelegramAlertWidget.tsx` to link to bot URL (stored in `app_settings`)
-- **Secret required:** `TELEGRAM_BOT_TOKEN`
-
----
-
-### 2. Programmatic SEO — Complete Combinations
-
-New `GovtProgrammaticPage.tsx` (lazy-loaded). Slug patterns resolved via DB queries:
-
-| Pattern | Example | DB Query |
-|---------|---------|----------|
-| `{dept}-jobs` | `/ssc-jobs` | `WHERE exam_category ILIKE '%ssc%'` |
-| `govt-jobs-{state}` | `/govt-jobs-bihar` | `WHERE states @> '{bihar}'` |
-| `govt-jobs-{city}` | `/govt-jobs-patna` | Predefined city-to-state map |
-| `{qual}-govt-jobs` | `/graduate-govt-jobs` | `WHERE qualification_tags @> '{graduate}'` |
-| `{dept}-jobs-{state}` | `/ssc-jobs-bihar` | Combined filters |
-| `{dept}-{qual}-jobs` | `/ssc-graduate-jobs` | Combined filters |
-| `govt-jobs-{state}-{qual}` | `/govt-jobs-up-graduate` | Combined filters |
-| `{dept}-jobs-{city}` | `/ssc-jobs-delhi` | Combined filters |
-
-Page only renders if >= 1 matching exam exists. Falls through to NotFound otherwise.
-
----
-
-### 3. Auto-Generated SEO Intro Content
-
-Template-driven `generateSEOIntro(filters)` utility producing 300+ word HTML intros + 3-5 FAQs + FAQ JSON-LD + internal links per programmatic page.
-
----
-
-### 4. Deadline-Based SEO Pages
-
-New `GovtDeadlinePage.tsx` (lazy-loaded). Slug patterns:
-
-- `govt-jobs-last-date-today` / `tomorrow` / `this-week` / `this-month`
-- `govt-jobs-last-date-{month}-{year}` (e.g., `govt-jobs-last-date-july-2026`)
-
-Queries `govt_exams.application_end` relative to current date. Badges: "Closing Today", "Closing Tomorrow", "Closing This Week".
-
----
-
-### 5. Search Query Capture
-
-Wire existing `upsert_search_query` RPC into `Jobs.tsx`, `SarkariJobs.tsx`. Add "Search Insights" (top 50 queries) to admin panel.
-
----
-
-### 6. Internal Linking Enforcement
-
-- **`QuickLinksBlock.tsx`** — standardized links grid on all govt exam detail pages
-- **`ContextualLinks.tsx`** — "More {department} Jobs", "More Jobs in {state}", "More {qualification} Jobs"
-- **`RelatedExams.tsx`** — 4-6 similar exams by `exam_category` or `qualification_tags`
-
-All integrated into `GovtExamDetail.tsx`.
-
----
-
-### 7. Discovery Page — `/all-sarkari-jobs`
-
-Sections: A-Z index, department grouping, year grouping, qualification grouping, latest jobs, closing soon, upcoming exams, latest results, latest admit cards. Auto-updates on new entries.
-
----
-
-### 8. Job Freshness Signals
-
-In `GovtExamDetail.tsx`: "Last Updated" display, badges (Updated Today, Recently Updated, Closing Soon, Closing Tomorrow), `datePublished`/`dateModified` in JSON-LD schema.
-
----
-
-### 9. Prerender Verification
-
-Add `GovtProgrammaticPage` and `GovtDeadlinePage` to `SEOCacheBuilder` for static HTML generation. Verify structured data in cached HTML.
-
----
-
-### 10. Execution Order
-
-| Batch | Additions |
-|-------|-----------|
-| Batch 3 (Alerts) | Telegram bot, `telegram_subscribers` table |
-| Batch 4 (Programmatic SEO) | Complete combinations, auto-generated intros, deadline pages |
-| Batch 5 (Discovery) | `/all-sarkari-jobs`, freshness badges |
-| Batch 6 (Internal Linking) | QuickLinksBlock, ContextualLinks, RelatedExams |
-| Batch 7 (Sitemap) | Deadline pages + programmatic slugs in sitemaps, prerender cache |
-| Any batch | Search query capture wiring |
-
----
-
-## Selection-Based SEO Pages (Without Exam)
-
-### Database
-- `selection_type` text column added to `govt_exams` (values: `written_exam`, `interview`, `merit`, `direct_recruitment`, `skill_test`)
-- Index: `idx_govt_exams_selection_type`
-
-### Components
-- **`GovtSelectionPage.tsx`** — renders selection-based programmatic pages with DB-driven listings, 300+ word intro, FAQ schema, internal links
-- **`selectionPageData.ts`** — slug parser (`parseSelectionSlug`) + config builder (`buildSelectionPageConfig`) + SEO intro generator + FAQ generator
-
-### Slug Patterns (in SEOLandingResolver)
-| Pattern | Example |
-|---------|---------|
-| `govt-jobs-without-exam` | Main page |
-| `{qual}-govt-jobs-without-exam` | `/10th-pass-govt-jobs-without-exam` |
-| `{dept}-jobs-without-exam` | `/railway-jobs-without-exam` |
-| `govt-jobs-without-exam-{state}` | `/govt-jobs-without-exam-bihar` |
-
-### Query Logic
-All pages filter `govt_exams WHERE selection_type IN ('interview','merit','direct_recruitment')` + optional dept/qual/state filters. Page only renders if >= 1 result.
-
-### Sitemap & Prerender
-Add to `sitemap-combinations.xml` and `seo_page_cache` in future batches.
-
----
-
-## Phase C: Exam Authority Pages (SEO Content Hub)
-
-### Architecture
-- `src/data/examAuthority/` — typed config registry with `Map<string, ExamAuthorityConfig>` for O(1) slug lookup
-- `src/pages/govt/ExamAuthorityPage.tsx` — renders all authority page types (notification, syllabus, exam-pattern, eligibility, salary)
-- Resolved via `SEOLandingResolver.tsx` Step 0 (before all other SEO pages)
-
-### Batch 1 (Complete): SSC CGL — 5 pages
-| Slug | Type | Meta Title |
-|------|------|-----------|
-| `ssc-cgl-2026-notification` | notification | SSC CGL 2026 Notification – Dates, Eligibility, Apply |
-| `ssc-cgl-2026-syllabus` | syllabus | SSC CGL Syllabus 2026 – Complete Topic-wise Guide |
-| `ssc-cgl-2026-exam-pattern` | exam-pattern | SSC CGL Exam Pattern 2026 – Tier 1 & 2 Details |
-| `ssc-cgl-2026-eligibility` | eligibility | SSC CGL Eligibility 2026 – Age, Qualification |
-| `ssc-cgl-2026-salary` | salary | SSC CGL Salary 2026 – Pay Scale, In-Hand, Perks |
-
-### Phase C Complete ✅
-- 80 authority pages across 16 exam clusters (SSC, Railway, Banking, Defence/UPSC)
-- 16 Exam Cluster Hub pages (`/{exam}-hub`) with subtopic cards + FAQs
-- 16 Previous Year Paper pages (`/{exam}-previous-year-paper`) with year-wise tables
-- 3 enrichment sections on notification pages: Admit Card, Cutoff Table, Result
-- PopularExamsBlock on SarkariJobs, LatestGovtJobs, GovtExamDetail
-- SEOCacheBuilder updated with hub + PYP loops (sections 13, 14)
-- Dynamic sitemap includes all 32 new slugs
-
----
-
-## Phase D: Programmatic Pages (Planned)
-
-### Objective
-Generate programmatic SEO pages from database fields for long-tail traffic capture.
-
-### Planned Page Types
-1. **State + Qualification combos** — `/govt-jobs-{state}-{qualification}` (e.g. `/govt-jobs-uttar-pradesh-graduation`)
-2. **Department landing pages** — `/{dept}-jobs` with live listings from DB
-3. **Monthly deadline pages** — `/govt-jobs-last-date-{month}-{year}`
-4. **Exam calendar pages** — `/govt-exam-calendar-{month}-{year}`
-
-### Prerequisites
-- Phase C complete ✅
-- Minimum 50 active govt_exams rows in database
-- State/qualification taxonomy finalized
-
-### Implementation Notes
-- Reuse SEOLandingResolver pattern with new step priorities
-- Each page type needs 300+ word intro + FAQ schema
-- Thin-content guard: only render if ≥1 matching listing exists
-
----
-
-## Phase E: Calculator Tie-ins, Guide System, Internal Linking, Outreach Assets
-
-### E-3: Long-Form Guide Generation via External Gemini API
-
-#### Architecture
-- **Single source of truth**: Guide metadata (slugs, prompts, tags, internal links) lives ONLY in the edge function `generate-guide-content/index.ts`. No separate `src/data/guidesMetadata.ts` file. The edge function owns the config array and uses it directly for generation + insertion.
-- **Storage**: Existing `blog_posts` table + `/blog/:slug` route. No new tables or routes.
-- **Model**: External Gemini API (`gemini-2.5-flash`) via `GEMINI_API_KEY` secret.
-- **Category**: `'Career Advice'` (already allowed by DB).
-
-#### Validation Rules (enforced before DB insert)
-Before inserting into `blog_posts`, the edge function MUST validate Gemini output:
-
-1. **meta_title**: ≤60 characters. If over, truncate at last word boundary + "…"
-2. **meta_description**: 140–155 characters. If under 140, pad with " | TrueJobs". If over 155, truncate at last word boundary + "…"
-3. **FAQ count**: Must contain 5–7 FAQs. If fewer than 5 or more than 7, re-extract or trim to exactly 5.
-4. **Internal link URLs**: Each `href` must start with `/` and match a known route pattern (e.g., `/ssc-cgl-2026-notification`, `/govt-salary-calculator`, `/sarkari-jobs`). Reject any absolute URLs or broken paths. Log warnings for unrecognized paths but still insert.
-5. **Word count**: Must be ≥1,800 words. If under, log warning but still insert as draft for manual expansion.
-6. **Content structure**: Must contain at least 3 H2 headings. If not, log warning.
-
-#### 10 Guide Slugs
-All published under `/blog/`:
-1. `ssc-cgl-preparation-guide`
-2. `govt-jobs-after-12th-guide`
-3. `upsc-vs-ssc-guide`
-4. `railway-jobs-guide`
-5. `govt-salary-calculation-guide`
-6. `govt-jobs-by-stream-guide`
-7. `nda-preparation-guide`
-8. `sbi-po-vs-ibps-po-guide`
-9. `govt-jobs-bihar-guide`
-10. `agniveer-complete-guide`
-
-#### Flow
-```
-POST /functions/v1/generate-guide-content { slug: "all" | "<specific-slug>" }
-  → Loop guide configs (single source array in edge function)
-  → Call Gemini API with detailed prompt per guide
-  → Parse + validate response (meta title, meta desc, FAQs, links, word count)
-  → Fix/truncate fields that fail validation
-  → Insert into blog_posts as draft (status: 'draft', is_published: false)
-  → Return report: { generated: [...], skipped: [...], validation_warnings: [...], errors: [...] }
+Add to `supabase/config.toml`:
+```toml
+[functions.seo-cache-rebuild]
+verify_jwt = false
 ```
 
-#### Files
-| Action | File |
-|--------|------|
-| CREATE | `supabase/functions/generate-guide-content/index.ts` |
-| MODIFY | `supabase/config.toml` — add `[functions.generate-guide-content]` |
+## 6. pg_cron Job (via insert tool, not migration)
+
+```sql
+SELECT cron.schedule(
+  'process-seo-rebuild-queue',
+  '*/5 * * * *',
+  $$ SELECT net.http_post(
+    url:='https://riktrtfgpnrqiwatppcq.supabase.co/functions/v1/seo-cache-rebuild',
+    headers:='{"Content-Type":"application/json","Authorization":"Bearer <SEO_REBUILD_SECRET>"}'::jsonb,
+    body:='{"mode":"queue"}'::jsonb
+  ) AS request_id; $$
+);
+```
+
+## 7. Secrets Needed
+
+- `SEO_REBUILD_SECRET` — new secret for internal auth (will prompt user)
+- `CLOUDFLARE_ZONE_ID` — optional, for cache purge
+- `CLOUDFLARE_API_TOKEN` — optional, for cache purge
+
+## Files Changed
+
+| File | Action |
+|------|--------|
+| DB migration | NEW — queue table, log table, content_hash column, trigger function, 3 triggers |
+| `supabase/functions/seo-cache-rebuild/index.ts` | NEW |
+| `supabase/functions/build-seo-cache/index.ts` | EDIT — add content_hash to upsert |
+| `src/components/admin/SEOCacheBuilder.tsx` | EDIT — add rebuild controls, queue status, log viewer, failed items |
+| `supabase/config.toml` | EDIT — add seo-cache-rebuild entry |
+| pg_cron insert | NEW — via insert tool after secrets are configured |
+
+## Trigger Summary
+
+| Change | Trigger Type | Pages Affected |
+|--------|-------------|----------------|
+| govt_exam content edit | DB trigger → queue | Exam slug + department + state pages |
+| govt_exam slug rename | DB trigger → queue | New slug (rebuild) + old slug (stale delete) |
+| Blog publish/update | DB trigger → queue | Blog slug |
+| Blog unpublish/delete | DB trigger → queue | Blog slug (stale delete) |
+| Employment news publish | DB trigger → queue | News slug |
+| Shared template/CSS change | Manual or deploy hook | Full rebuild (all pages) |
+

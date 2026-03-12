@@ -394,6 +394,9 @@ export function ArticleEditPanel({ article, onUpdate }: ArticleEditPanelProps) {
 
       <Separator />
 
+      {/* Policy Warnings */}
+      <BlogPolicyWarnings compliance={compliance} />
+
       {/* Publish Settings */}
       <section className="space-y-3">
         <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Publish Settings</h4>

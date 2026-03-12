@@ -142,6 +142,7 @@ export function ArticleEditPanel({ article, onUpdate }: ArticleEditPanelProps) {
         <Badge variant={seoReport.totalScore >= 70 ? 'default' : seoReport.totalScore >= 50 ? 'secondary' : 'destructive'}>
           SEO: {seoReport.totalScore}
         </Badge>
+        <ComplianceReadinessBadge status={complianceStatus} />
       </div>
 
       {/* Collapsible Quality Report */}

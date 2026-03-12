@@ -170,8 +170,10 @@ export function BlogPostEditor() {
       is_published: post.is_published,
       meta_title: post.meta_title || '',
       meta_description: post.meta_description || '',
+      author_name: post.author_name || 'TrueJobs Editorial Team',
     });
     setHasUnsavedChanges(false);
+    setPublishOverride(false);
     setIsDialogOpen(true);
   };
 

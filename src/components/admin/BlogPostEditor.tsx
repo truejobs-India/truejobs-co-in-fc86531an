@@ -408,6 +408,7 @@ export function BlogPostEditor() {
                 <span>~{liveReadingTime} min read</span>
                 {currentQuality && <span>Quality: {currentQuality.totalScore}/100</span>}
                 {currentSEO && <span>SEO: {currentSEO.totalScore}/100</span>}
+                {currentCompliance && <span>Compliance: {currentCompliance.overallScore}/100</span>}
               </div>
 
               <div className="grid grid-cols-2 gap-4">

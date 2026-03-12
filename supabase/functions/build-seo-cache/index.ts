@@ -289,10 +289,10 @@ Deno.serve(async (req) => {
       const headHtml = generateHeadHTML(page);
       const bodyHtml = generateBodyHTML(page);
       const fullHtml = generateFullHTML(headHtml, bodyHtml);
-      // Compute content hash (MD5)
+      // Compute content hash (SHA-256)
       const encoder = new TextEncoder();
       const data = encoder.encode(headHtml + bodyHtml);
-      const hashBuffer = await crypto.subtle.digest('MD5', data);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
       const hashArray = Array.from(new Uint8Array(hashBuffer));
       const contentHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
       return {

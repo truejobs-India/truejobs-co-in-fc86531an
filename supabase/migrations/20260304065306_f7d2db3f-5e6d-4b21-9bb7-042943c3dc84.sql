@@ -1,0 +1,1 @@
+ALTER TABLE gov_jobs ADD COLUMN additional_fields jsonb DEFAULT '{}'::jsonb;

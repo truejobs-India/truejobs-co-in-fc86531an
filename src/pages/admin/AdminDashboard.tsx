@@ -1,0 +1,388 @@
+import { useState, useEffect } from 'react';
+import { Layout } from '@/components/layout/Layout';
+import { Card, CardContent } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
+import { 
+  Users, 
+  Briefcase, 
+  Building2, 
+  CheckCircle, 
+  Clock,
+  TrendingUp,
+  RefreshCw,
+  FileText,
+  Calendar,
+  BarChart3,
+  ClipboardList,
+  CreditCard,
+  Landmark,
+  Sparkles,
+  Newspaper,
+} from 'lucide-react';
+import { RestrictedDomainsManager } from '@/components/admin/RestrictedDomainsManager';
+import { EmploymentNewsManager } from '@/components/admin/EmploymentNewsManager';
+import { JobApprovalList } from '@/components/admin/JobApprovalList';
+import { CompanyApprovalList } from '@/components/admin/CompanyApprovalList';
+import { BlogPostEditor } from '@/components/admin/BlogPostEditor';
+import { CronJobManager } from '@/components/admin/CronJobManager';
+import { DrilldownBreadcrumb, BreadcrumbItem } from '@/components/admin/DrilldownBreadcrumb';
+import { CompaniesListView } from '@/components/admin/CompaniesListView';
+import { CompanyJobsView } from '@/components/admin/CompanyJobsView';
+import { JobsListView } from '@/components/admin/JobsListView';
+import { UsersListView } from '@/components/admin/UsersListView';
+import { PollsManager } from '@/components/admin/PollsManager';
+import { ContestsManager } from '@/components/admin/ContestsManager';
+import { SurveysManager } from '@/components/admin/SurveysManager';
+import { JobPlansManager } from '@/components/admin/JobPlansManager';
+import { EnrollmentsManager } from '@/components/admin/EnrollmentsManager';
+import { GSCUrlExport } from '@/components/admin/GSCUrlExport';
+import { SEOCacheBuilder } from '@/components/admin/SEOCacheBuilder';
+import { SEOContentHealth } from '@/components/admin/SEOContentHealth';
+import { BulkBlogUpload } from '@/components/admin/BulkBlogUpload';
+import { GovtExamsManager } from '@/components/admin/GovtExamsManager';
+import { GuideGenerator } from '@/components/admin/GuideGenerator';
+import { ContentEnricher } from '@/components/admin/ContentEnricher';
+import { useNavigate } from 'react-router-dom';
+
+type DrilldownView = 
+  | { type: 'dashboard' }
+  | { type: 'users' }
+  | { type: 'jobs'; filter?: string }
+  | { type: 'companies' }
+  | { type: 'company-jobs'; companyName: string };
+
+interface DashboardStats {
+  totalUsers: number;
+  totalJobs: number;
+  activeJobs: number;
+  pendingJobs: number;
+  totalCompanies: number;
+  pendingCompanies: number;
+  totalApplications: number;
+}
+
+export default function AdminDashboard() {
+  const { toast } = useToast();
+  const navigate = useNavigate();
+  const [stats, setStats] = useState<DashboardStats>({
+    totalUsers: 0,
+    totalJobs: 0,
+    activeJobs: 0,
+    pendingJobs: 0,
+    totalCompanies: 0,
+    pendingCompanies: 0,
+    totalApplications: 0,
+  });
+  const [isLoading, setIsLoading] = useState(true);
+  const [currentView, setCurrentView] = useState<DrilldownView>({ type: 'dashboard' });
+  const [companyRefreshKey, setCompanyRefreshKey] = useState(0);
+
+  useEffect(() => {
+    fetchStats();
+  }, []);
+
+  // Helper function to fetch all company names with pagination
+  const fetchAllCompanyNames = async (): Promise<Set<string>> => {
+    const uniqueNames = new Set<string>();
+    const pageSize = 1000;
+    let page = 0;
+    let hasMore = true;
+
+    while (hasMore) {
+      const { data, error } = await supabase
+        .from('jobs')
+        .select('company_name')
+        .not('company_name', 'is', null)
+        .not('company_name', 'eq', '')
+        .range(page * pageSize, (page + 1) * pageSize - 1);
+
+      if (error || !data || data.length === 0) {
+        hasMore = false;
+      } else {
+        data.forEach((job: { company_name: string | null }) => {
+          const name = job.company_name?.trim().toLowerCase();
+          if (name) uniqueNames.add(name);
+        });
+        hasMore = data.length === pageSize;
+        page++;
+      }
+    }
+
+    return uniqueNames;
+  };
+
+  const fetchStats = async () => {
+    try {
+      const [
+        usersResult,
+        jobsResult,
+        activeJobsResult,
+        pendingJobsResult,
+        uniqueCompanyNames,
+        pendingCompaniesResult,
+        applicationsResult,
+      ] = await Promise.all([
+        supabase.from('profiles').select('id', { count: 'exact', head: true }),
+        supabase.from('jobs').select('id', { count: 'exact', head: true }),
+        supabase.from('jobs').select('id', { count: 'exact', head: true }).eq('status', 'active'),
+        supabase.from('jobs').select('id', { count: 'exact', head: true }).in('status', ['pending_approval', 'draft']),
+        fetchAllCompanyNames(),
+        supabase.from('companies').select('id', { count: 'exact', head: true }).eq('is_approved', false),
+        supabase.from('applications').select('id', { count: 'exact', head: true }),
+      ]);
+
+      setStats({
+        totalUsers: usersResult.count || 0,
+        totalJobs: jobsResult.count || 0,
+        activeJobs: activeJobsResult.count || 0,
+        pendingJobs: pendingJobsResult.count || 0,
+        totalCompanies: uniqueCompanyNames.size,
+        pendingCompanies: pendingCompaniesResult.count || 0,
+        totalApplications: applicationsResult.count || 0,
+      });
+    } catch (error) {
+      console.error('Error fetching stats:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to load dashboard statistics',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const statCards = [
+    { title: 'Total Users', value: stats.totalUsers, icon: Users, color: 'text-blue-500', onClick: () => setCurrentView({ type: 'users' }) },
+    { title: 'Total Jobs', value: stats.totalJobs, icon: Briefcase, color: 'text-green-500', onClick: () => setCurrentView({ type: 'jobs' }) },
+    { title: 'Active Jobs', value: stats.activeJobs, icon: CheckCircle, color: 'text-emerald-500', onClick: () => setCurrentView({ type: 'jobs', filter: 'active' }) },
+    { title: 'Pending Approval', value: stats.pendingJobs, icon: Clock, color: 'text-yellow-500', onClick: () => setCurrentView({ type: 'jobs', filter: 'pending_approval' }) },
+    { title: 'Companies', value: stats.totalCompanies, icon: Building2, color: 'text-indigo-500', onClick: () => setCurrentView({ type: 'companies' }) },
+    { title: 'Pending Companies', value: stats.pendingCompanies, icon: Clock, color: 'text-orange-500', onClick: () => {} },
+    { title: 'Applications', value: stats.totalApplications, icon: TrendingUp, color: 'text-pink-500', onClick: () => {} },
+  ];
+
+  // Build breadcrumb items based on current view
+  const getBreadcrumbItems = (): BreadcrumbItem[] => {
+    switch (currentView.type) {
+      case 'users':
+        return [{ label: 'Users' }];
+      case 'jobs':
+        return [{ label: currentView.filter ? `Jobs (${currentView.filter})` : 'Jobs' }];
+      case 'companies':
+        return [{ label: 'Companies' }];
+      case 'company-jobs':
+        return [
+          { label: 'Companies', onClick: () => setCurrentView({ type: 'companies' }) },
+          { label: currentView.companyName }
+        ];
+      default:
+        return [];
+    }
+  };
+
+  return (
+    <Layout noAds>
+      <div className="container mx-auto py-8 px-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+          <div>
+            <h1 className="text-3xl font-bold">Admin Dashboard</h1>
+            <p className="text-muted-foreground mt-1">
+              Manage jobs, companies, and users
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button onClick={fetchStats} variant="outline" size="icon">
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Breadcrumb for drilldown navigation */}
+        <DrilldownBreadcrumb 
+          items={getBreadcrumbItems()} 
+          onHomeClick={() => setCurrentView({ type: 'dashboard' })} 
+        />
+
+        {/* Conditional rendering based on current view */}
+        {currentView.type === 'dashboard' ? (
+          <>
+            {/* Stats Grid */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+              {statCards.map((stat) => (
+                <Card 
+                  key={stat.title} 
+                  className="cursor-pointer hover:shadow-md transition-shadow"
+                  onClick={stat.onClick}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-3">
+                      <div className={`p-2 rounded-lg bg-muted ${stat.color}`}>
+                        <stat.icon className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <p className="text-2xl font-bold">
+                          {isLoading ? '...' : stat.value.toLocaleString()}
+                        </p>
+                        <p className="text-xs text-muted-foreground">{stat.title}</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+
+            {/* Management Tabs */}
+            <Tabs defaultValue="jobs" className="space-y-4">
+              <TabsList className="flex flex-wrap h-auto gap-1 p-1">
+                <TabsTrigger value="users" className="flex items-center gap-2">
+                  <Users className="h-4 w-4" />
+                  <span className="hidden sm:inline">Users</span>
+                </TabsTrigger>
+                <TabsTrigger value="jobs" className="flex items-center gap-2">
+                  <Briefcase className="h-4 w-4" />
+                  <span className="hidden sm:inline">Jobs</span>
+                  {stats.pendingJobs > 0 && (
+                    <Badge variant="destructive" className="ml-1">
+                      {stats.pendingJobs}
+                    </Badge>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger value="companies" className="flex items-center gap-2">
+                  <Building2 className="h-4 w-4" />
+                  <span className="hidden sm:inline">Companies</span>
+                  {stats.pendingCompanies > 0 && (
+                    <Badge variant="destructive" className="ml-1">
+                      {stats.pendingCompanies}
+                    </Badge>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger value="engagement" className="flex items-center gap-2">
+                  <BarChart3 className="h-4 w-4" />
+                  <span className="hidden sm:inline">Engagement</span>
+                </TabsTrigger>
+                <TabsTrigger value="scheduler" className="flex items-center gap-2">
+                  <Calendar className="h-4 w-4" />
+                  <span className="hidden sm:inline">Scheduler</span>
+                </TabsTrigger>
+                <TabsTrigger value="enrollments" className="flex items-center gap-2">
+                  <ClipboardList className="h-4 w-4" />
+                  <span className="hidden sm:inline">Enrollments</span>
+                </TabsTrigger>
+                <TabsTrigger value="blog" className="flex items-center gap-2">
+                  <FileText className="h-4 w-4" />
+                  <span className="hidden sm:inline">Blog</span>
+                </TabsTrigger>
+                <TabsTrigger value="bulk-blog" className="flex items-center gap-2">
+                  <FileText className="h-4 w-4" />
+                  <span className="hidden sm:inline">Bulk Upload</span>
+                </TabsTrigger>
+                <TabsTrigger value="seo" className="flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4" />
+                  <span className="hidden sm:inline">SEO</span>
+                </TabsTrigger>
+                <TabsTrigger value="job-plans" className="flex items-center gap-2">
+                  <CreditCard className="h-4 w-4" />
+                  <span className="hidden sm:inline">Job Plans</span>
+                </TabsTrigger>
+                <TabsTrigger value="govt-jobs" className="flex items-center gap-2">
+                  <Landmark className="h-4 w-4" />
+                  <span className="hidden sm:inline">Govt Jobs</span>
+                </TabsTrigger>
+                <TabsTrigger value="enrichment" className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4" />
+                  <span className="hidden sm:inline">Enrichment</span>
+                </TabsTrigger>
+                <TabsTrigger value="emp-news" className="flex items-center gap-2">
+                  <Newspaper className="h-4 w-4" />
+                  <span className="hidden sm:inline">Emp News</span>
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="users">
+                <UsersListView />
+              </TabsContent>
+
+              <TabsContent value="jobs" className="space-y-6">
+                <JobApprovalList onStatsChange={fetchStats} />
+                <RestrictedDomainsManager onSettingsChange={fetchStats} />
+              </TabsContent>
+
+              <TabsContent value="companies" className="space-y-6">
+                <CompanyApprovalList onStatsChange={fetchStats} />
+                <CompaniesListView 
+                  onCompanyClick={(name) => setCurrentView({ type: 'company-jobs', companyName: name })}
+                  refreshKey={companyRefreshKey}
+                />
+              </TabsContent>
+
+              <TabsContent value="engagement" className="space-y-6">
+                <JobPlansManager />
+                <PollsManager />
+                <ContestsManager />
+                <SurveysManager />
+              </TabsContent>
+
+              <TabsContent value="scheduler">
+                <CronJobManager />
+              </TabsContent>
+
+              <TabsContent value="enrollments">
+                <EnrollmentsManager />
+              </TabsContent>
+
+              <TabsContent value="blog">
+                <BlogPostEditor />
+              </TabsContent>
+
+              <TabsContent value="bulk-blog">
+                <BulkBlogUpload />
+              </TabsContent>
+
+              <TabsContent value="seo" className="space-y-6">
+                <SEOContentHealth />
+                <SEOCacheBuilder />
+                <GuideGenerator />
+                <GSCUrlExport />
+              </TabsContent>
+
+              <TabsContent value="job-plans">
+                <JobPlansManager />
+              </TabsContent>
+
+              <TabsContent value="govt-jobs">
+                <GovtExamsManager />
+              </TabsContent>
+
+              <TabsContent value="enrichment">
+                <ContentEnricher />
+              </TabsContent>
+
+              <TabsContent value="emp-news">
+                <EmploymentNewsManager />
+              </TabsContent>
+            </Tabs>
+          </>
+        ) : currentView.type === 'users' ? (
+          <UsersListView />
+        ) : currentView.type === 'jobs' ? (
+          <JobsListView 
+            filterStatus={currentView.filter} 
+            onCompanyClick={(name) => setCurrentView({ type: 'company-jobs', companyName: name })}
+          />
+        ) : currentView.type === 'companies' ? (
+          <CompaniesListView 
+            onCompanyClick={(name) => setCurrentView({ type: 'company-jobs', companyName: name })}
+            refreshKey={companyRefreshKey}
+          />
+        ) : currentView.type === 'company-jobs' ? (
+          <CompanyJobsView companyName={currentView.companyName} onJobsChanged={() => setCompanyRefreshKey(k => k + 1)} />
+        ) : null}
+      </div>
+    </Layout>
+  );
+}

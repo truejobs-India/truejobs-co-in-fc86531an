@@ -1,0 +1,612 @@
+query,search_count_estimate,tag_intent,topic_cluster,priority,query_variant_type,volume_source,target_page_slug
+ssc cgl,450000,navigational,ssc,high,core,google_autocomplete,/ssc-cgl-notification
+ssc cgl 2026,301000,navigational,ssc,high,year_variant,google_autocomplete,/ssc-cgl-notification
+ssc cgl notification,135000,informational,ssc,high,core,google_autocomplete,/ssc-cgl-notification
+ssc cgl notification 2026,110000,informational,ssc,high,year_variant,google_autocomplete,/ssc-cgl-notification
+ssc cgl syllabus,110000,informational,ssc,high,core,google_autocomplete,/ssc-cgl-syllabus
+ssc cgl syllabus 2026,90000,informational,ssc,high,year_variant,google_autocomplete,/ssc-cgl-syllabus
+ssc cgl syllabus pdf,60000,informational,ssc,high,pdf_variant,google_autocomplete,/ssc-cgl-syllabus
+ssc cgl syllabus tier 1,49000,informational,ssc,high,stage_variant,google_autocomplete,/ssc-cgl-syllabus
+ssc cgl syllabus tier 2,40000,informational,ssc,high,stage_variant,google_autocomplete,/ssc-cgl-syllabus
+ssc cgl syllabus latest,33000,informational,ssc,medium,intent_variant,related_searches,/ssc-cgl-syllabus
+ssc cgl salary,74000,informational,ssc,high,core,google_autocomplete,/ssc-cgl-salary
+ssc cgl salary 2026,60000,informational,ssc,high,year_variant,google_autocomplete,/ssc-cgl-salary
+ssc cgl salary in hand,49000,informational,ssc,high,intent_variant,people_also_ask,/ssc-cgl-salary
+ssc cgl salary after 7th pay commission,33000,informational,ssc,medium,intent_variant,people_also_ask,/ssc-cgl-salary
+ssc cgl salary per month,27000,informational,ssc,medium,intent_variant,related_searches,/ssc-cgl-salary
+ssc cgl job profile,22000,informational,ssc,medium,intent_variant,related_searches,/ssc-cgl-salary
+ssc cgl exam pattern,33000,informational,ssc,high,core,google_autocomplete,/ssc-cgl-exam-pattern
+ssc cgl exam pattern 2026,27000,informational,ssc,high,year_variant,google_autocomplete,/ssc-cgl-exam-pattern
+ssc cgl exam pattern tier 1,22000,informational,ssc,medium,stage_variant,google_autocomplete,/ssc-cgl-exam-pattern
+ssc cgl exam pattern tier 2,18000,informational,ssc,medium,stage_variant,google_autocomplete,/ssc-cgl-exam-pattern
+ssc cgl exam pattern pdf,14000,informational,ssc,medium,pdf_variant,related_searches,/ssc-cgl-exam-pattern
+ssc cgl cutoff,49000,informational,ssc,high,core,google_autocomplete,/ssc-cgl-cutoff
+ssc cgl cutoff 2026,40000,informational,ssc,high,year_variant,google_autocomplete,/ssc-cgl-cutoff
+ssc cgl cutoff 2025,33000,informational,ssc,medium,year_variant,google_autocomplete,/ssc-cgl-cutoff
+ssc cgl cutoff category wise,22000,informational,ssc,medium,intent_variant,people_also_ask,/ssc-cgl-cutoff
+ssc cgl cutoff marks,18000,informational,ssc,medium,intent_variant,related_searches,/ssc-cgl-cutoff
+ssc cgl tier 1 cutoff,14000,informational,ssc,medium,stage_variant,related_searches,/ssc-cgl-cutoff
+ssc cgl previous year papers,40000,informational,ssc,high,core,google_autocomplete,/ssc-cgl-previous-year-papers
+ssc cgl previous year papers pdf,33000,informational,ssc,high,pdf_variant,google_autocomplete,/ssc-cgl-previous-year-papers
+ssc cgl previous year question paper,27000,informational,ssc,medium,intent_variant,related_searches,/ssc-cgl-previous-year-papers
+ssc cgl previous year papers with solutions,22000,informational,ssc,medium,intent_variant,people_also_ask,/ssc-cgl-previous-year-papers
+ssc cgl tier 1 previous year papers,18000,informational,ssc,medium,stage_variant,related_searches,/ssc-cgl-previous-year-papers
+ssc cgl tier 2 previous year papers,14000,informational,ssc,medium,stage_variant,related_searches,/ssc-cgl-previous-year-papers
+ssc cgl apply online,27000,transactional,ssc,high,intent_variant,google_autocomplete,/ssc-cgl-notification
+ssc cgl eligibility,22000,informational,ssc,medium,intent_variant,google_autocomplete,/ssc-cgl-notification
+ssc cgl age limit,18000,informational,ssc,medium,intent_variant,people_also_ask,/ssc-cgl-notification
+ssc cgl vacancy 2026,22000,informational,ssc,high,year_variant,google_autocomplete,/ssc-cgl-notification
+ssc cgl admit card,27000,navigational,ssc,medium,intent_variant,google_autocomplete,/ssc-cgl-notification
+ssc cgl result,33000,navigational,ssc,medium,intent_variant,google_autocomplete,/ssc-cgl-notification
+ssc cgl preparation,18000,informational,ssc,medium,intent_variant,related_searches,/ssc-cgl-syllabus
+ssc cgl books,14000,informational,ssc,medium,intent_variant,related_searches,/ssc-cgl-syllabus
+ssc chsl,301000,navigational,ssc,high,core,google_autocomplete,/ssc-chsl-notification
+ssc chsl 2026,200000,navigational,ssc,high,year_variant,google_autocomplete,/ssc-chsl-notification
+ssc chsl notification,90000,informational,ssc,high,core,google_autocomplete,/ssc-chsl-notification
+ssc chsl notification 2026,74000,informational,ssc,high,year_variant,google_autocomplete,/ssc-chsl-notification
+ssc chsl syllabus,90000,informational,ssc,high,core,google_autocomplete,/ssc-chsl-syllabus
+ssc chsl syllabus 2026,74000,informational,ssc,high,year_variant,google_autocomplete,/ssc-chsl-syllabus
+ssc chsl syllabus pdf,49000,informational,ssc,high,pdf_variant,google_autocomplete,/ssc-chsl-syllabus
+ssc chsl syllabus tier 1,33000,informational,ssc,medium,stage_variant,google_autocomplete,/ssc-chsl-syllabus
+ssc chsl syllabus tier 2,27000,informational,ssc,medium,stage_variant,related_searches,/ssc-chsl-syllabus
+ssc chsl salary,60000,informational,ssc,high,core,google_autocomplete,/ssc-chsl-salary
+ssc chsl salary 2026,49000,informational,ssc,high,year_variant,google_autocomplete,/ssc-chsl-salary
+ssc chsl salary in hand,33000,informational,ssc,medium,intent_variant,people_also_ask,/ssc-chsl-salary
+ssc chsl ldc salary,22000,informational,ssc,medium,intent_variant,related_searches,/ssc-chsl-salary
+ssc chsl deo salary,18000,informational,ssc,medium,intent_variant,related_searches,/ssc-chsl-salary
+ssc chsl exam pattern,27000,informational,ssc,high,core,google_autocomplete,/ssc-chsl-exam-pattern
+ssc chsl exam pattern 2026,22000,informational,ssc,medium,year_variant,google_autocomplete,/ssc-chsl-exam-pattern
+ssc chsl cutoff,33000,informational,ssc,high,core,google_autocomplete,/ssc-chsl-cutoff
+ssc chsl cutoff 2026,27000,informational,ssc,medium,year_variant,google_autocomplete,/ssc-chsl-cutoff
+ssc chsl cutoff category wise,18000,informational,ssc,medium,intent_variant,people_also_ask,/ssc-chsl-cutoff
+ssc chsl previous year papers,22000,informational,ssc,medium,core,google_autocomplete,/ssc-chsl-previous-year-papers
+ssc chsl previous year papers pdf,18000,informational,ssc,medium,pdf_variant,google_autocomplete,/ssc-chsl-previous-year-papers
+ssc chsl apply online,22000,transactional,ssc,medium,intent_variant,google_autocomplete,/ssc-chsl-notification
+ssc chsl eligibility,18000,informational,ssc,medium,intent_variant,people_also_ask,/ssc-chsl-notification
+ssc chsl vacancy 2026,18000,informational,ssc,medium,year_variant,google_autocomplete,/ssc-chsl-notification
+ssc mts,200000,navigational,ssc,high,core,google_autocomplete,/ssc-mts-notification
+ssc mts 2026,135000,navigational,ssc,high,year_variant,google_autocomplete,/ssc-mts-notification
+ssc mts notification,74000,informational,ssc,high,core,google_autocomplete,/ssc-mts-notification
+ssc mts notification 2026,60000,informational,ssc,high,year_variant,google_autocomplete,/ssc-mts-notification
+ssc mts syllabus,60000,informational,ssc,high,core,google_autocomplete,/ssc-mts-syllabus
+ssc mts syllabus 2026,49000,informational,ssc,high,year_variant,google_autocomplete,/ssc-mts-syllabus
+ssc mts syllabus pdf,33000,informational,ssc,medium,pdf_variant,google_autocomplete,/ssc-mts-syllabus
+ssc mts salary,40000,informational,ssc,high,core,google_autocomplete,/ssc-mts-salary
+ssc mts salary 2026,33000,informational,ssc,high,year_variant,google_autocomplete,/ssc-mts-salary
+ssc mts salary in hand,22000,informational,ssc,medium,intent_variant,people_also_ask,/ssc-mts-salary
+ssc mts exam pattern,22000,informational,ssc,medium,core,google_autocomplete,/ssc-mts-exam-pattern
+ssc mts cutoff,22000,informational,ssc,medium,core,google_autocomplete,/ssc-mts-cutoff
+ssc mts cutoff 2026,18000,informational,ssc,medium,year_variant,google_autocomplete,/ssc-mts-cutoff
+ssc mts apply online,18000,transactional,ssc,medium,intent_variant,google_autocomplete,/ssc-mts-notification
+ssc mts vacancy 2026,14000,informational,ssc,medium,year_variant,google_autocomplete,/ssc-mts-notification
+ssc gd constable,135000,navigational,ssc,high,core,google_autocomplete,/ssc-gd-notification
+ssc gd 2026,110000,navigational,ssc,high,year_variant,google_autocomplete,/ssc-gd-notification
+ssc gd notification,60000,informational,ssc,high,core,google_autocomplete,/ssc-gd-notification
+ssc gd notification 2026,49000,informational,ssc,high,year_variant,google_autocomplete,/ssc-gd-notification
+ssc gd syllabus,74000,informational,ssc,high,core,google_autocomplete,/ssc-gd-syllabus
+ssc gd syllabus 2026,60000,informational,ssc,high,year_variant,google_autocomplete,/ssc-gd-syllabus
+ssc gd syllabus pdf,40000,informational,ssc,high,pdf_variant,google_autocomplete,/ssc-gd-syllabus
+ssc gd salary,40000,informational,ssc,high,core,google_autocomplete,/ssc-gd-salary
+ssc gd salary 2026,33000,informational,ssc,high,year_variant,google_autocomplete,/ssc-gd-salary
+ssc gd salary in hand,22000,informational,ssc,medium,intent_variant,people_also_ask,/ssc-gd-salary
+ssc gd exam pattern,22000,informational,ssc,medium,core,google_autocomplete,/ssc-gd-exam-pattern
+ssc gd cutoff,27000,informational,ssc,medium,core,google_autocomplete,/ssc-gd-cutoff
+ssc gd cutoff 2026,22000,informational,ssc,medium,year_variant,google_autocomplete,/ssc-gd-cutoff
+ssc gd physical,18000,informational,ssc,medium,intent_variant,related_searches,/ssc-gd-notification
+ssc gd apply online,14000,transactional,ssc,medium,intent_variant,google_autocomplete,/ssc-gd-notification
+ssc cpo,90000,navigational,ssc,high,core,google_autocomplete,/ssc-cpo-notification
+ssc cpo 2026,60000,navigational,ssc,high,year_variant,google_autocomplete,/ssc-cpo-notification
+ssc cpo notification 2026,40000,informational,ssc,high,year_variant,google_autocomplete,/ssc-cpo-notification
+ssc cpo syllabus,33000,informational,ssc,medium,core,google_autocomplete,/ssc-cpo-syllabus
+ssc cpo syllabus 2026,27000,informational,ssc,medium,year_variant,google_autocomplete,/ssc-cpo-syllabus
+ssc cpo salary,22000,informational,ssc,medium,core,google_autocomplete,/ssc-cpo-salary
+ssc cpo salary 2026,18000,informational,ssc,medium,year_variant,google_autocomplete,/ssc-cpo-salary
+ssc cpo salary in hand,14000,informational,ssc,medium,intent_variant,people_also_ask,/ssc-cpo-salary
+ssc cpo exam pattern,14000,informational,ssc,medium,core,google_autocomplete,/ssc-cpo-notification
+ssc cpo cutoff,14000,informational,ssc,medium,core,related_searches,/ssc-cpo-notification
+ssc je,74000,navigational,ssc,high,core,google_autocomplete,/ssc-je-notification
+ssc je 2026,49000,navigational,ssc,high,year_variant,google_autocomplete,/ssc-je-notification
+ssc je notification 2026,33000,informational,ssc,high,year_variant,google_autocomplete,/ssc-je-notification
+ssc je syllabus,27000,informational,ssc,medium,core,google_autocomplete,/ssc-je-syllabus
+ssc je syllabus 2026,22000,informational,ssc,medium,year_variant,google_autocomplete,/ssc-je-syllabus
+ssc je syllabus civil,18000,informational,ssc,medium,stage_variant,related_searches,/ssc-je-syllabus
+ssc je syllabus electrical,14000,informational,ssc,medium,stage_variant,related_searches,/ssc-je-syllabus
+ssc je salary,18000,informational,ssc,medium,core,google_autocomplete,/ssc-je-salary
+ssc je salary 2026,14000,informational,ssc,medium,year_variant,google_autocomplete,/ssc-je-salary
+ssc je salary in hand,12000,informational,ssc,medium,intent_variant,people_also_ask,/ssc-je-salary
+ssc stenographer,40000,navigational,ssc,medium,core,google_autocomplete,/ssc-stenographer-notification
+ssc stenographer 2026,27000,navigational,ssc,medium,year_variant,google_autocomplete,/ssc-stenographer-notification
+ssc stenographer syllabus,18000,informational,ssc,medium,core,google_autocomplete,/ssc-stenographer-notification
+ssc stenographer salary,14000,informational,ssc,medium,core,google_autocomplete,/ssc-stenographer-notification
+ssc jobs,60000,navigational,ssc,high,core,google_autocomplete,/ssc-jobs
+ssc jobs 2026,40000,navigational,ssc,high,year_variant,google_autocomplete,/ssc-jobs
+ssc upcoming exams 2026,22000,informational,ssc,medium,intent_variant,related_searches,/ssc-jobs
+ssc exam calendar 2026,18000,informational,ssc,medium,intent_variant,related_searches,/ssc-jobs
+staff selection commission,33000,navigational,ssc,medium,core,google_autocomplete,/ssc-jobs
+ssc recruitment 2026,27000,informational,ssc,high,year_variant,google_autocomplete,/ssc-jobs
+rrb ntpc,301000,navigational,railway,high,core,google_autocomplete,/rrb-ntpc-notification
+rrb ntpc 2026,200000,navigational,railway,high,year_variant,google_autocomplete,/rrb-ntpc-notification
+rrb ntpc notification,110000,informational,railway,high,core,google_autocomplete,/rrb-ntpc-notification
+rrb ntpc notification 2026,90000,informational,railway,high,year_variant,google_autocomplete,/rrb-ntpc-notification
+rrb ntpc syllabus,90000,informational,railway,high,core,google_autocomplete,/rrb-ntpc-syllabus
+rrb ntpc syllabus 2026,74000,informational,railway,high,year_variant,google_autocomplete,/rrb-ntpc-syllabus
+rrb ntpc syllabus pdf,49000,informational,railway,high,pdf_variant,google_autocomplete,/rrb-ntpc-syllabus
+rrb ntpc syllabus cbt 1,33000,informational,railway,medium,stage_variant,google_autocomplete,/rrb-ntpc-syllabus
+rrb ntpc syllabus cbt 2,27000,informational,railway,medium,stage_variant,related_searches,/rrb-ntpc-syllabus
+rrb ntpc salary,40000,informational,railway,high,core,google_autocomplete,/rrb-ntpc-salary
+rrb ntpc salary 2026,33000,informational,railway,high,year_variant,google_autocomplete,/rrb-ntpc-salary
+rrb ntpc salary in hand,27000,informational,railway,medium,intent_variant,people_also_ask,/rrb-ntpc-salary
+rrb ntpc station master salary,18000,informational,railway,medium,intent_variant,related_searches,/rrb-ntpc-salary
+rrb ntpc goods guard salary,14000,informational,railway,medium,intent_variant,related_searches,/rrb-ntpc-salary
+rrb ntpc exam pattern,27000,informational,railway,high,core,google_autocomplete,/rrb-ntpc-exam-pattern
+rrb ntpc exam pattern 2026,22000,informational,railway,medium,year_variant,google_autocomplete,/rrb-ntpc-exam-pattern
+rrb ntpc exam pattern cbt 1,14000,informational,railway,medium,stage_variant,related_searches,/rrb-ntpc-exam-pattern
+rrb ntpc cutoff,33000,informational,railway,high,core,google_autocomplete,/rrb-ntpc-cutoff
+rrb ntpc cutoff 2026,27000,informational,railway,medium,year_variant,google_autocomplete,/rrb-ntpc-cutoff
+rrb ntpc cutoff category wise,18000,informational,railway,medium,intent_variant,people_also_ask,/rrb-ntpc-cutoff
+rrb ntpc previous year papers,33000,informational,railway,high,core,google_autocomplete,/rrb-ntpc-previous-year-papers
+rrb ntpc previous year papers pdf,27000,informational,railway,medium,pdf_variant,google_autocomplete,/rrb-ntpc-previous-year-papers
+rrb ntpc previous year papers with solutions,18000,informational,railway,medium,intent_variant,people_also_ask,/rrb-ntpc-previous-year-papers
+rrb ntpc apply online,22000,transactional,railway,medium,intent_variant,google_autocomplete,/rrb-ntpc-notification
+rrb ntpc vacancy 2026,22000,informational,railway,medium,year_variant,google_autocomplete,/rrb-ntpc-notification
+rrb ntpc eligibility,18000,informational,railway,medium,intent_variant,people_also_ask,/rrb-ntpc-notification
+rrb ntpc admit card,22000,navigational,railway,medium,intent_variant,google_autocomplete,/rrb-ntpc-notification
+railway group d,301000,navigational,railway,high,core,google_autocomplete,/rrb-group-d-notification
+railway group d 2026,200000,navigational,railway,high,year_variant,google_autocomplete,/rrb-group-d-notification
+railway group d notification,90000,informational,railway,high,core,google_autocomplete,/rrb-group-d-notification
+railway group d notification 2026,74000,informational,railway,high,year_variant,google_autocomplete,/rrb-group-d-notification
+railway group d syllabus,74000,informational,railway,high,core,google_autocomplete,/rrb-group-d-syllabus
+railway group d syllabus 2026,60000,informational,railway,high,year_variant,google_autocomplete,/rrb-group-d-syllabus
+railway group d syllabus pdf,40000,informational,railway,high,pdf_variant,google_autocomplete,/rrb-group-d-syllabus
+railway group d salary,60000,informational,railway,high,core,google_autocomplete,/rrb-group-d-salary
+railway group d salary 2026,49000,informational,railway,high,year_variant,google_autocomplete,/rrb-group-d-salary
+railway group d salary in hand,33000,informational,railway,medium,intent_variant,people_also_ask,/rrb-group-d-salary
+railway group d salary per month,22000,informational,railway,medium,intent_variant,related_searches,/rrb-group-d-salary
+railway group d exam pattern,22000,informational,railway,medium,core,google_autocomplete,/rrb-group-d-exam-pattern
+railway group d exam pattern 2026,18000,informational,railway,medium,year_variant,google_autocomplete,/rrb-group-d-exam-pattern
+railway group d cutoff,33000,informational,railway,high,core,google_autocomplete,/rrb-group-d-cutoff
+railway group d cutoff 2026,27000,informational,railway,medium,year_variant,google_autocomplete,/rrb-group-d-cutoff
+railway group d previous year papers,22000,informational,railway,medium,core,google_autocomplete,/rrb-group-d-previous-year-papers
+railway group d previous year papers pdf,18000,informational,railway,medium,pdf_variant,google_autocomplete,/rrb-group-d-previous-year-papers
+railway group d apply online,18000,transactional,railway,medium,intent_variant,google_autocomplete,/rrb-group-d-notification
+railway group d vacancy 2026,18000,informational,railway,medium,year_variant,google_autocomplete,/rrb-group-d-notification
+rrb alp,135000,navigational,railway,high,core,google_autocomplete,/rrb-alp-notification
+rrb alp 2026,90000,navigational,railway,high,year_variant,google_autocomplete,/rrb-alp-notification
+rrb alp notification 2026,49000,informational,railway,high,year_variant,google_autocomplete,/rrb-alp-notification
+rrb alp syllabus,40000,informational,railway,high,core,google_autocomplete,/rrb-alp-syllabus
+rrb alp syllabus 2026,33000,informational,railway,medium,year_variant,google_autocomplete,/rrb-alp-syllabus
+rrb alp syllabus pdf,22000,informational,railway,medium,pdf_variant,google_autocomplete,/rrb-alp-syllabus
+rrb alp salary,27000,informational,railway,medium,core,google_autocomplete,/rrb-alp-salary
+rrb alp salary 2026,22000,informational,railway,medium,year_variant,google_autocomplete,/rrb-alp-salary
+rrb alp salary in hand,14000,informational,railway,medium,intent_variant,people_also_ask,/rrb-alp-salary
+rrb alp exam pattern,18000,informational,railway,medium,core,google_autocomplete,/rrb-alp-exam-pattern
+rrb alp cutoff,18000,informational,railway,medium,core,google_autocomplete,/rrb-alp-cutoff
+rrb alp cutoff 2026,14000,informational,railway,medium,year_variant,google_autocomplete,/rrb-alp-cutoff
+rrb je,60000,navigational,railway,high,core,google_autocomplete,/rrb-je-notification
+rrb je 2026,40000,navigational,railway,high,year_variant,google_autocomplete,/rrb-je-notification
+rrb je notification 2026,27000,informational,railway,medium,year_variant,google_autocomplete,/rrb-je-notification
+rrb je syllabus,22000,informational,railway,medium,core,google_autocomplete,/rrb-je-syllabus
+rrb je syllabus 2026,18000,informational,railway,medium,year_variant,google_autocomplete,/rrb-je-syllabus
+rrb je salary,14000,informational,railway,medium,core,google_autocomplete,/rrb-je-salary
+rrb je salary 2026,12000,informational,railway,medium,year_variant,google_autocomplete,/rrb-je-salary
+rpf constable,90000,navigational,railway,high,core,google_autocomplete,/rpf-constable-notification
+rpf constable 2026,60000,navigational,railway,high,year_variant,google_autocomplete,/rpf-constable-notification
+rpf constable notification 2026,40000,informational,railway,high,year_variant,google_autocomplete,/rpf-constable-notification
+rpf constable syllabus,27000,informational,railway,medium,core,google_autocomplete,/rpf-constable-syllabus
+rpf constable syllabus 2026,22000,informational,railway,medium,year_variant,google_autocomplete,/rpf-constable-syllabus
+rpf constable salary,18000,informational,railway,medium,core,google_autocomplete,/rpf-constable-salary
+rpf constable salary 2026,14000,informational,railway,medium,year_variant,google_autocomplete,/rpf-constable-salary
+rpf constable cutoff,14000,informational,railway,medium,core,related_searches,/rpf-constable-cutoff
+rpf si,40000,navigational,railway,medium,core,google_autocomplete,/rpf-si-notification
+rpf si 2026,27000,navigational,railway,medium,year_variant,google_autocomplete,/rpf-si-notification
+rpf si notification 2026,18000,informational,railway,medium,year_variant,google_autocomplete,/rpf-si-notification
+rpf si syllabus,14000,informational,railway,medium,core,google_autocomplete,/rpf-si-syllabus
+rpf si salary,12000,informational,railway,low,core,google_autocomplete,/rpf-si-notification
+railway jobs,74000,navigational,railway,high,core,google_autocomplete,/railway-jobs
+railway jobs 2026,49000,navigational,railway,high,year_variant,google_autocomplete,/railway-jobs
+railway recruitment 2026,40000,informational,railway,high,year_variant,google_autocomplete,/railway-jobs
+railway vacancy 2026,33000,informational,railway,high,year_variant,google_autocomplete,/railway-jobs
+indian railway recruitment,27000,informational,railway,medium,core,google_autocomplete,/railway-jobs
+railway upcoming exams 2026,18000,informational,railway,medium,intent_variant,related_searches,/railway-jobs
+ibps po,200000,navigational,banking,high,core,google_autocomplete,/ibps-po-notification
+ibps po 2026,135000,navigational,banking,high,year_variant,google_autocomplete,/ibps-po-notification
+ibps po notification,74000,informational,banking,high,core,google_autocomplete,/ibps-po-notification
+ibps po notification 2026,60000,informational,banking,high,year_variant,google_autocomplete,/ibps-po-notification
+ibps po syllabus,60000,informational,banking,high,core,google_autocomplete,/ibps-po-syllabus
+ibps po syllabus 2026,49000,informational,banking,high,year_variant,google_autocomplete,/ibps-po-syllabus
+ibps po syllabus pdf,33000,informational,banking,medium,pdf_variant,google_autocomplete,/ibps-po-syllabus
+ibps po syllabus prelims,27000,informational,banking,medium,stage_variant,google_autocomplete,/ibps-po-syllabus
+ibps po syllabus mains,22000,informational,banking,medium,stage_variant,related_searches,/ibps-po-syllabus
+ibps po salary,33000,informational,banking,high,core,google_autocomplete,/ibps-po-salary
+ibps po salary 2026,27000,informational,banking,medium,year_variant,google_autocomplete,/ibps-po-salary
+ibps po salary in hand,22000,informational,banking,medium,intent_variant,people_also_ask,/ibps-po-salary
+ibps po exam pattern,22000,informational,banking,medium,core,google_autocomplete,/ibps-po-exam-pattern
+ibps po exam pattern 2026,18000,informational,banking,medium,year_variant,google_autocomplete,/ibps-po-exam-pattern
+ibps po cutoff,27000,informational,banking,medium,core,google_autocomplete,/ibps-po-cutoff
+ibps po cutoff 2026,22000,informational,banking,medium,year_variant,google_autocomplete,/ibps-po-cutoff
+ibps po cutoff state wise,14000,informational,banking,medium,intent_variant,people_also_ask,/ibps-po-cutoff
+ibps po previous year papers,22000,informational,banking,medium,core,google_autocomplete,/ibps-po-previous-year-papers
+ibps po previous year papers pdf,18000,informational,banking,medium,pdf_variant,google_autocomplete,/ibps-po-previous-year-papers
+ibps po apply online,18000,transactional,banking,medium,intent_variant,google_autocomplete,/ibps-po-notification
+ibps po eligibility,14000,informational,banking,medium,intent_variant,people_also_ask,/ibps-po-notification
+ibps po vacancy 2026,14000,informational,banking,medium,year_variant,google_autocomplete,/ibps-po-notification
+ibps clerk,135000,navigational,banking,high,core,google_autocomplete,/ibps-clerk-notification
+ibps clerk 2026,90000,navigational,banking,high,year_variant,google_autocomplete,/ibps-clerk-notification
+ibps clerk notification 2026,49000,informational,banking,high,year_variant,google_autocomplete,/ibps-clerk-notification
+ibps clerk syllabus,40000,informational,banking,high,core,google_autocomplete,/ibps-clerk-syllabus
+ibps clerk syllabus 2026,33000,informational,banking,medium,year_variant,google_autocomplete,/ibps-clerk-syllabus
+ibps clerk syllabus pdf,22000,informational,banking,medium,pdf_variant,google_autocomplete,/ibps-clerk-syllabus
+ibps clerk salary,27000,informational,banking,medium,core,google_autocomplete,/ibps-clerk-salary
+ibps clerk salary 2026,22000,informational,banking,medium,year_variant,google_autocomplete,/ibps-clerk-salary
+ibps clerk salary in hand,14000,informational,banking,medium,intent_variant,people_also_ask,/ibps-clerk-salary
+ibps clerk exam pattern,18000,informational,banking,medium,core,google_autocomplete,/ibps-clerk-exam-pattern
+ibps clerk cutoff,22000,informational,banking,medium,core,google_autocomplete,/ibps-clerk-cutoff
+ibps clerk cutoff 2026,18000,informational,banking,medium,year_variant,google_autocomplete,/ibps-clerk-cutoff
+ibps clerk apply online,14000,transactional,banking,medium,intent_variant,google_autocomplete,/ibps-clerk-notification
+sbi po,200000,navigational,banking,high,core,google_autocomplete,/sbi-po-notification
+sbi po 2026,135000,navigational,banking,high,year_variant,google_autocomplete,/sbi-po-notification
+sbi po notification 2026,74000,informational,banking,high,year_variant,google_autocomplete,/sbi-po-notification
+sbi po syllabus,49000,informational,banking,high,core,google_autocomplete,/sbi-po-syllabus
+sbi po syllabus 2026,40000,informational,banking,high,year_variant,google_autocomplete,/sbi-po-syllabus
+sbi po syllabus pdf,27000,informational,banking,medium,pdf_variant,google_autocomplete,/sbi-po-syllabus
+sbi po salary,40000,informational,banking,high,core,google_autocomplete,/sbi-po-salary
+sbi po salary 2026,33000,informational,banking,high,year_variant,google_autocomplete,/sbi-po-salary
+sbi po salary in hand,22000,informational,banking,medium,intent_variant,people_also_ask,/sbi-po-salary
+sbi po exam pattern,22000,informational,banking,medium,core,google_autocomplete,/sbi-po-exam-pattern
+sbi po cutoff,27000,informational,banking,medium,core,google_autocomplete,/sbi-po-cutoff
+sbi po cutoff 2026,22000,informational,banking,medium,year_variant,google_autocomplete,/sbi-po-cutoff
+sbi po previous year papers,18000,informational,banking,medium,core,google_autocomplete,/sbi-po-notification
+sbi po apply online,18000,transactional,banking,medium,intent_variant,google_autocomplete,/sbi-po-notification
+sbi clerk,110000,navigational,banking,high,core,google_autocomplete,/sbi-clerk-notification
+sbi clerk 2026,74000,navigational,banking,high,year_variant,google_autocomplete,/sbi-clerk-notification
+sbi clerk notification 2026,40000,informational,banking,high,year_variant,google_autocomplete,/sbi-clerk-notification
+sbi clerk syllabus,27000,informational,banking,medium,core,google_autocomplete,/sbi-clerk-syllabus
+sbi clerk salary,27000,informational,banking,medium,core,google_autocomplete,/sbi-clerk-salary
+sbi clerk salary 2026,22000,informational,banking,medium,year_variant,google_autocomplete,/sbi-clerk-salary
+sbi clerk salary in hand,14000,informational,banking,medium,intent_variant,people_also_ask,/sbi-clerk-salary
+sbi clerk cutoff,18000,informational,banking,medium,core,google_autocomplete,/sbi-clerk-notification
+rbi grade b,74000,navigational,banking,high,core,google_autocomplete,/rbi-grade-b-notification
+rbi grade b 2026,49000,navigational,banking,high,year_variant,google_autocomplete,/rbi-grade-b-notification
+rbi grade b notification 2026,33000,informational,banking,medium,year_variant,google_autocomplete,/rbi-grade-b-notification
+rbi grade b syllabus,22000,informational,banking,medium,core,google_autocomplete,/rbi-grade-b-syllabus
+rbi grade b syllabus 2026,18000,informational,banking,medium,year_variant,google_autocomplete,/rbi-grade-b-syllabus
+rbi grade b salary,18000,informational,banking,medium,core,google_autocomplete,/rbi-grade-b-salary
+rbi grade b salary in hand,12000,informational,banking,medium,intent_variant,people_also_ask,/rbi-grade-b-salary
+rbi assistant,49000,navigational,banking,medium,core,google_autocomplete,/rbi-assistant-notification
+rbi assistant 2026,33000,navigational,banking,medium,year_variant,google_autocomplete,/rbi-assistant-notification
+rbi assistant notification 2026,22000,informational,banking,medium,year_variant,google_autocomplete,/rbi-assistant-notification
+rbi assistant syllabus,14000,informational,banking,medium,core,google_autocomplete,/rbi-assistant-syllabus
+rbi assistant salary,14000,informational,banking,medium,core,google_autocomplete,/rbi-assistant-salary
+ibps so,40000,navigational,banking,medium,core,google_autocomplete,/ibps-so-notification
+ibps so 2026,27000,navigational,banking,medium,year_variant,google_autocomplete,/ibps-so-notification
+ibps so notification 2026,18000,informational,banking,medium,year_variant,google_autocomplete,/ibps-so-notification
+ibps so syllabus,14000,informational,banking,medium,core,google_autocomplete,/ibps-so-notification
+nabard grade a,27000,navigational,banking,medium,core,google_autocomplete,/nabard-grade-a-notification
+nabard grade a 2026,18000,navigational,banking,medium,year_variant,google_autocomplete,/nabard-grade-a-notification
+nabard grade a notification 2026,14000,informational,banking,medium,year_variant,google_autocomplete,/nabard-grade-a-notification
+nabard grade a syllabus,12000,informational,banking,low,core,google_autocomplete,/nabard-grade-a-notification
+sebi grade a,18000,navigational,banking,medium,core,google_autocomplete,/banking-jobs
+sebi grade a 2026,14000,navigational,banking,medium,year_variant,google_autocomplete,/banking-jobs
+banking jobs,40000,navigational,banking,high,core,google_autocomplete,/banking-jobs
+banking jobs 2026,27000,navigational,banking,high,year_variant,google_autocomplete,/banking-jobs
+bank recruitment 2026,22000,informational,banking,medium,year_variant,google_autocomplete,/banking-jobs
+bank exam 2026,18000,informational,banking,medium,year_variant,related_searches,/banking-jobs
+bank po salary,22000,informational,banking,medium,intent_variant,related_searches,/ibps-po-salary
+bank clerk salary,18000,informational,banking,medium,intent_variant,related_searches,/ibps-clerk-salary
+upsc,450000,navigational,upsc,high,core,google_autocomplete,/upsc-jobs
+upsc 2026,301000,navigational,upsc,high,year_variant,google_autocomplete,/upsc-civil-services-notification
+upsc civil services,135000,navigational,upsc,high,core,google_autocomplete,/upsc-civil-services-notification
+upsc civil services 2026,90000,navigational,upsc,high,year_variant,google_autocomplete,/upsc-civil-services-notification
+upsc notification 2026,74000,informational,upsc,high,year_variant,google_autocomplete,/upsc-civil-services-notification
+upsc syllabus,135000,informational,upsc,high,core,google_autocomplete,/upsc-civil-services-syllabus
+upsc syllabus 2026,110000,informational,upsc,high,year_variant,google_autocomplete,/upsc-civil-services-syllabus
+upsc syllabus pdf,74000,informational,upsc,high,pdf_variant,google_autocomplete,/upsc-civil-services-syllabus
+upsc prelims syllabus,60000,informational,upsc,high,stage_variant,google_autocomplete,/upsc-civil-services-syllabus
+upsc mains syllabus,49000,informational,upsc,high,stage_variant,google_autocomplete,/upsc-civil-services-syllabus
+upsc syllabus in hindi,33000,informational,upsc,medium,intent_variant,google_autocomplete,/upsc-civil-services-syllabus
+ias salary,90000,informational,upsc,high,core,google_autocomplete,/upsc-ias-salary
+ias salary 2026,74000,informational,upsc,high,year_variant,google_autocomplete,/upsc-ias-salary
+ias salary per month,49000,informational,upsc,high,intent_variant,people_also_ask,/upsc-ias-salary
+ias salary in hand,40000,informational,upsc,high,intent_variant,people_also_ask,/upsc-ias-salary
+ias salary after 7th pay commission,27000,informational,upsc,medium,intent_variant,people_also_ask,/upsc-ias-salary
+ias officer salary,33000,informational,upsc,medium,intent_variant,related_searches,/upsc-ias-salary
+ips salary,60000,informational,upsc,high,core,related_searches,/upsc-ias-salary
+ips salary 2026,49000,informational,upsc,high,year_variant,related_searches,/upsc-ias-salary
+upsc exam pattern,33000,informational,upsc,high,core,google_autocomplete,/upsc-civil-services-exam-pattern
+upsc exam pattern 2026,27000,informational,upsc,medium,year_variant,google_autocomplete,/upsc-civil-services-exam-pattern
+upsc prelims exam pattern,22000,informational,upsc,medium,stage_variant,google_autocomplete,/upsc-civil-services-exam-pattern
+upsc mains exam pattern,18000,informational,upsc,medium,stage_variant,related_searches,/upsc-civil-services-exam-pattern
+upsc cutoff,33000,informational,upsc,high,core,google_autocomplete,/upsc-civil-services-cutoff
+upsc cutoff 2026,27000,informational,upsc,medium,year_variant,google_autocomplete,/upsc-civil-services-cutoff
+upsc cutoff category wise,18000,informational,upsc,medium,intent_variant,people_also_ask,/upsc-civil-services-cutoff
+upsc previous year papers,49000,informational,upsc,high,core,google_autocomplete,/upsc-civil-services-previous-year-papers
+upsc previous year papers pdf,40000,informational,upsc,high,pdf_variant,google_autocomplete,/upsc-civil-services-previous-year-papers
+upsc prelims previous year papers,27000,informational,upsc,medium,stage_variant,google_autocomplete,/upsc-civil-services-previous-year-papers
+upsc mains previous year papers,22000,informational,upsc,medium,stage_variant,related_searches,/upsc-civil-services-previous-year-papers
+upsc apply online 2026,18000,transactional,upsc,medium,intent_variant,google_autocomplete,/upsc-civil-services-notification
+upsc eligibility,22000,informational,upsc,medium,intent_variant,people_also_ask,/upsc-civil-services-notification
+upsc age limit,18000,informational,upsc,medium,intent_variant,people_also_ask,/upsc-civil-services-notification
+nda,200000,navigational,upsc,high,core,google_autocomplete,/upsc-nda-notification
+nda 2026,135000,navigational,upsc,high,year_variant,google_autocomplete,/upsc-nda-notification
+nda notification 2026,60000,informational,upsc,high,year_variant,google_autocomplete,/upsc-nda-notification
+nda syllabus,60000,informational,upsc,high,core,google_autocomplete,/upsc-nda-syllabus
+nda syllabus 2026,49000,informational,upsc,high,year_variant,google_autocomplete,/upsc-nda-syllabus
+nda syllabus pdf,33000,informational,upsc,medium,pdf_variant,google_autocomplete,/upsc-nda-syllabus
+nda syllabus maths,22000,informational,upsc,medium,stage_variant,related_searches,/upsc-nda-syllabus
+nda syllabus gat,18000,informational,upsc,medium,stage_variant,related_searches,/upsc-nda-syllabus
+nda salary,33000,informational,upsc,medium,core,google_autocomplete,/upsc-nda-salary
+nda salary 2026,27000,informational,upsc,medium,year_variant,google_autocomplete,/upsc-nda-salary
+nda salary during training,18000,informational,upsc,medium,intent_variant,people_also_ask,/upsc-nda-salary
+nda exam pattern,22000,informational,upsc,medium,core,google_autocomplete,/upsc-nda-exam-pattern
+nda cutoff,27000,informational,upsc,medium,core,google_autocomplete,/upsc-nda-cutoff
+nda cutoff 2026,22000,informational,upsc,medium,year_variant,google_autocomplete,/upsc-nda-cutoff
+nda apply online,14000,transactional,upsc,medium,intent_variant,google_autocomplete,/upsc-nda-notification
+cds,110000,navigational,upsc,high,core,google_autocomplete,/upsc-cds-notification
+cds 2026,74000,navigational,upsc,high,year_variant,google_autocomplete,/upsc-cds-notification
+cds notification 2026,40000,informational,upsc,high,year_variant,google_autocomplete,/upsc-cds-notification
+cds syllabus,40000,informational,upsc,high,core,google_autocomplete,/upsc-cds-syllabus
+cds syllabus 2026,33000,informational,upsc,medium,year_variant,google_autocomplete,/upsc-cds-syllabus
+cds salary,22000,informational,upsc,medium,core,google_autocomplete,/upsc-cds-salary
+cds salary 2026,18000,informational,upsc,medium,year_variant,google_autocomplete,/upsc-cds-salary
+cds exam pattern,14000,informational,upsc,medium,core,google_autocomplete,/upsc-cds-notification
+upsc capf,33000,navigational,upsc,medium,core,google_autocomplete,/upsc-capf-notification
+upsc capf 2026,22000,navigational,upsc,medium,year_variant,google_autocomplete,/upsc-capf-notification
+upsc capf notification 2026,14000,informational,upsc,medium,year_variant,google_autocomplete,/upsc-capf-notification
+upsc capf syllabus,12000,informational,upsc,low,core,google_autocomplete,/upsc-capf-notification
+upsc ese,22000,navigational,upsc,medium,core,google_autocomplete,/upsc-ese-notification
+upsc ese 2026,14000,navigational,upsc,medium,year_variant,google_autocomplete,/upsc-ese-notification
+upsc ese notification 2026,12000,informational,upsc,low,year_variant,google_autocomplete,/upsc-ese-notification
+upsc jobs,27000,navigational,upsc,high,core,google_autocomplete,/upsc-jobs
+upsc jobs 2026,18000,navigational,upsc,medium,year_variant,google_autocomplete,/upsc-jobs
+upsc upcoming exams 2026,14000,informational,upsc,medium,intent_variant,related_searches,/upsc-jobs
+agniveer,200000,navigational,defence,high,core,google_autocomplete,/agniveer-army-notification
+agniveer 2026,135000,navigational,defence,high,year_variant,google_autocomplete,/agniveer-army-notification
+agniveer army,110000,navigational,defence,high,core,google_autocomplete,/agniveer-army-notification
+agniveer army 2026,90000,navigational,defence,high,year_variant,google_autocomplete,/agniveer-army-notification
+agniveer army notification 2026,60000,informational,defence,high,year_variant,google_autocomplete,/agniveer-army-notification
+agniveer army rally bharti 2026,40000,informational,defence,high,intent_variant,google_autocomplete,/agniveer-army-notification
+agniveer syllabus,60000,informational,defence,high,core,google_autocomplete,/agniveer-army-syllabus
+agniveer army syllabus 2026,49000,informational,defence,high,year_variant,google_autocomplete,/agniveer-army-syllabus
+agniveer army syllabus pdf,33000,informational,defence,medium,pdf_variant,google_autocomplete,/agniveer-army-syllabus
+agniveer army syllabus gd,22000,informational,defence,medium,stage_variant,related_searches,/agniveer-army-syllabus
+agniveer army syllabus technical,18000,informational,defence,medium,stage_variant,related_searches,/agniveer-army-syllabus
+agniveer army syllabus clerk,14000,informational,defence,medium,stage_variant,related_searches,/agniveer-army-syllabus
+agniveer salary,49000,informational,defence,high,core,google_autocomplete,/agniveer-army-salary
+agniveer salary 2026,40000,informational,defence,high,year_variant,google_autocomplete,/agniveer-army-salary
+agniveer salary per month,33000,informational,defence,medium,intent_variant,people_also_ask,/agniveer-army-salary
+agniveer seva nidhi,27000,informational,defence,medium,intent_variant,people_also_ask,/agniveer-army-salary
+agniveer salary after 4 years,22000,informational,defence,medium,intent_variant,people_also_ask,/agniveer-army-salary
+agniveer army cutoff,18000,informational,defence,medium,core,google_autocomplete,/agniveer-army-cutoff
+agniveer army cutoff 2026,14000,informational,defence,medium,year_variant,google_autocomplete,/agniveer-army-cutoff
+agniveer army physical,22000,informational,defence,medium,intent_variant,related_searches,/agniveer-army-notification
+agniveer army height weight,14000,informational,defence,medium,intent_variant,people_also_ask,/agniveer-army-notification
+agniveer army apply online,18000,transactional,defence,medium,intent_variant,google_autocomplete,/agniveer-army-notification
+agniveer navy,60000,navigational,defence,high,core,google_autocomplete,/agniveer-navy-notification
+agniveer navy 2026,40000,navigational,defence,high,year_variant,google_autocomplete,/agniveer-navy-notification
+agniveer navy notification 2026,27000,informational,defence,medium,year_variant,google_autocomplete,/agniveer-navy-notification
+agniveer navy syllabus,22000,informational,defence,medium,core,google_autocomplete,/agniveer-navy-syllabus
+agniveer navy syllabus 2026,18000,informational,defence,medium,year_variant,google_autocomplete,/agniveer-navy-syllabus
+agniveer navy syllabus ssr,14000,informational,defence,medium,stage_variant,related_searches,/agniveer-navy-syllabus
+agniveer navy salary,14000,informational,defence,medium,core,google_autocomplete,/agniveer-navy-salary
+agniveer airforce,40000,navigational,defence,medium,core,google_autocomplete,/agniveer-airforce-notification
+agniveer vayu,33000,navigational,defence,medium,core,google_autocomplete,/agniveer-airforce-notification
+agniveer airforce 2026,27000,navigational,defence,medium,year_variant,google_autocomplete,/agniveer-airforce-notification
+agniveer airforce notification 2026,18000,informational,defence,medium,year_variant,google_autocomplete,/agniveer-airforce-notification
+agniveer airforce syllabus,14000,informational,defence,medium,core,google_autocomplete,/agniveer-airforce-syllabus
+agniveer airforce salary,12000,informational,defence,medium,core,google_autocomplete,/agniveer-airforce-salary
+afcat,60000,navigational,defence,high,core,google_autocomplete,/afcat-notification
+afcat 2026,40000,navigational,defence,high,year_variant,google_autocomplete,/afcat-notification
+afcat notification 2026,22000,informational,defence,medium,year_variant,google_autocomplete,/afcat-notification
+afcat syllabus,22000,informational,defence,medium,core,google_autocomplete,/afcat-syllabus
+afcat syllabus 2026,18000,informational,defence,medium,year_variant,google_autocomplete,/afcat-syllabus
+afcat syllabus pdf,12000,informational,defence,medium,pdf_variant,google_autocomplete,/afcat-syllabus
+afcat salary,14000,informational,defence,medium,core,google_autocomplete,/afcat-salary
+afcat salary 2026,12000,informational,defence,medium,year_variant,google_autocomplete,/afcat-salary
+coast guard,40000,navigational,defence,medium,core,google_autocomplete,/coast-guard-notification
+coast guard 2026,27000,navigational,defence,medium,year_variant,google_autocomplete,/coast-guard-notification
+coast guard notification 2026,18000,informational,defence,medium,year_variant,google_autocomplete,/coast-guard-notification
+coast guard navik syllabus,14000,informational,defence,medium,core,google_autocomplete,/coast-guard-syllabus
+coast guard yantrik syllabus,10000,informational,defence,low,core,related_searches,/coast-guard-syllabus
+coast guard salary,12000,informational,defence,medium,core,google_autocomplete,/coast-guard-salary
+drdo recruitment,33000,navigational,defence,medium,core,google_autocomplete,/drdo-recruitment
+drdo recruitment 2026,22000,navigational,defence,medium,year_variant,google_autocomplete,/drdo-recruitment
+drdo scientist salary,14000,informational,defence,medium,core,google_autocomplete,/drdo-salary
+drdo ceptam,18000,navigational,defence,medium,core,google_autocomplete,/drdo-recruitment
+drdo salary,12000,informational,defence,medium,core,google_autocomplete,/drdo-salary
+defence jobs,27000,navigational,defence,high,core,google_autocomplete,/defence-jobs
+defence jobs 2026,18000,navigational,defence,medium,year_variant,google_autocomplete,/defence-jobs
+indian army recruitment 2026,40000,informational,defence,high,year_variant,google_autocomplete,/defence-jobs
+indian navy recruitment 2026,22000,informational,defence,medium,year_variant,google_autocomplete,/defence-jobs
+indian air force recruitment 2026,18000,informational,defence,medium,year_variant,google_autocomplete,/defence-jobs
+army rally bharti 2026,33000,informational,defence,high,year_variant,google_autocomplete,/agniveer-army-notification
+army rally bharti date,22000,informational,defence,medium,intent_variant,related_searches,/agniveer-army-notification
+territorial army 2026,14000,navigational,defence,low,year_variant,related_searches,/defence-jobs
+mes recruitment 2026,12000,informational,defence,low,year_variant,related_searches,/defence-jobs
+bro recruitment 2026,10000,informational,defence,low,year_variant,related_searches,/defence-jobs
+ctet,200000,navigational,teaching,high,core,google_autocomplete,/ctet-notification
+ctet 2026,135000,navigational,teaching,high,year_variant,google_autocomplete,/ctet-notification
+ctet notification 2026,74000,informational,teaching,high,year_variant,google_autocomplete,/ctet-notification
+ctet syllabus,74000,informational,teaching,high,core,google_autocomplete,/ctet-syllabus
+ctet syllabus 2026,60000,informational,teaching,high,year_variant,google_autocomplete,/ctet-syllabus
+ctet syllabus pdf,40000,informational,teaching,high,pdf_variant,google_autocomplete,/ctet-syllabus
+ctet syllabus paper 1,33000,informational,teaching,medium,stage_variant,google_autocomplete,/ctet-syllabus
+ctet syllabus paper 2,27000,informational,teaching,medium,stage_variant,google_autocomplete,/ctet-syllabus
+ctet exam pattern,27000,informational,teaching,medium,core,google_autocomplete,/ctet-exam-pattern
+ctet exam pattern 2026,22000,informational,teaching,medium,year_variant,google_autocomplete,/ctet-exam-pattern
+ctet cutoff,22000,informational,teaching,medium,core,google_autocomplete,/ctet-cutoff
+ctet cutoff 2026,18000,informational,teaching,medium,year_variant,google_autocomplete,/ctet-cutoff
+ctet cutoff category wise,14000,informational,teaching,medium,intent_variant,people_also_ask,/ctet-cutoff
+ctet previous year papers,33000,informational,teaching,high,core,google_autocomplete,/ctet-previous-year-papers
+ctet previous year papers pdf,27000,informational,teaching,medium,pdf_variant,google_autocomplete,/ctet-previous-year-papers
+ctet previous year papers with answers,18000,informational,teaching,medium,intent_variant,people_also_ask,/ctet-previous-year-papers
+ctet paper 1 previous year papers,14000,informational,teaching,medium,stage_variant,related_searches,/ctet-previous-year-papers
+ctet apply online 2026,18000,transactional,teaching,medium,intent_variant,google_autocomplete,/ctet-notification
+ctet eligibility,22000,informational,teaching,medium,intent_variant,people_also_ask,/ctet-notification
+ctet admit card 2026,18000,navigational,teaching,medium,intent_variant,google_autocomplete,/ctet-notification
+kvs,90000,navigational,teaching,high,core,google_autocomplete,/kvs-teacher-notification
+kvs 2026,60000,navigational,teaching,high,year_variant,google_autocomplete,/kvs-teacher-notification
+kvs teacher notification 2026,33000,informational,teaching,high,year_variant,google_autocomplete,/kvs-teacher-notification
+kvs teacher syllabus,22000,informational,teaching,medium,core,google_autocomplete,/kvs-teacher-syllabus
+kvs prt syllabus,14000,informational,teaching,medium,stage_variant,related_searches,/kvs-teacher-syllabus
+kvs tgt syllabus,12000,informational,teaching,medium,stage_variant,related_searches,/kvs-teacher-syllabus
+kvs teacher salary,18000,informational,teaching,medium,core,google_autocomplete,/kvs-teacher-salary
+kvs teacher salary 2026,14000,informational,teaching,medium,year_variant,google_autocomplete,/kvs-teacher-salary
+kvs prt salary,12000,informational,teaching,medium,stage_variant,related_searches,/kvs-teacher-salary
+nvs,60000,navigational,teaching,high,core,google_autocomplete,/nvs-teacher-notification
+nvs 2026,40000,navigational,teaching,high,year_variant,google_autocomplete,/nvs-teacher-notification
+nvs teacher notification 2026,22000,informational,teaching,medium,year_variant,google_autocomplete,/nvs-teacher-notification
+nvs teacher syllabus,14000,informational,teaching,medium,core,google_autocomplete,/nvs-teacher-syllabus
+nvs teacher salary,12000,informational,teaching,medium,core,google_autocomplete,/nvs-teacher-salary
+ugc net,135000,navigational,teaching,high,core,google_autocomplete,/ugc-net-notification
+ugc net 2026,90000,navigational,teaching,high,year_variant,google_autocomplete,/ugc-net-notification
+ugc net notification 2026,49000,informational,teaching,high,year_variant,google_autocomplete,/ugc-net-notification
+ugc net syllabus,49000,informational,teaching,high,core,google_autocomplete,/ugc-net-syllabus
+ugc net syllabus 2026,40000,informational,teaching,high,year_variant,google_autocomplete,/ugc-net-syllabus
+ugc net syllabus pdf,27000,informational,teaching,medium,pdf_variant,google_autocomplete,/ugc-net-syllabus
+ugc net syllabus paper 1,22000,informational,teaching,medium,stage_variant,google_autocomplete,/ugc-net-syllabus
+ugc net exam pattern,18000,informational,teaching,medium,core,google_autocomplete,/ugc-net-exam-pattern
+ugc net cutoff,18000,informational,teaching,medium,core,google_autocomplete,/ugc-net-cutoff
+ugc net cutoff 2026,14000,informational,teaching,medium,year_variant,google_autocomplete,/ugc-net-cutoff
+ugc net previous year papers,14000,informational,teaching,medium,core,related_searches,/ugc-net-notification
+uptet,90000,navigational,teaching,high,core,google_autocomplete,/uptet-notification
+uptet 2026,60000,navigational,teaching,high,year_variant,google_autocomplete,/uptet-notification
+uptet notification 2026,33000,informational,teaching,medium,year_variant,google_autocomplete,/uptet-notification
+uptet syllabus,27000,informational,teaching,medium,core,google_autocomplete,/uptet-syllabus
+uptet syllabus 2026,22000,informational,teaching,medium,year_variant,google_autocomplete,/uptet-syllabus
+uptet syllabus pdf,14000,informational,teaching,medium,pdf_variant,google_autocomplete,/uptet-syllabus
+uptet cutoff,14000,informational,teaching,medium,core,google_autocomplete,/uptet-cutoff
+teaching jobs,33000,navigational,teaching,high,core,google_autocomplete,/teaching-jobs
+teaching jobs 2026,22000,navigational,teaching,medium,year_variant,google_autocomplete,/teaching-jobs
+teacher recruitment 2026,18000,informational,teaching,medium,year_variant,related_searches,/teaching-jobs
+govt teacher vacancy 2026,14000,informational,teaching,medium,year_variant,related_searches,/teaching-jobs
+dsssb teacher 2026,18000,navigational,teaching,medium,year_variant,google_autocomplete,/teaching-jobs
+reet 2026,27000,navigational,teaching,medium,year_variant,google_autocomplete,/teaching-jobs
+htet 2026,18000,navigational,teaching,medium,year_variant,google_autocomplete,/teaching-jobs
+uppsc,110000,navigational,state_psc,high,core,google_autocomplete,/uppsc-notification
+uppsc 2026,74000,navigational,state_psc,high,year_variant,google_autocomplete,/uppsc-notification
+uppsc pcs 2026,49000,navigational,state_psc,high,year_variant,google_autocomplete,/uppsc-notification
+uppsc notification 2026,40000,informational,state_psc,high,year_variant,google_autocomplete,/uppsc-notification
+uppsc syllabus,33000,informational,state_psc,high,core,google_autocomplete,/uppsc-syllabus
+uppsc syllabus 2026,27000,informational,state_psc,medium,year_variant,google_autocomplete,/uppsc-syllabus
+uppsc syllabus pdf,18000,informational,state_psc,medium,pdf_variant,google_autocomplete,/uppsc-syllabus
+uppsc prelims syllabus,14000,informational,state_psc,medium,stage_variant,related_searches,/uppsc-syllabus
+uppsc mains syllabus,12000,informational,state_psc,medium,stage_variant,related_searches,/uppsc-syllabus
+uppsc exam pattern,14000,informational,state_psc,medium,core,google_autocomplete,/uppsc-exam-pattern
+uppsc salary,18000,informational,state_psc,medium,core,google_autocomplete,/uppsc-salary
+uppsc salary 2026,14000,informational,state_psc,medium,year_variant,google_autocomplete,/uppsc-salary
+uppsc cutoff,18000,informational,state_psc,medium,core,google_autocomplete,/uppsc-cutoff
+uppsc cutoff 2026,14000,informational,state_psc,medium,year_variant,google_autocomplete,/uppsc-cutoff
+uppsc apply online,14000,transactional,state_psc,medium,intent_variant,google_autocomplete,/uppsc-notification
+bpsc,90000,navigational,state_psc,high,core,google_autocomplete,/bpsc-notification
+bpsc 2026,60000,navigational,state_psc,high,year_variant,google_autocomplete,/bpsc-notification
+bpsc notification 2026,33000,informational,state_psc,high,year_variant,google_autocomplete,/bpsc-notification
+bpsc syllabus,27000,informational,state_psc,medium,core,google_autocomplete,/bpsc-syllabus
+bpsc syllabus 2026,22000,informational,state_psc,medium,year_variant,google_autocomplete,/bpsc-syllabus
+bpsc syllabus pdf,14000,informational,state_psc,medium,pdf_variant,google_autocomplete,/bpsc-syllabus
+bpsc exam pattern,12000,informational,state_psc,medium,core,google_autocomplete,/bpsc-exam-pattern
+bpsc salary,14000,informational,state_psc,medium,core,google_autocomplete,/bpsc-salary
+bpsc cutoff,14000,informational,state_psc,medium,core,google_autocomplete,/bpsc-cutoff
+bpsc cutoff 2026,12000,informational,state_psc,medium,year_variant,google_autocomplete,/bpsc-cutoff
+bpsc teacher,40000,navigational,state_psc,medium,core,google_autocomplete,/bpsc-notification
+mppsc,60000,navigational,state_psc,high,core,google_autocomplete,/mppsc-notification
+mppsc 2026,40000,navigational,state_psc,high,year_variant,google_autocomplete,/mppsc-notification
+mppsc notification 2026,22000,informational,state_psc,medium,year_variant,google_autocomplete,/mppsc-notification
+mppsc syllabus,18000,informational,state_psc,medium,core,google_autocomplete,/mppsc-syllabus
+mppsc syllabus 2026,14000,informational,state_psc,medium,year_variant,google_autocomplete,/mppsc-syllabus
+mppsc salary,12000,informational,state_psc,medium,core,google_autocomplete,/mppsc-salary
+rpsc,49000,navigational,state_psc,medium,core,google_autocomplete,/rpsc-ras-notification
+rpsc ras,33000,navigational,state_psc,medium,core,google_autocomplete,/rpsc-ras-notification
+rpsc ras 2026,22000,navigational,state_psc,medium,year_variant,google_autocomplete,/rpsc-ras-notification
+rpsc ras notification 2026,14000,informational,state_psc,medium,year_variant,google_autocomplete,/rpsc-ras-notification
+rpsc ras syllabus,22000,informational,state_psc,medium,core,google_autocomplete,/rpsc-ras-syllabus
+rpsc ras syllabus 2026,18000,informational,state_psc,medium,year_variant,google_autocomplete,/rpsc-ras-syllabus
+rpsc ras salary,12000,informational,state_psc,medium,core,google_autocomplete,/rpsc-ras-salary
+wbpsc,33000,navigational,state_psc,medium,core,google_autocomplete,/wbpsc-notification
+wbpsc 2026,22000,navigational,state_psc,medium,year_variant,google_autocomplete,/wbpsc-notification
+wbpsc notification 2026,14000,informational,state_psc,medium,year_variant,google_autocomplete,/wbpsc-notification
+wbpsc syllabus,14000,informational,state_psc,medium,core,google_autocomplete,/wbpsc-syllabus
+wbpsc salary,10000,informational,state_psc,low,core,related_searches,/wbpsc-salary
+state psc jobs,18000,navigational,state_psc,high,core,google_autocomplete,/state-psc-jobs
+state psc jobs 2026,14000,navigational,state_psc,medium,year_variant,google_autocomplete,/state-psc-jobs
+state government jobs 2026,22000,informational,state_psc,medium,year_variant,google_autocomplete,/state-psc-jobs
+jpsc 2026,18000,navigational,state_psc,medium,year_variant,google_autocomplete,/state-psc-jobs
+cgpsc 2026,14000,navigational,state_psc,medium,year_variant,google_autocomplete,/state-psc-jobs
+hpsc 2026,12000,navigational,state_psc,low,year_variant,related_searches,/state-psc-jobs
+ukpsc 2026,12000,navigational,state_psc,low,year_variant,related_searches,/state-psc-jobs
+ppsc 2026,14000,navigational,state_psc,medium,year_variant,google_autocomplete,/state-psc-jobs
+kpsc 2026,14000,navigational,state_psc,medium,year_variant,google_autocomplete,/state-psc-jobs
+tnpsc 2026,18000,navigational,state_psc,medium,year_variant,google_autocomplete,/state-psc-jobs
+govt jobs without exam,74000,informational,without_exam,high,core,google_autocomplete,/govt-jobs-without-exam
+govt jobs without exam 2026,49000,informational,without_exam,high,year_variant,google_autocomplete,/govt-jobs-without-exam
+government jobs without exam,40000,informational,without_exam,high,core,google_autocomplete,/govt-jobs-without-exam
+sarkari naukri bina exam ke,33000,informational,without_exam,high,core,manual_estimate,/govt-jobs-without-exam
+govt jobs without written exam,27000,informational,without_exam,medium,intent_variant,related_searches,/govt-jobs-without-exam
+direct recruitment govt jobs,22000,informational,without_exam,medium,intent_variant,related_searches,/govt-jobs-without-exam
+govt jobs without exam 10th pass,40000,informational,without_exam,high,core,google_autocomplete,/10th-pass-govt-jobs-without-exam
+10th pass govt jobs without exam,33000,informational,without_exam,high,core,google_autocomplete,/10th-pass-govt-jobs-without-exam
+10th pass govt jobs without exam 2026,27000,informational,without_exam,high,year_variant,google_autocomplete,/10th-pass-govt-jobs-without-exam
+10th pass sarkari naukri without exam,18000,informational,without_exam,medium,intent_variant,manual_estimate,/10th-pass-govt-jobs-without-exam
+10th pass direct recruitment,14000,informational,without_exam,medium,intent_variant,related_searches,/10th-pass-govt-jobs-without-exam
+govt jobs without exam 12th pass,33000,informational,without_exam,high,core,google_autocomplete,/12th-pass-govt-jobs-without-exam
+12th pass govt jobs without exam,27000,informational,without_exam,high,core,google_autocomplete,/12th-pass-govt-jobs-without-exam
+12th pass govt jobs without exam 2026,22000,informational,without_exam,medium,year_variant,google_autocomplete,/12th-pass-govt-jobs-without-exam
+12th pass direct recruitment,14000,informational,without_exam,medium,intent_variant,related_searches,/12th-pass-govt-jobs-without-exam
+graduate govt jobs without exam,22000,informational,without_exam,medium,core,google_autocomplete,/graduate-govt-jobs-without-exam
+graduate govt jobs without exam 2026,18000,informational,without_exam,medium,year_variant,google_autocomplete,/graduate-govt-jobs-without-exam
+graduation pass govt jobs without exam,14000,informational,without_exam,medium,intent_variant,related_searches,/graduate-govt-jobs-without-exam
+anganwadi recruitment,40000,informational,without_exam,high,core,google_autocomplete,/anganwadi-recruitment
+anganwadi recruitment 2026,33000,informational,without_exam,high,year_variant,google_autocomplete,/anganwadi-recruitment
+anganwadi vacancy 2026,27000,informational,without_exam,medium,year_variant,google_autocomplete,/anganwadi-recruitment
+anganwadi bharti 2026,22000,informational,without_exam,medium,year_variant,manual_estimate,/anganwadi-recruitment
+anganwadi worker salary,18000,informational,without_exam,medium,core,google_autocomplete,/anganwadi-salary
+anganwadi salary 2026,14000,informational,without_exam,medium,year_variant,google_autocomplete,/anganwadi-salary
+anganwadi helper salary,12000,informational,without_exam,medium,intent_variant,related_searches,/anganwadi-salary
+anganwadi supervisor salary,10000,informational,without_exam,low,intent_variant,related_searches,/anganwadi-salary
+anganwadi vacancy state wise,14000,informational,without_exam,medium,intent_variant,people_also_ask,/anganwadi-recruitment
+anganwadi vacancy up,18000,informational,without_exam,medium,intent_variant,google_autocomplete,/anganwadi-recruitment
+anganwadi vacancy bihar,14000,informational,without_exam,medium,intent_variant,google_autocomplete,/anganwadi-recruitment
+anganwadi vacancy rajasthan,12000,informational,without_exam,medium,intent_variant,google_autocomplete,/anganwadi-recruitment
+anganwadi vacancy mp,12000,informational,without_exam,medium,intent_variant,google_autocomplete,/anganwadi-recruitment
+court peon vacancy,18000,informational,without_exam,medium,core,google_autocomplete,/court-peon-recruitment
+court peon vacancy 2026,14000,informational,without_exam,medium,year_variant,google_autocomplete,/court-peon-recruitment
+court peon recruitment 2026,12000,informational,without_exam,medium,year_variant,google_autocomplete,/court-peon-recruitment
+court peon salary,10000,informational,without_exam,low,core,google_autocomplete,/court-peon-salary
+court peon salary 2026,8000,informational,without_exam,low,year_variant,related_searches,/court-peon-salary
+gram panchayat jobs,14000,informational,without_exam,medium,core,google_autocomplete,/gram-panchayat-jobs
+gram panchayat vacancy 2026,12000,informational,without_exam,medium,year_variant,google_autocomplete,/gram-panchayat-jobs
+gram rozgar sahayak vacancy,10000,informational,without_exam,low,core,related_searches,/gram-panchayat-jobs
+panchayat secretary vacancy 2026,8000,informational,without_exam,low,year_variant,related_searches,/gram-panchayat-jobs
+govt jobs without exam up,18000,informational,without_exam,medium,core,google_autocomplete,/govt-jobs-without-exam-uttar-pradesh
+govt jobs without exam uttar pradesh,14000,informational,without_exam,medium,core,related_searches,/govt-jobs-without-exam-uttar-pradesh
+up govt jobs without exam 2026,12000,informational,without_exam,medium,year_variant,google_autocomplete,/govt-jobs-without-exam-uttar-pradesh
+sarkari naukri bina exam up,10000,informational,without_exam,low,intent_variant,manual_estimate,/govt-jobs-without-exam-uttar-pradesh
+govt jobs without exam bihar,14000,informational,without_exam,medium,core,google_autocomplete,/govt-jobs-without-exam-bihar
+bihar govt jobs without exam 2026,10000,informational,without_exam,low,year_variant,google_autocomplete,/govt-jobs-without-exam-bihar
+govt jobs without exam rajasthan,12000,informational,without_exam,medium,core,google_autocomplete,/govt-jobs-without-exam-rajasthan
+rajasthan govt jobs without exam 2026,8000,informational,without_exam,low,year_variant,related_searches,/govt-jobs-without-exam-rajasthan
+govt jobs without exam mp,10000,informational,without_exam,medium,core,google_autocomplete,/govt-jobs-without-exam-madhya-pradesh
+mp govt jobs without exam 2026,8000,informational,without_exam,low,year_variant,related_searches,/govt-jobs-without-exam-madhya-pradesh
+govt jobs without exam maharashtra,10000,informational,without_exam,low,core,related_searches,/govt-jobs-without-exam
+govt jobs without exam delhi,8000,informational,without_exam,low,core,related_searches,/govt-jobs-without-exam
+walk in interview govt jobs,14000,informational,without_exam,medium,intent_variant,google_autocomplete,/govt-jobs-without-exam
+walk in interview govt jobs 2026,10000,informational,without_exam,low,year_variant,google_autocomplete,/govt-jobs-without-exam
+merit based govt jobs,12000,informational,without_exam,medium,intent_variant,related_searches,/govt-jobs-without-exam
+interview only govt jobs,10000,informational,without_exam,low,intent_variant,related_searches,/govt-jobs-without-exam
+railway jobs without exam,14000,informational,without_exam,medium,intent_variant,competitor_observation,/govt-jobs-without-exam
+ssc jobs without exam,10000,informational,without_exam,low,intent_variant,competitor_observation,/govt-jobs-without-exam
+bank jobs without exam,12000,informational,without_exam,medium,intent_variant,competitor_observation,/govt-jobs-without-exam
+police jobs without exam,10000,informational,without_exam,low,intent_variant,competitor_observation,/govt-jobs-without-exam
+8th pass govt jobs,27000,informational,without_exam,medium,core,google_autocomplete,/govt-jobs-without-exam
+8th pass govt jobs 2026,18000,informational,without_exam,medium,year_variant,google_autocomplete,/govt-jobs-without-exam
+8th pass govt jobs without exam,14000,informational,without_exam,medium,intent_variant,google_autocomplete,/govt-jobs-without-exam
+safai karmchari vacancy 2026,12000,informational,without_exam,low,year_variant,related_searches,/govt-jobs-without-exam
+sweeper vacancy 2026,10000,informational,without_exam,low,year_variant,manual_estimate,/govt-jobs-without-exam
+peon vacancy 2026,10000,informational,without_exam,low,year_variant,google_autocomplete,/govt-jobs-without-exam
+watchman vacancy 2026,8000,informational,without_exam,low,year_variant,manual_estimate,/govt-jobs-without-exam
+sarkari naukri,301000,navigational,without_exam,high,core,google_autocomplete,/govt-jobs-without-exam
+sarkari naukri 2026,200000,navigational,without_exam,high,year_variant,google_autocomplete,/govt-jobs-without-exam
+sarkari result,450000,navigational,without_exam,high,core,google_autocomplete,/govt-jobs-without-exam
+government jobs,200000,informational,without_exam,high,core,google_autocomplete,/govt-jobs-without-exam
+govt jobs 2026,135000,informational,without_exam,high,year_variant,google_autocomplete,/govt-jobs-without-exam
+latest govt jobs,90000,informational,without_exam,high,core,google_autocomplete,/govt-jobs-without-exam
+latest govt jobs 2026,74000,informational,without_exam,high,year_variant,google_autocomplete,/govt-jobs-without-exam

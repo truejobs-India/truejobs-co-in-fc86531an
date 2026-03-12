@@ -1,0 +1,70 @@
+project_id = "riktrtfgpnrqiwatppcq"
+
+[functions.send-reminder-emails]
+verify_jwt = false
+
+[functions.send-sms-otp]
+verify_jwt = false
+
+[functions.reset-password-phone]
+verify_jwt = false
+
+[functions.dynamic-sitemap]
+verify_jwt = false
+
+[functions.sitemap-gen]
+verify_jwt = false
+
+[functions.sitemap-health]
+verify_jwt = false
+
+[functions.send-email-otp]
+verify_jwt = false
+
+[functions.reset-password-email]
+verify_jwt = false
+
+[functions.notify-employer-application]
+verify_jwt = false
+
+[functions.welcome-candidate]
+verify_jwt = false
+
+[functions.welcome-employer]
+verify_jwt = false
+
+[functions.notify-application-confirmation]
+verify_jwt = false
+
+[functions.notify-job-posted]
+verify_jwt = false
+
+[functions.create-razorpay-order]
+verify_jwt = false
+
+[functions.verify-razorpay-payment]
+verify_jwt = false
+
+[functions.prerender-proxy]
+verify_jwt = false
+
+[functions.build-seo-cache]
+verify_jwt = false
+
+[functions.generate-meta-description]
+verify_jwt = false
+
+[functions.gemini-generate]
+verify_jwt = false
+
+[functions.generate-guide-content]
+verify_jwt = false
+
+[functions.enrich-authority-pages]
+verify_jwt = false
+
+[functions.extract-employment-news]
+verify_jwt = false
+
+[functions.enrich-employment-news]
+verify_jwt = false

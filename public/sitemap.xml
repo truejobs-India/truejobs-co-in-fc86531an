@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <!--
+    TrueJobs Sitemap Index
+    Domain: https://truejobs.co.in
+    Submit this URL to Google Search Console: https://truejobs.co.in/sitemap.xml
+  -->
+
+  <!-- sitemap-pages: Static pages + company pages -->
+  <sitemap>
+    <loc>https://truejobs.co.in/sitemap-pages.xml</loc>
+  </sitemap>
+
+  <!-- sitemap-jobs: All active, non-expired job listings -->
+  <sitemap>
+    <loc>https://truejobs.co.in/sitemap-jobs.xml</loc>
+  </sitemap>
+
+  <!-- sitemap-blog: Published blog posts -->
+  <sitemap>
+    <loc>https://truejobs.co.in/sitemap-blog.xml</loc>
+  </sitemap>
+
+  <!-- sitemap-seo: 400+ programmatic SEO landing pages -->
+  <sitemap>
+    <loc>https://truejobs.co.in/sitemap-seo.xml</loc>
+  </sitemap>
+</sitemapindex>

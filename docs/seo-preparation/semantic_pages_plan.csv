@@ -1,0 +1,174 @@
+slug,page_type,cluster,cluster_priority,word_target,h1,priority,status,target_queries_count,due_phase
+/ssc-jobs,hub,ssc,1,2000,SSC Jobs 2026 — Latest Staff Selection Commission Recruitment,high,planned,25,B1
+/ssc-cgl-notification,notification,ssc,1,1200,SSC CGL 2026 Notification — Vacancies Dates & Apply Online,high,planned,15,B1
+/ssc-cgl-syllabus,syllabus,ssc,1,1500,SSC CGL Syllabus 2026 — Complete Tier 1 & Tier 2 Syllabus,high,planned,12,B1
+/ssc-cgl-exam-pattern,exam_pattern,ssc,1,1200,SSC CGL Exam Pattern 2026 — Paper Structure & Marking Scheme,high,planned,10,B1
+/ssc-cgl-salary,salary,ssc,1,1200,SSC CGL Salary 2026 — In-Hand Pay Allowances & Job Profile,high,planned,12,B1
+/ssc-cgl-cutoff,cutoff,ssc,1,1000,SSC CGL Cutoff 2026 — Category-Wise Cut Off Marks,high,planned,10,B1
+/ssc-cgl-previous-year-papers,previous_papers,ssc,1,900,SSC CGL Previous Year Papers — Download PDF with Answer Keys,medium,planned,8,B1
+/ssc-chsl-notification,notification,ssc,1,1200,SSC CHSL 2026 Notification — Vacancies Eligibility & Apply,high,planned,12,B1
+/ssc-chsl-syllabus,syllabus,ssc,1,1500,SSC CHSL Syllabus 2026 — Tier 1 & Tier 2 Complete Syllabus,high,planned,10,B1
+/ssc-chsl-exam-pattern,exam_pattern,ssc,1,1200,SSC CHSL Exam Pattern 2026 — Questions Marks & Duration,medium,planned,8,B1
+/ssc-chsl-salary,salary,ssc,1,1200,SSC CHSL Salary 2026 — LDC DEO PA In-Hand Pay Details,medium,planned,10,B1
+/ssc-chsl-cutoff,cutoff,ssc,1,1000,SSC CHSL Cutoff 2026 — Category-Wise Cut Off Marks,medium,planned,8,B1
+/ssc-chsl-previous-year-papers,previous_papers,ssc,1,900,SSC CHSL Previous Year Papers — Download PDF,medium,planned,6,B2
+/ssc-mts-notification,notification,ssc,1,1200,SSC MTS 2026 Notification — Multi Tasking Staff Recruitment,high,planned,10,B1
+/ssc-mts-syllabus,syllabus,ssc,1,1500,SSC MTS Syllabus 2026 — Complete Exam Syllabus,high,planned,10,B1
+/ssc-mts-exam-pattern,exam_pattern,ssc,1,1000,SSC MTS Exam Pattern 2026 — Paper Structure,medium,planned,6,B2
+/ssc-mts-salary,salary,ssc,1,1200,SSC MTS Salary 2026 — In-Hand Pay & Allowances,medium,planned,8,B2
+/ssc-mts-cutoff,cutoff,ssc,1,1000,SSC MTS Cutoff 2026 — Category-Wise Marks,medium,planned,6,B2
+/ssc-gd-notification,notification,ssc,1,1200,SSC GD Constable 2026 Notification — CAPF Recruitment,high,planned,12,B1
+/ssc-gd-syllabus,syllabus,ssc,1,1500,SSC GD Constable Syllabus 2026 — Complete Syllabus,high,planned,10,B1
+/ssc-gd-exam-pattern,exam_pattern,ssc,1,1000,SSC GD Exam Pattern 2026 — Marking Scheme,medium,planned,6,B2
+/ssc-gd-salary,salary,ssc,1,1200,SSC GD Constable Salary 2026 — CAPF Pay & Perks,medium,planned,8,B2
+/ssc-gd-cutoff,cutoff,ssc,1,1000,SSC GD Cutoff 2026 — Category-Wise Cut Off,medium,planned,6,B2
+/ssc-cpo-notification,notification,ssc,1,1200,SSC CPO 2026 Notification — SI in Delhi Police & CAPF,medium,planned,8,B2
+/ssc-cpo-syllabus,syllabus,ssc,1,1500,SSC CPO Syllabus 2026 — Paper I & II Syllabus,medium,planned,8,B2
+/ssc-cpo-salary,salary,ssc,1,1200,SSC CPO Salary 2026 — Sub Inspector Pay & Allowances,medium,planned,8,B2
+/ssc-je-notification,notification,ssc,1,1200,SSC JE 2026 Notification — Junior Engineer Recruitment,medium,planned,8,B2
+/ssc-je-syllabus,syllabus,ssc,1,1500,SSC JE Syllabus 2026 — Civil Electrical Mechanical,medium,planned,8,B2
+/ssc-je-salary,salary,ssc,1,1200,SSC JE Salary 2026 — Junior Engineer Pay Scale,medium,planned,6,B2
+/ssc-stenographer-notification,notification,ssc,1,1000,SSC Stenographer 2026 Notification — Grade C & D,low,planned,6,B3
+/railway-jobs,hub,railway,1,2000,Railway Jobs 2026 — Latest Indian Railways Recruitment,high,planned,25,B1
+/rrb-ntpc-notification,notification,railway,1,1200,RRB NTPC 2026 Notification — Vacancies Dates & Apply,high,planned,15,B1
+/rrb-ntpc-syllabus,syllabus,railway,1,1500,RRB NTPC Syllabus 2026 — CBT 1 & CBT 2 Complete Syllabus,high,planned,12,B1
+/rrb-ntpc-exam-pattern,exam_pattern,railway,1,1200,RRB NTPC Exam Pattern 2026 — Paper Structure,high,planned,10,B1
+/rrb-ntpc-salary,salary,railway,1,1200,RRB NTPC Salary 2026 — Station Master Goods Guard Pay,high,planned,10,B1
+/rrb-ntpc-cutoff,cutoff,railway,1,1000,RRB NTPC Cutoff 2026 — Category-Wise Cut Off Marks,medium,planned,8,B1
+/rrb-ntpc-previous-year-papers,previous_papers,railway,1,900,RRB NTPC Previous Year Papers — Download PDF,medium,planned,8,B2
+/rrb-group-d-notification,notification,railway,1,1200,Railway Group D 2026 Notification — Track Maintainer Helper,high,planned,15,B1
+/rrb-group-d-syllabus,syllabus,railway,1,1500,Railway Group D Syllabus 2026 — Complete Exam Syllabus,high,planned,12,B1
+/rrb-group-d-exam-pattern,exam_pattern,railway,1,1200,Railway Group D Exam Pattern 2026 — CBT Structure,medium,planned,8,B1
+/rrb-group-d-salary,salary,railway,1,1200,Railway Group D Salary 2026 — In-Hand Pay & Allowances,high,planned,12,B1
+/rrb-group-d-cutoff,cutoff,railway,1,1000,Railway Group D Cutoff 2026 — Category-Wise Marks,medium,planned,8,B2
+/rrb-group-d-previous-year-papers,previous_papers,railway,1,900,Railway Group D Previous Year Papers — PDF Download,medium,planned,6,B2
+/rrb-alp-notification,notification,railway,1,1200,RRB ALP 2026 Notification — Assistant Loco Pilot Recruitment,high,planned,10,B1
+/rrb-alp-syllabus,syllabus,railway,1,1500,RRB ALP Syllabus 2026 — CBT 1 & CBT 2 Syllabus,medium,planned,10,B2
+/rrb-alp-exam-pattern,exam_pattern,railway,1,1000,RRB ALP Exam Pattern 2026 — Paper Structure,medium,planned,6,B2
+/rrb-alp-salary,salary,railway,1,1200,RRB ALP Salary 2026 — Assistant Loco Pilot Pay Scale,medium,planned,8,B2
+/rrb-alp-cutoff,cutoff,railway,1,1000,RRB ALP Cutoff 2026 — Category-Wise Cut Off,medium,planned,6,B2
+/rrb-je-notification,notification,railway,1,1200,RRB JE 2026 Notification — Railway Junior Engineer,medium,planned,8,B2
+/rrb-je-syllabus,syllabus,railway,1,1500,RRB JE Syllabus 2026 — CBT 1 & CBT 2 Complete Syllabus,medium,planned,8,B2
+/rrb-je-salary,salary,railway,1,1200,RRB JE Salary 2026 — Junior Engineer Pay & Perks,medium,planned,6,B2
+/rpf-constable-notification,notification,railway,1,1200,RPF Constable 2026 Notification — Railway Police Force,medium,planned,10,B2
+/rpf-constable-syllabus,syllabus,railway,1,1200,RPF Constable Syllabus 2026 — Complete Exam Syllabus,medium,planned,8,B2
+/rpf-constable-salary,salary,railway,1,1200,RPF Constable Salary 2026 — Pay Scale & Allowances,medium,planned,6,B2
+/rpf-constable-cutoff,cutoff,railway,1,1000,RPF Constable Cutoff 2026 — Category-Wise Marks,low,planned,6,B3
+/rpf-si-notification,notification,railway,1,1000,RPF SI 2026 Notification — Sub Inspector Recruitment,low,planned,6,B3
+/rpf-si-syllabus,syllabus,railway,1,1200,RPF SI Syllabus 2026 — Complete Syllabus,low,planned,6,B3
+/banking-jobs,hub,banking,2,2000,Banking Jobs 2026 — Latest Bank Recruitment & Vacancies,high,planned,20,B1
+/ibps-po-notification,notification,banking,2,1200,IBPS PO 2026 Notification — Probationary Officer Recruitment,high,planned,15,B1
+/ibps-po-syllabus,syllabus,banking,2,1500,IBPS PO Syllabus 2026 — Prelims & Mains Complete Syllabus,high,planned,12,B1
+/ibps-po-exam-pattern,exam_pattern,banking,2,1200,IBPS PO Exam Pattern 2026 — Paper Structure & Marking,medium,planned,8,B2
+/ibps-po-salary,salary,banking,2,1200,IBPS PO Salary 2026 — In-Hand Pay Allowances & Perks,high,planned,10,B1
+/ibps-po-cutoff,cutoff,banking,2,1000,IBPS PO Cutoff 2026 — State-Wise & Category-Wise Marks,medium,planned,8,B2
+/ibps-po-previous-year-papers,previous_papers,banking,2,900,IBPS PO Previous Year Papers — Prelims & Mains PDF,medium,planned,6,B2
+/ibps-clerk-notification,notification,banking,2,1200,IBPS Clerk 2026 Notification — Clerical Cadre Recruitment,high,planned,12,B1
+/ibps-clerk-syllabus,syllabus,banking,2,1500,IBPS Clerk Syllabus 2026 — Prelims & Mains Syllabus,medium,planned,10,B2
+/ibps-clerk-exam-pattern,exam_pattern,banking,2,1000,IBPS Clerk Exam Pattern 2026 — Paper Structure,medium,planned,6,B2
+/ibps-clerk-salary,salary,banking,2,1200,IBPS Clerk Salary 2026 — In-Hand Pay & Allowances,medium,planned,8,B2
+/ibps-clerk-cutoff,cutoff,banking,2,1000,IBPS Clerk Cutoff 2026 — State-Wise Cut Off,medium,planned,6,B2
+/sbi-po-notification,notification,banking,2,1200,SBI PO 2026 Notification — Probationary Officer Recruitment,high,planned,15,B1
+/sbi-po-syllabus,syllabus,banking,2,1500,SBI PO Syllabus 2026 — Prelims & Mains Complete Syllabus,high,planned,10,B1
+/sbi-po-exam-pattern,exam_pattern,banking,2,1200,SBI PO Exam Pattern 2026 — Paper Structure & Marking,medium,planned,8,B2
+/sbi-po-salary,salary,banking,2,1200,SBI PO Salary 2026 — In-Hand Pay & Career Growth,high,planned,10,B1
+/sbi-po-cutoff,cutoff,banking,2,1000,SBI PO Cutoff 2026 — Category-Wise Cut Off Marks,medium,planned,8,B2
+/sbi-clerk-notification,notification,banking,2,1200,SBI Clerk 2026 Notification — Junior Associate Recruitment,medium,planned,10,B2
+/sbi-clerk-syllabus,syllabus,banking,2,1500,SBI Clerk Syllabus 2026 — Prelims & Mains Syllabus,medium,planned,8,B2
+/sbi-clerk-salary,salary,banking,2,1200,SBI Clerk Salary 2026 — In-Hand Pay & Allowances,medium,planned,8,B2
+/rbi-grade-b-notification,notification,banking,2,1200,RBI Grade B 2026 Notification — Officer Recruitment,medium,planned,8,B2
+/rbi-grade-b-syllabus,syllabus,banking,2,1500,RBI Grade B Syllabus 2026 — Phase I & II Syllabus,medium,planned,8,B2
+/rbi-grade-b-salary,salary,banking,2,1200,RBI Grade B Salary 2026 — Officer Pay & Perks,medium,planned,6,B2
+/rbi-assistant-notification,notification,banking,2,1000,RBI Assistant 2026 Notification — Recruitment Details,medium,planned,6,B2
+/rbi-assistant-syllabus,syllabus,banking,2,1200,RBI Assistant Syllabus 2026 — Prelims & Mains,medium,planned,6,B3
+/rbi-assistant-salary,salary,banking,2,1200,RBI Assistant Salary 2026 — In-Hand Pay Details,low,planned,6,B3
+/ibps-so-notification,notification,banking,2,1000,IBPS SO 2026 Notification — Specialist Officer Recruitment,low,planned,6,B3
+/nabard-grade-a-notification,notification,banking,2,1000,NABARD Grade A 2026 Notification — Assistant Manager,low,planned,6,B3
+/upsc-jobs,hub,upsc,2,2000,UPSC Jobs 2026 — Latest Civil Services & Defence Recruitment,high,planned,20,B1
+/upsc-civil-services-notification,notification,upsc,2,1200,UPSC Civil Services 2026 Notification — IAS IPS IFS,high,planned,15,B1
+/upsc-civil-services-syllabus,syllabus,upsc,2,1500,UPSC Syllabus 2026 — Prelims & Mains Complete Syllabus,high,planned,15,B1
+/upsc-civil-services-exam-pattern,exam_pattern,upsc,2,1200,UPSC Exam Pattern 2026 — Prelims Mains & Interview,medium,planned,8,B2
+/upsc-ias-salary,salary,upsc,2,1200,IAS Salary 2026 — In-Hand Pay Perks & Career Growth,high,planned,12,B1
+/upsc-civil-services-cutoff,cutoff,upsc,2,1000,UPSC Cutoff 2026 — Category-Wise Prelims & Mains Marks,medium,planned,8,B2
+/upsc-civil-services-previous-year-papers,previous_papers,upsc,2,900,UPSC Previous Year Papers — Prelims & Mains PDF,medium,planned,8,B2
+/upsc-nda-notification,notification,upsc,2,1200,NDA 2026 Notification — National Defence Academy Exam,high,planned,12,B1
+/upsc-nda-syllabus,syllabus,upsc,2,1500,NDA Syllabus 2026 — Maths & GAT Complete Syllabus,high,planned,10,B1
+/upsc-nda-exam-pattern,exam_pattern,upsc,2,1000,NDA Exam Pattern 2026 — Paper Structure & Marking,medium,planned,6,B2
+/upsc-nda-salary,salary,upsc,2,1200,NDA Salary 2026 — Training Stipend & Officer Pay,medium,planned,8,B2
+/upsc-nda-cutoff,cutoff,upsc,2,1000,NDA Cutoff 2026 — Category-Wise & Paper-Wise Marks,medium,planned,6,B2
+/upsc-cds-notification,notification,upsc,2,1200,UPSC CDS 2026 Notification — Combined Defence Services,medium,planned,10,B2
+/upsc-cds-syllabus,syllabus,upsc,2,1500,CDS Syllabus 2026 — English GK & Maths Syllabus,medium,planned,8,B2
+/upsc-cds-salary,salary,upsc,2,1200,CDS Salary 2026 — IMA INA AFA OTA Pay & Allowances,medium,planned,6,B2
+/upsc-capf-notification,notification,upsc,2,1000,UPSC CAPF 2026 Notification — Assistant Commandant,low,planned,6,B3
+/upsc-ese-notification,notification,upsc,2,1000,UPSC ESE 2026 Notification — Engineering Services,low,planned,6,B3
+/defence-jobs,hub,defence,3,2000,Defence Jobs 2026 — Indian Army Navy & Air Force Recruitment,high,planned,20,B2
+/agniveer-army-notification,notification,defence,3,1200,Agniveer Army 2026 Notification — Rally Bharti Details,high,planned,15,B2
+/agniveer-army-syllabus,syllabus,defence,3,1500,Agniveer Army Syllabus 2026 — Complete Exam Syllabus,high,planned,12,B2
+/agniveer-army-salary,salary,defence,3,1200,Agniveer Salary 2026 — Monthly Pay & Seva Nidhi Details,high,planned,12,B2
+/agniveer-army-cutoff,cutoff,defence,3,1000,Agniveer Army Cutoff 2026 — Category-Wise Marks,medium,planned,6,B2
+/agniveer-navy-notification,notification,defence,3,1200,Agniveer Navy 2026 Notification — SSR MR AA Recruitment,medium,planned,10,B2
+/agniveer-navy-syllabus,syllabus,defence,3,1500,Agniveer Navy Syllabus 2026 — SSR MR Complete Syllabus,medium,planned,8,B2
+/agniveer-navy-salary,salary,defence,3,1200,Agniveer Navy Salary 2026 — Pay & Benefits,medium,planned,6,B3
+/agniveer-airforce-notification,notification,defence,3,1200,Agniveer Vayu 2026 Notification — Air Force Recruitment,medium,planned,10,B2
+/agniveer-airforce-syllabus,syllabus,defence,3,1500,Agniveer Air Force Syllabus 2026 — Complete Syllabus,medium,planned,8,B3
+/agniveer-airforce-salary,salary,defence,3,1200,Agniveer Air Force Salary 2026 — Pay & Benefits,medium,planned,6,B3
+/afcat-notification,notification,defence,3,1200,AFCAT 2026 Notification — Air Force Common Admission Test,medium,planned,8,B2
+/afcat-syllabus,syllabus,defence,3,1500,AFCAT Syllabus 2026 — Complete Exam Syllabus & Topics,medium,planned,8,B3
+/afcat-salary,salary,defence,3,1200,AFCAT Salary 2026 — IAF Officer Pay & Allowances,low,planned,6,B3
+/coast-guard-notification,notification,defence,3,1200,Coast Guard 2026 Notification — Navik Yantrik AC,medium,planned,8,B3
+/coast-guard-syllabus,syllabus,defence,3,1200,Coast Guard Syllabus 2026 — Navik & Yantrik Syllabus,low,planned,6,B3
+/coast-guard-salary,salary,defence,3,1200,Coast Guard Salary 2026 — Navik & AC Pay Scale,low,planned,6,B3
+/drdo-recruitment,notification,defence,3,1000,DRDO Recruitment 2026 — Scientist CEPTAM Apprentice,low,planned,6,B3
+/drdo-salary,salary,defence,3,1200,DRDO Salary 2026 — Scientist Pay Scale & Allowances,low,planned,6,B3
+/teaching-jobs,hub,teaching,3,2000,Teaching Jobs 2026 — CTET KVS NVS & Teacher Recruitment,high,planned,18,B2
+/ctet-notification,notification,teaching,3,1200,CTET 2026 Notification — Paper I & II Exam Details,high,planned,15,B2
+/ctet-syllabus,syllabus,teaching,3,1500,CTET Syllabus 2026 — Paper I & Paper II Complete Syllabus,high,planned,12,B2
+/ctet-exam-pattern,exam_pattern,teaching,3,1200,CTET Exam Pattern 2026 — Paper Structure & Marking,medium,planned,8,B2
+/ctet-cutoff,cutoff,teaching,3,1000,CTET Cutoff 2026 — Qualifying Marks Category-Wise,medium,planned,6,B3
+/ctet-previous-year-papers,previous_papers,teaching,3,900,CTET Previous Year Papers — Paper I & II PDF Download,medium,planned,8,B2
+/kvs-teacher-notification,notification,teaching,3,1200,KVS Teacher 2026 Notification — PRT TGT PGT Recruitment,medium,planned,10,B2
+/kvs-teacher-syllabus,syllabus,teaching,3,1500,KVS Teacher Syllabus 2026 — PRT TGT PGT Syllabus,medium,planned,8,B3
+/kvs-teacher-salary,salary,teaching,3,1200,KVS Teacher Salary 2026 — PRT TGT PGT Pay & Perks,medium,planned,8,B2
+/nvs-teacher-notification,notification,teaching,3,1200,NVS Teacher 2026 Notification — Navodaya Recruitment,medium,planned,8,B3
+/nvs-teacher-syllabus,syllabus,teaching,3,1200,NVS Teacher Syllabus 2026 — PGT TGT Complete Syllabus,low,planned,6,B3
+/nvs-teacher-salary,salary,teaching,3,1200,NVS Teacher Salary 2026 — Pay Scale & Allowances,low,planned,6,B3
+/ugc-net-notification,notification,teaching,3,1200,UGC NET 2026 Notification — December Session Details,medium,planned,10,B2
+/ugc-net-syllabus,syllabus,teaching,3,1500,UGC NET Syllabus 2026 — Paper I & II Subject-Wise,medium,planned,10,B2
+/ugc-net-exam-pattern,exam_pattern,teaching,3,1000,UGC NET Exam Pattern 2026 — Paper Structure,medium,planned,6,B3
+/ugc-net-cutoff,cutoff,teaching,3,1000,UGC NET Cutoff 2026 — Category-Wise Qualifying Marks,low,planned,6,B3
+/uptet-notification,notification,teaching,3,1000,UPTET 2026 Notification — UP Teacher Eligibility Test,medium,planned,8,B3
+/uptet-syllabus,syllabus,teaching,3,1200,UPTET Syllabus 2026 — Paper I & II Complete Syllabus,medium,planned,8,B3
+/uptet-cutoff,cutoff,teaching,3,1000,UPTET Cutoff 2026 — Qualifying Marks,low,planned,6,B3
+/state-psc-jobs,hub,state_psc,3,2000,State PSC Jobs 2026 — UPPSC BPSC MPPSC & More Recruitment,high,planned,15,B2
+/uppsc-notification,notification,state_psc,3,1200,UPPSC PCS 2026 Notification — UP Civil Services Recruitment,high,planned,12,B2
+/uppsc-syllabus,syllabus,state_psc,3,1500,UPPSC Syllabus 2026 — Prelims & Mains Complete Syllabus,high,planned,10,B2
+/uppsc-exam-pattern,exam_pattern,state_psc,3,1000,UPPSC Exam Pattern 2026 — Paper Structure & Marking,medium,planned,6,B3
+/uppsc-salary,salary,state_psc,3,1200,UPPSC PCS Salary 2026 — SDM BDO Pay Scale & Perks,medium,planned,8,B2
+/uppsc-cutoff,cutoff,state_psc,3,1000,UPPSC Cutoff 2026 — Category-Wise Cut Off Marks,medium,planned,6,B3
+/bpsc-notification,notification,state_psc,3,1200,BPSC 2026 Notification — Bihar Civil Services Recruitment,high,planned,12,B2
+/bpsc-syllabus,syllabus,state_psc,3,1500,BPSC Syllabus 2026 — Prelims & Mains Complete Syllabus,medium,planned,10,B2
+/bpsc-exam-pattern,exam_pattern,state_psc,3,1000,BPSC Exam Pattern 2026 — Paper Structure,medium,planned,6,B3
+/bpsc-salary,salary,state_psc,3,1200,BPSC Salary 2026 — Bihar PCS Officer Pay Scale,medium,planned,6,B3
+/bpsc-cutoff,cutoff,state_psc,3,1000,BPSC Cutoff 2026 — Category-Wise Cut Off Marks,low,planned,6,B3
+/mppsc-notification,notification,state_psc,3,1200,MPPSC 2026 Notification — MP State Services Recruitment,medium,planned,8,B3
+/mppsc-syllabus,syllabus,state_psc,3,1500,MPPSC Syllabus 2026 — Prelims & Mains Syllabus,medium,planned,8,B3
+/mppsc-salary,salary,state_psc,3,1200,MPPSC Salary 2026 — MP PCS Officer Pay Scale,low,planned,6,B3
+/rpsc-ras-notification,notification,state_psc,3,1200,RPSC RAS 2026 Notification — Rajasthan Admin Service,medium,planned,8,B3
+/rpsc-ras-syllabus,syllabus,state_psc,3,1500,RPSC RAS Syllabus 2026 — Prelims & Mains Syllabus,medium,planned,8,B3
+/rpsc-ras-salary,salary,state_psc,3,1200,RAS Salary 2026 — Rajasthan Admin Service Pay Scale,low,planned,6,B3
+/wbpsc-notification,notification,state_psc,3,1000,WBPSC 2026 Notification — West Bengal Civil Services,low,planned,6,B3
+/wbpsc-syllabus,syllabus,state_psc,3,1200,WBPSC Syllabus 2026 — WBCS Prelims & Mains Syllabus,low,planned,6,B3
+/wbpsc-salary,salary,state_psc,3,1200,WBPSC Salary 2026 — WBCS Officer Pay & Allowances,low,planned,6,B3
+/govt-jobs-without-exam,hub,without_exam,3,2000,Govt Jobs Without Exam 2026 — Direct Recruitment Vacancies,high,planned,20,B2
+/10th-pass-govt-jobs-without-exam,landing,without_exam,3,1200,10th Pass Govt Jobs Without Exam 2026 — Direct Selection,high,planned,12,B2
+/12th-pass-govt-jobs-without-exam,landing,without_exam,3,1200,12th Pass Govt Jobs Without Exam 2026 — Merit Based Jobs,high,planned,10,B2
+/graduate-govt-jobs-without-exam,landing,without_exam,3,1200,Graduate Govt Jobs Without Exam 2026 — Interview Only,medium,planned,10,B2
+/anganwadi-recruitment,notification,without_exam,3,1200,Anganwadi Recruitment 2026 — Worker & Helper Vacancies,high,planned,12,B2
+/anganwadi-salary,salary,without_exam,3,1200,Anganwadi Worker Salary 2026 — State-Wise Honorarium,medium,planned,8,B3
+/court-peon-recruitment,notification,without_exam,3,1000,Court Peon Recruitment 2026 — District Court Vacancies,medium,planned,8,B3
+/court-peon-salary,salary,without_exam,3,1000,Court Peon Salary 2026 — Pay Scale & Allowances,low,planned,6,B3
+/gram-panchayat-jobs,landing,without_exam,3,1200,Gram Panchayat Jobs 2026 — Block Level Recruitment,medium,planned,8,B3
+/govt-jobs-without-exam-uttar-pradesh,landing,without_exam,3,1200,UP Govt Jobs Without Exam 2026 — Direct Recruitment,medium,planned,8,B3
+/govt-jobs-without-exam-bihar,landing,without_exam,3,1200,Bihar Govt Jobs Without Exam 2026 — Direct Selection,medium,planned,6,B3
+/govt-jobs-without-exam-rajasthan,landing,without_exam,3,1200,Rajasthan Govt Jobs Without Exam 2026 — Merit Based,low,planned,6,B3
+/govt-jobs-without-exam-madhya-pradesh,landing,without_exam,3,1200,MP Govt Jobs Without Exam 2026 — Direct Recruitment,low,planned,6,B3

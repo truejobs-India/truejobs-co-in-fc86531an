@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    
+    <!-- Consent Mode v2 bootstrap — must fire before any Google scripts -->
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('consent', 'default', {
+        ad_storage: 'denied',
+        analytics_storage: 'denied',
+        ad_personalization: 'denied',
+        ad_user_data: 'denied',
+        wait_for_update: 500
+      });
+      gtag('set', 'ads_data_redaction', true);
+      gtag('set', 'url_passthrough', true);
+    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Smart Job Search India | TrueJobs</title>
+    
+    <!-- Favicons for maximum browser compatibility -->
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/pwa-icon.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/pwa-icon.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/pwa-icon.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/pwa-icon.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/pwa-icon.png" />
+    <link rel="shortcut icon" href="/pwa-icon.png" />
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#2563eb" />
+    
+    <!-- PWA iOS specific meta tags -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="TrueJobs" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    
+    <meta name="fragment" content="!" />
+    <meta name="description" content="AI-powered job portal for India. Search jobs, post listings, and apply fast. Find your dream career with intelligent job matching." />
+    <meta name="author" content="TrueJobs" />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://truejobs.co.in" />
+
+    <!-- Open Graph Meta Tags -->
+    <meta property="og:title" content="Smart Job Search India | TrueJobs" />
+    <meta property="og:description" content="AI-powered job portal for India. Search jobs, post listings, and apply fast." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://truejobs.co.in" />
+    <meta property="og:image" content="https://truejobs.co.in/og-image.png" />
+    <meta property="og:site_name" content="TrueJobs" />
+
+    <!-- Twitter Card Meta Tags -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@TrueJobs" />
+    <meta name="twitter:title" content="Smart Job Search India | TrueJobs" />
+    <meta name="twitter:description" content="AI-powered job portal for India. Search jobs, post listings, and apply fast." />
+    <meta name="twitter:image" content="https://truejobs.co.in/og-image.png" />
+    <!-- Outfit Font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <!-- OneSignal Push Notifications -->
+    <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+    <script>
+      window.OneSignalDeferred = window.OneSignalDeferred || [];
+      OneSignalDeferred.push(async function(OneSignal) {
+        await OneSignal.init({
+          appId: "9a90aded-2ccd-4cf6-8bee-b1dda30893cd",
+        });
+      });
+    </script>
+  </head>
+
+  <body>
+    <div id="root"></div>
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

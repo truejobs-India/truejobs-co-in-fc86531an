@@ -1,0 +1,1 @@
+ALTER TABLE public.job_posting_plans ADD COLUMN max_job_posts integer NOT NULL DEFAULT 1;

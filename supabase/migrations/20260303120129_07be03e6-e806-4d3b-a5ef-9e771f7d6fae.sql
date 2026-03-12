@@ -1,0 +1,1 @@
+ALTER TABLE public.en_issues ADD CONSTRAINT en_issues_issue_number_unique UNIQUE (issue_number);

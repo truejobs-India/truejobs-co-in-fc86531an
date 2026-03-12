@@ -458,6 +458,7 @@ export function blogPostToMetadata(post: {
     internalLinks,
     canonicalUrl: post.canonical_url || undefined,
     isPublished: post.is_published,
+    authorName: post.author_name || undefined,
     headings,
     hasIntro: detectIntro(post.content || ''),
     hasConclusion: detectConclusion(headings),

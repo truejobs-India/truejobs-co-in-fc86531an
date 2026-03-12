@@ -41,6 +41,7 @@ function parsedToMeta(a: ParsedArticle): ArticleMetadata {
     hasFaqSchema: a.hasFaqSchema, internalLinks: a.internalLinks,
     canonicalUrl: a.canonicalUrl, headings: a.headings,
     hasIntro: a.hasIntro, hasConclusion: a.hasConclusion,
+    authorName: a.authorName,
   };
 }
 

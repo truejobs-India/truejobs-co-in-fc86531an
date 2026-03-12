@@ -40,6 +40,7 @@ function parsedToMeta(a: ParsedArticle): ArticleMetadata {
     headings: a.headings,
     hasIntro: a.hasIntro,
     hasConclusion: a.hasConclusion,
+    authorName: a.authorName,
   };
 }
 

@@ -58,6 +58,7 @@ interface BlogPost {
   has_faq_schema: boolean | null;
   internal_links: any;
   canonical_url: string | null;
+  author_name: string | null;
 }
 
 const POSTS_PER_PAGE = 20;

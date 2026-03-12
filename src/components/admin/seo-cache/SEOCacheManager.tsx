@@ -30,7 +30,10 @@ export function SEOCacheManager() {
     search: '', pageType: '', status: '', quickFilter: 'all',
   });
   const [currentPage, setCurrentPage] = useState(0);
-  const { stats, pages, totalRows, isLoading, inventory, logs, failedItems, refresh, pageSize } = useCacheData(filters, currentPage);
+  const {
+    stats, pages, totalRows, isLoading, inventory, logs, failedItems,
+    refresh, pageSize, loadPageHtml, allMergedPages, getFilteredPages,
+  } = useCacheData(filters, currentPage);
 
   const [selectedSlugs, setSelectedSlugs] = useState<Set<string>>(new Set());
   const [previewPage, setPreviewPage] = useState<CachePage | null>(null);
@@ -43,6 +46,25 @@ export function SEOCacheManager() {
     setCurrentPage(0);
     setSelectedSlugs(new Set());
   };
+
+  // Load full HTML before opening preview/validation
+  const handlePreview = useCallback(async (p: CachePage) => {
+    if (p.headHtml || p.status === 'missing') {
+      setPreviewPage(p);
+      return;
+    }
+    const { head_html, body_html } = await loadPageHtml(p.slug);
+    setPreviewPage({ ...p, headHtml: head_html, bodyHtml: body_html });
+  }, [loadPageHtml]);
+
+  const handleValidate = useCallback(async (p: CachePage) => {
+    if (p.headHtml || p.status === 'missing') {
+      setValidatePage(p);
+      return;
+    }
+    const { head_html, body_html } = await loadPageHtml(p.slug);
+    setValidatePage({ ...p, headHtml: head_html, bodyHtml: body_html });
+  }, [loadPageHtml]);
 
   const handleRebuildSlugs = useCallback(async (slugs: string[]) => {
     setIsRebuilding(true);
@@ -83,9 +105,25 @@ export function SEOCacheManager() {
     }
   };
 
+  const handlePurgeAllCF = async () => {
+    try {
+      const { data, error } = await supabase.functions.invoke('seo-cache-rebuild', {
+        body: { mode: 'purge-all-cf', trigger: 'admin-ui' },
+      });
+      if (error) throw error;
+      toast({
+        title: 'CF Cache Purged',
+        description: data?.message || 'All Cloudflare cached pages have been purged.',
+      });
+      setPurgeConfirmText('');
+    } catch (err: any) {
+      toast({ title: 'Purge Failed', description: err.message, variant: 'destructive' });
+      setPurgeConfirmText('');
+    }
+  };
+
   const handleExport = (format: 'csv' | 'json', scope: 'filtered' | 'all') => {
-    // For "all", we export whatever pages we have; for filtered, same (server-filtered)
-    const data = scope === 'filtered' ? pages : pages;
+    const data = scope === 'all' ? allMergedPages : getFilteredPages();
     if (format === 'csv') exportAsCSV(data, `seo-cache-${scope}.csv`);
     else exportAsJSON(data, `seo-cache-${scope}.json`);
     toast({ title: 'Exported', description: `${data.length} rows exported as ${format.toUpperCase()}` });
@@ -151,10 +189,7 @@ export function SEOCacheManager() {
                   <AlertDialogCancel onClick={() => setPurgeConfirmText('')}>Cancel</AlertDialogCancel>
                   <AlertDialogAction
                     disabled={purgeConfirmText !== 'PURGE ALL'}
-                    onClick={() => {
-                      toast({ title: 'Purge requested', description: 'CF cache purge would be triggered here.' });
-                      setPurgeConfirmText('');
-                    }}
+                    onClick={handlePurgeAllCF}
                     className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                   >
                     Purge All
@@ -202,8 +237,8 @@ export function SEOCacheManager() {
               pageSize={pageSize}
               isLoading={isLoading}
               onPageChange={setCurrentPage}
-              onPreview={setPreviewPage}
-              onValidate={setValidatePage}
+              onPreview={handlePreview}
+              onValidate={handleValidate}
               onRebuild={handleRebuildSlugs}
               isRebuilding={isRebuilding}
               selectedSlugs={selectedSlugs}

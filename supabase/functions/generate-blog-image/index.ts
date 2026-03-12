@@ -1,7 +1,4 @@
-// DIRECT GEMINI API — Does NOT use Lovable AI gateway.
-// Uses only gemini-2.5-flash via direct Google API.
-// This edge function calls generativelanguage.googleapis.com directly
-// using the project's own GEMINI_API_KEY secret.
+// Uses Lovable AI gateway with gemini-2.5-flash-image for image generation.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 

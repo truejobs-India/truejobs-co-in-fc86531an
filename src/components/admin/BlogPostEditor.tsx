@@ -36,6 +36,13 @@ import {
   analyzeQuality, analyzeSEO, getReadinessStatus, blogPostToMetadata,
   type QualityReport, type SEOReport
 } from '@/lib/blogArticleAnalyzer';
+import {
+  analyzePublishCompliance, getComplianceReadinessStatus,
+} from '@/lib/blogComplianceAnalyzer';
+import { ComplianceReadinessBadge } from './blog/ComplianceReadinessBadge';
+import { BlogComplianceChecklist } from './blog/BlogComplianceChecklist';
+import { BlogPolicyWarnings } from './blog/BlogPolicyWarnings';
+import { Checkbox } from '@/components/ui/checkbox';
 
 interface BlogPost {
   id: string;
@@ -58,6 +65,7 @@ interface BlogPost {
   has_faq_schema: boolean | null;
   internal_links: any;
   canonical_url: string | null;
+  author_name: string | null;
 }
 
 const POSTS_PER_PAGE = 20;
@@ -90,10 +98,13 @@ export function BlogPostEditor() {
   const autosaveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
-  // Quality/SEO panels
+  // Quality/SEO/Compliance panels
   const [qualityOpen, setQualityOpen] = useState(false);
   const [seoOpen, setSeoOpen] = useState(false);
   const [linksOpen, setLinksOpen] = useState(false);
+  const [complianceOpen, setComplianceOpen] = useState(false);
+  const [publishOverride, setPublishOverride] = useState(false);
+  const [showNeedsReviewConfirm, setShowNeedsReviewConfirm] = useState(false);
 
   const [formData, setFormData] = useState({
     title: '',
@@ -201,7 +212,7 @@ export function BlogPostEditor() {
     author_id: user!.id,
   });
 
-  const handleSubmit = async () => {
+  const executeSubmit = async () => {
     if (!formData.title.trim() || !formData.content.trim()) {
       toast({ title: 'Error', description: 'Title and content are required', variant: 'destructive' });
       return;
@@ -225,6 +236,27 @@ export function BlogPostEditor() {
       resetForm();
       fetchPosts();
     }
+  };
+
+  const handleSubmit = () => {
+    if (!formData.title.trim() || !formData.content.trim()) {
+      toast({ title: 'Error', description: 'Title and content are required', variant: 'destructive' });
+      return;
+    }
+
+    // Compliance gating — only when publishing
+    if (formData.is_published) {
+      if (complianceStatus === 'Blocked' && !publishOverride) {
+        toast({ title: 'Blocked', description: 'Article is blocked from publishing. Fix critical issues or override.', variant: 'destructive' });
+        return;
+      }
+      if (complianceStatus === 'Needs Review') {
+        setShowNeedsReviewConfirm(true);
+        return;
+      }
+    }
+
+    executeSubmit();
   };
 
   const handleDelete = async (postId: string) => {
@@ -323,6 +355,10 @@ export function BlogPostEditor() {
   const currentReadiness = currentMetadata && currentQuality && currentSEO
     ? getReadinessStatus(currentQuality, currentSEO, currentMetadata) : null;
 
+  const currentCompliance = currentMetadata ? analyzePublishCompliance(currentMetadata) : null;
+  const complianceStatus = currentCompliance && currentMetadata
+    ? getComplianceReadinessStatus(currentCompliance, currentMetadata) : null;
+
   // Word count from content
   const liveWordCount = formData.content.replace(/<[^>]+>/g, '').split(/\s+/).filter(w => w.length > 0).length;
   const liveReadingTime = Math.max(1, Math.ceil(liveWordCount / 200));
@@ -360,6 +396,7 @@ export function BlogPostEditor() {
                   <span className="text-xs">Last edited: {formatDistanceToNow(new Date(editingPost.updated_at), { addSuffix: true })}</span>
                   {hasUnsavedChanges && <Badge variant="secondary" className="text-xs">Unsaved</Badge>}
                   {currentReadiness && <PublishReadinessBadge status={currentReadiness} />}
+                  {complianceStatus && <ComplianceReadinessBadge status={complianceStatus} />}
                 </DialogDescription>
               )}
             </DialogHeader>
@@ -371,6 +408,7 @@ export function BlogPostEditor() {
                 <span>~{liveReadingTime} min read</span>
                 {currentQuality && <span>Quality: {currentQuality.totalScore}/100</span>}
                 {currentSEO && <span>SEO: {currentSEO.totalScore}/100</span>}
+                {currentCompliance && <span>Compliance: {currentCompliance.overallScore}/100</span>}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -425,8 +463,29 @@ export function BlogPostEditor() {
                 </div>
               </div>
 
+              {/* Policy warnings + publish toggle */}
+              {currentCompliance && <BlogPolicyWarnings compliance={currentCompliance} />}
+
+              {complianceStatus === 'Blocked' && formData.is_published && (
+                <div className="border border-destructive/30 rounded-lg p-3 bg-destructive/5 space-y-2">
+                  <p className="text-xs text-destructive font-medium">This article is blocked from publishing due to critical issues.</p>
+                  <div className="flex items-center gap-2">
+                    <Checkbox id="publish-override" checked={publishOverride} onCheckedChange={(c) => setPublishOverride(!!c)} />
+                    <Label htmlFor="publish-override" className="text-xs">Override and publish anyway</Label>
+                  </div>
+                </div>
+              )}
+
               <div className="flex items-center gap-2">
-                <Switch id="is_published" checked={formData.is_published} onCheckedChange={(checked) => handleFormChange({ is_published: checked })} />
+                <Switch
+                  id="is_published"
+                  checked={formData.is_published}
+                  onCheckedChange={(checked) => {
+                    handleFormChange({ is_published: checked });
+                    if (!checked) setPublishOverride(false);
+                  }}
+                  disabled={complianceStatus === 'Blocked' && !publishOverride && formData.is_published}
+                />
                 <Label htmlFor="is_published">Publish immediately</Label>
               </div>
 
@@ -456,6 +515,19 @@ export function BlogPostEditor() {
                 </Collapsible>
               )}
 
+              {/* Collapsible Compliance Report */}
+              {currentCompliance && (
+                <Collapsible open={complianceOpen} onOpenChange={setComplianceOpen}>
+                  <CollapsibleTrigger className="flex items-center gap-2 w-full py-2 text-sm font-medium hover:text-primary">
+                    <ChevronDown className={`h-4 w-4 transition-transform ${complianceOpen ? 'rotate-180' : ''}`} />
+                    Compliance & Publish Readiness ({currentCompliance.overallScore}/100)
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="border rounded-lg p-3 mt-1">
+                    <BlogComplianceChecklist compliance={currentCompliance} />
+                  </CollapsibleContent>
+                </Collapsible>
+              )}
+
               {/* Collapsible Internal Links */}
               <Collapsible open={linksOpen} onOpenChange={setLinksOpen}>
                 <CollapsibleTrigger className="flex items-center gap-2 w-full py-2 text-sm font-medium hover:text-primary">
@@ -472,6 +544,24 @@ export function BlogPostEditor() {
                 </CollapsibleContent>
               </Collapsible>
             </div>
+
+            {/* Needs Review confirmation dialog */}
+            <AlertDialog open={showNeedsReviewConfirm} onOpenChange={setShowNeedsReviewConfirm}>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Publish with issues?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This article has compliance issues that need review. Are you sure you want to publish it now?
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => { executeSubmit(); setShowNeedsReviewConfirm(false); }}>
+                    Publish Anyway
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
 
             <DialogFooter>
               <DialogClose asChild>

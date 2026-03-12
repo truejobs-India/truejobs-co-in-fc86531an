@@ -1,8 +1,12 @@
 import { useState, useRef } from 'react';
 import { ParsedArticle, generateSlug } from '@/lib/blogParser';
 import { analyzeQuality, analyzeSEO, type ArticleMetadata } from '@/lib/blogArticleAnalyzer';
+import { analyzePublishCompliance, getComplianceReadinessStatus } from '@/lib/blogComplianceAnalyzer';
 import { BlogArticleReport } from '../blog/BlogArticleReport';
 import { BlogSEOChecklist } from '../blog/BlogSEOChecklist';
+import { BlogComplianceChecklist } from '../blog/BlogComplianceChecklist';
+import { BlogPolicyWarnings } from '../blog/BlogPolicyWarnings';
+import { ComplianceReadinessBadge } from '../blog/ComplianceReadinessBadge';
 import { InternalLinkSuggester } from '../blog/InternalLinkSuggester';
 import { FeaturedImageGenerator } from '../blog/FeaturedImageGenerator';
 import { Input } from '@/components/ui/input';
@@ -41,6 +45,7 @@ function parsedToMeta(a: ParsedArticle): ArticleMetadata {
     hasFaqSchema: a.hasFaqSchema, internalLinks: a.internalLinks,
     canonicalUrl: a.canonicalUrl, headings: a.headings,
     hasIntro: a.hasIntro, hasConclusion: a.hasConclusion,
+    authorName: a.authorName,
   };
 }
 
@@ -54,6 +59,7 @@ export function ArticleEditPanel({ article, onUpdate }: ArticleEditPanelProps) {
   const [qualityOpen, setQualityOpen] = useState(false);
   const [seoOpen, setSeoOpen] = useState(false);
   const [linksOpen, setLinksOpen] = useState(false);
+  const [complianceOpen, setComplianceOpen] = useState(false);
   const coverInputRef = useRef<HTMLInputElement>(null);
   const articleImgInputRef = useRef<HTMLInputElement>(null);
 
@@ -65,6 +71,8 @@ export function ArticleEditPanel({ article, onUpdate }: ArticleEditPanelProps) {
   const meta = parsedToMeta(article);
   const qualityReport = analyzeQuality(meta);
   const seoReport = analyzeSEO(meta);
+  const compliance = analyzePublishCompliance(meta);
+  const complianceStatus = getComplianceReadinessStatus(compliance, meta);
 
   const handleCoverUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -134,6 +142,7 @@ export function ArticleEditPanel({ article, onUpdate }: ArticleEditPanelProps) {
         <Badge variant={seoReport.totalScore >= 70 ? 'default' : seoReport.totalScore >= 50 ? 'secondary' : 'destructive'}>
           SEO: {seoReport.totalScore}
         </Badge>
+        <ComplianceReadinessBadge status={complianceStatus} />
       </div>
 
       {/* Collapsible Quality Report */}
@@ -155,6 +164,17 @@ export function ArticleEditPanel({ article, onUpdate }: ArticleEditPanelProps) {
         </CollapsibleTrigger>
         <CollapsibleContent className="border rounded-lg p-3 mt-1">
           <BlogSEOChecklist report={seoReport} />
+        </CollapsibleContent>
+      </Collapsible>
+
+      {/* Collapsible Compliance Report */}
+      <Collapsible open={complianceOpen} onOpenChange={setComplianceOpen}>
+        <CollapsibleTrigger className="flex items-center gap-2 w-full py-1 text-sm font-medium hover:text-primary">
+          <ChevronDown className={`h-4 w-4 transition-transform ${complianceOpen ? 'rotate-180' : ''}`} />
+          Compliance & Publish Readiness ({compliance.overallScore}/100)
+        </CollapsibleTrigger>
+        <CollapsibleContent className="border rounded-lg p-3 mt-1">
+          <BlogComplianceChecklist compliance={compliance} />
         </CollapsibleContent>
       </Collapsible>
 
@@ -373,6 +393,9 @@ export function ArticleEditPanel({ article, onUpdate }: ArticleEditPanelProps) {
       </section>
 
       <Separator />
+
+      {/* Policy Warnings */}
+      <BlogPolicyWarnings compliance={compliance} />
 
       {/* Publish Settings */}
       <section className="space-y-3">

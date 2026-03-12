@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { ParsedArticle } from '@/lib/blogParser';
 import { analyzeQuality, analyzeSEO, BLOG_THRESHOLDS, type ArticleMetadata } from '@/lib/blogArticleAnalyzer';
+import { analyzePublishCompliance, getComplianceReadinessStatus, type ComplianceReadinessStatus } from '@/lib/blogComplianceAnalyzer';
+import { ComplianceReadinessBadge } from '../blog/ComplianceReadinessBadge';
 import { supabase } from '@/integrations/supabase/client';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -38,6 +40,7 @@ function parsedToMeta(a: ParsedArticle): ArticleMetadata {
     hasFaqSchema: a.hasFaqSchema, internalLinks: a.internalLinks,
     canonicalUrl: a.canonicalUrl, headings: a.headings,
     hasIntro: a.hasIntro, hasConclusion: a.hasConclusion,
+    authorName: a.authorName,
   };
 }
 
@@ -48,6 +51,7 @@ export function BulkPublishModal({ open, onOpenChange, articles, onPublished }: 
   const [publishedUrls, setPublishedUrls] = useState<string[]>([]);
   const [fixedArticles, setFixedArticles] = useState<Record<string, string>>({});
   const [overrideScoreCheck, setOverrideScoreCheck] = useState(false);
+  const [overrideBlocked, setOverrideBlocked] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -56,14 +60,17 @@ export function BulkPublishModal({ open, onOpenChange, articles, onPublished }: 
       setPublishedUrls([]);
       setFixedArticles({});
       setOverrideScoreCheck(false);
+      setOverrideBlocked(false);
     }
   }, [open]);
 
-  // Validation with quality/SEO scores
-  const validationIssues: ValidationIssue[] = articles.map(a => {
+  // Validation with quality/SEO/compliance scores
+  const articleComplianceData = articles.map(a => {
     const meta = parsedToMeta(a);
     const quality = analyzeQuality(meta);
     const seo = analyzeSEO(meta);
+    const compliance = analyzePublishCompliance(meta);
+    const complianceStatus = getComplianceReadinessStatus(compliance, meta);
     const issues: string[] = [];
     if (!a.title) issues.push('Missing title');
     if (!a.slug) issues.push('Missing slug');
@@ -73,19 +80,36 @@ export function BulkPublishModal({ open, onOpenChange, articles, onPublished }: 
       if (quality.totalScore < BLOG_THRESHOLDS.READINESS_DRAFT_QUALITY) issues.push(`Quality too low (${quality.totalScore})`);
       if (seo.totalScore < BLOG_THRESHOLDS.READINESS_DRAFT_SEO) issues.push(`SEO too low (${seo.totalScore})`);
     }
-    return { articleId: a.id, title: a.title, issues, qualityScore: quality.totalScore, seoScore: seo.totalScore };
+    return {
+      articleId: a.id, title: a.title, issues,
+      qualityScore: quality.totalScore, seoScore: seo.totalScore,
+      complianceScore: compliance.overallScore, complianceStatus,
+      topFails: compliance.checks.filter(c => c.status === 'fail').slice(0, 3),
+    };
   });
+
+  const validationIssues: ValidationIssue[] = articleComplianceData.map(d => ({
+    articleId: d.articleId, title: d.title, issues: d.issues,
+    qualityScore: d.qualityScore, seoScore: d.seoScore,
+  }));
+
+  const blockedArticles = articleComplianceData.filter(d => d.complianceStatus === 'Blocked');
+  const needsReviewArticles = articleComplianceData.filter(d => d.complianceStatus === 'Needs Review');
 
   const articlesNeedingMetaFix = articles.filter(a => !a.metaDescription || a.metaDescription.length > 155);
   const readyArticles = articles.filter(a => {
     const vi = validationIssues.find(v => v.articleId === a.id);
-    return !vi || vi.issues.length === 0;
+    const cd = articleComplianceData.find(d => d.articleId === a.id);
+    const hasIssues = vi && vi.issues.length > 0;
+    const isBlocked = cd && cd.complianceStatus === 'Blocked' && !overrideBlocked;
+    return !hasIssues && !isBlocked;
   });
   const issueArticles = validationIssues.filter(v => v.issues.length > 0);
 
   // Aggregate scores
-  const avgQuality = articles.length > 0 ? Math.round(validationIssues.reduce((s, v) => s + v.qualityScore, 0) / articles.length) : 0;
-  const avgSeo = articles.length > 0 ? Math.round(validationIssues.reduce((s, v) => s + v.seoScore, 0) / articles.length) : 0;
+  const avgQuality = articles.length > 0 ? Math.round(articleComplianceData.reduce((s, v) => s + v.qualityScore, 0) / articles.length) : 0;
+  const avgSeo = articles.length > 0 ? Math.round(articleComplianceData.reduce((s, v) => s + v.seoScore, 0) / articles.length) : 0;
+  const avgCompliance = articles.length > 0 ? Math.round(articleComplianceData.reduce((s, v) => s + v.complianceScore, 0) / articles.length) : 0;
 
   const handlePublish = async () => {
     setStage('publishing');
@@ -223,6 +247,9 @@ export function BulkPublishModal({ open, onOpenChange, articles, onPublished }: 
             <div className="flex gap-4 text-xs text-muted-foreground bg-muted/50 rounded px-3 py-2">
               <span>Avg Quality: {avgQuality}/100</span>
               <span>Avg SEO: {avgSeo}/100</span>
+              <span>Avg Compliance: {avgCompliance}/100</span>
+              {blockedArticles.length > 0 && <span className="text-destructive">{blockedArticles.length} blocked</span>}
+              {needsReviewArticles.length > 0 && <span className="text-amber-600">{needsReviewArticles.length} needs review</span>}
             </div>
 
             {/* Score override toggle */}
@@ -254,6 +281,35 @@ export function BulkPublishModal({ open, onOpenChange, articles, onPublished }: 
                 ))}
               </div>
             )}
+
+            {/* Blocked articles */}
+            {blockedArticles.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-destructive">Blocked articles ({blockedArticles.length}):</p>
+                {blockedArticles.map(d => (
+                  <div key={d.articleId} className="border border-destructive/20 rounded p-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-medium truncate">{d.title}</p>
+                      <ComplianceReadinessBadge status={d.complianceStatus} />
+                    </div>
+                    {d.topFails.map(f => (
+                      <p key={f.key} className="text-xs text-destructive flex items-start gap-1">
+                        <XCircle className="h-3 w-3 mt-0.5 shrink-0" />
+                        <span>
+                          {f.label}
+                          {f.recommendation && <span className="text-muted-foreground"> — {f.recommendation}</span>}
+                        </span>
+                      </p>
+                    ))}
+                  </div>
+                ))}
+                <div className="flex items-center gap-2 text-sm">
+                  <Switch checked={overrideBlocked} onCheckedChange={setOverrideBlocked} />
+                  <Label className="text-xs">Override blocked articles</Label>
+                </div>
+              </div>
+            )}
+
             <DialogFooter className="gap-2">
               <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
               <Button onClick={handlePublish} disabled={readyArticles.length === 0}>
@@ -268,16 +324,20 @@ export function BulkPublishModal({ open, onOpenChange, articles, onPublished }: 
             <Progress value={progressValue} className="h-2" />
             <p className="text-sm text-muted-foreground">{publishedCount + failedCount} / {totalCount}</p>
             <div className="space-y-2 max-h-60 overflow-y-auto">
-              {readyArticles.map(a => (
-                <div key={a.id} className="flex items-center gap-2 text-sm">
-                  {statuses[a.id] === 'done' && <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />}
-                  {statuses[a.id] === 'failed' && <XCircle className="h-4 w-4 text-destructive shrink-0" />}
-                  {statuses[a.id] === 'publishing' && <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />}
-                  {statuses[a.id] === 'fixing-meta' && <Sparkles className="h-4 w-4 animate-pulse text-amber-500 shrink-0" />}
-                  {statuses[a.id] === 'queued' && <span className="h-4 w-4 rounded-full bg-muted shrink-0" />}
-                  <span className="truncate">{statuses[a.id] === 'fixing-meta' ? `Generating meta: ${a.title}` : a.title}</span>
-                </div>
-              ))}
+              {readyArticles.map(a => {
+                const cd = articleComplianceData.find(d => d.articleId === a.id);
+                return (
+                  <div key={a.id} className="flex items-center gap-2 text-sm">
+                    {statuses[a.id] === 'done' && <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />}
+                    {statuses[a.id] === 'failed' && <XCircle className="h-4 w-4 text-destructive shrink-0" />}
+                    {statuses[a.id] === 'publishing' && <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />}
+                    {statuses[a.id] === 'fixing-meta' && <Sparkles className="h-4 w-4 animate-pulse text-amber-500 shrink-0" />}
+                    {statuses[a.id] === 'queued' && <span className="h-4 w-4 rounded-full bg-muted shrink-0" />}
+                    <span className="truncate flex-1">{statuses[a.id] === 'fixing-meta' ? `Generating meta: ${a.title}` : a.title}</span>
+                    {cd && <ComplianceReadinessBadge status={cd.complianceStatus} />}
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}

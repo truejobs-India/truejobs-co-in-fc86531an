@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { ParsedArticle, getArticleReadiness } from '@/lib/blogParser';
 import { UploadZone } from './bulk-blog/UploadZone';
 import { ArticleQueue } from './bulk-blog/ArticleQueue';
@@ -10,7 +10,9 @@ import { Card, CardContent } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
-import { CheckSquare, Rocket, Save, Download, Trash2, FileText, Loader2 } from 'lucide-react';
+import { CheckSquare, Rocket, Save, Download, Trash2, FileText, Loader2, ShieldAlert, ShieldCheck, AlertTriangle } from 'lucide-react';
+import type { ArticleMetadata } from '@/lib/blogArticleAnalyzer';
+import { analyzePublishCompliance, getComplianceReadinessStatus } from '@/lib/blogComplianceAnalyzer';
 
 export function BulkBlogUpload() {
   const { toast } = useToast();
@@ -23,6 +25,34 @@ export function BulkBlogUpload() {
   const selectedArticle = articles.find(a => a.id === selectedId) || null;
   const selectedCount = articles.filter(a => a.selected).length;
   const readyCount = articles.filter(a => getArticleReadiness(a) === 'green').length;
+
+  function parsedToMeta(a: ParsedArticle): ArticleMetadata {
+    return {
+      title: a.title, slug: a.slug, content: a.content,
+      metaTitle: a.metaTitle, metaDescription: a.metaDescription,
+      excerpt: a.excerpt, coverImageUrl: a.coverImageUrl || undefined,
+      coverImageAlt: a.coverImageAlt || undefined, wordCount: a.wordCount,
+      category: a.category, tags: a.tags, faqCount: a.faqCount,
+      hasFaqSchema: a.hasFaqSchema, internalLinks: a.internalLinks,
+      canonicalUrl: a.canonicalUrl, headings: a.headings,
+      hasIntro: a.hasIntro, hasConclusion: a.hasConclusion,
+      authorName: a.authorName,
+    };
+  }
+
+  const complianceCounts = useMemo(() => {
+    let blocked = 0, needsReview = 0, readyWarnings = 0, readyPublish = 0;
+    articles.forEach(a => {
+      const meta = parsedToMeta(a);
+      const c = analyzePublishCompliance(meta);
+      const s = getComplianceReadinessStatus(c, meta);
+      if (s === 'Blocked') blocked++;
+      else if (s === 'Needs Review') needsReview++;
+      else if (s === 'Ready with Warnings') readyWarnings++;
+      else readyPublish++;
+    });
+    return { blocked, needsReview, readyWarnings, readyPublish };
+  }, [articles]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -222,6 +252,40 @@ export function BulkBlogUpload() {
             <Trash2 className="h-4 w-4 mr-1" />
             Clear Queue
           </Button>
+        </div>
+      )}
+
+      {/* Compliance Stats Row */}
+      {articles.length > 0 && (
+        <div className="flex gap-3">
+          <Card className="flex-1">
+            <CardContent className="p-3 flex items-center gap-2">
+              <ShieldAlert className="h-4 w-4 text-destructive" />
+              <span className="text-lg font-bold">{complianceCounts.blocked}</span>
+              <span className="text-xs text-muted-foreground">Blocked</span>
+            </CardContent>
+          </Card>
+          <Card className="flex-1">
+            <CardContent className="p-3 flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-amber-500" />
+              <span className="text-lg font-bold">{complianceCounts.needsReview}</span>
+              <span className="text-xs text-muted-foreground">Needs Review</span>
+            </CardContent>
+          </Card>
+          <Card className="flex-1">
+            <CardContent className="p-3 flex items-center gap-2">
+              <ShieldCheck className="h-4 w-4 text-blue-500" />
+              <span className="text-lg font-bold">{complianceCounts.readyWarnings}</span>
+              <span className="text-xs text-muted-foreground">Warnings</span>
+            </CardContent>
+          </Card>
+          <Card className="flex-1">
+            <CardContent className="p-3 flex items-center gap-2">
+              <ShieldCheck className="h-4 w-4 text-green-500" />
+              <span className="text-lg font-bold">{complianceCounts.readyPublish}</span>
+              <span className="text-xs text-muted-foreground">Ready</span>
+            </CardContent>
+          </Card>
         </div>
       )}
 

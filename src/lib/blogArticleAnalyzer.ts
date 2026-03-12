@@ -70,6 +70,7 @@ export interface ArticleMetadata {
   headings?: { level: number; text: string }[];
   hasIntro?: boolean;
   hasConclusion?: boolean;
+  authorName?: string;
 }
 
 // ── Quality Analysis ───────────────────────────────────
@@ -427,6 +428,7 @@ export function blogPostToMetadata(post: {
   internal_links?: any;
   canonical_url?: string | null;
   is_published?: boolean;
+  author_name?: string | null;
 }): ArticleMetadata {
   // Parse headings from content
   const parser = new DOMParser();
@@ -456,6 +458,7 @@ export function blogPostToMetadata(post: {
     internalLinks,
     canonicalUrl: post.canonical_url || undefined,
     isPublished: post.is_published,
+    authorName: post.author_name || undefined,
     headings,
     hasIntro: detectIntro(post.content || ''),
     hasConclusion: detectConclusion(headings),

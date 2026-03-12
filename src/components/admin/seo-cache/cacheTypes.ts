@@ -81,3 +81,28 @@ export const PAGE_TYPES = [
   'selection-state', 'deadline-today', 'deadline-week', 'deadline-month',
   'discovery-hub', 'blog', 'govt-exam', 'employment-news',
 ];
+
+// ── Validation Layer Types ──────────────────────────────────────────
+
+export type ValidationSeverity = 'pass' | 'warning' | 'fail';
+export type ValidationCategory = 'seo-basics' | 'schema' | 'content-quality' | 'consistency';
+
+export interface ValidationCheckResult {
+  id: string;
+  label: string;
+  severity: ValidationSeverity;
+  detail: string;
+  fix: string;
+  category: ValidationCategory;
+}
+
+export interface PageValidationReport {
+  slug: string;
+  pageType: string;
+  title: string;
+  checks: ValidationCheckResult[];
+  worstSeverity: ValidationSeverity;
+  failCount: number;
+  warnCount: number;
+  passCount: number;
+}

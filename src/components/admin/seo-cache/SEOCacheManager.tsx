@@ -22,6 +22,7 @@ import { CacheValidationPanel } from './CacheValidationPanel';
 import { CacheGlobalAudit } from './CacheGlobalAudit';
 import { CacheBuildLog } from './CacheBuildLog';
 import { CacheFailedItems } from './CacheFailedItems';
+import { SEOValidationDashboard } from './SEOValidationDashboard';
 import { exportAsCSV, exportAsJSON } from './cacheExport';
 
 export function SEOCacheManager() {

@@ -59,6 +59,7 @@ export function ArticleEditPanel({ article, onUpdate }: ArticleEditPanelProps) {
   const [qualityOpen, setQualityOpen] = useState(false);
   const [seoOpen, setSeoOpen] = useState(false);
   const [linksOpen, setLinksOpen] = useState(false);
+  const [complianceOpen, setComplianceOpen] = useState(false);
   const coverInputRef = useRef<HTMLInputElement>(null);
   const articleImgInputRef = useRef<HTMLInputElement>(null);
 
@@ -70,6 +71,8 @@ export function ArticleEditPanel({ article, onUpdate }: ArticleEditPanelProps) {
   const meta = parsedToMeta(article);
   const qualityReport = analyzeQuality(meta);
   const seoReport = analyzeSEO(meta);
+  const compliance = analyzePublishCompliance(meta);
+  const complianceStatus = getComplianceReadinessStatus(compliance, meta);
 
   const handleCoverUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

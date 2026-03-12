@@ -64,11 +64,13 @@ export function BulkPublishModal({ open, onOpenChange, articles, onPublished }: 
     }
   }, [open]);
 
-  // Validation with quality/SEO scores
-  const validationIssues: ValidationIssue[] = articles.map(a => {
+  // Validation with quality/SEO/compliance scores
+  const articleComplianceData = articles.map(a => {
     const meta = parsedToMeta(a);
     const quality = analyzeQuality(meta);
     const seo = analyzeSEO(meta);
+    const compliance = analyzePublishCompliance(meta);
+    const complianceStatus = getComplianceReadinessStatus(compliance, meta);
     const issues: string[] = [];
     if (!a.title) issues.push('Missing title');
     if (!a.slug) issues.push('Missing slug');
@@ -78,19 +80,36 @@ export function BulkPublishModal({ open, onOpenChange, articles, onPublished }: 
       if (quality.totalScore < BLOG_THRESHOLDS.READINESS_DRAFT_QUALITY) issues.push(`Quality too low (${quality.totalScore})`);
       if (seo.totalScore < BLOG_THRESHOLDS.READINESS_DRAFT_SEO) issues.push(`SEO too low (${seo.totalScore})`);
     }
-    return { articleId: a.id, title: a.title, issues, qualityScore: quality.totalScore, seoScore: seo.totalScore };
+    return {
+      articleId: a.id, title: a.title, issues,
+      qualityScore: quality.totalScore, seoScore: seo.totalScore,
+      complianceScore: compliance.overallScore, complianceStatus,
+      topFails: compliance.checks.filter(c => c.status === 'fail').slice(0, 3),
+    };
   });
+
+  const validationIssues: ValidationIssue[] = articleComplianceData.map(d => ({
+    articleId: d.articleId, title: d.title, issues: d.issues,
+    qualityScore: d.qualityScore, seoScore: d.seoScore,
+  }));
+
+  const blockedArticles = articleComplianceData.filter(d => d.complianceStatus === 'Blocked');
+  const needsReviewArticles = articleComplianceData.filter(d => d.complianceStatus === 'Needs Review');
 
   const articlesNeedingMetaFix = articles.filter(a => !a.metaDescription || a.metaDescription.length > 155);
   const readyArticles = articles.filter(a => {
     const vi = validationIssues.find(v => v.articleId === a.id);
-    return !vi || vi.issues.length === 0;
+    const cd = articleComplianceData.find(d => d.articleId === a.id);
+    const hasIssues = vi && vi.issues.length > 0;
+    const isBlocked = cd && cd.complianceStatus === 'Blocked' && !overrideBlocked;
+    return !hasIssues && !isBlocked;
   });
   const issueArticles = validationIssues.filter(v => v.issues.length > 0);
 
   // Aggregate scores
-  const avgQuality = articles.length > 0 ? Math.round(validationIssues.reduce((s, v) => s + v.qualityScore, 0) / articles.length) : 0;
-  const avgSeo = articles.length > 0 ? Math.round(validationIssues.reduce((s, v) => s + v.seoScore, 0) / articles.length) : 0;
+  const avgQuality = articles.length > 0 ? Math.round(articleComplianceData.reduce((s, v) => s + v.qualityScore, 0) / articles.length) : 0;
+  const avgSeo = articles.length > 0 ? Math.round(articleComplianceData.reduce((s, v) => s + v.seoScore, 0) / articles.length) : 0;
+  const avgCompliance = articles.length > 0 ? Math.round(articleComplianceData.reduce((s, v) => s + v.complianceScore, 0) / articles.length) : 0;
 
   const handlePublish = async () => {
     setStage('publishing');

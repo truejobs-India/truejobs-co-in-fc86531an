@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { ParsedArticle } from '@/lib/blogParser';
 import { analyzeQuality, analyzeSEO, BLOG_THRESHOLDS, type ArticleMetadata } from '@/lib/blogArticleAnalyzer';
+import { analyzePublishCompliance, getComplianceReadinessStatus, type ComplianceReadinessStatus } from '@/lib/blogComplianceAnalyzer';
+import { ComplianceReadinessBadge } from '../blog/ComplianceReadinessBadge';
 import { supabase } from '@/integrations/supabase/client';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';

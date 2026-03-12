@@ -300,7 +300,7 @@ export function evaluateAllRoutes(inventory: PageData[]): EvaluatedRoute[] {
     results.push(evaluateRoute(page.slug, page.title, page.pageType, page));
   }
 
-  // Synthesise app-only routes from patterns (representative entries)
+  // Synthesise app-only routes from patterns (representative/synthetic entries)
   const appOnlyRepresentatives = APP_ONLY_PATTERNS.map(pattern => {
     const slug = pattern.endsWith('/*') ? pattern.slice(1, -2) : pattern.slice(1);
     return slug;

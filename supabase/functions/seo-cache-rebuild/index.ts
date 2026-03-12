@@ -295,6 +295,8 @@ Deno.serve(async (req) => {
       return await handleSlugsMode(db, slugs, triggerSource, startTime);
     } else if (mode === 'full') {
       return await handleFullMode(db, triggerSource, startTime);
+    } else if (mode === 'purge-all-cf') {
+      return await handlePurgeAllCF(db, triggerSource, startTime);
     }
 
     return jsonResponse({ error: `Unknown mode: ${mode}` }, 400);
@@ -476,6 +478,44 @@ async function handleFullMode(db: any, triggerSource: string, startTime: number)
   });
 
   return jsonResponse({ success: true, total: (allCached || []).length, rebuilt, skipped, failed, cfPurged });
+}
+
+// ── Purge All CF Mode ────────────────────────────────────────────────
+
+async function handlePurgeAllCF(db: any, triggerSource: string, startTime: number) {
+  const zoneId = Deno.env.get('CLOUDFLARE_ZONE_ID');
+  const apiToken = Deno.env.get('CLOUDFLARE_API_TOKEN');
+
+  if (!zoneId || !apiToken) {
+    return jsonResponse({
+      error: 'Cloudflare credentials not configured (CLOUDFLARE_ZONE_ID / CLOUDFLARE_API_TOKEN)',
+    }, 400);
+  }
+
+  // Fetch all cached slugs to build purge URL list
+  const { data: allCached, error } = await db
+    .from('seo_page_cache')
+    .select('slug');
+
+  if (error) {
+    return jsonResponse({ error: `Failed to fetch cache: ${error.message}` }, 500);
+  }
+
+  const urls = (allCached || []).map((r: any) => `${SITE_URL}/${r.slug}`);
+  const cfPurged = await purgeCloudflareCacheForUrls(urls);
+
+  await db.from('seo_rebuild_log').insert({
+    rebuild_type: 'purge-all-cf',
+    slugs_requested: urls.length,
+    slugs_rebuilt: 0,
+    slugs_skipped: 0,
+    slugs_failed: 0,
+    cf_purged: cfPurged,
+    duration_ms: Date.now() - startTime,
+    trigger_source: triggerSource,
+  });
+
+  return jsonResponse({ success: true, totalUrls: urls.length, cfPurged });
 }
 
 // ── Single Slug Rebuild ──────────────────────────────────────────────

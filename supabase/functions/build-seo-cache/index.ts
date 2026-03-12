@@ -277,19 +277,26 @@ Deno.serve(async (req) => {
     }
 
     // Generate all three fragments for each page and upsert
-    const rows = pages.map(page => {
+    const rows = await Promise.all(pages.map(async (page) => {
       const headHtml = generateHeadHTML(page);
       const bodyHtml = generateBodyHTML(page);
       const fullHtml = generateFullHTML(headHtml, bodyHtml);
+      // Compute content hash (MD5)
+      const encoder = new TextEncoder();
+      const data = encoder.encode(headHtml + bodyHtml);
+      const hashBuffer = await crypto.subtle.digest('MD5', data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const contentHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
       return {
         slug: page.slug,
         head_html: headHtml,
         body_html: bodyHtml,
         full_html: fullHtml,
         page_type: page.pageType,
+        content_hash: contentHash,
         updated_at: new Date().toISOString(),
       };
-    });
+    }));
 
     let inserted = 0;
     const errors: string[] = [];

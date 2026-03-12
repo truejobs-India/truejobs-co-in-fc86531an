@@ -303,6 +303,10 @@ export default function AdminDashboard() {
                   <Newspaper className="h-4 w-4" />
                   <span className="hidden sm:inline">Emp News</span>
                 </TabsTrigger>
+                <TabsTrigger value="seo-policy" className="flex items-center gap-2">
+                  <Shield className="h-4 w-4" />
+                  <span className="hidden sm:inline">SEO Policy</span>
+                </TabsTrigger>
               </TabsList>
 
               <TabsContent value="users">

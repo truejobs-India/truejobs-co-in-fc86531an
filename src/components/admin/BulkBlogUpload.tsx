@@ -252,7 +252,8 @@ export function BulkBlogUpload() {
             <Trash2 className="h-4 w-4 mr-1" />
             Clear Queue
           </Button>
-      </div>
+        </div>
+      )}
 
       {/* Compliance Stats Row */}
       {articles.length > 0 && (
@@ -286,7 +287,6 @@ export function BulkBlogUpload() {
             </CardContent>
           </Card>
         </div>
-      )}
       )}
 
       {/* Two Column Layout */}

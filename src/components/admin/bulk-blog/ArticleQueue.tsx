@@ -1,6 +1,8 @@
 import { ParsedArticle, getArticleReadiness } from '@/lib/blogParser';
 import { analyzeQuality, analyzeSEO, getReadinessStatus, BLOG_THRESHOLDS } from '@/lib/blogArticleAnalyzer';
+import { analyzePublishCompliance, getComplianceReadinessStatus } from '@/lib/blogComplianceAnalyzer';
 import { PublishReadinessBadge } from '../blog/PublishReadinessBadge';
+import { ComplianceReadinessBadge } from '../blog/ComplianceReadinessBadge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';

@@ -357,3 +357,85 @@ export function getArticleReadiness(article: ParsedArticle): 'green' | 'yellow' 
   if (article.category === 'Uncategorized') return 'yellow';
   return 'green';
 }
+
+// ── Extended extraction helpers ──────────────────────
+
+function extractHeadings(doc: Document): { level: number; text: string }[] {
+  const headings: { level: number; text: string }[] = [];
+  doc.querySelectorAll('h1, h2, h3, h4').forEach(el => {
+    const level = parseInt(el.tagName.substring(1));
+    const text = el.textContent?.trim() || '';
+    if (text) headings.push({ level, text });
+  });
+  return headings;
+}
+
+function extractExternalLinks(doc: Document): { url: string; anchorText: string }[] {
+  const links: { url: string; anchorText: string }[] = [];
+  doc.querySelectorAll('a[href]').forEach(a => {
+    const href = a.getAttribute('href') || '';
+    if (href.startsWith('http') && !href.includes('truejobs.co.in')) {
+      links.push({ url: href, anchorText: a.textContent?.trim() || href });
+    }
+  });
+  return links;
+}
+
+function detectHasIntro(doc: Document): boolean {
+  const children = Array.from(doc.body.children);
+  for (const child of children) {
+    const tag = child.tagName.toLowerCase();
+    if (/^h[1-6]$/.test(tag)) return false;
+    if (tag === 'p' && (child.textContent?.trim().length || 0) > 20) return true;
+  }
+  return false;
+}
+
+function detectHasConclusion(headings: { level: number; text: string }[]): boolean {
+  if (headings.length === 0) return false;
+  const last = headings[headings.length - 1].text.toLowerCase();
+  return /conclusion|summary|निष्कर्ष|सारांश|final|wrap/i.test(last);
+}
+
+function extractSection(doc: Document, pattern: RegExp): string | null {
+  const elements = Array.from(doc.body.children);
+  let found = false;
+  const parts: string[] = [];
+  for (const el of elements) {
+    const tag = el.tagName.toLowerCase();
+    const text = el.textContent?.trim() || '';
+    if ((tag === 'h2' || tag === 'h3') && pattern.test(text)) {
+      found = true;
+      continue;
+    }
+    if (found) {
+      if (tag === 'h2' || tag === 'h3') break;
+      if (text) parts.push(text);
+    }
+  }
+  return parts.length > 0 ? parts.join('\n') : null;
+}
+
+function extractKeyHighlights(doc: Document): string[] {
+  const elements = Array.from(doc.body.children);
+  let inSection = false;
+  const highlights: string[] = [];
+  for (const el of elements) {
+    const tag = el.tagName.toLowerCase();
+    const text = el.textContent?.trim() || '';
+    if ((tag === 'h2' || tag === 'h3') && /key highlight|key point|मुख्य बिंदु/i.test(text)) {
+      inSection = true;
+      continue;
+    }
+    if (inSection) {
+      if (tag === 'h2' || tag === 'h3') break;
+      if (tag === 'ul' || tag === 'ol') {
+        el.querySelectorAll('li').forEach(li => {
+          const t = li.textContent?.trim();
+          if (t) highlights.push(t);
+        });
+      }
+    }
+  }
+  return highlights;
+}

@@ -74,3 +74,6 @@ verify_jwt = false
 
 [functions.seo-cache-rebuild]
 verify_jwt = false
+
+[functions.generate-blog-image]
+verify_jwt = false

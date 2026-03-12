@@ -71,3 +71,6 @@ verify_jwt = false
 
 [functions.serve-public-page]
 verify_jwt = false
+
+[functions.seo-cache-rebuild]
+verify_jwt = false

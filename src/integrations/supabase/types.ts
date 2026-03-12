@@ -1976,6 +1976,7 @@ export type Database = {
       seo_page_cache: {
         Row: {
           body_html: string | null
+          content_hash: string | null
           full_html: string
           head_html: string | null
           page_type: string
@@ -1984,6 +1985,7 @@ export type Database = {
         }
         Insert: {
           body_html?: string | null
+          content_hash?: string | null
           full_html: string
           head_html?: string | null
           page_type?: string
@@ -1992,11 +1994,96 @@ export type Database = {
         }
         Update: {
           body_html?: string | null
+          content_hash?: string | null
           full_html?: string
           head_html?: string | null
           page_type?: string
           slug?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      seo_rebuild_log: {
+        Row: {
+          cf_purged: number
+          created_at: string
+          duration_ms: number | null
+          error_details: Json | null
+          id: string
+          rebuild_type: string
+          slugs_failed: number
+          slugs_rebuilt: number
+          slugs_requested: number
+          slugs_skipped: number
+          trigger_source: string | null
+        }
+        Insert: {
+          cf_purged?: number
+          created_at?: string
+          duration_ms?: number | null
+          error_details?: Json | null
+          id?: string
+          rebuild_type: string
+          slugs_failed?: number
+          slugs_rebuilt?: number
+          slugs_requested?: number
+          slugs_skipped?: number
+          trigger_source?: string | null
+        }
+        Update: {
+          cf_purged?: number
+          created_at?: string
+          duration_ms?: number | null
+          error_details?: Json | null
+          id?: string
+          rebuild_type?: string
+          slugs_failed?: number
+          slugs_rebuilt?: number
+          slugs_requested?: number
+          slugs_skipped?: number
+          trigger_source?: string | null
+        }
+        Relationships: []
+      }
+      seo_rebuild_queue: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          id: string
+          last_retry_at: string | null
+          max_retries: number
+          page_type: string
+          processed_at: string | null
+          reason: string
+          retry_count: number
+          slug: string
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          last_retry_at?: string | null
+          max_retries?: number
+          page_type?: string
+          processed_at?: string | null
+          reason?: string
+          retry_count?: number
+          slug: string
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          last_retry_at?: string | null
+          max_retries?: number
+          page_type?: string
+          processed_at?: string | null
+          reason?: string
+          retry_count?: number
+          slug?: string
+          status?: string
         }
         Relationships: []
       }

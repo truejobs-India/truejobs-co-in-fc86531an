@@ -309,7 +309,7 @@ export function evaluateAllRoutes(inventory: PageData[]): EvaluatedRoute[] {
   const inventorySlugs = new Set(inventory.map(p => p.slug));
   for (const slug of appOnlyRepresentatives) {
     if (!inventorySlugs.has(slug)) {
-      results.push(evaluateRoute(slug, `App route: /${slug}`, 'app-only', null));
+      results.push(evaluateRoute(slug, `[Pattern] App route: /${slug}`, 'app-only', null));
     }
   }
 

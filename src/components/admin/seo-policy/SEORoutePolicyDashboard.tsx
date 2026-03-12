@@ -382,8 +382,9 @@ function PolicyReportContent({ route }: { route: EvaluatedRoute }) {
         <Alert className="border-amber-400 bg-amber-50 dark:bg-amber-950/30">
           <AlertTriangle className="h-4 w-4 text-amber-600" />
           <AlertDescription className="text-amber-800 dark:text-amber-200 font-medium">
-            This route was classified via fallback logic. No explicit policy mapping exists for page type "{route.pageType}".
-            Add an entry to PAGE_TYPE_POLICIES in seoRoutePolicyRegistry.ts.
+            This route was classified via <strong>conservative fallback</strong> — noindex, excluded from sitemap, not cache-served.
+            No explicit policy mapping exists for page type "{route.pageType}".
+            To make this route indexable, add an entry to PAGE_TYPE_POLICIES in seoRoutePolicyRegistry.ts.
           </AlertDescription>
         </Alert>
       )}

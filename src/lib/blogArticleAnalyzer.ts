@@ -70,6 +70,7 @@ export interface ArticleMetadata {
   headings?: { level: number; text: string }[];
   hasIntro?: boolean;
   hasConclusion?: boolean;
+  authorName?: string;
 }
 
 // ── Quality Analysis ───────────────────────────────────

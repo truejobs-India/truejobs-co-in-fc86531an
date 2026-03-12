@@ -353,6 +353,8 @@ export function BlogPostEditor() {
     cover_image_url: formData.cover_image_url || null,
     featured_image_alt: formData.featured_image_alt || null,
     is_published: formData.is_published,
+    author_name: formData.author_name || null,
+    word_count: liveWordCount,
   }) : null;
 
   const currentQuality = currentMetadata ? analyzeQuality(currentMetadata) : null;

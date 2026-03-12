@@ -212,7 +212,7 @@ export function BlogPostEditor() {
     author_id: user!.id,
   });
 
-  const handleSubmit = async () => {
+  const executeSubmit = async () => {
     if (!formData.title.trim() || !formData.content.trim()) {
       toast({ title: 'Error', description: 'Title and content are required', variant: 'destructive' });
       return;
@@ -236,6 +236,28 @@ export function BlogPostEditor() {
       resetForm();
       fetchPosts();
     }
+  };
+
+  const handleSubmit = () => {
+    if (!formData.title.trim() || !formData.content.trim()) {
+      toast({ title: 'Error', description: 'Title and content are required', variant: 'destructive' });
+      return;
+    }
+
+    // Compliance gating — only when publishing
+    if (formData.is_published) {
+      if (complianceStatus === 'Blocked' && !publishOverride) {
+        toast({ title: 'Blocked', description: 'Article is blocked from publishing. Fix critical issues or override.', variant: 'destructive' });
+        return;
+      }
+      if (complianceStatus === 'Needs Review') {
+        setShowNeedsReviewConfirm(true);
+        return;
+      }
+    }
+
+    executeSubmit();
+  };
   };
 
   const handleDelete = async (postId: string) => {

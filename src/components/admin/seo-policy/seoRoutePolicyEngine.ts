@@ -141,12 +141,12 @@ export function derivePolicy(
     };
   }
 
-  // 3. Fallback — conservative: mark as public-seo but flag for review
+  // 3. Fallback — conservative: noindex, no sitemap, no cache until explicitly mapped
   return {
-    category: 'public-seo',
-    expectedIndexability: 'index',
-    includeInSitemap: true,
-    isCacheServed: true,
+    category: 'public-noindex',
+    expectedIndexability: 'noindex',
+    includeInSitemap: false,
+    isCacheServed: false,
     canonicalUrl: canonical,
     policySource: 'fallback',
   };
@@ -300,7 +300,7 @@ export function evaluateAllRoutes(inventory: PageData[]): EvaluatedRoute[] {
     results.push(evaluateRoute(page.slug, page.title, page.pageType, page));
   }
 
-  // Synthesise app-only routes from patterns (representative entries)
+  // Synthesise app-only routes from patterns (representative/synthetic entries)
   const appOnlyRepresentatives = APP_ONLY_PATTERNS.map(pattern => {
     const slug = pattern.endsWith('/*') ? pattern.slice(1, -2) : pattern.slice(1);
     return slug;
@@ -309,7 +309,7 @@ export function evaluateAllRoutes(inventory: PageData[]): EvaluatedRoute[] {
   const inventorySlugs = new Set(inventory.map(p => p.slug));
   for (const slug of appOnlyRepresentatives) {
     if (!inventorySlugs.has(slug)) {
-      results.push(evaluateRoute(slug, `App route: /${slug}`, 'app-only', null));
+      results.push(evaluateRoute(slug, `[Pattern] App route: /${slug}`, 'app-only', null));
     }
   }
 

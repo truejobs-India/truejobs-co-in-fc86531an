@@ -151,10 +151,11 @@ export function BlogPostEditor() {
     setFormData({
       title: '', slug: '', content: '', excerpt: '',
       cover_image_url: '', featured_image_alt: '', is_published: false,
-      meta_title: '', meta_description: '',
+      meta_title: '', meta_description: '', author_name: 'TrueJobs Editorial Team',
     });
     setEditingPost(null);
     setHasUnsavedChanges(false);
+    setPublishOverride(false);
   };
 
   const openEditDialog = (post: BlogPost) => {

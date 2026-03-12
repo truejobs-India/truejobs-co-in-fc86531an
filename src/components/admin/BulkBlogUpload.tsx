@@ -8,13 +8,17 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { CheckSquare, Rocket, Save, Download, Trash2, FileText } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
+import { CheckSquare, Rocket, Save, Download, Trash2, FileText, Loader2 } from 'lucide-react';
 
 export function BulkBlogUpload() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [articles, setArticles] = useState<ParsedArticle[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [publishModalOpen, setPublishModalOpen] = useState(false);
+  const [isSavingDrafts, setIsSavingDrafts] = useState(false);
 
   const selectedArticle = articles.find(a => a.id === selectedId) || null;
   const selectedCount = articles.filter(a => a.selected).length;
@@ -25,12 +29,12 @@ export function BulkBlogUpload() {
     const handler = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault();
-        toast({ title: 'Drafts auto-saved', description: `${articles.length} articles in queue` });
+        handleSaveAllAsDraft();
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [articles.length, toast]);
+  }, [articles.length]);
 
   const handleArticlesParsed = useCallback((parsed: ParsedArticle[]) => {
     setArticles(prev => [...prev, ...parsed]);
@@ -58,6 +62,84 @@ export function BulkBlogUpload() {
   const handleClearQueue = () => {
     setArticles([]);
     setSelectedId(null);
+  };
+
+  // ── Save All as Draft — actually persists to DB ────
+  const handleSaveAllAsDraft = async () => {
+    if (articles.length === 0 || !user) return;
+    setIsSavingDrafts(true);
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const article of articles) {
+      try {
+        // Check for existing slug
+        let finalSlug = article.slug;
+        const { data: existing } = await supabase
+          .from('blog_posts')
+          .select('slug')
+          .like('slug', `${article.slug}%`);
+        if (existing && existing.length > 0) {
+          const existingSlugs = existing.map(e => e.slug);
+          if (existingSlugs.includes(finalSlug)) {
+            let counter = 2;
+            while (existingSlugs.includes(`${finalSlug}-${counter}`)) counter++;
+            finalSlug = `${finalSlug}-${counter}`;
+          }
+        }
+
+        const { error } = await supabase.from('blog_posts').insert({
+          title: article.title,
+          slug: finalSlug,
+          content: article.content,
+          meta_title: article.metaTitle || null,
+          meta_description: article.metaDescription || null,
+          canonical_url: `https://truejobs.co.in/blog/${finalSlug}`,
+          cover_image_url: article.coverImageUrl || null,
+          featured_image_alt: article.coverImageAlt || null,
+          category: article.category,
+          tags: article.tags,
+          author_name: article.authorName,
+          author_id: user.id,
+          reading_time: article.readingTime,
+          word_count: article.wordCount,
+          faq_count: article.faqCount,
+          has_faq_schema: article.hasFaqSchema,
+          faq_schema: article.hasFaqSchema && article.faqSchema ? {
+            '@context': 'https://schema.org',
+            '@type': 'FAQPage',
+            mainEntity: article.faqSchema.map(f => ({
+              '@type': 'Question', name: f.question,
+              acceptedAnswer: { '@type': 'Answer', text: f.answer },
+            })),
+          } : null,
+          article_images: article.articleImages as any,
+          internal_links: article.internalLinks as any,
+          language: article.language,
+          status: 'draft',
+          is_published: false,
+          excerpt: article.metaDescription || null,
+        });
+        if (error) throw error;
+        successCount++;
+      } catch (err: any) {
+        console.error('Draft save failed:', article.slug, err);
+        failCount++;
+      }
+    }
+
+    setIsSavingDrafts(false);
+    toast({
+      title: `Drafts saved: ${successCount} success, ${failCount} failed`,
+      description: successCount > 0 ? 'Articles saved as drafts in Blog Posts.' : undefined,
+      variant: failCount > 0 ? 'destructive' : 'default',
+    });
+
+    if (successCount > 0) {
+      // Remove successfully saved articles from queue
+      setArticles([]);
+      setSelectedId(null);
+    }
   };
 
   const handleExportCSV = () => {
@@ -128,9 +210,9 @@ export function BulkBlogUpload() {
             <Rocket className="h-4 w-4 mr-1" />
             Publish Selected ({selectedCount})
           </Button>
-          <Button variant="outline" size="sm" onClick={() => toast({ title: 'All saved as draft' })}>
-            <Save className="h-4 w-4 mr-1" />
-            Save All as Draft
+          <Button variant="outline" size="sm" onClick={handleSaveAllAsDraft} disabled={isSavingDrafts}>
+            {isSavingDrafts ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Save className="h-4 w-4 mr-1" />}
+            {isSavingDrafts ? 'Saving...' : 'Save All as Draft'}
           </Button>
           <Button variant="outline" size="sm" onClick={handleExportCSV}>
             <Download className="h-4 w-4 mr-1" />
@@ -145,7 +227,6 @@ export function BulkBlogUpload() {
 
       {/* Two Column Layout */}
       <div className="flex gap-4">
-        {/* Left Column: Upload + Queue */}
         <div className={`space-y-4 ${selectedArticle ? 'w-[60%]' : 'w-full'}`}>
           <UploadZone onArticlesParsed={handleArticlesParsed} />
           <ArticleQueue
@@ -157,18 +238,13 @@ export function BulkBlogUpload() {
           />
         </div>
 
-        {/* Right Column: Edit Panel */}
         {selectedArticle && (
           <div className="w-[40%] border rounded-lg bg-card">
-            <ArticleEditPanel
-              article={selectedArticle}
-              onUpdate={handleUpdateArticle}
-            />
+            <ArticleEditPanel article={selectedArticle} onUpdate={handleUpdateArticle} />
           </div>
         )}
       </div>
 
-      {/* Bulk Publish Modal */}
       <BulkPublishModal
         open={publishModalOpen}
         onOpenChange={setPublishModalOpen}

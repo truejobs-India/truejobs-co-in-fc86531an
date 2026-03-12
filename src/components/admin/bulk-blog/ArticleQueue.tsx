@@ -1,8 +1,11 @@
 import { ParsedArticle, getArticleReadiness } from '@/lib/blogParser';
+import { analyzeQuality, analyzeSEO, getReadinessStatus, BLOG_THRESHOLDS } from '@/lib/blogArticleAnalyzer';
+import { PublishReadinessBadge } from '../blog/PublishReadinessBadge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Eye, Pencil, X, FileText, Image, Search, MessageSquare } from 'lucide-react';
+import { X, FileText, Image, Search, MessageSquare } from 'lucide-react';
+import type { ArticleMetadata } from '@/lib/blogArticleAnalyzer';
 
 interface ArticleQueueProps {
   articles: ParsedArticle[];
@@ -15,6 +18,29 @@ interface ArticleQueueProps {
 function StatusDot({ status }: { status: 'green' | 'yellow' | 'red' }) {
   const colors = { green: 'bg-green-500', yellow: 'bg-yellow-500', red: 'bg-destructive' };
   return <span className={`inline-block h-2 w-2 rounded-full ${colors[status]}`} />;
+}
+
+function parsedToMeta(a: ParsedArticle): ArticleMetadata {
+  return {
+    title: a.title,
+    slug: a.slug,
+    content: a.content,
+    metaTitle: a.metaTitle,
+    metaDescription: a.metaDescription,
+    excerpt: a.excerpt,
+    coverImageUrl: a.coverImageUrl || undefined,
+    coverImageAlt: a.coverImageAlt || undefined,
+    wordCount: a.wordCount,
+    category: a.category,
+    tags: a.tags,
+    faqCount: a.faqCount,
+    hasFaqSchema: a.hasFaqSchema,
+    internalLinks: a.internalLinks,
+    canonicalUrl: a.canonicalUrl,
+    headings: a.headings,
+    hasIntro: a.hasIntro,
+    hasConclusion: a.hasConclusion,
+  };
 }
 
 export function ArticleQueue({ articles, selectedArticleId, onSelectArticle, onToggleSelection, onRemoveArticle }: ArticleQueueProps) {
@@ -31,8 +57,14 @@ export function ArticleQueue({ articles, selectedArticleId, onSelectArticle, onT
   return (
     <div className="space-y-2">
       {articles.map(article => {
-        const readiness = getArticleReadiness(article);
-        const borderColor = readiness === 'green' ? 'border-l-green-500' : readiness === 'yellow' ? 'border-l-yellow-500' : 'border-l-destructive';
+        const meta = parsedToMeta(article);
+        const quality = analyzeQuality(meta);
+        const seo = analyzeSEO(meta);
+        const readiness = getReadinessStatus(quality, seo, meta);
+        const borderColor = readiness === 'Ready to Publish' ? 'border-l-green-500'
+          : readiness === 'Ready as Draft' ? 'border-l-blue-400'
+          : readiness === 'Needs Review' ? 'border-l-yellow-500'
+          : 'border-l-destructive';
         const isActive = selectedArticleId === article.id;
 
         return (
@@ -56,21 +88,20 @@ export function ArticleQueue({ articles, selectedArticleId, onSelectArticle, onT
                 <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                   <Badge variant="outline" className="text-xs">{article.category}</Badge>
                   <span className="text-xs text-muted-foreground">{article.wordCount.toLocaleString()} words</span>
+                  <PublishReadinessBadge status={readiness} />
                 </div>
                 <div className="flex items-center gap-3 mt-1.5">
+                  <span className="flex items-center gap-1 text-xs" title="Quality Score">
+                    Q: {quality.totalScore}
+                    <StatusDot status={quality.totalScore >= 70 ? 'green' : quality.totalScore >= 50 ? 'yellow' : 'red'} />
+                  </span>
+                  <span className="flex items-center gap-1 text-xs" title="SEO Score">
+                    SEO: {seo.totalScore}
+                    <StatusDot status={seo.totalScore >= 70 ? 'green' : seo.totalScore >= 50 ? 'yellow' : 'red'} />
+                  </span>
                   <span className="flex items-center gap-1 text-xs" title="Cover Image">
                     <Image className="h-3 w-3" />
-                    Cover
                     <StatusDot status={article.coverImageUrl ? 'green' : 'red'} />
-                  </span>
-                  <span className="flex items-center gap-1 text-xs" title="Article Images (3-4 recommended)">
-                    <Image className="h-3 w-3" />
-                    Imgs: {article.articleImages.length}
-                    <StatusDot status={article.articleImages.length >= 3 ? 'green' : article.articleImages.length >= 1 ? 'yellow' : 'red'} />
-                  </span>
-                  <span className="flex items-center gap-1 text-xs" title="Meta SEO">
-                    <Search className="h-3 w-3" />
-                    <StatusDot status={article.extraction.metaTitle || 'red'} />
                   </span>
                   <span className="flex items-center gap-1 text-xs" title="FAQ">
                     <MessageSquare className="h-3 w-3" />

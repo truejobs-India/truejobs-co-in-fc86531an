@@ -29,6 +29,15 @@ export interface ParsedArticle {
   // extraction quality
   extraction: Record<string, 'green' | 'yellow' | 'red'>;
   selected: boolean;
+  // Extended fields for quality/SEO analysis
+  headings: { level: number; text: string }[];
+  tables: number;
+  externalLinks: { url: string; anchorText: string }[];
+  hasIntro: boolean;
+  hasConclusion: boolean;
+  disclaimer: string | null;
+  keyHighlights: string[];
+  excerpt: string;
 }
 
 // ── Hindi → English transliteration map ────────────────

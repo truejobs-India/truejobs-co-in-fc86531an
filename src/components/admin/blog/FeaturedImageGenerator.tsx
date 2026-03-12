@@ -89,7 +89,7 @@ export function FeaturedImageGenerator({
           )}
           {isGenerating ? 'Generating...' : currentImageUrl ? 'Regenerate' : 'Generate Cover'}
         </Button>
-        <span className="text-[10px] text-muted-foreground">AI via Gemini 2.5 Flash</span>
+        <span className="text-[10px] text-muted-foreground">AI via gemini-2.5-flash</span>
       </div>
 
       {generatedAlt && (

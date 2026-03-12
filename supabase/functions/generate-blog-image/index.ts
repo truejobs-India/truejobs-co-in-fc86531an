@@ -1,7 +1,7 @@
 // DIRECT GEMINI API — Does NOT use Lovable AI gateway.
+// Uses only gemini-2.5-flash via direct Google API.
 // This edge function calls generativelanguage.googleapis.com directly
 // using the project's own GEMINI_API_KEY secret.
-// Uses Imagen 3 for image generation (same Google AI API).
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -76,165 +76,71 @@ Deno.serve(async (req) => {
     }
 
     const keywordList = Array.isArray(keywords) ? keywords.join(", ") : "";
-    const imagePrompt = `Create a clean, professional editorial illustration for a blog article titled "${title}" about ${category || "government jobs and exams"}.${keywordList ? ` Related topics: ${keywordList}.` : ""} Style: modern flat illustration, suitable for an Indian government jobs and exam preparation portal. Landscape format 1200x630 pixels. Use warm, professional colors. Do not include any text overlays, official government seals, emblems, or logos. Do not include any misleading official symbols. The image should be abstract and editorial in nature.`;
+    const imagePrompt = `Create a clean, professional editorial illustration for a blog article titled "${title}" about ${category || "government jobs and exams"}.${keywordList ? ` Related topics: ${keywordList}.` : ""} Style: modern flat illustration, suitable for an Indian government jobs and exam preparation portal. Landscape format 1200x630 pixels. Use warm, professional colors. Do not include any text overlays, official government seals, emblems, or logos. Do not include any misleading official symbols. The image should be abstract and editorial in nature. Also provide a concise alt text description under 150 characters.`;
 
+    const modelUsed = "gemini-2.5-flash";
     let imageBase64 = "";
     let mimeType = "image/png";
     let altText = title;
-    let modelUsed = "";
 
-    // ── Strategy 1: Try Imagen 3 (dedicated image generation) ──
-    const imagenUrl = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${geminiApiKey}`;
-    console.log("Trying Imagen 3 model...");
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`;
+    console.log("Calling Gemini 2.5 Flash for image generation...");
 
     try {
-      const imagenResponse = await fetch(imagenUrl, {
+      const geminiResponse = await fetch(geminiUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          instances: [{ prompt: imagePrompt }],
-          parameters: {
-            sampleCount: 1,
-            aspectRatio: "16:9",
-            safetySetting: "block_medium_and_above",
-          },
+          contents: [{ parts: [{ text: imagePrompt }] }],
+          generationConfig: { responseModalities: ["TEXT", "IMAGE"] },
         }),
       });
 
-      if (imagenResponse.ok) {
-        const imagenData = await imagenResponse.json();
-        const predictions = imagenData.predictions || [];
-        if (predictions.length > 0 && predictions[0].bytesBase64Encoded) {
-          imageBase64 = predictions[0].bytesBase64Encoded;
-          mimeType = predictions[0].mimeType || "image/png";
-          modelUsed = "imagen-3.0-generate-002";
-          console.log("Imagen 3 succeeded");
+      if (!geminiResponse.ok) {
+        const errText = await geminiResponse.text();
+        console.log(`Gemini 2.5 Flash failed [${geminiResponse.status}]: ${errText.substring(0, 300)}`);
+        const errLower = errText.toLowerCase();
+        if (errLower.includes("not available") || errLower.includes("region") || errLower.includes("not supported")) {
+          return new Response(
+            JSON.stringify({ error: "Image generation unavailable in this region", code: "IMAGE_GEN_REGION_UNAVAILABLE", model: modelUsed }),
+            { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
         }
-      } else {
-        const errText = await imagenResponse.text();
-        console.log(`Imagen 3 failed [${imagenResponse.status}]: ${errText.substring(0, 200)}`);
+        return new Response(
+          JSON.stringify({ error: `Gemini API error: ${errText.substring(0, 200)}`, model: modelUsed }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
       }
-    } catch (imagenErr) {
-      console.log("Imagen 3 error:", imagenErr instanceof Error ? imagenErr.message : "unknown");
-    }
 
-    // ── Strategy 2: Try Gemini 2.0 Flash (multimodal image output) ──
-    if (!imageBase64) {
-      const gemini2Url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${geminiApiKey}`;
-      console.log("Trying Gemini 2.0 Flash Exp...");
-
-      try {
-        const gemini2Response = await fetch(gemini2Url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: imagePrompt }] }],
-            generationConfig: { responseModalities: ["TEXT", "IMAGE"] },
-          }),
-        });
-
-        if (gemini2Response.ok) {
-          const gemini2Data = await gemini2Response.json();
-          for (const candidate of gemini2Data.candidates || []) {
-            for (const part of candidate.content?.parts || []) {
-              if (part.inlineData && !imageBase64) {
-                imageBase64 = part.inlineData.data;
-                mimeType = part.inlineData.mimeType || "image/png";
-                modelUsed = "gemini-2.0-flash-exp";
-              }
-              if (part.text) {
-                const text = part.text.trim();
-                if (text.length > 10 && text.length < 200) altText = text;
-              }
-            }
+      const geminiData = await geminiResponse.json();
+      for (const candidate of geminiData.candidates || []) {
+        for (const part of candidate.content?.parts || []) {
+          if (part.inlineData && !imageBase64) {
+            imageBase64 = part.inlineData.data;
+            mimeType = part.inlineData.mimeType || "image/png";
           }
-          if (imageBase64) console.log("Gemini 2.0 Flash Exp succeeded");
-        } else {
-          const errText = await gemini2Response.text();
-          console.log(`Gemini 2.0 Flash Exp failed [${gemini2Response.status}]: ${errText.substring(0, 200)}`);
-        }
-      } catch (g2Err) {
-        console.log("Gemini 2.0 error:", g2Err instanceof Error ? g2Err.message : "unknown");
-      }
-    }
-
-    // ── Strategy 3: Try Gemini 2.5 Flash ──
-    if (!imageBase64) {
-      const gemini25Url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`;
-      console.log("Trying Gemini 2.5 Flash...");
-
-      try {
-        const gemini25Response = await fetch(gemini25Url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: imagePrompt }] }],
-            generationConfig: { responseModalities: ["TEXT", "IMAGE"] },
-          }),
-        });
-
-        if (gemini25Response.ok) {
-          const gemini25Data = await gemini25Response.json();
-          for (const candidate of gemini25Data.candidates || []) {
-            for (const part of candidate.content?.parts || []) {
-              if (part.inlineData && !imageBase64) {
-                imageBase64 = part.inlineData.data;
-                mimeType = part.inlineData.mimeType || "image/png";
-                modelUsed = "gemini-2.5-flash";
-              }
-              if (part.text) {
-                const text = part.text.trim();
-                if (text.length > 10 && text.length < 200) altText = text;
-              }
-            }
+          if (part.text && !imageBase64) {
+            // Only use text as alt if no image found yet (text before image)
           }
-          if (imageBase64) console.log("Gemini 2.5 Flash succeeded");
-        } else {
-          const errText = await gemini25Response.text();
-          console.log(`Gemini 2.5 Flash failed [${gemini25Response.status}]: ${errText.substring(0, 200)}`);
+          if (part.text) {
+            const text = part.text.trim();
+            if (text.length > 10 && text.length < 200) altText = text;
+          }
         }
-      } catch (g25Err) {
-        console.log("Gemini 2.5 error:", g25Err instanceof Error ? g25Err.message : "unknown");
       }
+    } catch (fetchErr) {
+      console.error("Gemini fetch error:", fetchErr instanceof Error ? fetchErr.message : "unknown");
+      return new Response(
+        JSON.stringify({ error: fetchErr instanceof Error ? fetchErr.message : "Gemini API request failed", model: modelUsed }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     if (!imageBase64) {
       return new Response(
-        JSON.stringify({
-          error: "No image generated — all Google AI models failed. This may be a region restriction on image generation APIs.",
-          models_tried: ["imagen-3.0-generate-002", "gemini-2.0-flash-exp", "gemini-2.5-flash"],
-        }),
+        JSON.stringify({ error: "Image generation unavailable in this region", code: "IMAGE_GEN_REGION_UNAVAILABLE", model: modelUsed }),
         { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
-    }
-
-    // ── Generate alt text via Gemini 2.5 Flash if we only have image ──
-    if (altText === title && modelUsed.startsWith("imagen")) {
-      try {
-        const altUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`;
-        const altResponse = await fetch(altUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{
-              parts: [{
-                text: `Write a concise, descriptive alt text (under 150 characters) for a blog cover image about: "${title}" in the ${category || "government jobs"} category. Just return the alt text, nothing else.`,
-              }],
-            }],
-          }),
-        });
-        if (altResponse.ok) {
-          const altData = await altResponse.json();
-          const altPart = altData.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-          if (altPart && altPart.length > 5 && altPart.length < 200) {
-            altText = altPart;
-          }
-        } else {
-          await altResponse.text(); // consume body
-        }
-      } catch {
-        // Alt text generation is best-effort
-      }
     }
 
     // ── Upload to Supabase storage ───────────────────────

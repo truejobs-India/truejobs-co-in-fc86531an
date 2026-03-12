@@ -49,7 +49,7 @@ export function ArticleQueue({ articles, selectedArticleId, onSelectArticle, onT
       <div className="text-center py-12 text-muted-foreground">
         <FileText className="h-12 w-12 mx-auto mb-3 opacity-40" />
         <p>No articles in queue</p>
-        <p className="text-sm">Upload .docx files to get started</p>
+        <p className="text-sm">Upload .docx or .md files to get started</p>
       </div>
     );
   }

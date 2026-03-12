@@ -247,6 +247,9 @@ export function BulkPublishModal({ open, onOpenChange, articles, onPublished }: 
             <div className="flex gap-4 text-xs text-muted-foreground bg-muted/50 rounded px-3 py-2">
               <span>Avg Quality: {avgQuality}/100</span>
               <span>Avg SEO: {avgSeo}/100</span>
+              <span>Avg Compliance: {avgCompliance}/100</span>
+              {blockedArticles.length > 0 && <span className="text-destructive">{blockedArticles.length} blocked</span>}
+              {needsReviewArticles.length > 0 && <span className="text-amber-600">{needsReviewArticles.length} needs review</span>}
             </div>
 
             {/* Score override toggle */}

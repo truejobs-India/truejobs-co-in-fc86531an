@@ -333,8 +333,9 @@ async function handleQueueMode(db: any, triggerSource: string, startTime: number
 
   for (const item of pending) {
     try {
-      // Advisory lock per slug
-      await db.rpc('pg_advisory_xact_lock', undefined).catch(() => {});
+      // Advisory lock skipped — pg_advisory_xact_lock is session-level and
+      // not effective via REST/PostgREST. Concurrency is managed by the
+      // claim-then-process pattern (status = 'processing') instead.
 
       const isStale = item.page_type.endsWith('-stale');
 

@@ -258,7 +258,6 @@ export function BlogPostEditor() {
 
     executeSubmit();
   };
-  };
 
   const handleDelete = async (postId: string) => {
     const { error } = await supabase.from('blog_posts').delete().eq('id', postId);

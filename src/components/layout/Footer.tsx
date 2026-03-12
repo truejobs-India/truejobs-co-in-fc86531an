@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { Mail, MapPin, Phone, Shield, Lock, Facebook, Instagram, Twitter, Linkedin, Youtube, Cookie } from 'lucide-react';
+import { Mail, MapPin, Shield, Lock, Facebook, Instagram, Twitter, Linkedin, Youtube } from 'lucide-react';
 import truejobsLogo from '@/assets/truejobs-logo.png';
 import { INSURANCE_STATES } from '@/pages/jobs/cityData';
 import { NEAR_ME_PAGES } from '@/pages/jobs/nearMeData';

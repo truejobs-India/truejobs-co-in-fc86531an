@@ -1,8 +1,12 @@
 import { useState, useRef } from 'react';
 import { ParsedArticle, generateSlug } from '@/lib/blogParser';
 import { analyzeQuality, analyzeSEO, type ArticleMetadata } from '@/lib/blogArticleAnalyzer';
+import { analyzePublishCompliance, getComplianceReadinessStatus } from '@/lib/blogComplianceAnalyzer';
 import { BlogArticleReport } from '../blog/BlogArticleReport';
 import { BlogSEOChecklist } from '../blog/BlogSEOChecklist';
+import { BlogComplianceChecklist } from '../blog/BlogComplianceChecklist';
+import { BlogPolicyWarnings } from '../blog/BlogPolicyWarnings';
+import { ComplianceReadinessBadge } from '../blog/ComplianceReadinessBadge';
 import { InternalLinkSuggester } from '../blog/InternalLinkSuggester';
 import { FeaturedImageGenerator } from '../blog/FeaturedImageGenerator';
 import { Input } from '@/components/ui/input';

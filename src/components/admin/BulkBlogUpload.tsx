@@ -252,7 +252,41 @@ export function BulkBlogUpload() {
             <Trash2 className="h-4 w-4 mr-1" />
             Clear Queue
           </Button>
+      </div>
+
+      {/* Compliance Stats Row */}
+      {articles.length > 0 && (
+        <div className="flex gap-3">
+          <Card className="flex-1">
+            <CardContent className="p-3 flex items-center gap-2">
+              <ShieldAlert className="h-4 w-4 text-destructive" />
+              <span className="text-lg font-bold">{complianceCounts.blocked}</span>
+              <span className="text-xs text-muted-foreground">Blocked</span>
+            </CardContent>
+          </Card>
+          <Card className="flex-1">
+            <CardContent className="p-3 flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-amber-500" />
+              <span className="text-lg font-bold">{complianceCounts.needsReview}</span>
+              <span className="text-xs text-muted-foreground">Needs Review</span>
+            </CardContent>
+          </Card>
+          <Card className="flex-1">
+            <CardContent className="p-3 flex items-center gap-2">
+              <ShieldCheck className="h-4 w-4 text-blue-500" />
+              <span className="text-lg font-bold">{complianceCounts.readyWarnings}</span>
+              <span className="text-xs text-muted-foreground">Warnings</span>
+            </CardContent>
+          </Card>
+          <Card className="flex-1">
+            <CardContent className="p-3 flex items-center gap-2">
+              <ShieldCheck className="h-4 w-4 text-green-500" />
+              <span className="text-lg font-bold">{complianceCounts.readyPublish}</span>
+              <span className="text-xs text-muted-foreground">Ready</span>
+            </CardContent>
+          </Card>
         </div>
+      )}
       )}
 
       {/* Two Column Layout */}

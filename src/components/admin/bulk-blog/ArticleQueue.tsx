@@ -92,6 +92,16 @@ export function ArticleQueue({ articles, selectedArticleId, onSelectArticle, onT
                   <Badge variant="outline" className="text-xs">{article.category}</Badge>
                   <span className="text-xs text-muted-foreground">{article.wordCount.toLocaleString()} words</span>
                   <PublishReadinessBadge status={readiness} />
+                  {(() => {
+                    const compliance = analyzePublishCompliance(meta);
+                    const cStatus = getComplianceReadinessStatus(compliance, meta);
+                    return (
+                      <>
+                        <ComplianceReadinessBadge status={cStatus} />
+                        {compliance.failCount > 0 && <span className="text-destructive text-xs">●</span>}
+                      </>
+                    );
+                  })()}
                 </div>
                 <div className="flex items-center gap-3 mt-1.5">
                   <span className="flex items-center gap-1 text-xs" title="Quality Score">

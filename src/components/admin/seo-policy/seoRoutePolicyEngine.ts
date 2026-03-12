@@ -141,12 +141,12 @@ export function derivePolicy(
     };
   }
 
-  // 3. Fallback — conservative: mark as public-seo but flag for review
+  // 3. Fallback — conservative: noindex, no sitemap, no cache until explicitly mapped
   return {
-    category: 'public-seo',
-    expectedIndexability: 'index',
-    includeInSitemap: true,
-    isCacheServed: true,
+    category: 'public-noindex',
+    expectedIndexability: 'noindex',
+    includeInSitemap: false,
+    isCacheServed: false,
     canonicalUrl: canonical,
     policySource: 'fallback',
   };

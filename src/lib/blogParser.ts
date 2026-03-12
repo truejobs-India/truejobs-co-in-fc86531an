@@ -112,6 +112,16 @@ export async function parseDocxFile(file: File, existingSlugs: string[] = []): P
   const { faqCount, faqSchema } = extractFAQs(doc);
   const hasFaqSchema = faqCount > 0;
 
+  // Extended extraction
+  const headings = extractHeadings(doc);
+  const tables = doc.querySelectorAll('table').length;
+  const externalLinks = extractExternalLinks(doc);
+  const hasIntro = detectHasIntro(doc);
+  const hasConclusion = detectHasConclusion(headings);
+  const disclaimer = extractSection(doc, /disclaimer|अस्वीकरण/i);
+  const keyHighlights = extractKeyHighlights(doc);
+  const excerpt = extractFirstText(doc, 200);
+
   // Extraction quality
   const extraction: Record<string, 'green' | 'yellow' | 'red'> = {
     title: title ? 'green' : 'red',
@@ -149,6 +159,14 @@ export async function parseDocxFile(file: File, existingSlugs: string[] = []): P
     scheduledAt: null,
     extraction,
     selected: false,
+    headings,
+    tables,
+    externalLinks,
+    hasIntro,
+    hasConclusion,
+    disclaimer,
+    keyHighlights,
+    excerpt,
   };
 }
 

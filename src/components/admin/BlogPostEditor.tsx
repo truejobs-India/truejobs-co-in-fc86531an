@@ -334,6 +334,10 @@ export function BlogPostEditor() {
   const currentReadiness = currentMetadata && currentQuality && currentSEO
     ? getReadinessStatus(currentQuality, currentSEO, currentMetadata) : null;
 
+  const currentCompliance = currentMetadata ? analyzePublishCompliance(currentMetadata) : null;
+  const complianceStatus = currentCompliance && currentMetadata
+    ? getComplianceReadinessStatus(currentCompliance, currentMetadata) : null;
+
   // Word count from content
   const liveWordCount = formData.content.replace(/<[^>]+>/g, '').split(/\s+/).filter(w => w.length > 0).length;
   const liveReadingTime = Math.max(1, Math.ceil(liveWordCount / 200));

@@ -68,3 +68,6 @@ verify_jwt = false
 
 [functions.enrich-employment-news]
 verify_jwt = false
+
+[functions.serve-public-page]
+verify_jwt = false

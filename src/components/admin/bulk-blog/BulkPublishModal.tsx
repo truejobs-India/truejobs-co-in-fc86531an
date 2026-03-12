@@ -324,16 +324,20 @@ export function BulkPublishModal({ open, onOpenChange, articles, onPublished }: 
             <Progress value={progressValue} className="h-2" />
             <p className="text-sm text-muted-foreground">{publishedCount + failedCount} / {totalCount}</p>
             <div className="space-y-2 max-h-60 overflow-y-auto">
-              {readyArticles.map(a => (
-                <div key={a.id} className="flex items-center gap-2 text-sm">
-                  {statuses[a.id] === 'done' && <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />}
-                  {statuses[a.id] === 'failed' && <XCircle className="h-4 w-4 text-destructive shrink-0" />}
-                  {statuses[a.id] === 'publishing' && <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />}
-                  {statuses[a.id] === 'fixing-meta' && <Sparkles className="h-4 w-4 animate-pulse text-amber-500 shrink-0" />}
-                  {statuses[a.id] === 'queued' && <span className="h-4 w-4 rounded-full bg-muted shrink-0" />}
-                  <span className="truncate">{statuses[a.id] === 'fixing-meta' ? `Generating meta: ${a.title}` : a.title}</span>
-                </div>
-              ))}
+              {readyArticles.map(a => {
+                const cd = articleComplianceData.find(d => d.articleId === a.id);
+                return (
+                  <div key={a.id} className="flex items-center gap-2 text-sm">
+                    {statuses[a.id] === 'done' && <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />}
+                    {statuses[a.id] === 'failed' && <XCircle className="h-4 w-4 text-destructive shrink-0" />}
+                    {statuses[a.id] === 'publishing' && <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />}
+                    {statuses[a.id] === 'fixing-meta' && <Sparkles className="h-4 w-4 animate-pulse text-amber-500 shrink-0" />}
+                    {statuses[a.id] === 'queued' && <span className="h-4 w-4 rounded-full bg-muted shrink-0" />}
+                    <span className="truncate flex-1">{statuses[a.id] === 'fixing-meta' ? `Generating meta: ${a.title}` : a.title}</span>
+                    {cd && <ComplianceReadinessBadge status={cd.complianceStatus} />}
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}

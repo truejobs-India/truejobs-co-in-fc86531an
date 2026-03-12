@@ -116,6 +116,7 @@ export function BlogPostEditor() {
     is_published: false,
     meta_title: '',
     meta_description: '',
+    author_name: 'TrueJobs Editorial Team',
   });
 
   useEffect(() => {
@@ -150,10 +151,11 @@ export function BlogPostEditor() {
     setFormData({
       title: '', slug: '', content: '', excerpt: '',
       cover_image_url: '', featured_image_alt: '', is_published: false,
-      meta_title: '', meta_description: '',
+      meta_title: '', meta_description: '', author_name: 'TrueJobs Editorial Team',
     });
     setEditingPost(null);
     setHasUnsavedChanges(false);
+    setPublishOverride(false);
   };
 
   const openEditDialog = (post: BlogPost) => {
@@ -168,8 +170,10 @@ export function BlogPostEditor() {
       is_published: post.is_published,
       meta_title: post.meta_title || '',
       meta_description: post.meta_description || '',
+      author_name: post.author_name || 'TrueJobs Editorial Team',
     });
     setHasUnsavedChanges(false);
+    setPublishOverride(false);
     setIsDialogOpen(true);
   };
 
@@ -209,6 +213,7 @@ export function BlogPostEditor() {
     published_at: formData.is_published ? new Date().toISOString() : null,
     meta_title: formData.meta_title.trim() || null,
     meta_description: formData.meta_description.trim() || null,
+    author_name: formData.author_name.trim() || null,
     author_id: user!.id,
   });
 
@@ -337,6 +342,10 @@ export function BlogPostEditor() {
     currentPage * POSTS_PER_PAGE
   );
 
+  // Word count from content
+  const liveWordCount = formData.content.replace(/<[^>]+>/g, '').split(/\s+/).filter(w => w.length > 0).length;
+  const liveReadingTime = Math.max(1, Math.ceil(liveWordCount / 200));
+
   // ── Compute scores for current form data ───────────
   const currentMetadata = formData.title ? blogPostToMetadata({
     title: formData.title,
@@ -348,6 +357,8 @@ export function BlogPostEditor() {
     cover_image_url: formData.cover_image_url || null,
     featured_image_alt: formData.featured_image_alt || null,
     is_published: formData.is_published,
+    author_name: formData.author_name || null,
+    word_count: liveWordCount,
   }) : null;
 
   const currentQuality = currentMetadata ? analyzeQuality(currentMetadata) : null;
@@ -359,9 +370,12 @@ export function BlogPostEditor() {
   const complianceStatus = currentCompliance && currentMetadata
     ? getComplianceReadinessStatus(currentCompliance, currentMetadata) : null;
 
-  // Word count from content
-  const liveWordCount = formData.content.replace(/<[^>]+>/g, '').split(/\s+/).filter(w => w.length > 0).length;
-  const liveReadingTime = Math.max(1, Math.ceil(liveWordCount / 200));
+  // Auto-reset publishOverride when no longer Blocked
+  useEffect(() => {
+    if (complianceStatus !== 'Blocked' && publishOverride) {
+      setPublishOverride(false);
+    }
+  }, [complianceStatus]);
 
   const redirectEntries = Object.entries(BLOG_REDIRECTS);
 

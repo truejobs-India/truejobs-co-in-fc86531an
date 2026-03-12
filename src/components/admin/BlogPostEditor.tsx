@@ -545,6 +545,24 @@ export function BlogPostEditor() {
               </Collapsible>
             </div>
 
+            {/* Needs Review confirmation dialog */}
+            <AlertDialog open={showNeedsReviewConfirm} onOpenChange={setShowNeedsReviewConfirm}>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Publish with issues?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This article has compliance issues that need review. Are you sure you want to publish it now?
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => { executeSubmit(); setShowNeedsReviewConfirm(false); }}>
+                    Publish Anyway
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+
             <DialogFooter>
               <DialogClose asChild>
                 <Button variant="outline">Cancel</Button>

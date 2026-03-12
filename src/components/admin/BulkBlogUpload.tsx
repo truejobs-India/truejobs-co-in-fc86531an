@@ -26,6 +26,34 @@ export function BulkBlogUpload() {
   const selectedCount = articles.filter(a => a.selected).length;
   const readyCount = articles.filter(a => getArticleReadiness(a) === 'green').length;
 
+  function parsedToMeta(a: ParsedArticle): ArticleMetadata {
+    return {
+      title: a.title, slug: a.slug, content: a.content,
+      metaTitle: a.metaTitle, metaDescription: a.metaDescription,
+      excerpt: a.excerpt, coverImageUrl: a.coverImageUrl || undefined,
+      coverImageAlt: a.coverImageAlt || undefined, wordCount: a.wordCount,
+      category: a.category, tags: a.tags, faqCount: a.faqCount,
+      hasFaqSchema: a.hasFaqSchema, internalLinks: a.internalLinks,
+      canonicalUrl: a.canonicalUrl, headings: a.headings,
+      hasIntro: a.hasIntro, hasConclusion: a.hasConclusion,
+      authorName: a.authorName,
+    };
+  }
+
+  const complianceCounts = useMemo(() => {
+    let blocked = 0, needsReview = 0, readyWarnings = 0, readyPublish = 0;
+    articles.forEach(a => {
+      const meta = parsedToMeta(a);
+      const c = analyzePublishCompliance(meta);
+      const s = getComplianceReadinessStatus(c, meta);
+      if (s === 'Blocked') blocked++;
+      else if (s === 'Needs Review') needsReview++;
+      else if (s === 'Ready with Warnings') readyWarnings++;
+      else readyPublish++;
+    });
+    return { blocked, needsReview, readyWarnings, readyPublish };
+  }, [articles]);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {

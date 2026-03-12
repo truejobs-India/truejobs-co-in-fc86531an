@@ -1,5 +1,15 @@
 import { ValidationCheck, GlobalAuditResult, CachePage, SITE_URL } from './cacheTypes';
 
+// Page types that legitimately use JobPosting schema
+const JOB_POSTING_PAGE_TYPES = [
+  'govt-exam', 'employment-news',
+  'city', 'state-govt', 'category', 'industry', 'department', 'qualification',
+  'custom-role', 'custom-freshers', 'custom-combo', 'custom-intent',
+  'combo-state-qual', 'combo-dept-qual', 'combo-cat-qual',
+  'selection-state', 'deadline-today', 'deadline-week', 'deadline-month',
+  'discovery-hub', 'standalone',
+];
+
 export function validateCachedPage(
   headHtml: string | null,
   bodyHtml: string | null,
@@ -89,17 +99,15 @@ export function validateCachedPage(
     checks.push({ label: 'WebPage schema valid', passed: isJsonLdParseable(head + body, 'WebPage') });
   }
 
-  // JobPosting only on job detail
+  // JobPosting — only flag if found on a page type that should NOT have it
   const hasJobPosting = head.includes('JobPosting') || body.includes('JobPosting');
-  const isJobDetail = pageType === 'job-detail';
-  if (hasJobPosting && !isJobDetail) {
+  if (hasJobPosting) {
+    const allowed = JOB_POSTING_PAGE_TYPES.some(t => pageType === t || pageType.startsWith(t));
     checks.push({
-      label: 'JobPosting schema only on job detail pages',
-      passed: false,
-      detail: `Found on page type: ${pageType}`,
+      label: 'JobPosting schema on appropriate page type',
+      passed: allowed,
+      detail: allowed ? `Allowed on ${pageType}` : `Unexpected on page type: ${pageType}`,
     });
-  } else if (hasJobPosting && isJobDetail) {
-    checks.push({ label: 'JobPosting schema only on job detail pages', passed: true });
   }
 
   // Internal link format valid

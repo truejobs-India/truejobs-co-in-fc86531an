@@ -171,7 +171,7 @@ export function BulkBlogUpload() {
     <div className="space-y-4">
       <div>
         <h2 className="text-xl font-bold">Bulk Blog Article Upload</h2>
-        <p className="text-sm text-muted-foreground">Upload .docx files. SEO data extracted automatically.</p>
+        <p className="text-sm text-muted-foreground">Upload .docx or .md files. SEO data extracted automatically.</p>
       </div>
 
       {/* Stats Row */}

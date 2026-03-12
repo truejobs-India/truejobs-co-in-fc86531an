@@ -1,4 +1,6 @@
 import mammoth from 'mammoth';
+import { marked } from 'marked';
+import DOMPurify from 'dompurify';
 import { supabase } from '@/integrations/supabase/client';
 
 // ── Types ──────────────────────────────────────────────
@@ -38,6 +40,7 @@ export interface ParsedArticle {
   disclaimer: string | null;
   keyHighlights: string[];
   excerpt: string;
+  sourceFormat?: 'docx' | 'md';
 }
 
 // ── Hindi → English transliteration map ────────────────
@@ -69,12 +72,14 @@ const CATEGORY_KEYWORDS: [string[], string][] = [
   [['army', 'police', 'railway', 'bank', 'teacher', 'patwari', 'रेलवे', 'पुलिस'], 'Job Information'],
 ];
 
-// ── Main parse function ──────────────────────────────
-export async function parseDocxFile(file: File, existingSlugs: string[] = []): Promise<ParsedArticle> {
+// ── Frontmatter regex ────────────────────────────────
+const FM_REGEX = /^---\n([\s\S]*?)\n---/;
+
+// ── Docx parse (internal) ────────────────────────────
+async function parseDocxFileInternal(file: File, existingSlugs: string[] = []): Promise<ParsedArticle> {
   const arrayBuffer = await file.arrayBuffer();
   const id = crypto.randomUUID();
 
-  // Convert with mammoth — upload embedded images to storage
   const result = await mammoth.convertToHtml(
     { arrayBuffer },
     {
@@ -95,11 +100,91 @@ export async function parseDocxFile(file: File, existingSlugs: string[] = []): P
   );
 
   const html = result.value;
+  return buildArticleFromHtml(html, file.name, id, existingSlugs, 'docx');
+}
+
+// ── Markdown parse (internal) ────────────────────────
+async function parseMarkdownFileInternal(file: File, existingSlugs: string[] = []): Promise<ParsedArticle> {
+  const id = crypto.randomUUID();
+  const raw = await file.text();
+
+  // Extract frontmatter
+  let frontmatter: Record<string, string> = {};
+  let body = raw;
+  try {
+    const fmMatch = raw.match(FM_REGEX);
+    if (fmMatch) {
+      body = raw.slice(fmMatch[0].length).trim();
+      const fmLines = fmMatch[1].split('\n');
+      for (const line of fmLines) {
+        const colonIdx = line.indexOf(':');
+        if (colonIdx === -1) continue;
+        const key = line.slice(0, colonIdx).trim().toLowerCase();
+        const val = line.slice(colonIdx + 1).trim();
+        frontmatter[key] = val;
+      }
+    }
+  } catch {
+    // Malformed frontmatter — fall back to body-only
+  }
+
+  // Parse tags from frontmatter (supports "a, b, c" and "[a, b, c]")
+  let fmTags: string[] | null = null;
+  if (frontmatter.tags) {
+    const raw = frontmatter.tags.replace(/^\[|\]$/g, '');
+    fmTags = raw.split(',').map(t => t.trim()).filter(Boolean);
+  }
+
+  // Convert markdown to HTML
+  const rawHtml = await marked.parse(body);
+  const sanitizedHtml = DOMPurify.sanitize(rawHtml);
+
+  const article = buildArticleFromHtml(sanitizedHtml, file.name, id, existingSlugs, 'md');
+
+  // Override with frontmatter values where present
+  if (frontmatter.title) article.title = frontmatter.title;
+  if (frontmatter.slug) {
+    article.slug = frontmatter.slug;
+    article.canonicalUrl = `https://truejobs.co.in/blog/${frontmatter.slug}`;
+  }
+  if (frontmatter.category) article.category = frontmatter.category;
+  if (fmTags) article.tags = fmTags;
+  if (frontmatter.metatitle || frontmatter['meta_title'] || frontmatter['meta-title']) {
+    article.metaTitle = frontmatter.metatitle || frontmatter['meta_title'] || frontmatter['meta-title'] || '';
+  }
+  if (frontmatter.metadescription || frontmatter['meta_description'] || frontmatter['meta-description']) {
+    article.metaDescription = frontmatter.metadescription || frontmatter['meta_description'] || frontmatter['meta-description'] || '';
+  }
+  if (frontmatter.excerpt) article.excerpt = frontmatter.excerpt;
+  if (frontmatter.author || frontmatter.authorname || frontmatter['author_name']) {
+    article.authorName = frontmatter.author || frontmatter.authorname || frontmatter['author_name'] || '';
+  }
+  if (frontmatter.coverimagealt || frontmatter['cover_image_alt'] || frontmatter['featured_image_alt']) {
+    article.coverImageAlt = frontmatter.coverimagealt || frontmatter['cover_image_alt'] || frontmatter['featured_image_alt'] || '';
+  }
+
+  // Recompute extraction quality after overrides
+  article.extraction.title = article.title ? 'green' : 'red';
+  article.extraction.metaTitle = article.metaTitle.length > 0 && article.metaTitle.length <= 60 ? 'green' : article.metaTitle.length > 60 ? 'yellow' : 'red';
+  article.extraction.metaDescription = article.metaDescription.length >= 100 && article.metaDescription.length <= 155 ? 'green' : article.metaDescription.length > 0 ? 'yellow' : 'red';
+  article.extraction.slug = article.slug ? 'green' : 'red';
+  article.extraction.category = article.category !== 'Uncategorized' ? 'green' : 'yellow';
+
+  return article;
+}
+
+// ── Shared article builder from HTML ─────────────────
+function buildArticleFromHtml(
+  html: string,
+  fileName: string,
+  id: string,
+  existingSlugs: string[],
+  sourceFormat: 'docx' | 'md'
+): ParsedArticle {
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, 'text/html');
 
-  // Extract fields
-  const title = extractTitle(doc, file.name);
+  const title = extractTitle(doc, fileName);
   const metaTitle = extractMetaField(doc, 'meta title') || title.substring(0, 60);
   const metaDescription = extractMetaField(doc, 'meta description') || extractFirstText(doc, 155);
   const slug = generateSlug(title, existingSlugs);
@@ -112,7 +197,6 @@ export async function parseDocxFile(file: File, existingSlugs: string[] = []): P
   const { faqCount, faqSchema } = extractFAQs(doc);
   const hasFaqSchema = faqCount > 0;
 
-  // Extended extraction
   const headings = extractHeadings(doc);
   const tables = doc.querySelectorAll('table').length;
   const externalLinks = extractExternalLinks(doc);
@@ -122,20 +206,19 @@ export async function parseDocxFile(file: File, existingSlugs: string[] = []): P
   const keyHighlights = extractKeyHighlights(doc);
   const excerpt = extractFirstText(doc, 200);
 
-  // Extraction quality
   const extraction: Record<string, 'green' | 'yellow' | 'red'> = {
     title: title ? 'green' : 'red',
     metaTitle: metaTitle.length > 0 && metaTitle.length <= 60 ? 'green' : metaTitle.length > 60 ? 'yellow' : 'red',
     metaDescription: metaDescription.length >= 100 && metaDescription.length <= 155 ? 'green' : metaDescription.length > 0 ? 'yellow' : 'red',
     slug: slug ? 'green' : 'red',
     category: category !== 'Uncategorized' ? 'green' : 'yellow',
-    coverImage: 'red', // always red until uploaded
+    coverImage: 'red',
     faq: faqCount > 0 ? 'green' : 'yellow',
   };
 
   return {
     id,
-    fileName: file.name,
+    fileName,
     title,
     metaTitle,
     metaDescription,
@@ -167,23 +250,34 @@ export async function parseDocxFile(file: File, existingSlugs: string[] = []): P
     disclaimer,
     keyHighlights,
     excerpt,
+    sourceFormat,
   };
 }
+
+// ── Public API ───────────────────────────────────────
+export async function parseArticleFile(file: File, existingSlugs: string[] = []): Promise<ParsedArticle> {
+  const ext = file.name.split('.').pop()?.toLowerCase();
+  if (ext === 'md') {
+    return parseMarkdownFileInternal(file, existingSlugs);
+  }
+  return parseDocxFileInternal(file, existingSlugs);
+}
+
+// Backward-compatible export
+export const parseDocxFile = parseArticleFile;
 
 // ── Helper functions ─────────────────────────────────
 
 function extractTitle(doc: Document, fileName: string): string {
   const h1 = doc.querySelector('h1');
   if (h1?.textContent?.trim()) return h1.textContent.trim();
-  // Fallback: first strong or paragraph
   const strong = doc.querySelector('strong');
   if (strong?.textContent?.trim()) return strong.textContent.trim();
-  return fileName.replace(/\.(docx?|pdf|txt)$/i, '').replace(/[-_]/g, ' ');
+  return fileName.replace(/\.(docx?|md|pdf|txt)$/i, '').replace(/[-_]/g, ' ');
 }
 
 function extractMetaField(doc: Document, fieldName: string): string {
   const allText = doc.body.innerHTML;
-  // Look for "Meta title:" or "Meta Description:" pattern
   const patterns = [
     new RegExp(`${fieldName}\\s*[:：]\\s*(.+?)(?:<|$)`, 'i'),
     new RegExp(`${fieldName}\\s*[:：]\\s*(.+?)(?:\\n|$)`, 'i'),
@@ -211,7 +305,6 @@ function extractFirstText(doc: Document, maxLen: number): string {
   return text.substring(0, maxLen);
 }
 
-// Hindi stop words to filter from slugs (prevents garbled URLs)
 const HINDI_STOP_WORDS = new Set([
   'me', 'se', 'ke', 'ka', 'ki', 'ko',
   'hai', 'hain', 'tha', 'thi', 'the',
@@ -226,34 +319,22 @@ const HINDI_STOP_WORDS = new Set([
 
 export function generateSlug(title: string, existingSlugs: string[] = []): string {
   let slug = title.toLowerCase().trim();
-
-  // Transliterate Hindi characters
   for (const [hindi, english] of Object.entries(HINDI_MAP)) {
     slug = slug.split(hindi).join(english);
   }
-
-  // Remove remaining non-ASCII, normalize separators
   slug = slug
     .replace(/[^\w\s-]/g, '')
     .replace(/\s+/g, '-')
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '');
-
-  // Filter out stop words and single-char segments
   const parts = slug.split('-').filter(part =>
     part.length > 1 && !HINDI_STOP_WORDS.has(part)
   );
   slug = parts.join('-');
-
-  // Add year if not present
   if (!/20\d{2}/.test(slug)) slug += '-2026';
-
-  // Cap at 65 chars, trim at word boundary
   if (slug.length > 65) {
     slug = slug.substring(0, 65).replace(/-[^-]*$/, '');
   }
-
-  // Deduplicate against existing slugs in the batch
   if (existingSlugs.includes(slug)) {
     let counter = 2;
     while (existingSlugs.includes(`${slug}-${counter}`)) counter++;
@@ -310,7 +391,6 @@ function extractFAQs(doc: Document): { faqCount: number; faqSchema: { question: 
   const faqs: { question: string; answer: string }[] = [];
   const text = doc.body.textContent || '';
   
-  // Pattern 1: Q: ... A: ...
   const qaPattern = /(?:Q|प्रश्न|सवाल)\s*[:\d.)\-]\s*(.+?)(?:\n|\r)(?:A|उत्तर|जवाब)\s*[:\-]\s*(.+?)(?=(?:Q|प्रश्न|सवाल)\s*[:\d.)\-]|$)/gis;
   let match;
   while ((match = qaPattern.exec(text)) !== null) {
@@ -319,7 +399,6 @@ function extractFAQs(doc: Document): { faqCount: number; faqSchema: { question: 
     }
   }
 
-  // Pattern 2: Look for FAQ heading then list items
   if (faqs.length === 0) {
     const elements = Array.from(doc.body.children);
     let inFaq = false;
@@ -334,9 +413,6 @@ function extractFAQs(doc: Document): { faqCount: number; faqSchema: { question: 
       if (inFaq) {
         if ((tagName === 'h2' || tagName === 'h3') && !/faq/i.test(elText)) break;
         if (elText.endsWith('?') || elText.endsWith('？')) {
-          if (currentQ && faqs.length > 0) {
-            // previous Q had no answer
-          }
           currentQ = elText;
         } else if (currentQ && elText.length > 10) {
           faqs.push({ question: currentQ, answer: elText });

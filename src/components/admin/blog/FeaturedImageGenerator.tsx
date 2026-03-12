@@ -16,7 +16,7 @@ interface FeaturedImageGeneratorProps {
 }
 
 /**
- * Generates featured images via Direct Gemini 2.5 Flash API.
+ * Generates featured images via gemini-2.5-flash direct Google API.
  * Does NOT use Lovable AI gateway — calls external Gemini API only.
  * Image generation is fully optional and never blocks manual workflow.
  */
@@ -45,11 +45,19 @@ export function FeaturedImageGenerator({
       });
 
       if (error) throw error;
+      if (data?.code === 'IMAGE_GEN_REGION_UNAVAILABLE') {
+        toast({
+          title: 'Region unavailable',
+          description: 'AI cover image generation is currently unavailable in the deployed edge region. Please upload a cover image manually.',
+          variant: 'destructive',
+        });
+        return;
+      }
       if (!data?.imageUrl) throw new Error('No image returned');
 
       setGeneratedAlt(data.altText || title);
       onImageGenerated(data.imageUrl, data.altText || title);
-      toast({ title: 'Cover image generated', description: 'AI Generated via Gemini 2.5 Flash' });
+      toast({ title: 'Cover image generated', description: 'AI Generated via gemini-2.5-flash' });
     } catch (err: any) {
       console.error('Image generation failed:', err);
       toast({
@@ -81,7 +89,7 @@ export function FeaturedImageGenerator({
           )}
           {isGenerating ? 'Generating...' : currentImageUrl ? 'Regenerate' : 'Generate Cover'}
         </Button>
-        <span className="text-[10px] text-muted-foreground">AI via Gemini 2.5 Flash</span>
+        <span className="text-[10px] text-muted-foreground">AI via gemini-2.5-flash</span>
       </div>
 
       {generatedAlt && (

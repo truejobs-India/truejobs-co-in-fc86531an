@@ -371,6 +371,10 @@ export default function AdminDashboard() {
               <TabsContent value="emp-news">
                 <EmploymentNewsManager />
               </TabsContent>
+
+              <TabsContent value="seo-policy">
+                <SEORoutePolicyDashboard />
+              </TabsContent>
             </Tabs>
           </>
         ) : currentView.type === 'users' ? (

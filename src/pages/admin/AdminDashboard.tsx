@@ -22,6 +22,7 @@ import {
   Landmark,
   Sparkles,
   Newspaper,
+  Shield,
 } from 'lucide-react';
 import { RestrictedDomainsManager } from '@/components/admin/RestrictedDomainsManager';
 import { EmploymentNewsManager } from '@/components/admin/EmploymentNewsManager';
@@ -46,6 +47,7 @@ import { BulkBlogUpload } from '@/components/admin/BulkBlogUpload';
 import { GovtExamsManager } from '@/components/admin/GovtExamsManager';
 import { GuideGenerator } from '@/components/admin/GuideGenerator';
 import { ContentEnricher } from '@/components/admin/ContentEnricher';
+import { SEORoutePolicyDashboard } from '@/components/admin/seo-policy/SEORoutePolicyDashboard';
 import { useNavigate } from 'react-router-dom';
 
 type DrilldownView = 
@@ -301,6 +303,10 @@ export default function AdminDashboard() {
                   <Newspaper className="h-4 w-4" />
                   <span className="hidden sm:inline">Emp News</span>
                 </TabsTrigger>
+                <TabsTrigger value="seo-policy" className="flex items-center gap-2">
+                  <Shield className="h-4 w-4" />
+                  <span className="hidden sm:inline">SEO Policy</span>
+                </TabsTrigger>
               </TabsList>
 
               <TabsContent value="users">
@@ -364,6 +370,10 @@ export default function AdminDashboard() {
 
               <TabsContent value="emp-news">
                 <EmploymentNewsManager />
+              </TabsContent>
+
+              <TabsContent value="seo-policy">
+                <SEORoutePolicyDashboard />
               </TabsContent>
             </Tabs>
           </>

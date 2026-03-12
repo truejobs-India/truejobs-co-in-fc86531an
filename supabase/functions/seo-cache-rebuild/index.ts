@@ -295,6 +295,8 @@ Deno.serve(async (req) => {
       return await handleSlugsMode(db, slugs, triggerSource, startTime);
     } else if (mode === 'full') {
       return await handleFullMode(db, triggerSource, startTime);
+    } else if (mode === 'purge-all-cf') {
+      return await handlePurgeAllCF(db, triggerSource, startTime);
     }
 
     return jsonResponse({ error: `Unknown mode: ${mode}` }, 400);

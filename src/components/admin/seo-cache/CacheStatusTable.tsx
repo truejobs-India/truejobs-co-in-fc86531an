@@ -115,12 +115,12 @@ export function CacheStatusTable({
                       <Button variant="ghost" size="icon" className="h-7 w-7"><MoreHorizontal className="h-4 w-4" /></Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      {p.headHtml && (
+                      {p.status !== 'missing' && (
                         <DropdownMenuItem onClick={() => onPreview(p)}>
                           <Eye className="h-4 w-4 mr-2" /> Preview
                         </DropdownMenuItem>
                       )}
-                      {p.headHtml && (
+                      {p.status !== 'missing' && (
                         <DropdownMenuItem onClick={() => onValidate(p)}>
                           <ShieldCheck className="h-4 w-4 mr-2" /> Validate
                         </DropdownMenuItem>

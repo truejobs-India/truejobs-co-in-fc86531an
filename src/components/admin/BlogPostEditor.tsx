@@ -515,6 +515,19 @@ export function BlogPostEditor() {
                 </Collapsible>
               )}
 
+              {/* Collapsible Compliance Report */}
+              {currentCompliance && (
+                <Collapsible open={complianceOpen} onOpenChange={setComplianceOpen}>
+                  <CollapsibleTrigger className="flex items-center gap-2 w-full py-2 text-sm font-medium hover:text-primary">
+                    <ChevronDown className={`h-4 w-4 transition-transform ${complianceOpen ? 'rotate-180' : ''}`} />
+                    Compliance & Publish Readiness ({currentCompliance.overallScore}/100)
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="border rounded-lg p-3 mt-1">
+                    <BlogComplianceChecklist compliance={currentCompliance} />
+                  </CollapsibleContent>
+                </Collapsible>
+              )}
+
               {/* Collapsible Internal Links */}
               <Collapsible open={linksOpen} onOpenChange={setLinksOpen}>
                 <CollapsibleTrigger className="flex items-center gap-2 w-full py-2 text-sm font-medium hover:text-primary">

@@ -116,6 +116,7 @@ export function BlogPostEditor() {
     is_published: false,
     meta_title: '',
     meta_description: '',
+    author_name: 'TrueJobs Editorial Team',
   });
 
   useEffect(() => {

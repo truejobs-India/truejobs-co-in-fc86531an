@@ -345,7 +345,7 @@ export default function AdminDashboard() {
 
               <TabsContent value="seo" className="space-y-6">
                 <SEOContentHealth />
-                <SEOCacheBuilder />
+                <SEOCacheManager />
                 <GuideGenerator />
                 <GSCUrlExport />
               </TabsContent>

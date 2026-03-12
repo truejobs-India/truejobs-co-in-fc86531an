@@ -285,6 +285,11 @@ export function SEORoutePolicyDashboard() {
                         <div className="truncate">
                           <p className="font-medium text-sm truncate">{r.title}</p>
                           <p className="text-xs text-muted-foreground truncate">/{r.slug}</p>
+                          {r.title.startsWith('[Pattern]') && (
+                            <Badge variant="outline" className="text-[10px] px-1 py-0 mt-0.5 border-slate-300 text-slate-500">
+                              Synthetic pattern entry
+                            </Badge>
+                          )}
                         </div>
                       </div>
                     </TableCell>

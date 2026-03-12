@@ -342,6 +342,10 @@ export function BlogPostEditor() {
     currentPage * POSTS_PER_PAGE
   );
 
+  // Word count from content
+  const liveWordCount = formData.content.replace(/<[^>]+>/g, '').split(/\s+/).filter(w => w.length > 0).length;
+  const liveReadingTime = Math.max(1, Math.ceil(liveWordCount / 200));
+
   // ── Compute scores for current form data ───────────
   const currentMetadata = formData.title ? blogPostToMetadata({
     title: formData.title,
@@ -366,9 +370,12 @@ export function BlogPostEditor() {
   const complianceStatus = currentCompliance && currentMetadata
     ? getComplianceReadinessStatus(currentCompliance, currentMetadata) : null;
 
-  // Word count from content
-  const liveWordCount = formData.content.replace(/<[^>]+>/g, '').split(/\s+/).filter(w => w.length > 0).length;
-  const liveReadingTime = Math.max(1, Math.ceil(liveWordCount / 200));
+  // Auto-reset publishOverride when no longer Blocked
+  useEffect(() => {
+    if (complianceStatus !== 'Blocked' && publishOverride) {
+      setPublishOverride(false);
+    }
+  }, [complianceStatus]);
 
   const redirectEntries = Object.entries(BLOG_REDIRECTS);
 

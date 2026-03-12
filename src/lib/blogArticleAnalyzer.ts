@@ -428,6 +428,7 @@ export function blogPostToMetadata(post: {
   internal_links?: any;
   canonical_url?: string | null;
   is_published?: boolean;
+  author_name?: string | null;
 }): ArticleMetadata {
   // Parse headings from content
   const parser = new DOMParser();

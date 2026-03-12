@@ -1,10 +1,13 @@
 import { useState, useEffect } from 'react';
 import { ParsedArticle } from '@/lib/blogParser';
+import { analyzeQuality, analyzeSEO, BLOG_THRESHOLDS, type ArticleMetadata } from '@/lib/blogArticleAnalyzer';
 import { supabase } from '@/integrations/supabase/client';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { CheckCircle, XCircle, Loader2, AlertTriangle, Copy, Sparkles } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -19,9 +22,24 @@ interface ValidationIssue {
   articleId: string;
   title: string;
   issues: string[];
+  qualityScore: number;
+  seoScore: number;
 }
 
 type PublishStatus = 'queued' | 'fixing-meta' | 'publishing' | 'done' | 'failed';
+
+function parsedToMeta(a: ParsedArticle): ArticleMetadata {
+  return {
+    title: a.title, slug: a.slug, content: a.content,
+    metaTitle: a.metaTitle, metaDescription: a.metaDescription,
+    excerpt: a.excerpt, coverImageUrl: a.coverImageUrl || undefined,
+    coverImageAlt: a.coverImageAlt || undefined, wordCount: a.wordCount,
+    category: a.category, tags: a.tags, faqCount: a.faqCount,
+    hasFaqSchema: a.hasFaqSchema, internalLinks: a.internalLinks,
+    canonicalUrl: a.canonicalUrl, headings: a.headings,
+    hasIntro: a.hasIntro, hasConclusion: a.hasConclusion,
+  };
+}
 
 export function BulkPublishModal({ open, onOpenChange, articles, onPublished }: BulkPublishModalProps) {
   const { toast } = useToast();
@@ -29,37 +47,45 @@ export function BulkPublishModal({ open, onOpenChange, articles, onPublished }: 
   const [statuses, setStatuses] = useState<Record<string, PublishStatus>>({});
   const [publishedUrls, setPublishedUrls] = useState<string[]>([]);
   const [fixedArticles, setFixedArticles] = useState<Record<string, string>>({});
+  const [overrideScoreCheck, setOverrideScoreCheck] = useState(false);
 
-  // Reset state when modal opens
   useEffect(() => {
     if (open) {
       setStage('validation');
       setStatuses({});
       setPublishedUrls([]);
       setFixedArticles({});
+      setOverrideScoreCheck(false);
     }
   }, [open]);
 
-  // Identify articles needing meta fix
-  const articlesNeedingMetaFix = articles.filter(
-    a => !a.metaDescription || a.metaDescription.length > 155
-  );
-
+  // Validation with quality/SEO scores
   const validationIssues: ValidationIssue[] = articles.map(a => {
+    const meta = parsedToMeta(a);
+    const quality = analyzeQuality(meta);
+    const seo = analyzeSEO(meta);
     const issues: string[] = [];
     if (!a.title) issues.push('Missing title');
     if (!a.slug) issues.push('Missing slug');
     if (!a.coverImageUrl) issues.push('Missing cover image');
     if (!a.category || a.category === 'Uncategorized') issues.push('Category not set');
-    // Meta description issues are auto-fixable, so not blocking
-    return { articleId: a.id, title: a.title, issues };
+    if (!overrideScoreCheck) {
+      if (quality.totalScore < BLOG_THRESHOLDS.READINESS_DRAFT_QUALITY) issues.push(`Quality too low (${quality.totalScore})`);
+      if (seo.totalScore < BLOG_THRESHOLDS.READINESS_DRAFT_SEO) issues.push(`SEO too low (${seo.totalScore})`);
+    }
+    return { articleId: a.id, title: a.title, issues, qualityScore: quality.totalScore, seoScore: seo.totalScore };
   });
 
+  const articlesNeedingMetaFix = articles.filter(a => !a.metaDescription || a.metaDescription.length > 155);
   const readyArticles = articles.filter(a => {
     const vi = validationIssues.find(v => v.articleId === a.id);
     return !vi || vi.issues.length === 0;
   });
   const issueArticles = validationIssues.filter(v => v.issues.length > 0);
+
+  // Aggregate scores
+  const avgQuality = articles.length > 0 ? Math.round(validationIssues.reduce((s, v) => s + v.qualityScore, 0) / articles.length) : 0;
+  const avgSeo = articles.length > 0 ? Math.round(validationIssues.reduce((s, v) => s + v.seoScore, 0) / articles.length) : 0;
 
   const handlePublish = async () => {
     setStage('publishing');
@@ -75,46 +101,27 @@ export function BulkPublishModal({ open, onOpenChange, articles, onPublished }: 
       return;
     }
 
-    // Step 1: Auto-fix meta descriptions using AI for articles that need it
-    const needsFix = readyArticles.filter(
-      a => !a.metaDescription || a.metaDescription.length > 155
-    );
-
+    // Step 1: Auto-fix meta descriptions
+    const needsFix = readyArticles.filter(a => !a.metaDescription || a.metaDescription.length > 155);
     const aiFixedMetas: Record<string, string> = {};
 
     if (needsFix.length > 0) {
       needsFix.forEach(a => setStatuses(prev => ({ ...prev, [a.id]: 'fixing-meta' })));
-
       try {
         const { data, error } = await supabase.functions.invoke('generate-meta-description', {
           body: {
             articles: needsFix.map(a => ({
-              id: a.id,
-              title: a.title,
+              id: a.id, title: a.title,
               content: a.content.substring(0, 2000),
               existingMeta: a.metaDescription || '',
             })),
           },
         });
-
         if (!error && data?.results) {
           Object.assign(aiFixedMetas, data.results);
           setFixedArticles(data.results);
-        } else {
-          console.error('AI meta generation failed:', error);
-          // Fallback: smart truncate
-          needsFix.forEach(a => {
-            if (a.metaDescription && a.metaDescription.length > 155) {
-              let fallback = a.metaDescription.substring(0, 152);
-              const lastSpace = fallback.lastIndexOf(' ');
-              if (lastSpace > 120) fallback = fallback.substring(0, lastSpace);
-              aiFixedMetas[a.id] = fallback + '...';
-            }
-          });
         }
-      } catch (err) {
-        console.error('Meta fix error:', err);
-        // Fallback truncation
+      } catch {
         needsFix.forEach(a => {
           if (a.metaDescription && a.metaDescription.length > 155) {
             let fallback = a.metaDescription.substring(0, 152);
@@ -126,15 +133,12 @@ export function BulkPublishModal({ open, onOpenChange, articles, onPublished }: 
       }
     }
 
-    // Step 2: Publish each article
+    // Step 2: Publish each
     for (const article of readyArticles) {
       setStatuses(prev => ({ ...prev, [article.id]: 'publishing' }));
       try {
         let finalSlug = article.slug;
-        const { data: existing } = await supabase
-          .from('blog_posts')
-          .select('slug')
-          .like('slug', `${article.slug}%`);
+        const { data: existing } = await supabase.from('blog_posts').select('slug').like('slug', `${article.slug}%`);
         if (existing && existing.length > 0) {
           const existingSlugs = existing.map(e => e.slug);
           if (existingSlugs.includes(finalSlug)) {
@@ -144,14 +148,10 @@ export function BulkPublishModal({ open, onOpenChange, articles, onPublished }: 
           }
         }
 
-        // Use AI-fixed meta or original (truncated as safety net)
-        const finalMeta = aiFixedMetas[article.id]
-          || article.metaDescription?.substring(0, 155)
-          || '';
+        const finalMeta = aiFixedMetas[article.id] || article.metaDescription?.substring(0, 155) || '';
 
         const faqSchemaJson = article.hasFaqSchema && article.faqSchema ? {
-          '@context': 'https://schema.org',
-          '@type': 'FAQPage',
+          '@context': 'https://schema.org', '@type': 'FAQPage',
           mainEntity: article.faqSchema.map(f => ({
             '@type': 'Question', name: f.question,
             acceptedAnswer: { '@type': 'Answer', text: f.answer },
@@ -159,29 +159,16 @@ export function BulkPublishModal({ open, onOpenChange, articles, onPublished }: 
         } : null;
 
         const { error } = await supabase.from('blog_posts').insert({
-          title: article.title,
-          slug: finalSlug,
-          content: article.content,
-          meta_title: article.metaTitle,
-          meta_description: finalMeta,
+          title: article.title, slug: finalSlug, content: article.content,
+          meta_title: article.metaTitle, meta_description: finalMeta,
           canonical_url: `https://truejobs.co.in/blog/${finalSlug}`,
-          cover_image_url: article.coverImageUrl,
-          featured_image_alt: article.coverImageAlt,
-          category: article.category,
-          tags: article.tags,
-          author_name: article.authorName,
-          author_id: user.id,
-          reading_time: article.readingTime,
-          word_count: article.wordCount,
-          faq_count: article.faqCount,
-          has_faq_schema: article.hasFaqSchema,
-          faq_schema: faqSchemaJson,
-          article_images: article.articleImages as any,
-          internal_links: article.internalLinks as any,
-          language: article.language,
-          status: 'published',
-          is_published: true,
-          published_at: new Date().toISOString(),
+          cover_image_url: article.coverImageUrl, featured_image_alt: article.coverImageAlt,
+          category: article.category, tags: article.tags, author_name: article.authorName,
+          author_id: user.id, reading_time: article.readingTime, word_count: article.wordCount,
+          faq_count: article.faqCount, has_faq_schema: article.hasFaqSchema,
+          faq_schema: faqSchemaJson, article_images: article.articleImages as any,
+          internal_links: article.internalLinks as any, language: article.language,
+          status: 'published', is_published: true, published_at: new Date().toISOString(),
           excerpt: finalMeta,
         });
         if (error) throw error;
@@ -227,16 +214,23 @@ export function BulkPublishModal({ open, onOpenChange, articles, onPublished }: 
               {issueArticles.length > 0 && <Badge variant="destructive">{issueArticles.length} Issues</Badge>}
               {articlesNeedingMetaFix.length > 0 && (
                 <Badge variant="secondary" className="gap-1">
-                  <Sparkles className="h-3 w-3" />
-                  {articlesNeedingMetaFix.length} meta will be AI-generated
+                  <Sparkles className="h-3 w-3" />{articlesNeedingMetaFix.length} meta will be AI-generated
                 </Badge>
               )}
             </div>
 
-            {articlesNeedingMetaFix.length > 0 && (
-              <p className="text-xs text-muted-foreground">
-                Articles with missing or long meta descriptions will be auto-fixed using AI before publishing.
-              </p>
+            {/* Aggregate scores */}
+            <div className="flex gap-4 text-xs text-muted-foreground bg-muted/50 rounded px-3 py-2">
+              <span>Avg Quality: {avgQuality}/100</span>
+              <span>Avg SEO: {avgSeo}/100</span>
+            </div>
+
+            {/* Score override toggle */}
+            {issueArticles.some(v => v.issues.some(i => i.includes('too low'))) && (
+              <div className="flex items-center gap-2 text-sm">
+                <Switch checked={overrideScoreCheck} onCheckedChange={setOverrideScoreCheck} />
+                <Label className="text-xs">Override quality/SEO score checks</Label>
+              </div>
             )}
 
             {issueArticles.length > 0 && (
@@ -244,7 +238,13 @@ export function BulkPublishModal({ open, onOpenChange, articles, onPublished }: 
                 <p className="text-sm font-medium text-destructive">Articles with issues (will be skipped):</p>
                 {issueArticles.map(v => (
                   <div key={v.articleId} className="border border-destructive/20 rounded p-2">
-                    <p className="text-sm font-medium truncate">{v.title}</p>
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-medium truncate">{v.title}</p>
+                      <div className="flex gap-1">
+                        <Badge variant="outline" className="text-[10px]">Q:{v.qualityScore}</Badge>
+                        <Badge variant="outline" className="text-[10px]">S:{v.seoScore}</Badge>
+                      </div>
+                    </div>
                     {v.issues.map((issue, i) => (
                       <p key={i} className="text-xs text-destructive flex items-center gap-1">
                         <AlertTriangle className="h-3 w-3" /> {issue}
@@ -273,13 +273,9 @@ export function BulkPublishModal({ open, onOpenChange, articles, onPublished }: 
                   {statuses[a.id] === 'done' && <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />}
                   {statuses[a.id] === 'failed' && <XCircle className="h-4 w-4 text-destructive shrink-0" />}
                   {statuses[a.id] === 'publishing' && <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />}
-                  {statuses[a.id] === 'fixing-meta' && (
-                    <Sparkles className="h-4 w-4 animate-pulse text-amber-500 shrink-0" />
-                  )}
+                  {statuses[a.id] === 'fixing-meta' && <Sparkles className="h-4 w-4 animate-pulse text-amber-500 shrink-0" />}
                   {statuses[a.id] === 'queued' && <span className="h-4 w-4 rounded-full bg-muted shrink-0" />}
-                  <span className="truncate">
-                    {statuses[a.id] === 'fixing-meta' ? `Generating meta: ${a.title}` : a.title}
-                  </span>
+                  <span className="truncate">{statuses[a.id] === 'fixing-meta' ? `Generating meta: ${a.title}` : a.title}</span>
                 </div>
               ))}
             </div>
@@ -294,8 +290,7 @@ export function BulkPublishModal({ open, onOpenChange, articles, onPublished }: 
               {failedCount > 0 && <p className="text-sm text-destructive">{failedCount} failed</p>}
               {Object.keys(fixedArticles).length > 0 && (
                 <p className="text-xs text-muted-foreground mt-1">
-                  <Sparkles className="h-3 w-3 inline mr-1" />
-                  {Object.keys(fixedArticles).length} meta descriptions were AI-generated
+                  <Sparkles className="h-3 w-3 inline mr-1" />{Object.keys(fixedArticles).length} meta descriptions were AI-generated
                 </p>
               )}
             </div>
@@ -303,9 +298,7 @@ export function BulkPublishModal({ open, onOpenChange, articles, onPublished }: 
               <div>
                 <p className="text-sm font-medium mb-2">Published URLs:</p>
                 <div className="bg-muted rounded p-2 max-h-40 overflow-y-auto text-xs font-mono space-y-1">
-                  {publishedUrls.map((url, i) => (
-                    <div key={i} className="truncate">{url}</div>
-                  ))}
+                  {publishedUrls.map((url, i) => <div key={i} className="truncate">{url}</div>)}
                 </div>
                 <Button variant="outline" size="sm" className="mt-2 gap-1" onClick={copyUrls}>
                   <Copy className="h-3 w-3" /> Copy All URLs

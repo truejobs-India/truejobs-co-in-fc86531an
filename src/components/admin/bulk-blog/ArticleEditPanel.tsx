@@ -1,5 +1,10 @@
 import { useState, useRef } from 'react';
 import { ParsedArticle, generateSlug } from '@/lib/blogParser';
+import { analyzeQuality, analyzeSEO, type ArticleMetadata } from '@/lib/blogArticleAnalyzer';
+import { BlogArticleReport } from '../blog/BlogArticleReport';
+import { BlogSEOChecklist } from '../blog/BlogSEOChecklist';
+import { InternalLinkSuggester } from '../blog/InternalLinkSuggester';
+import { FeaturedImageGenerator } from '../blog/FeaturedImageGenerator';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
@@ -10,9 +15,10 @@ import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { Image, Upload, X, CalendarIcon, RefreshCw, CheckCircle, Loader2, ExternalLink, Plus } from 'lucide-react';
+import { Image, Upload, X, CalendarIcon, RefreshCw, CheckCircle, Loader2, ExternalLink, Plus, ChevronDown } from 'lucide-react';
 import { format } from 'date-fns';
 
 interface ArticleEditPanelProps {
@@ -21,13 +27,22 @@ interface ArticleEditPanelProps {
 }
 
 const CATEGORIES = [
-  'Results & Admit Cards',
-  'Exam Preparation',
-  'Sarkari Naukri Basics',
-  'Career Guides & Tips',
-  'Job Information',
-  'Uncategorized',
+  'Results & Admit Cards', 'Exam Preparation', 'Sarkari Naukri Basics',
+  'Career Guides & Tips', 'Job Information', 'Uncategorized',
 ];
+
+function parsedToMeta(a: ParsedArticle): ArticleMetadata {
+  return {
+    title: a.title, slug: a.slug, content: a.content,
+    metaTitle: a.metaTitle, metaDescription: a.metaDescription,
+    excerpt: a.excerpt, coverImageUrl: a.coverImageUrl || undefined,
+    coverImageAlt: a.coverImageAlt || undefined, wordCount: a.wordCount,
+    category: a.category, tags: a.tags, faqCount: a.faqCount,
+    hasFaqSchema: a.hasFaqSchema, internalLinks: a.internalLinks,
+    canonicalUrl: a.canonicalUrl, headings: a.headings,
+    hasIntro: a.hasIntro, hasConclusion: a.hasConclusion,
+  };
+}
 
 export function ArticleEditPanel({ article, onUpdate }: ArticleEditPanelProps) {
   const { toast } = useToast();
@@ -36,12 +51,20 @@ export function ArticleEditPanel({ article, onUpdate }: ArticleEditPanelProps) {
   const [slugChecking, setSlugChecking] = useState(false);
   const [slugAvailable, setSlugAvailable] = useState<boolean | null>(null);
   const [tagInput, setTagInput] = useState('');
+  const [qualityOpen, setQualityOpen] = useState(false);
+  const [seoOpen, setSeoOpen] = useState(false);
+  const [linksOpen, setLinksOpen] = useState(false);
   const coverInputRef = useRef<HTMLInputElement>(null);
   const articleImgInputRef = useRef<HTMLInputElement>(null);
 
   const update = (fields: Partial<ParsedArticle>) => {
     onUpdate({ ...article, ...fields });
   };
+
+  // Compute scores
+  const meta = parsedToMeta(article);
+  const qualityReport = analyzeQuality(meta);
+  const seoReport = analyzeSEO(meta);
 
   const handleCoverUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -53,10 +76,7 @@ export function ArticleEditPanel({ article, onUpdate }: ArticleEditPanelProps) {
       const { error } = await supabase.storage.from('blog-assets').upload(path, file, { upsert: true, contentType: file.type });
       if (error) throw error;
       const { data } = supabase.storage.from('blog-assets').getPublicUrl(path);
-      update({
-        coverImageUrl: data.publicUrl,
-        extraction: { ...article.extraction, coverImage: 'green' },
-      });
+      update({ coverImageUrl: data.publicUrl, extraction: { ...article.extraction, coverImage: 'green' } });
       toast({ title: 'Cover image uploaded' });
     } catch (err: any) {
       toast({ title: 'Upload failed', description: err.message, variant: 'destructive' });
@@ -98,15 +118,47 @@ export function ArticleEditPanel({ article, onUpdate }: ArticleEditPanelProps) {
 
   const addTag = () => {
     const tag = tagInput.trim();
-    if (tag && !article.tags.includes(tag)) {
-      update({ tags: [...article.tags, tag] });
-    }
+    if (tag && !article.tags.includes(tag)) update({ tags: [...article.tags, tag] });
     setTagInput('');
   };
 
   return (
     <div className="space-y-5 p-4 overflow-y-auto max-h-[calc(100vh-200px)]">
       <h3 className="font-semibold text-lg">Edit Article</h3>
+
+      {/* Quality & SEO Summary */}
+      <div className="flex gap-2 text-xs">
+        <Badge variant={qualityReport.totalScore >= 70 ? 'default' : qualityReport.totalScore >= 50 ? 'secondary' : 'destructive'}>
+          Quality: {qualityReport.totalScore}
+        </Badge>
+        <Badge variant={seoReport.totalScore >= 70 ? 'default' : seoReport.totalScore >= 50 ? 'secondary' : 'destructive'}>
+          SEO: {seoReport.totalScore}
+        </Badge>
+      </div>
+
+      {/* Collapsible Quality Report */}
+      <Collapsible open={qualityOpen} onOpenChange={setQualityOpen}>
+        <CollapsibleTrigger className="flex items-center gap-2 w-full py-1 text-sm font-medium hover:text-primary">
+          <ChevronDown className={`h-4 w-4 transition-transform ${qualityOpen ? 'rotate-180' : ''}`} />
+          Article Quality ({qualityReport.grade})
+        </CollapsibleTrigger>
+        <CollapsibleContent className="border rounded-lg p-3 mt-1">
+          <BlogArticleReport report={qualityReport} />
+        </CollapsibleContent>
+      </Collapsible>
+
+      {/* Collapsible SEO Checklist */}
+      <Collapsible open={seoOpen} onOpenChange={setSeoOpen}>
+        <CollapsibleTrigger className="flex items-center gap-2 w-full py-1 text-sm font-medium hover:text-primary">
+          <ChevronDown className={`h-4 w-4 transition-transform ${seoOpen ? 'rotate-180' : ''}`} />
+          SEO Checklist ({seoReport.totalScore}/100)
+        </CollapsibleTrigger>
+        <CollapsibleContent className="border rounded-lg p-3 mt-1">
+          <BlogSEOChecklist report={seoReport} />
+        </CollapsibleContent>
+      </Collapsible>
+
+      <Separator />
 
       {/* SEO Settings */}
       <section className="space-y-3">
@@ -118,18 +170,14 @@ export function ArticleEditPanel({ article, onUpdate }: ArticleEditPanelProps) {
         <div>
           <div className="flex justify-between">
             <Label>Meta Title</Label>
-            <span className={`text-xs ${article.metaTitle.length > 60 ? 'text-destructive' : 'text-muted-foreground'}`}>
-              {article.metaTitle.length}/60
-            </span>
+            <span className={`text-xs ${article.metaTitle.length > 60 ? 'text-destructive' : 'text-muted-foreground'}`}>{article.metaTitle.length}/60</span>
           </div>
           <Input value={article.metaTitle} onChange={e => update({ metaTitle: e.target.value })} maxLength={60} />
         </div>
         <div>
           <div className="flex justify-between">
             <Label>Meta Description</Label>
-            <span className={`text-xs ${article.metaDescription.length > 155 ? 'text-destructive' : 'text-muted-foreground'}`}>
-              {article.metaDescription.length}/155
-            </span>
+            <span className={`text-xs ${article.metaDescription.length > 155 ? 'text-destructive' : 'text-muted-foreground'}`}>{article.metaDescription.length}/155</span>
           </div>
           <Textarea value={article.metaDescription} onChange={e => update({ metaDescription: e.target.value })} maxLength={155} rows={2} />
         </div>
@@ -217,22 +265,21 @@ export function ArticleEditPanel({ article, onUpdate }: ArticleEditPanelProps) {
 
       <Separator />
 
-      {/* Internal Links */}
-      <section className="space-y-3">
-        <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Internal Links ({article.internalLinks.length})</h4>
-        {article.internalLinks.length > 0 ? (
-          <div className="space-y-1">
-            {article.internalLinks.map((link, i) => (
-              <div key={i} className="flex items-center gap-2 text-xs">
-                <ExternalLink className="h-3 w-3 text-green-500 shrink-0" />
-                <span className="truncate">{link.path}</span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-xs text-muted-foreground">No internal links detected</p>
-        )}
-      </section>
+      {/* Internal Links (Suggestions) */}
+      <Collapsible open={linksOpen} onOpenChange={setLinksOpen}>
+        <CollapsibleTrigger className="flex items-center gap-2 w-full py-1 text-sm font-medium hover:text-primary">
+          <ChevronDown className={`h-4 w-4 transition-transform ${linksOpen ? 'rotate-180' : ''}`} />
+          Internal Link Suggestions
+        </CollapsibleTrigger>
+        <CollapsibleContent className="border rounded-lg p-3 mt-1">
+          <InternalLinkSuggester
+            content={article.content}
+            currentInternalLinks={article.internalLinks.length}
+            category={article.category}
+            tags={article.tags}
+          />
+        </CollapsibleContent>
+      </Collapsible>
 
       <Separator />
 
@@ -270,6 +317,23 @@ export function ArticleEditPanel({ article, onUpdate }: ArticleEditPanelProps) {
             </Button>
           )}
           <input ref={coverInputRef} type="file" accept=".jpg,.jpeg,.png,.webp" className="hidden" onChange={handleCoverUpload} />
+
+          {/* AI Image Generator */}
+          <div className="mt-2">
+            <FeaturedImageGenerator
+              slug={article.slug}
+              title={article.title}
+              category={article.category}
+              tags={article.tags}
+              currentImageUrl={article.coverImageUrl || undefined}
+              onImageGenerated={(url, alt) => update({
+                coverImageUrl: url,
+                coverImageAlt: alt,
+                extraction: { ...article.extraction, coverImage: 'green' },
+              })}
+            />
+          </div>
+
           <Input value={article.coverImageAlt} onChange={e => update({ coverImageAlt: e.target.value })} placeholder="Cover alt text" className="mt-2" />
         </div>
         <div>

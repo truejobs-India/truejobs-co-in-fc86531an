@@ -1,3 +1,8 @@
+/**
+ * @deprecated — Emergency fallback only.
+ * Primary rendering is now handled by the Cloudflare Worker + serve-public-page edge function.
+ * This function remains as a fallback for Rendertron-based bot serving if the Worker layer fails.
+ */
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {

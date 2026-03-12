@@ -523,7 +523,7 @@ export function SEOCacheBuilder() {
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          Generates static HTML snapshots for all SEO pages. These are served to search engine crawlers (Googlebot, Bingbot, etc.) so they see full content without JavaScript rendering.
+          Generates static HTML fragments for all public SEO pages. These are served as the primary HTML response for all visitors via the Cloudflare Worker, with React progressively enhancing the page on load.
         </p>
         
         <div className="flex items-center gap-3">

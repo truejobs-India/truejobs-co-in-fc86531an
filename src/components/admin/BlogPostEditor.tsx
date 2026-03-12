@@ -463,8 +463,29 @@ export function BlogPostEditor() {
                 </div>
               </div>
 
+              {/* Policy warnings + publish toggle */}
+              {currentCompliance && <BlogPolicyWarnings compliance={currentCompliance} />}
+
+              {complianceStatus === 'Blocked' && formData.is_published && (
+                <div className="border border-destructive/30 rounded-lg p-3 bg-destructive/5 space-y-2">
+                  <p className="text-xs text-destructive font-medium">This article is blocked from publishing due to critical issues.</p>
+                  <div className="flex items-center gap-2">
+                    <Checkbox id="publish-override" checked={publishOverride} onCheckedChange={(c) => setPublishOverride(!!c)} />
+                    <Label htmlFor="publish-override" className="text-xs">Override and publish anyway</Label>
+                  </div>
+                </div>
+              )}
+
               <div className="flex items-center gap-2">
-                <Switch id="is_published" checked={formData.is_published} onCheckedChange={(checked) => handleFormChange({ is_published: checked })} />
+                <Switch
+                  id="is_published"
+                  checked={formData.is_published}
+                  onCheckedChange={(checked) => {
+                    handleFormChange({ is_published: checked });
+                    if (!checked) setPublishOverride(false);
+                  }}
+                  disabled={complianceStatus === 'Blocked' && !publishOverride && formData.is_published}
+                />
                 <Label htmlFor="is_published">Publish immediately</Label>
               </div>
 

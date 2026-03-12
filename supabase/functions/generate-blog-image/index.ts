@@ -1,7 +1,4 @@
-// DIRECT GEMINI API — Does NOT use Lovable AI gateway.
-// Uses only gemini-2.5-flash via direct Google API.
-// This edge function calls generativelanguage.googleapis.com directly
-// using the project's own GEMINI_API_KEY secret.
+// Uses Lovable AI gateway with gemini-2.5-flash-image for image generation.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -66,72 +63,84 @@ Deno.serve(async (req) => {
       );
     }
 
-    // ── Call Google AI API directly ──────────────────────
-    const geminiApiKey = Deno.env.get("GEMINI_API_KEY");
-    if (!geminiApiKey) {
+    // ── Call Lovable AI Gateway for image generation ────
+    const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
+    if (!lovableApiKey) {
       return new Response(
-        JSON.stringify({ error: "GEMINI_API_KEY not configured" }),
+        JSON.stringify({ error: "LOVABLE_API_KEY not configured" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     const keywordList = Array.isArray(keywords) ? keywords.join(", ") : "";
-    const imagePrompt = `Create a clean, professional editorial illustration for a blog article titled "${title}" about ${category || "government jobs and exams"}.${keywordList ? ` Related topics: ${keywordList}.` : ""} Style: modern flat illustration, suitable for an Indian government jobs and exam preparation portal. Landscape format 1200x630 pixels. Use warm, professional colors. Do not include any text overlays, official government seals, emblems, or logos. Do not include any misleading official symbols. The image should be abstract and editorial in nature. Also provide a concise alt text description under 150 characters.`;
+    const imagePrompt = `Create a clean, professional editorial illustration for a blog article titled "${title}" about ${category || "government jobs and exams"}.${keywordList ? ` Related topics: ${keywordList}.` : ""} Style: modern flat illustration, suitable for an Indian government jobs and exam preparation portal. Landscape format 1200x630 pixels. Use warm, professional colors. Do not include any text overlays, official government seals, emblems, or logos. Do not include any misleading official symbols. The image should be abstract and editorial in nature.`;
 
-    const modelUsed = "gemini-2.5-flash";
+    const modelUsed = "google/gemini-2.5-flash-image";
     let imageBase64 = "";
     let mimeType = "image/png";
     let altText = title;
 
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`;
-    console.log("Calling Gemini 2.5 Flash for image generation...");
+    console.log("Calling Lovable AI gateway with gemini-2.5-flash-image...");
 
     try {
-      const geminiResponse = await fetch(geminiUrl, {
+      const gatewayResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          Authorization: `Bearer ${lovableApiKey}`,
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: imagePrompt }] }],
-          generationConfig: { responseModalities: ["TEXT", "IMAGE"] },
+          model: modelUsed,
+          messages: [{ role: "user", content: imagePrompt }],
+          modalities: ["image", "text"],
         }),
       });
 
-      if (!geminiResponse.ok) {
-        const errText = await geminiResponse.text();
-        console.log(`Gemini 2.5 Flash failed [${geminiResponse.status}]: ${errText.substring(0, 300)}`);
-        const errLower = errText.toLowerCase();
-        if (errLower.includes("not available") || errLower.includes("region") || errLower.includes("not supported")) {
+      if (!gatewayResponse.ok) {
+        const errText = await gatewayResponse.text();
+        console.error(`Gateway error [${gatewayResponse.status}]: ${errText.substring(0, 300)}`);
+        if (gatewayResponse.status === 429) {
           return new Response(
-            JSON.stringify({ error: "Image generation unavailable in this region", code: "IMAGE_GEN_REGION_UNAVAILABLE", model: modelUsed }),
-            { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            JSON.stringify({ error: "Rate limit exceeded, please try again later.", model: modelUsed }),
+            { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        if (gatewayResponse.status === 402) {
+          return new Response(
+            JSON.stringify({ error: "Payment required, please add funds to your workspace.", model: modelUsed }),
+            { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
         return new Response(
-          JSON.stringify({ error: `Gemini API error: ${errText.substring(0, 200)}`, model: modelUsed }),
+          JSON.stringify({ error: `AI gateway error: ${errText.substring(0, 200)}`, model: modelUsed }),
           { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
-      const geminiData = await geminiResponse.json();
-      for (const candidate of geminiData.candidates || []) {
-        for (const part of candidate.content?.parts || []) {
-          if (part.inlineData && !imageBase64) {
-            imageBase64 = part.inlineData.data;
-            mimeType = part.inlineData.mimeType || "image/png";
-          }
-          if (part.text && !imageBase64) {
-            // Only use text as alt if no image found yet (text before image)
-          }
-          if (part.text) {
-            const text = part.text.trim();
-            if (text.length > 10 && text.length < 200) altText = text;
+      const data = await gatewayResponse.json();
+      const choice = data.choices?.[0]?.message;
+
+      // Extract image from response
+      if (choice?.images?.length > 0) {
+        const imgUrl = choice.images[0]?.image_url?.url || "";
+        if (imgUrl.startsWith("data:")) {
+          const match = imgUrl.match(/^data:(image\/\w+);base64,(.+)$/);
+          if (match) {
+            mimeType = match[1];
+            imageBase64 = match[2];
           }
         }
       }
+
+      // Extract alt text from text content
+      if (choice?.content) {
+        const text = choice.content.trim();
+        if (text.length > 10 && text.length < 200) altText = text;
+      }
     } catch (fetchErr) {
-      console.error("Gemini fetch error:", fetchErr instanceof Error ? fetchErr.message : "unknown");
+      console.error("Gateway fetch error:", fetchErr instanceof Error ? fetchErr.message : "unknown");
       return new Response(
-        JSON.stringify({ error: fetchErr instanceof Error ? fetchErr.message : "Gemini API request failed", model: modelUsed }),
+        JSON.stringify({ error: fetchErr instanceof Error ? fetchErr.message : "AI gateway request failed", model: modelUsed }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }

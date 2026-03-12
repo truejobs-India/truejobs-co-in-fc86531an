@@ -98,10 +98,13 @@ export function BlogPostEditor() {
   const autosaveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
-  // Quality/SEO panels
+  // Quality/SEO/Compliance panels
   const [qualityOpen, setQualityOpen] = useState(false);
   const [seoOpen, setSeoOpen] = useState(false);
   const [linksOpen, setLinksOpen] = useState(false);
+  const [complianceOpen, setComplianceOpen] = useState(false);
+  const [publishOverride, setPublishOverride] = useState(false);
+  const [showNeedsReviewConfirm, setShowNeedsReviewConfirm] = useState(false);
 
   const [formData, setFormData] = useState({
     title: '',

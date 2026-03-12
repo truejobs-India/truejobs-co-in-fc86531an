@@ -2,21 +2,7 @@ import {
   CachePage, PageData, PageValidationReport, ValidationCheckResult,
   ValidationSeverity, ValidationCategory, SITE_URL, PAGE_TYPES,
 } from './cacheTypes';
-
-// ── Constants ───────────────────────────────────────────────────────
-
-const NOINDEX_TYPES = new Set(['deadline-today', 'deadline-week', 'deadline-month']);
-
-const BREADCRUMB_EXPECTED_TYPES = new Set([
-  'city', 'state-govt', 'category', 'industry', 'department', 'qualification',
-  'blog', 'govt-exam', 'employment-news',
-  'authority-exam', 'authority-notification', 'authority-syllabus',
-  'authority-salary', 'authority-cutoff', 'authority-previous-papers',
-  'exam-hub', 'previous-year-paper',
-  'custom-role', 'custom-freshers', 'custom-combo', 'custom-intent',
-  'combo-state-qual', 'combo-dept-qual', 'combo-cat-qual',
-  'selection-state', 'discovery-hub',
-]);
+import { NOINDEX_TYPES, BREADCRUMB_EXPECTED_TYPES } from '../seo-policy/seoRoutePolicyRegistry';
 
 const JOB_POSTING_PAGE_TYPES = [
   'govt-exam', 'employment-news',

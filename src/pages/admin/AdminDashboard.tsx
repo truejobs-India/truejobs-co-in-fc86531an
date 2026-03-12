@@ -22,6 +22,7 @@ import {
   Landmark,
   Sparkles,
   Newspaper,
+  Shield,
 } from 'lucide-react';
 import { RestrictedDomainsManager } from '@/components/admin/RestrictedDomainsManager';
 import { EmploymentNewsManager } from '@/components/admin/EmploymentNewsManager';

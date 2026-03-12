@@ -167,6 +167,17 @@ export function ArticleEditPanel({ article, onUpdate }: ArticleEditPanelProps) {
         </CollapsibleContent>
       </Collapsible>
 
+      {/* Collapsible Compliance Report */}
+      <Collapsible open={complianceOpen} onOpenChange={setComplianceOpen}>
+        <CollapsibleTrigger className="flex items-center gap-2 w-full py-1 text-sm font-medium hover:text-primary">
+          <ChevronDown className={`h-4 w-4 transition-transform ${complianceOpen ? 'rotate-180' : ''}`} />
+          Compliance & Publish Readiness ({compliance.overallScore}/100)
+        </CollapsibleTrigger>
+        <CollapsibleContent className="border rounded-lg p-3 mt-1">
+          <BlogComplianceChecklist compliance={compliance} />
+        </CollapsibleContent>
+      </Collapsible>
+
       <Separator />
 
       {/* SEO Settings */}

@@ -55,13 +55,24 @@ export function useCacheData(filters: CacheFiltersState, page: number) {
   const fetchStats = useCallback(async () => {
     if (inventory.length === 0) return;
 
-    const [cachedRes, queuePendingRes, queueFailedRes, lastFullLog, lastIncrLog] = await Promise.all([
+    const [cachedRes, queuePendingRes, queueFailedRes] = await Promise.all([
       supabase.from('seo_page_cache').select('*', { count: 'exact', head: true }),
       supabase.from('seo_rebuild_queue' as any).select('*', { count: 'exact', head: true }).eq('status', 'pending'),
       supabase.from('seo_rebuild_queue' as any).select('*', { count: 'exact', head: true }).eq('status', 'failed'),
-      supabase.from('seo_rebuild_log' as any).select('created_at').eq('rebuild_type', 'full').order('created_at', { ascending: false }).limit(1),
-      supabase.from('seo_rebuild_log' as any).select('created_at').eq('rebuild_type', 'queue').order('created_at', { ascending: false }).limit(1),
     ]);
+
+    const lastFullLog = await supabase
+      .from('seo_rebuild_log' as any)
+      .select('*')
+      .eq('rebuild_type', 'full')
+      .order('created_at', { ascending: false })
+      .limit(1);
+    const lastIncrLog = await supabase
+      .from('seo_rebuild_log' as any)
+      .select('*')
+      .eq('rebuild_type', 'queue')
+      .order('created_at', { ascending: false })
+      .limit(1);
 
     const cachedCount = cachedRes.count ?? 0;
     const totalCacheable = inventory.length;

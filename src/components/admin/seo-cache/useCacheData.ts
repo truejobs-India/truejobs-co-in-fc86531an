@@ -87,8 +87,8 @@ export function useCacheData(filters: CacheFiltersState, page: number) {
       failed: failedCount,
       queuePending: queuePendingRes.count ?? 0,
       coveragePercent: totalCacheable > 0 ? Math.round((cachedCount / totalCacheable) * 100) : 0,
-      lastFullBuild: lastFullLog.data?.[0]?.created_at || null,
-      lastIncrementalBuild: lastIncrLog.data?.[0]?.created_at || null,
+      lastFullBuild: (lastFullLog.data as any)?.[0]?.created_at || null,
+      lastIncrementalBuild: (lastIncrLog.data as any)?.[0]?.created_at || null,
     });
   }, [inventory]);
 

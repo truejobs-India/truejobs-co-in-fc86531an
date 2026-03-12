@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { ParsedArticle, getArticleReadiness } from '@/lib/blogParser';
 import { UploadZone } from './bulk-blog/UploadZone';
 import { ArticleQueue } from './bulk-blog/ArticleQueue';
@@ -10,7 +10,9 @@ import { Card, CardContent } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
-import { CheckSquare, Rocket, Save, Download, Trash2, FileText, Loader2 } from 'lucide-react';
+import { CheckSquare, Rocket, Save, Download, Trash2, FileText, Loader2, ShieldAlert, ShieldCheck, AlertTriangle } from 'lucide-react';
+import type { ArticleMetadata } from '@/lib/blogArticleAnalyzer';
+import { analyzePublishCompliance, getComplianceReadinessStatus } from '@/lib/blogComplianceAnalyzer';
 
 export function BulkBlogUpload() {
   const { toast } = useToast();

@@ -16,7 +16,7 @@ interface FeaturedImageGeneratorProps {
 }
 
 /**
- * Generates featured images via Direct Gemini 2.5 Flash API.
+ * Generates featured images via gemini-2.5-flash direct Google API.
  * Does NOT use Lovable AI gateway — calls external Gemini API only.
  * Image generation is fully optional and never blocks manual workflow.
  */

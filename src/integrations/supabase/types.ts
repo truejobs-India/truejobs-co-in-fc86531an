@@ -1975,19 +1975,25 @@ export type Database = {
       }
       seo_page_cache: {
         Row: {
+          body_html: string | null
           full_html: string
+          head_html: string | null
           page_type: string
           slug: string
           updated_at: string
         }
         Insert: {
+          body_html?: string | null
           full_html: string
+          head_html?: string | null
           page_type?: string
           slug: string
           updated_at?: string
         }
         Update: {
+          body_html?: string | null
           full_html?: string
+          head_html?: string | null
           page_type?: string
           slug?: string
           updated_at?: string

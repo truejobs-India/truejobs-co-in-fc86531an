@@ -50,6 +50,7 @@ interface BlogAIToolsProps {
     author_name: string;
     category?: string | null;
     tags?: string[] | null;
+    canonical_url?: string;
   };
   onApplyField: (field: string, value: string) => void;
   editorInstance: Editor | null;
@@ -69,7 +70,128 @@ interface ToolState {
 type ToolKey = 'seo' | 'faq' | 'internalLinks' | 'structure' | 'rewriteSection' | 'complianceFixes';
 
 // ── Editable fields whitelist (must match server-side) ──
-const EDITABLE_FIELDS = new Set(['meta_title', 'meta_description', 'excerpt', 'featured_image_alt', 'author_name']);
+const EDITABLE_FIELDS = new Set(['meta_title', 'meta_description', 'excerpt', 'featured_image_alt', 'author_name', 'canonical_url', 'slug']);
+
+// ── Legacy applyMode normalization ──
+const APPLY_MODE_LEGACY_MAP: Record<string, string> = {
+  'field': 'apply_field',
+  'append': 'append_content',
+  'review-and-replace': 'review_replacement',
+  'manual': 'advisory',
+};
+
+function normalizeApplyMode(mode: string | undefined | null): string {
+  if (!mode) return 'advisory';
+  return APPLY_MODE_LEGACY_MAP[mode] || mode;
+}
+
+// ── Valid whitelist sets for response validation ──
+const VALID_FIX_TYPES = new Set([
+  'metadata', 'content-block', 'rewrite', 'advisory',
+  'canonical_url', 'slug', 'meta_description', 'image_alt',
+  'faq', 'intro', 'conclusion', 'trust_signal',
+  'affiliate_links', 'internal_links', 'content_rewrite',
+]);
+const VALID_APPLY_MODES = new Set([
+  'apply_field', 'append_content', 'prepend_content',
+  'insert_before_first_heading', 'replace_section',
+  'review_replacement', 'advisory',
+]);
+
+// ── Telemetry + Audit helpers (fire-and-forget) ──
+async function trackBlogToolEvent(ev: {
+  event_name: string; tool_name: string; action?: string; target?: string;
+  apply_mode?: string; status?: string; error_message?: string;
+  item_count?: number; slug?: string; category?: string; tags?: string[];
+}) {
+  try {
+    await supabase.from('blog_ai_telemetry' as any).insert({ ...ev, timestamp: new Date().toISOString() });
+  } catch (e) { console.warn('telemetry insert failed', e); }
+}
+
+async function logBlogAiAudit(entry: {
+  tool_name: string; before_value: any; after_value: any;
+  apply_mode?: string; target_field?: string; slug?: string;
+}) {
+  try {
+    await supabase.from('blog_ai_audit_log' as any).insert({
+      ...entry,
+      before_value: typeof entry.before_value === 'string' ? entry.before_value : JSON.stringify(entry.before_value ?? ''),
+      after_value: typeof entry.after_value === 'string' ? entry.after_value : JSON.stringify(entry.after_value ?? ''),
+      apply_mode: entry.apply_mode || 'advisory',
+      timestamp: new Date().toISOString(),
+    });
+  } catch (e) { console.warn('audit insert failed', e); }
+}
+
+// ── Deterministic content helpers ──
+function insertBeforeFirstHeading(editor: Editor, html: string): boolean {
+  const content = editor.getHTML();
+  const match = content.match(/<h[12][^>]*>/i);
+  if (match && match.index !== undefined) {
+    const before = content.substring(0, match.index);
+    const after = content.substring(match.index);
+    editor.commands.setContent(before + html + after);
+    return true;
+  }
+  // Fallback: prepend
+  editor.commands.setContent(html + content);
+  return true;
+}
+
+function hasExistingIntro(content: string): boolean {
+  // Check if there's substantive text before the first heading
+  const firstHeadingIdx = content.search(/<h[12][^>]*>/i);
+  if (firstHeadingIdx <= 0) return false;
+  const before = content.substring(0, firstHeadingIdx).replace(/<[^>]+>/g, '').trim();
+  return before.length > 30;
+}
+
+function hasExistingConclusion(content: string): boolean {
+  return /<h[2-3][^>]*>.*(?:Conclusion|Final Thoughts|Summary|Key Takeaways|निष्कर्ष|सारांश)/i.test(content);
+}
+
+function sentenceAlreadyExists(html: string, sentence: string): boolean {
+  const norm = (s: string) => s.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+  return norm(html).includes(norm(sentence).substring(0, 80));
+}
+
+function contentBlockAlreadyExists(html: string, block: string): boolean {
+  const norm = (s: string) => s.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const blockNorm = norm(block);
+  if (!blockNorm || blockNorm.length < 10) return false;
+  return norm(html).includes(blockNorm.substring(0, 80));
+}
+
+// ── Validate/normalize compliance response before rendering ──
+function normalizeComplianceFixes(rawFixes: any[]): any[] {
+  if (!Array.isArray(rawFixes)) return [];
+  return rawFixes
+    .map((f: any) => {
+      if (!f || typeof f !== 'object') return null;
+      const applyMode = normalizeApplyMode(f.applyMode);
+      let fixType = typeof f.fixType === 'string' ? f.fixType : 'advisory';
+      if (!VALID_FIX_TYPES.has(fixType)) fixType = 'advisory';
+      const normalizedApplyMode = VALID_APPLY_MODES.has(applyMode) ? applyMode : 'advisory';
+      const issueLabel = typeof f.issueLabel === 'string' ? f.issueLabel : '';
+      const explanation = typeof f.explanation === 'string' ? f.explanation : '';
+      const priority = ['high', 'medium', 'low'].includes(f.priority) ? f.priority : 'medium';
+      // Filter out completely malformed items
+      if (!issueLabel && !explanation) return null;
+      return {
+        ...f,
+        fixType,
+        applyMode: normalizedApplyMode,
+        issueLabel: issueLabel || 'Issue',
+        explanation,
+        priority,
+        suggestedValue: typeof f.suggestedValue === 'string' ? f.suggestedValue : '',
+        field: typeof f.field === 'string' ? f.field : '',
+        confidence: ['high', 'medium', 'low'].includes(f.confidence) ? f.confidence : 'medium',
+      };
+    })
+    .filter(Boolean);
+}
 
 // ── FAQ detection helper ──
 function hasFaqHeading(content: string): boolean {
@@ -187,6 +309,7 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
   // ── Generate SEO Metadata ──
   const handleGenerateSEO = async () => {
     setToolState('seo', { isLoading: true, error: null });
+    trackBlogToolEvent({ event_name: 'tool_run_started', tool_name: 'seo', slug: formData.slug, category: formData.category || undefined });
     try {
       const data = await invokeFunction('generate-blog-seo', {
         title: formData.title,
@@ -198,9 +321,11 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
       });
       setToolState('seo', { isLoading: false, result: data });
       setResultsOpen(true);
+      trackBlogToolEvent({ event_name: 'tool_run_finished', tool_name: 'seo', status: 'success', item_count: Object.keys(data || {}).length, slug: formData.slug });
     } catch (err: any) {
       setToolState('seo', { isLoading: false, error: err.message });
       toast({ title: 'SEO generation failed', description: err.message, variant: 'destructive' });
+      trackBlogToolEvent({ event_name: 'tool_run_finished', tool_name: 'seo', status: 'error', error_message: err.message, slug: formData.slug });
     }
   };
 
@@ -208,6 +333,7 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
   const handleGenerateFAQ = async () => {
     const faqCount = existingFaqCount || 0;
     setToolState('faq', { isLoading: true, error: null });
+    trackBlogToolEvent({ event_name: 'tool_run_started', tool_name: 'faq', slug: formData.slug });
     try {
       const data = await invokeFunction('generate-blog-faq', {
         title: formData.title,
@@ -219,15 +345,18 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
       });
       setToolState('faq', { isLoading: false, result: data });
       setResultsOpen(true);
+      trackBlogToolEvent({ event_name: 'tool_run_finished', tool_name: 'faq', status: 'success', item_count: Array.isArray(data?.faqs) ? data.faqs.length : 0, slug: formData.slug });
     } catch (err: any) {
       setToolState('faq', { isLoading: false, error: err.message });
       toast({ title: 'FAQ generation failed', description: err.message, variant: 'destructive' });
+      trackBlogToolEvent({ event_name: 'tool_run_finished', tool_name: 'faq', status: 'error', error_message: err.message, slug: formData.slug });
     }
   };
 
   // ── Suggest Internal Links ──
   const handleSuggestLinks = async () => {
     setToolState('internalLinks', { isLoading: true, error: null });
+    trackBlogToolEvent({ event_name: 'tool_run_started', tool_name: 'internalLinks', slug: formData.slug });
     try {
       const data = await invokeFunction('suggest-blog-internal-links', {
         title: formData.title,
@@ -239,15 +368,18 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
       const validSuggestions = filterValidInternalLinks(data.suggestions || []);
       setToolState('internalLinks', { isLoading: false, result: { ...data, suggestions: validSuggestions } });
       setResultsOpen(true);
+      trackBlogToolEvent({ event_name: 'tool_run_finished', tool_name: 'internalLinks', status: 'success', item_count: Array.isArray(validSuggestions) ? validSuggestions.length : 0, slug: formData.slug });
     } catch (err: any) {
       setToolState('internalLinks', { isLoading: false, error: err.message });
       toast({ title: 'Link suggestions failed', description: err.message, variant: 'destructive' });
+      trackBlogToolEvent({ event_name: 'tool_run_finished', tool_name: 'internalLinks', status: 'error', error_message: err.message, slug: formData.slug });
     }
   };
 
   // ── Improve Structure ──
   const handleImproveStructure = async () => {
     setToolState('structure', { isLoading: true, error: null });
+    trackBlogToolEvent({ event_name: 'tool_run_started', tool_name: 'structure', slug: formData.slug });
     try {
       const data = await invokeFunction('improve-blog-content', {
         title: formData.title,
@@ -262,9 +394,11 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
       });
       setToolState('structure', { isLoading: false, result: data });
       setResultsOpen(true);
+      trackBlogToolEvent({ event_name: 'tool_run_finished', tool_name: 'structure', status: 'success', item_count: Array.isArray(data?.proposedOutline) ? data.proposedOutline.length : 0, slug: formData.slug });
     } catch (err: any) {
       setToolState('structure', { isLoading: false, error: err.message });
       toast({ title: 'Structure analysis failed', description: err.message, variant: 'destructive' });
+      trackBlogToolEvent({ event_name: 'tool_run_finished', tool_name: 'structure', status: 'error', error_message: err.message, slug: formData.slug });
     }
   };
 
@@ -289,6 +423,7 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
     const htmlContent = tempEditor.innerHTML;
 
     setToolState('rewriteSection', { isLoading: true, error: null });
+    trackBlogToolEvent({ event_name: 'tool_run_started', tool_name: 'rewriteSection', slug: formData.slug });
     try {
       const data = await invokeFunction('improve-blog-content', {
         title: formData.title,
@@ -301,18 +436,22 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
       setRewritePreview({ original: htmlContent, rewritten: data.result, from, to });
       setToolState('rewriteSection', { isLoading: false, result: data });
       setResultsOpen(true);
+      trackBlogToolEvent({ event_name: 'tool_run_finished', tool_name: 'rewriteSection', status: 'success', item_count: data?.result ? 1 : 0, slug: formData.slug });
     } catch (err: any) {
       setToolState('rewriteSection', { isLoading: false, error: err.message });
       toast({ title: 'Rewrite failed', description: err.message, variant: 'destructive' });
+      trackBlogToolEvent({ event_name: 'tool_run_finished', tool_name: 'rewriteSection', status: 'error', error_message: err.message, slug: formData.slug });
     }
   };
 
   const applyRewrite = () => {
     if (!editorInstance || !rewritePreview) return;
+    const beforeVal = rewritePreview.original;
     editorInstance.chain().focus()
       .deleteRange({ from: rewritePreview.from, to: rewritePreview.to })
       .insertContent(rewritePreview.rewritten)
       .run();
+    logBlogAiAudit({ tool_name: 'rewriteSection', before_value: beforeVal, after_value: rewritePreview.rewritten, apply_mode: 'review_replacement', slug: formData.slug });
     setRewritePreview(null);
     setToolState('rewriteSection', { isLoading: false, result: null, error: null });
     toast({ title: 'Section replaced successfully' });
@@ -327,6 +466,7 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
       return;
     }
     setToolState('complianceFixes', { isLoading: true, error: null });
+    trackBlogToolEvent({ event_name: 'tool_run_started', tool_name: 'complianceFixes', slug: formData.slug });
     try {
       const data = await invokeFunction('analyze-blog-compliance-fixes', {
         title: formData.title,
@@ -339,16 +479,26 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
           excerpt: formData.excerpt || null,
           featured_image_alt: formData.featured_image_alt || null,
           author_name: formData.author_name || null,
+          canonical_url: formData.canonical_url || null,
           hasCoverImage: !!formData.cover_image_url,
+          hasIntro: currentMetadata?.hasIntro ?? false,
+          hasConclusion: currentMetadata?.hasConclusion ?? false,
+          headings: currentMetadata?.headings || [],
+          wordCount: currentMetadata?.wordCount || 0,
+          featured_image: formData.cover_image_url || null,
           faqCount: existingFaqCount ?? 0,
           internalLinkCount: currentMetadata?.internalLinks?.length ?? 0,
         },
       });
-      setToolState('complianceFixes', { isLoading: false, result: data });
+      // Validate/normalize before rendering
+      const normalizedFixes = normalizeComplianceFixes(data?.fixes);
+      setToolState('complianceFixes', { isLoading: false, result: { fixes: normalizedFixes } });
       setResultsOpen(true);
+      trackBlogToolEvent({ event_name: 'tool_run_finished', tool_name: 'complianceFixes', status: 'success', item_count: normalizedFixes.length, slug: formData.slug });
     } catch (err: any) {
       setToolState('complianceFixes', { isLoading: false, error: err.message });
       toast({ title: 'Compliance analysis failed', description: err.message, variant: 'destructive' });
+      trackBlogToolEvent({ event_name: 'tool_run_finished', tool_name: 'complianceFixes', status: 'error', error_message: err.message, slug: formData.slug });
     }
   };
 
@@ -360,15 +510,22 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
       excerpt: 'excerpt',
     };
     const formField = fieldMap[field] || field;
+    const beforeVal = (formData as any)[formField] || '';
     onApplyField(formField, value);
+    logBlogAiAudit({ tool_name: 'seo', before_value: beforeVal, after_value: value, apply_mode: 'apply_field', target_field: formField, slug: formData.slug });
     toast({ title: `${field} applied` });
   };
 
   // ── Apply FAQ via editor ──
   const applyFaq = (mode: 'append' | 'replace') => {
     if (!editorInstance || !tools.faq.result?.faqHtml) return;
+    // Block duplicate FAQ insertion
+    if (mode === 'append' && hasFaqHeading(formData.content) && contentBlockAlreadyExists(formData.content, tools.faq.result.faqHtml)) {
+      toast({ title: 'FAQ already exists', description: 'Similar FAQ content already present in the article.', variant: 'destructive' });
+      return;
+    }
+    const beforeVal = editorInstance.getHTML();
     if (mode === 'replace' && hasFaqHeading(formData.content)) {
-      // Replace: remove from FAQ heading to end, then append new
       const content = editorInstance.getHTML();
       const faqMatch = content.match(/<h[2-3][^>]*>.*(?:FAQ|Frequently Asked Questions).*<\/h[2-3]>/i);
       if (faqMatch && faqMatch.index !== undefined) {
@@ -376,7 +533,6 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
         editorInstance.commands.setContent(beforeFaq + tools.faq.result.faqHtml);
         toast({ title: 'FAQ section replaced' });
       } else {
-        // Fallback: append
         editorInstance.commands.focus('end');
         editorInstance.commands.insertContent(tools.faq.result.faqHtml);
         toast({ title: 'FAQ section appended' });
@@ -386,6 +542,7 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
       editorInstance.commands.insertContent(tools.faq.result.faqHtml);
       toast({ title: 'FAQ section appended' });
     }
+    logBlogAiAudit({ tool_name: 'faq', before_value: beforeVal.substring(0, 500), after_value: tools.faq.result.faqHtml.substring(0, 500), apply_mode: mode === 'replace' ? 'replace_section' : 'append_content', slug: formData.slug });
     setToolState('faq', { isLoading: false, result: null, error: null });
   };
 
@@ -396,8 +553,14 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
       return;
     }
     const sentence = suggestion.sentenceTemplate || `Learn more about <a href="${suggestion.path}">${suggestion.anchorText}</a>.`;
+    // Block duplicate
+    if (sentenceAlreadyExists(formData.content, sentence)) {
+      toast({ title: 'Link already exists', description: 'Similar link sentence already present.', variant: 'destructive' });
+      return;
+    }
     editorInstance.commands.focus('end');
     editorInstance.commands.insertContent(`<p>${sentence}</p>`);
+    logBlogAiAudit({ tool_name: 'internalLinks', before_value: '', after_value: sentence, apply_mode: 'append_content', slug: formData.slug });
     toast({ title: 'Link sentence inserted at end of article' });
   };
 
@@ -407,20 +570,80 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
     const scaffold = outline.map(h => `<h2>${h}</h2><p>[Add content here]</p>`).join('');
     editorInstance.commands.focus('end');
     editorInstance.commands.insertContent(`<hr><p><strong>— Draft Heading Scaffold —</strong></p>${scaffold}`);
+    logBlogAiAudit({ tool_name: 'structure', before_value: '', after_value: scaffold.substring(0, 500), apply_mode: 'append_content', slug: formData.slug });
     toast({ title: 'Heading scaffold appended to article' });
   };
 
-  // ── Apply compliance fix ──
+  // ── Apply compliance fix (normalized applyMode branching) ──
   const applyComplianceFix = (fix: any) => {
     if (!fix.suggestedValue) return;
 
-    if (fix.fixType === 'metadata' && fix.field && EDITABLE_FIELDS.has(fix.field)) {
+    const mode = normalizeApplyMode(fix.applyMode);
+    trackBlogToolEvent({ event_name: 'fix_applied', tool_name: 'complianceFixes', action: fix.issueKey, apply_mode: mode, target: fix.field || undefined, slug: formData.slug });
+
+    if (mode === 'apply_field' && fix.field && EDITABLE_FIELDS.has(fix.field)) {
+      // Skip if value already matches
+      const currentVal = (formData as any)[fix.field] || '';
+      if (currentVal === fix.suggestedValue) {
+        toast({ title: 'Already applied', description: `${fix.field} already has this value.` });
+        return;
+      }
+      const beforeVal = currentVal;
       onApplyField(fix.field, fix.suggestedValue);
+      logBlogAiAudit({ tool_name: 'complianceFixes', before_value: beforeVal, after_value: fix.suggestedValue, apply_mode: mode, target_field: fix.field, slug: formData.slug });
       toast({ title: `${fix.issueLabel} fixed — ${fix.field} updated` });
-    } else if (fix.fixType === 'content-block' && fix.applyMode === 'append' && editorInstance) {
+
+    } else if (mode === 'append_content' && editorInstance) {
+      if (contentBlockAlreadyExists(formData.content, fix.suggestedValue)) {
+        toast({ title: 'Content already exists', description: 'Similar content already present.', variant: 'destructive' });
+        return;
+      }
+      if (fix.fixType === 'conclusion' && hasExistingConclusion(formData.content)) {
+        toast({ title: 'Conclusion already exists', description: 'Article already has a conclusion section.', variant: 'destructive' });
+        return;
+      }
+      if (fix.fixType === 'faq' && hasFaqHeading(formData.content)) {
+        toast({ title: 'FAQ already exists', description: 'Article already has a FAQ section.', variant: 'destructive' });
+        return;
+      }
       editorInstance.commands.focus('end');
       editorInstance.commands.insertContent(fix.suggestedValue);
+      logBlogAiAudit({ tool_name: 'complianceFixes', before_value: '', after_value: fix.suggestedValue.substring(0, 500), apply_mode: mode, slug: formData.slug });
       toast({ title: `${fix.issueLabel} — content appended` });
+
+    } else if (mode === 'prepend_content' && editorInstance) {
+      if (hasExistingIntro(formData.content) && fix.fixType === 'intro') {
+        toast({ title: 'Intro already exists', description: 'Article already has an introduction.', variant: 'destructive' });
+        return;
+      }
+      if (contentBlockAlreadyExists(formData.content, fix.suggestedValue)) {
+        toast({ title: 'Content already exists', variant: 'destructive' });
+        return;
+      }
+      const content = editorInstance.getHTML();
+      editorInstance.commands.setContent(fix.suggestedValue + content);
+      logBlogAiAudit({ tool_name: 'complianceFixes', before_value: '', after_value: fix.suggestedValue.substring(0, 500), apply_mode: mode, slug: formData.slug });
+      toast({ title: `${fix.issueLabel} — content prepended` });
+
+    } else if (mode === 'insert_before_first_heading' && editorInstance) {
+      if (hasExistingIntro(formData.content) && fix.fixType === 'intro') {
+        toast({ title: 'Intro already exists', description: 'Article already has an introduction.', variant: 'destructive' });
+        return;
+      }
+      if (contentBlockAlreadyExists(formData.content, fix.suggestedValue)) {
+        toast({ title: 'Content already exists', variant: 'destructive' });
+        return;
+      }
+      insertBeforeFirstHeading(editorInstance, fix.suggestedValue);
+      logBlogAiAudit({ tool_name: 'complianceFixes', before_value: '', after_value: fix.suggestedValue.substring(0, 500), apply_mode: mode, slug: formData.slug });
+      toast({ title: `${fix.issueLabel} — content inserted before heading` });
+
+    } else if ((mode === 'replace_section' || mode === 'review_replacement') && editorInstance) {
+      // These are handled via the ComplianceFixCard review UI — no auto-apply
+      toast({ title: 'Review the replacement in the card below' });
+
+    } else if (mode === 'advisory') {
+      toast({ title: fix.issueLabel, description: fix.explanation || 'Manual review required' });
     }
   };
 
@@ -634,6 +857,35 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
                   </div>
                 </div>
               )}
+              {/* Suggested Insertions */}
+              {Array.isArray(tools.structure.result.suggestedInsertions) && tools.structure.result.suggestedInsertions.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-medium text-muted-foreground mb-1">Suggested Insertions:</p>
+                  {tools.structure.result.suggestedInsertions.map((ins: any, i: number) => (
+                    <div key={i} className="text-xs border-b border-border/30 pb-1.5 space-y-1">
+                      <p className="font-medium">{ins.label}</p>
+                      {ins.suggestedPlacement && <p className="text-[10px] text-muted-foreground">📍 {ins.suggestedPlacement}</p>}
+                      <div className="bg-muted/30 rounded p-1.5 max-h-20 overflow-y-auto text-[11px]" dangerouslySetInnerHTML={{ __html: ins.content || '' }} />
+                      <Button size="sm" variant="default" className="h-5 text-[10px]" disabled={!editorInstance} onClick={() => {
+                        if (!editorInstance || !ins.content) return;
+                        const am = normalizeApplyMode(ins.applyMode);
+                        if (am === 'insert_before_first_heading') {
+                          insertBeforeFirstHeading(editorInstance, ins.content);
+                        } else if (am === 'prepend_content') {
+                          editorInstance.commands.setContent(ins.content + editorInstance.getHTML());
+                        } else {
+                          editorInstance.commands.focus('end');
+                          editorInstance.commands.insertContent(ins.content);
+                        }
+                        logBlogAiAudit({ tool_name: 'structure', before_value: '', after_value: ins.content.substring(0, 500), apply_mode: am, slug: formData.slug });
+                        toast({ title: `${ins.label} inserted` });
+                      }}>
+                        <Plus className="h-2.5 w-2.5" /> Insert
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
               <div className="flex gap-2 flex-wrap">
                 {tools.structure.result.proposedOutline?.length > 0 && (
                   <>
@@ -689,9 +941,26 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
                   onCopy={() => copyToClipboard(f.suggestedValue || f.explanation, f.issueLabel)}
                   onInsertContent={() => {
                     if (editorInstance && f.suggestedValue) {
-                      editorInstance.commands.focus('end');
-                      editorInstance.commands.insertContent(f.suggestedValue);
-                      toast({ title: `${f.issueLabel} — content appended` });
+                      const mode = normalizeApplyMode(f.applyMode);
+                      if (mode === 'insert_before_first_heading') {
+                        if (hasExistingIntro(formData.content) && f.fixType === 'intro') {
+                          toast({ title: 'Intro already exists', variant: 'destructive' });
+                          return;
+                        }
+                        insertBeforeFirstHeading(editorInstance, f.suggestedValue);
+                        logBlogAiAudit({ tool_name: 'complianceFixes', before_value: '', after_value: f.suggestedValue.substring(0, 500), apply_mode: mode, slug: formData.slug });
+                        toast({ title: `${f.issueLabel} — content inserted` });
+                      } else if (mode === 'prepend_content') {
+                        const content = editorInstance.getHTML();
+                        editorInstance.commands.setContent(f.suggestedValue + content);
+                        logBlogAiAudit({ tool_name: 'complianceFixes', before_value: '', after_value: f.suggestedValue.substring(0, 500), apply_mode: mode, slug: formData.slug });
+                        toast({ title: `${f.issueLabel} — content prepended` });
+                      } else {
+                        editorInstance.commands.focus('end');
+                        editorInstance.commands.insertContent(f.suggestedValue);
+                        logBlogAiAudit({ tool_name: 'complianceFixes', before_value: '', after_value: f.suggestedValue.substring(0, 500), apply_mode: mode, slug: formData.slug });
+                        toast({ title: `${f.issueLabel} — content appended` });
+                      }
                     }
                   }}
                   editorAvailable={!!editorInstance}
@@ -721,11 +990,13 @@ function ComplianceFixCard({ fix, onApply, onCopy, onInsertContent, editorAvaila
 }) {
   const [showReview, setShowReview] = useState(false);
 
+  const mode = normalizeApplyMode(fix.applyMode);
   const priorityVariant = fix.priority === 'high' ? 'destructive' : fix.priority === 'medium' ? 'secondary' : 'outline';
-  const isApplyable = fix.fixType === 'metadata' && fix.field && EDITABLE_FIELDS.has(fix.field) && fix.suggestedValue;
-  const isAppendable = fix.fixType === 'content-block' && fix.applyMode === 'append' && fix.suggestedValue;
-  const isRewritable = fix.fixType === 'rewrite' && fix.applyMode === 'review-and-replace' && fix.suggestedValue;
-  const isAdvisory = fix.fixType === 'advisory' || fix.applyMode === 'manual';
+  const isApplyable = (fix.fixType === 'metadata' || mode === 'apply_field') && fix.field && EDITABLE_FIELDS.has(fix.field) && fix.suggestedValue;
+  const isAppendable = mode === 'append_content' && fix.suggestedValue;
+  const isInsertable = (mode === 'prepend_content' || mode === 'insert_before_first_heading') && fix.suggestedValue;
+  const isRewritable = (mode === 'replace_section' || mode === 'review_replacement') && fix.suggestedValue;
+  const isAdvisory = mode === 'advisory';
 
   return (
     <div className="text-xs border-b border-border/30 pb-2 space-y-1">
@@ -734,6 +1005,11 @@ function ComplianceFixCard({ fix, onApply, onCopy, onInsertContent, editorAvaila
         <span className="font-medium">{fix.issueLabel}</span>
         {fix.fixType !== 'advisory' && (
           <Badge variant="outline" className="text-[9px] px-1 py-0">{fix.fixType}</Badge>
+        )}
+        {fix.confidence && fix.confidence !== 'medium' && (
+          <Badge variant="outline" className={`text-[9px] px-1 py-0 ${fix.confidence === 'high' ? 'border-green-500/50 text-green-700 dark:text-green-400' : 'border-orange-500/50 text-orange-700 dark:text-orange-400'}`}>
+            {fix.confidence} confidence
+          </Badge>
         )}
       </div>
       <p className="text-muted-foreground">{fix.explanation}</p>
@@ -746,10 +1022,12 @@ function ComplianceFixCard({ fix, onApply, onCopy, onInsertContent, editorAvaila
         </div>
       )}
 
-      {/* Show content block preview */}
-      {isAppendable && (
+      {/* Show content block preview for append/insert */}
+      {(isAppendable || isInsertable) && !isApplyable && (
         <div className="bg-muted/30 rounded p-1.5 max-h-24 overflow-y-auto">
-          <p className="text-[10px] text-muted-foreground mb-1">Content to append:</p>
+          <p className="text-[10px] text-muted-foreground mb-1">
+            {mode === 'insert_before_first_heading' ? 'Insert before heading:' : mode === 'prepend_content' ? 'Prepend to content:' : 'Content to append:'}
+          </p>
           <div className="text-[11px]" dangerouslySetInnerHTML={{ __html: fix.suggestedValue }} />
         </div>
       )}
@@ -782,7 +1060,12 @@ function ComplianceFixCard({ fix, onApply, onCopy, onInsertContent, editorAvaila
             <Check className="h-2.5 w-2.5" /> Apply to Field
           </Button>
         )}
-        {isAppendable && (
+        {isInsertable && !isApplyable && (
+          <Button size="sm" variant="default" className="h-5 text-[10px]" onClick={onInsertContent} disabled={!editorAvailable}>
+            <Plus className="h-2.5 w-2.5" /> {mode === 'insert_before_first_heading' ? 'Insert Before Heading' : 'Insert'}
+          </Button>
+        )}
+        {isAppendable && !isApplyable && !isInsertable && (
           <Button size="sm" variant="default" className="h-5 text-[10px]" onClick={onInsertContent} disabled={!editorAvailable}>
             <Plus className="h-2.5 w-2.5" /> Append to Content
           </Button>
@@ -792,7 +1075,7 @@ function ComplianceFixCard({ fix, onApply, onCopy, onInsertContent, editorAvaila
             <Copy className="h-2.5 w-2.5" /> Copy
           </Button>
         )}
-        {isAdvisory && !isApplyable && !isAppendable && (
+        {isAdvisory && !isApplyable && !isAppendable && !isInsertable && (
           <span className="text-[10px] text-muted-foreground italic">Manual review required</span>
         )}
       </div>

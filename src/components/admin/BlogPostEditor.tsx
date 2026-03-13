@@ -202,7 +202,7 @@ export function BlogPostEditor() {
     if (article.metaDescription) updates.meta_description = article.metaDescription;
     if (article.coverImageAlt) updates.featured_image_alt = article.coverImageAlt;
     if (article.coverImageUrl) updates.cover_image_url = article.coverImageUrl;
-    if (article.author) updates.author_name = article.author;
+    if (article.authorName) updates.author_name = article.authorName;
     handleFormChange(updates);
   };
 

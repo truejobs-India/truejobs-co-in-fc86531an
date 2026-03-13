@@ -435,11 +435,14 @@ export function BlogPostEditor() {
 
   // Helper to get score for a post in the table
   const getPostScores = (post: BlogPost) => {
-    const meta = blogPostToMetadata(post);
+    // Recalculate word count from content to avoid stale DB values
+    const liveWc = post.content.replace(/<[^>]+>/g, '').split(/\s+/).filter(w => w.length > 0).length;
+    const postWithLiveWc = { ...post, word_count: liveWc };
+    const meta = blogPostToMetadata(postWithLiveWc);
     const q = analyzeQuality(meta);
     const s = analyzeSEO(meta);
     const r = getReadinessStatus(q, s, meta);
-    return { quality: q.totalScore, seo: s.totalScore, readiness: r };
+    return { quality: q.totalScore, seo: s.totalScore, readiness: r, wordCount: liveWc };
   };
 
   // ── Safe metadata fields for auto-apply ──

@@ -181,6 +181,8 @@ export function BlogPostEditor() {
       meta_title: post.meta_title || '',
       meta_description: post.meta_description || '',
       author_name: post.author_name || 'TrueJobs Editorial Team',
+      category: post.category || null,
+      tags: post.tags || null,
     });
     setHasUnsavedChanges(false);
     setPublishOverride(false);

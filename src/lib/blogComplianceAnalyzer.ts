@@ -234,13 +234,22 @@ export function analyzeAdsenseCompliance(metadata: ArticleMetadata): AdsenseComp
   const words = plainText.split(/\s+/).filter(w => w.length > 0);
   const wordCount = words.length;
 
+  // Temporary debug helper — log matched snippets for failed checks only
+  const _debugSlug = metadata.slug || metadata.title?.substring(0, 40) || 'unknown';
+  const _storedWC = metadata.wordCount ?? -1;
+  function _logFail(key: string, matchSnippet: string | null) {
+    console.warn(`[COMPLIANCE-DEBUG] slug="${_debugSlug}" rule="${key}" match="${matchSnippet?.substring(0, 80) || 'N/A'}" storedWC=${_storedWC} liveWC=${wordCount}`);
+  }
+
   // 1. Thin/doorway content
+  const thinStatus = wordCount >= 300 ? 'pass' : 'fail';
   checks.push({
     key: 'thin-doorway', label: 'Not thin/doorway content', category: 'adsense-safety',
-    status: wordCount >= 300 ? 'pass' : 'fail',
+    status: thinStatus,
     detail: wordCount < 300 ? `Only ${wordCount} words — may be flagged as thin` : `${wordCount} words`,
     recommendation: wordCount < 300 ? 'Expand content to 300+ words minimum' : undefined,
   });
+  if (thinStatus === 'fail') _logFail('thin-doorway', `${wordCount} words`);
 
   // 2. Repeated sentence ratio
   const sentences = plainText.split(/[.!?।]+/).map(s => s.trim().toLowerCase()).filter(s => s.length > 10);
@@ -300,17 +309,21 @@ export function analyzeAdsenseCompliance(metadata: ArticleMetadata): AdsenseComp
     recommendation: clickbait ? 'Remove sensationalized clickbait phrasing' : undefined,
   });
 
-  // 7. Adult/sexual keywords
-  const adultContent = /\b(porn|xxx|nude|naked|sex(?:ual|ting)?|escort|erotic|adult content)\b/i.test(plainText);
+  // 7. Adult/explicit keywords (refined to avoid HR/legal false positives)
+  const adultRegex = /\b(porn(?:ography)?|xxx|nude|naked|sexting|escort\s*service|erotic(?:a|ism)?|adult\s*content|adult\s*entertainment)\b/i;
+  const adultMatch = plainText.match(adultRegex);
+  const adultContent = !!adultMatch;
   checks.push({
     key: 'adult-content', label: 'No adult content signals', category: 'adsense-safety',
     status: adultContent ? 'fail' : 'pass',
     detail: adultContent ? 'Adult content keywords detected' : 'Clean',
     recommendation: adultContent ? 'Remove adult/explicit content — violates AdSense policies' : undefined,
   });
+  if (adultContent) _logFail('adult-content', adultMatch?.[0] ?? null);
 
   // 8. Hate/violence/extremist
   const hateViolence = /\b(kill|murder|terrorist|extremist|hate (?:speech|crime)|genocide|ethnic cleansing)\b/i.test(plainText);
+
   checks.push({
     key: 'hate-violence', label: 'No hate/violence signals', category: 'adsense-safety',
     status: hateViolence ? 'warn' : 'pass',
@@ -319,13 +332,16 @@ export function analyzeAdsenseCompliance(metadata: ArticleMetadata): AdsenseComp
   });
 
   // 9. Illegal/drug/gambling
-  const illegalContent = /\b(buy drugs|illegal download|pirated|gambling tips|bet(?:ting)? tips|casino hack|weed delivery)\b/i.test(plainText);
+  const illegalRegex = /\b(buy drugs|illegal download|pirated|gambling tips|bet(?:ting)? tips|casino hack|weed delivery)\b/i;
+  const illegalMatch = plainText.match(illegalRegex);
+  const illegalContent = !!illegalMatch;
   checks.push({
     key: 'illegal-content', label: 'No prohibited content signals', category: 'adsense-safety',
     status: illegalContent ? 'fail' : 'pass',
     detail: illegalContent ? 'Prohibited content keywords detected' : 'Clean',
     recommendation: illegalContent ? 'Remove content related to illegal activities' : undefined,
   });
+  if (illegalContent) _logFail('illegal-content', illegalMatch?.[0] ?? null);
 
   // 10. Dangerous policy risk (composite)
   const dangerousRisk = adultContent || illegalContent;
@@ -335,6 +351,7 @@ export function analyzeAdsenseCompliance(metadata: ArticleMetadata): AdsenseComp
     detail: dangerousRisk ? 'High-risk policy violations detected' : 'No dangerous violations',
     recommendation: dangerousRisk ? 'Address all policy violations before publishing' : undefined,
   });
+  if (dangerousRisk) _logFail('dangerous-policy-risk', adultMatch?.[0] ?? illegalMatch?.[0] ?? null);
 
   // 11. YMYL certainty claims
   const ymylClaims = /\b(guaranteed (?:cure|results?|income)|100% (?:safe|effective|proven)|miracle (?:cure|drug|solution))\b/i.test(plainText);
@@ -363,24 +380,28 @@ export function analyzeAdsenseCompliance(metadata: ArticleMetadata): AdsenseComp
     recommendation: urgency ? 'Tone down aggressive urgency language' : undefined,
   });
 
-  // 14. Excessive affiliate links
-  const affiliateMatches = (metadata.content.match(/(?:utm_|ref=|affiliate|partner=|aff_id)/gi) || []).length;
+  // 14. Excessive affiliate links (ref= removed — too generic)
+  const affiliateMatches = (metadata.content.match(/(?:utm_|affiliate|partner=|aff_id)/gi) || []).length;
+  const affiliateStatus = affiliateMatches <= 3 ? 'pass' : affiliateMatches <= 5 ? 'warn' : 'fail';
   checks.push({
     key: 'excessive-affiliates', label: 'Reasonable affiliate link count', category: 'adsense-safety',
-    status: affiliateMatches <= 3 ? 'pass' : affiliateMatches <= 5 ? 'warn' : 'fail',
+    status: affiliateStatus,
     detail: `${affiliateMatches} affiliate-pattern links`,
     recommendation: affiliateMatches > 3 ? 'Reduce affiliate links — high density may trigger AdSense flags' : undefined,
   });
+  if (affiliateStatus === 'fail') _logFail('excessive-affiliates', `${affiliateMatches} matches`);
 
   // 15. Link density
   const linkCount = (metadata.content.match(/<a\s/gi) || []).length;
   const linkDensity = wordCount > 0 ? linkCount / wordCount : 0;
+  const linkDensityStatus = linkDensity <= 0.02 ? 'pass' : linkDensity <= 0.04 ? 'warn' : 'fail';
   checks.push({
     key: 'link-density', label: 'Reasonable link density', category: 'content-quality',
-    status: linkDensity <= 0.02 ? 'pass' : linkDensity <= 0.04 ? 'warn' : 'fail',
+    status: linkDensityStatus,
     detail: `${linkCount} links in ${wordCount} words (${(linkDensity * 100).toFixed(2)}%)`,
     recommendation: linkDensity > 0.02 ? 'Reduce link count — excessive linking may be penalized' : undefined,
   });
+  if (linkDensityStatus === 'fail') _logFail('link-density', `${linkCount} links / ${wordCount} words`);
 
   // 16. Trust signals — author + no deceptive official claims
   const hasAuthor = !!metadata.authorName;

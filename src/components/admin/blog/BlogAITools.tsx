@@ -4,12 +4,11 @@ import { useToast } from '@/hooks/use-toast';
 import { filterValidInternalLinks } from '@/lib/blogLinkValidator';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
   Sparkles, FileText, MessageSquare, Link2, Wrench, ShieldCheck,
-  ImageIcon, RefreshCw, Loader2, ChevronDown, Check, X, AlertTriangle,
-  Circle, CheckCircle2, AlertCircle, Clock,
+  RefreshCw, Loader2, ChevronDown, Check, X, AlertTriangle,
+  Circle, CheckCircle2, AlertCircle, Clock, Copy, Plus, ArrowRight,
 } from 'lucide-react';
 import type { Editor } from '@tiptap/react';
 import type { PublishComplianceReport } from '@/lib/blogComplianceAnalyzer';
@@ -49,6 +48,8 @@ interface BlogAIToolsProps {
     cover_image_url: string;
     featured_image_alt: string;
     author_name: string;
+    category?: string | null;
+    tags?: string[] | null;
   };
   onApplyField: (field: string, value: string) => void;
   editorInstance: Editor | null;
@@ -67,11 +68,19 @@ interface ToolState {
 
 type ToolKey = 'seo' | 'faq' | 'internalLinks' | 'structure' | 'rewriteSection' | 'complianceFixes';
 
+// ── Editable fields whitelist (must match server-side) ──
+const EDITABLE_FIELDS = new Set(['meta_title', 'meta_description', 'excerpt', 'featured_image_alt', 'author_name']);
+
+// ── FAQ detection helper ──
+function hasFaqHeading(content: string): boolean {
+  return /<h[2-3][^>]*>.*(?:FAQ|Frequently Asked Questions)/i.test(content);
+}
+
 // ── Status derivation ──
 function deriveSeoStatus(tool: ToolState, formData: BlogAIToolsProps['formData']): ToolStatus {
   if (tool.isLoading) return 'running';
   if (tool.error) return 'error';
-  if (tool.result) return 'needs-review'; // generated but not all applied yet
+  if (tool.result) return 'needs-review';
   const hasMeta = !!formData.meta_title && !!formData.meta_description;
   const hasExcerpt = !!formData.excerpt;
   if (hasMeta && hasExcerpt) return 'applied';
@@ -92,7 +101,7 @@ function deriveInternalLinksStatus(tool: ToolState, metadata?: ArticleMetadata |
   if (tool.error) return 'error';
   if (tool.result) {
     const suggestions = tool.result.suggestions || [];
-    if (suggestions.length === 0) return 'warning'; // all filtered out
+    if (suggestions.length === 0) return 'warning';
     return 'needs-review';
   }
   const linkCount = metadata?.internalLinks?.length || 0;
@@ -150,7 +159,6 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
     setTools(prev => ({ ...prev, [key]: { ...prev[key], ...partial } }));
   };
 
-  // ── Derive statuses ──
   const statuses = useMemo(() => ({
     seo: deriveSeoStatus(tools.seo, formData),
     faq: deriveFaqStatus(tools.faq, existingFaqCount || 0),
@@ -163,11 +171,18 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
   const invokeFunction = useCallback(async (functionName: string, body: any) => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) throw new Error('Not authenticated');
-
     const { data, error } = await supabase.functions.invoke(functionName, { body });
     if (error) throw new Error(error.message);
     return data;
   }, []);
+
+  const copyToClipboard = useCallback((text: string, label: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      toast({ title: `${label} copied to clipboard` });
+    }).catch(() => {
+      toast({ title: 'Copy failed', variant: 'destructive' });
+    });
+  }, [toast]);
 
   // ── Generate SEO Metadata ──
   const handleGenerateSEO = async () => {
@@ -177,6 +192,9 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
         title: formData.title,
         content: formData.content,
         fields: ['metaTitle', 'metaDescription', 'excerpt'],
+        slug: formData.slug,
+        category: formData.category || undefined,
+        tags: formData.tags || undefined,
       });
       setToolState('seo', { isLoading: false, result: data });
       setResultsOpen(true);
@@ -195,6 +213,9 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
         title: formData.title,
         content: formData.content,
         existingFaqCount: faqCount,
+        category: formData.category || undefined,
+        tags: formData.tags || undefined,
+        slug: formData.slug,
       });
       setToolState('faq', { isLoading: false, result: data });
       setResultsOpen(true);
@@ -211,6 +232,9 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
       const data = await invokeFunction('suggest-blog-internal-links', {
         title: formData.title,
         content: formData.content,
+        slug: formData.slug,
+        category: formData.category || undefined,
+        tags: formData.tags || undefined,
       });
       const validSuggestions = filterValidInternalLinks(data.suggestions || []);
       setToolState('internalLinks', { isLoading: false, result: { ...data, suggestions: validSuggestions } });
@@ -229,6 +253,12 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
         title: formData.title,
         content: formData.content,
         action: 'structure',
+        headings: currentMetadata?.headings || [],
+        hasIntro: currentMetadata?.hasIntro ?? false,
+        hasConclusion: currentMetadata?.hasConclusion ?? false,
+        wordCount: currentMetadata?.wordCount || 0,
+        category: formData.category || undefined,
+        tags: formData.tags || undefined,
       });
       setToolState('structure', { isLoading: false, result: data });
       setResultsOpen(true);
@@ -265,6 +295,8 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
         content: formData.content,
         action: 'rewrite-section',
         selectedHtml: htmlContent,
+        category: formData.category || undefined,
+        tags: formData.tags || undefined,
       });
       setRewritePreview({ original: htmlContent, rewritten: data.result, from, to });
       setToolState('rewriteSection', { isLoading: false, result: data });
@@ -299,7 +331,18 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
       const data = await invokeFunction('analyze-blog-compliance-fixes', {
         title: formData.title,
         content: formData.content,
+        slug: formData.slug,
         issues: failedChecks.map(c => ({ key: c.key, label: c.label, detail: c.detail, recommendation: c.recommendation })),
+        existingMeta: {
+          meta_title: formData.meta_title || null,
+          meta_description: formData.meta_description || null,
+          excerpt: formData.excerpt || null,
+          featured_image_alt: formData.featured_image_alt || null,
+          author_name: formData.author_name || null,
+          hasCoverImage: !!formData.cover_image_url,
+          faqCount: existingFaqCount ?? 0,
+          internalLinkCount: currentMetadata?.internalLinks?.length ?? 0,
+        },
       });
       setToolState('complianceFixes', { isLoading: false, result: data });
       setResultsOpen(true);
@@ -321,18 +364,68 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
     toast({ title: `${field} applied` });
   };
 
-  // ── Apply FAQ via editor (not stale formData) ──
-  const applyFaq = () => {
+  // ── Apply FAQ via editor ──
+  const applyFaq = (mode: 'append' | 'replace') => {
     if (!editorInstance || !tools.faq.result?.faqHtml) return;
-    editorInstance.commands.focus('end');
-    editorInstance.commands.insertContent(tools.faq.result.faqHtml);
+    if (mode === 'replace' && hasFaqHeading(formData.content)) {
+      // Replace: remove from FAQ heading to end, then append new
+      const content = editorInstance.getHTML();
+      const faqMatch = content.match(/<h[2-3][^>]*>.*(?:FAQ|Frequently Asked Questions).*<\/h[2-3]>/i);
+      if (faqMatch && faqMatch.index !== undefined) {
+        const beforeFaq = content.substring(0, faqMatch.index);
+        editorInstance.commands.setContent(beforeFaq + tools.faq.result.faqHtml);
+        toast({ title: 'FAQ section replaced' });
+      } else {
+        // Fallback: append
+        editorInstance.commands.focus('end');
+        editorInstance.commands.insertContent(tools.faq.result.faqHtml);
+        toast({ title: 'FAQ section appended' });
+      }
+    } else {
+      editorInstance.commands.focus('end');
+      editorInstance.commands.insertContent(tools.faq.result.faqHtml);
+      toast({ title: 'FAQ section appended' });
+    }
     setToolState('faq', { isLoading: false, result: null, error: null });
-    toast({ title: 'FAQ section appended' });
+  };
+
+  // ── Insert internal link sentence into editor ──
+  const insertLinkSentence = (suggestion: any) => {
+    if (!editorInstance) {
+      toast({ title: 'No editor available', variant: 'destructive' });
+      return;
+    }
+    const sentence = suggestion.sentenceTemplate || `Learn more about <a href="${suggestion.path}">${suggestion.anchorText}</a>.`;
+    editorInstance.commands.focus('end');
+    editorInstance.commands.insertContent(`<p>${sentence}</p>`);
+    toast({ title: 'Link sentence inserted at end of article' });
+  };
+
+  // ── Insert heading scaffold into editor ──
+  const insertHeadingScaffold = (outline: string[]) => {
+    if (!editorInstance || !outline?.length) return;
+    const scaffold = outline.map(h => `<h2>${h}</h2><p>[Add content here]</p>`).join('');
+    editorInstance.commands.focus('end');
+    editorInstance.commands.insertContent(`<hr><p><strong>— Draft Heading Scaffold —</strong></p>${scaffold}`);
+    toast({ title: 'Heading scaffold appended to article' });
+  };
+
+  // ── Apply compliance fix ──
+  const applyComplianceFix = (fix: any) => {
+    if (!fix.suggestedValue) return;
+
+    if (fix.fixType === 'metadata' && fix.field && EDITABLE_FIELDS.has(fix.field)) {
+      onApplyField(fix.field, fix.suggestedValue);
+      toast({ title: `${fix.issueLabel} fixed — ${fix.field} updated` });
+    } else if (fix.fixType === 'content-block' && fix.applyMode === 'append' && editorInstance) {
+      editorInstance.commands.focus('end');
+      editorInstance.commands.insertContent(fix.suggestedValue);
+      toast({ title: `${fix.issueLabel} — content appended` });
+    }
   };
 
   const anyLoading = Object.values(tools).some(t => t.isLoading);
 
-  // ── Tool definitions for rendering ──
   const toolDefs: { key: ToolKey; label: string; icon: React.ReactNode; handler: () => void; disabled: boolean }[] = [
     { key: 'seo', label: 'SEO Metadata', icon: <FileText className="h-3 w-3" />, handler: handleGenerateSEO, disabled: tools.seo.isLoading || !formData.title },
     { key: 'faq', label: 'Generate FAQ', icon: <MessageSquare className="h-3 w-3" />, handler: handleGenerateFAQ, disabled: tools.faq.isLoading || !formData.title },
@@ -341,6 +434,9 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
     { key: 'rewriteSection', label: 'Rewrite Selection', icon: <RefreshCw className="h-3 w-3" />, handler: handleRewriteSection, disabled: tools.rewriteSection.isLoading || !editorInstance },
     { key: 'complianceFixes', label: 'Fix Compliance', icon: <ShieldCheck className="h-3 w-3" />, handler: handleComplianceFixes, disabled: tools.complianceFixes.isLoading || !currentCompliance },
   ];
+
+  // ── Detect reliable FAQ presence for replace option ──
+  const canReplaceFaq = (existingFaqCount || 0) > 0 && hasFaqHeading(formData.content);
 
   return (
     <div className="space-y-3">
@@ -431,9 +527,17 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
                   <p className="text-muted-foreground">{f.answer}</p>
                 </div>
               ))}
-              <div className="flex gap-2">
-                <Button size="sm" variant="default" className="h-6 text-[10px]" onClick={applyFaq} disabled={!editorInstance}>
-                  <Check className="h-3 w-3" /> Append FAQ
+              <div className="flex gap-2 flex-wrap">
+                <Button size="sm" variant="default" className="h-6 text-[10px]" onClick={() => applyFaq('append')} disabled={!editorInstance}>
+                  <Plus className="h-3 w-3" /> Append FAQ
+                </Button>
+                {canReplaceFaq && (
+                  <Button size="sm" variant="secondary" className="h-6 text-[10px]" onClick={() => applyFaq('replace')} disabled={!editorInstance}>
+                    <RefreshCw className="h-3 w-3" /> Replace FAQ
+                  </Button>
+                )}
+                <Button size="sm" variant="outline" className="h-6 text-[10px]" onClick={() => copyToClipboard(tools.faq.result.faqHtml || '', 'FAQ HTML')}>
+                  <Copy className="h-3 w-3" /> Copy FAQ
                 </Button>
                 <Button size="sm" variant="ghost" className="h-6 text-[10px] text-muted-foreground" onClick={() => setToolState('faq', { result: null, isLoading: false, error: null })}>
                   <X className="h-3 w-3" /> Dismiss
@@ -447,14 +551,45 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
             <div className="border rounded-lg p-3 space-y-2">
               <h5 className="text-xs font-semibold flex items-center gap-1"><Link2 className="h-3 w-3" /> Suggested Links</h5>
               {tools.internalLinks.result.suggestions?.length === 0 ? (
-                <p className="text-xs text-muted-foreground">No valid link suggestions for this article.</p>
+                <div className="space-y-2">
+                  <div className="text-xs text-muted-foreground bg-muted/30 rounded p-2">
+                    <p className="font-medium mb-1">No safe page paths could be confirmed for this article.</p>
+                    <p>This can happen when the article topic doesn't closely match known site pages. You can:</p>
+                    <ul className="list-disc pl-4 mt-1 space-y-0.5">
+                      <li>Retry after adding more content or adjusting the title</li>
+                      <li>Manually add links to relevant pages like /sarkari-result, /admit-card, /railway-jobs</li>
+                      <li>Link to related blog posts using /blog/[slug] format</li>
+                    </ul>
+                  </div>
+                  <Button size="sm" variant="outline" className="h-6 text-[10px]" onClick={handleSuggestLinks}>
+                    <RefreshCw className="h-3 w-3" /> Retry
+                  </Button>
+                </div>
               ) : (
                 tools.internalLinks.result.suggestions?.map((s: any, i: number) => (
-                  <div key={i} className="text-xs border-b border-border/30 pb-1.5">
-                    <div className="flex items-center gap-2">
+                  <div key={i} className="text-xs border-b border-border/30 pb-2 space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <Badge variant="outline" className="text-[10px] px-1 py-0 font-mono">{s.path}</Badge>
+                      <span className="text-muted-foreground">→ "{s.anchorText}"</span>
                     </div>
-                    <p className="text-muted-foreground">Anchor: "{s.anchorText}" — {s.reason}</p>
+                    {s.reason && <p className="text-muted-foreground">{s.reason}</p>}
+                    {s.suggestedPlacement && (
+                      <p className="text-[10px] text-muted-foreground/70">📍 {s.suggestedPlacement}</p>
+                    )}
+                    {s.sentenceTemplate && (
+                      <div className="bg-muted/30 rounded p-1.5 text-[11px]" dangerouslySetInnerHTML={{ __html: s.sentenceTemplate }} />
+                    )}
+                    <div className="flex gap-1.5">
+                      <Button size="sm" variant="default" className="h-5 text-[10px]" onClick={() => insertLinkSentence(s)} disabled={!editorInstance}>
+                        <ArrowRight className="h-2.5 w-2.5" /> Insert Sentence
+                      </Button>
+                      <Button size="sm" variant="outline" className="h-5 text-[10px]" onClick={() => {
+                        const text = (s.sentenceTemplate || `Learn more about ${s.anchorText} at ${s.path}`).replace(/<[^>]+>/g, '');
+                        copyToClipboard(text, 'Link sentence');
+                      }}>
+                        <Copy className="h-2.5 w-2.5" /> Copy
+                      </Button>
+                    </div>
                   </div>
                 ))
               )}
@@ -469,14 +604,51 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
             <div className="border rounded-lg p-3 space-y-2">
               <h5 className="text-xs font-semibold flex items-center gap-1"><Wrench className="h-3 w-3" /> Structure Suggestions</h5>
               <p className="text-xs text-muted-foreground">{tools.structure.result.result}</p>
-              {tools.structure.result.changes?.map((c: string, i: number) => (
-                <p key={i} className="text-xs flex items-start gap-1">
-                  <span className="text-primary">•</span> {c}
-                </p>
-              ))}
-              <Button size="sm" variant="ghost" className="h-5 text-[10px] text-muted-foreground" onClick={() => setToolState('structure', { result: null, isLoading: false, error: null })}>
-                <X className="h-3 w-3" /> Dismiss
-              </Button>
+              {tools.structure.result.changes?.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-medium text-muted-foreground mb-1">Changes:</p>
+                  {tools.structure.result.changes.map((c: string, i: number) => (
+                    <p key={i} className="text-xs flex items-start gap-1">
+                      <span className="text-primary">•</span> {c}
+                    </p>
+                  ))}
+                </div>
+              )}
+              {tools.structure.result.proposedOutline?.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-medium text-muted-foreground mb-1">Proposed Outline:</p>
+                  <ol className="text-xs space-y-0.5 list-decimal pl-4">
+                    {tools.structure.result.proposedOutline.map((h: string, i: number) => (
+                      <li key={i} className="text-xs">{h}</li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+              {tools.structure.result.missingSections?.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-medium text-muted-foreground mb-1">Missing Sections:</p>
+                  <div className="flex flex-wrap gap-1">
+                    {tools.structure.result.missingSections.map((s: string, i: number) => (
+                      <Badge key={i} variant="secondary" className="text-[10px] px-1.5 py-0">{s}</Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="flex gap-2 flex-wrap">
+                {tools.structure.result.proposedOutline?.length > 0 && (
+                  <>
+                    <Button size="sm" variant="default" className="h-6 text-[10px]" onClick={() => insertHeadingScaffold(tools.structure.result.proposedOutline)} disabled={!editorInstance}>
+                      <Plus className="h-3 w-3" /> Insert Scaffold
+                    </Button>
+                    <Button size="sm" variant="outline" className="h-6 text-[10px]" onClick={() => copyToClipboard(tools.structure.result.proposedOutline.join('\n'), 'Outline')}>
+                      <Copy className="h-3 w-3" /> Copy Outline
+                    </Button>
+                  </>
+                )}
+                <Button size="sm" variant="ghost" className="h-5 text-[10px] text-muted-foreground" onClick={() => setToolState('structure', { result: null, isLoading: false, error: null })}>
+                  <X className="h-3 w-3" /> Dismiss
+                </Button>
+              </div>
             </div>
           )}
 
@@ -508,18 +680,26 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
           {/* Compliance Fixes Results */}
           {tools.complianceFixes.result && (
             <div className="border rounded-lg p-3 space-y-2">
-              <h5 className="text-xs font-semibold flex items-center gap-1"><ShieldCheck className="h-3 w-3" /> Compliance Fix Suggestions</h5>
-              {tools.complianceFixes.result.fixes?.map((f: any, i: number) => (
-                <div key={i} className="text-xs border-b border-border/30 pb-1.5">
-                  <div className="flex items-center gap-2">
-                    <Badge variant={f.priority === 'high' ? 'destructive' : f.priority === 'medium' ? 'secondary' : 'outline'} className="text-[10px] px-1 py-0">
-                      {f.priority}
-                    </Badge>
-                    <span className="font-medium">{f.issue}</span>
-                  </div>
-                  <p className="text-muted-foreground mt-0.5">{f.suggestion}</p>
-                </div>
+              <h5 className="text-xs font-semibold flex items-center gap-1"><ShieldCheck className="h-3 w-3" /> Compliance Fixes</h5>
+              {(tools.complianceFixes.result.fixes || []).map((f: any, i: number) => (
+                <ComplianceFixCard
+                  key={i}
+                  fix={f}
+                  onApply={() => applyComplianceFix(f)}
+                  onCopy={() => copyToClipboard(f.suggestedValue || f.explanation, f.issueLabel)}
+                  onInsertContent={() => {
+                    if (editorInstance && f.suggestedValue) {
+                      editorInstance.commands.focus('end');
+                      editorInstance.commands.insertContent(f.suggestedValue);
+                      toast({ title: `${f.issueLabel} — content appended` });
+                    }
+                  }}
+                  editorAvailable={!!editorInstance}
+                />
               ))}
+              {(!tools.complianceFixes.result.fixes || tools.complianceFixes.result.fixes.length === 0) && (
+                <p className="text-xs text-muted-foreground">No structured fixes could be generated. Review the compliance checklist manually.</p>
+              )}
               <Button size="sm" variant="ghost" className="h-5 text-[10px] text-muted-foreground" onClick={() => setToolState('complianceFixes', { result: null, isLoading: false, error: null })}>
                 <X className="h-3 w-3" /> Dismiss
               </Button>
@@ -527,6 +707,95 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
           )}
         </CollapsibleContent>
       </Collapsible>
+    </div>
+  );
+}
+
+// ── Compliance Fix Card component ──
+function ComplianceFixCard({ fix, onApply, onCopy, onInsertContent, editorAvailable }: {
+  fix: any;
+  onApply: () => void;
+  onCopy: () => void;
+  onInsertContent: () => void;
+  editorAvailable: boolean;
+}) {
+  const [showReview, setShowReview] = useState(false);
+
+  const priorityVariant = fix.priority === 'high' ? 'destructive' : fix.priority === 'medium' ? 'secondary' : 'outline';
+  const isApplyable = fix.fixType === 'metadata' && fix.field && EDITABLE_FIELDS.has(fix.field) && fix.suggestedValue;
+  const isAppendable = fix.fixType === 'content-block' && fix.applyMode === 'append' && fix.suggestedValue;
+  const isRewritable = fix.fixType === 'rewrite' && fix.applyMode === 'review-and-replace' && fix.suggestedValue;
+  const isAdvisory = fix.fixType === 'advisory' || fix.applyMode === 'manual';
+
+  return (
+    <div className="text-xs border-b border-border/30 pb-2 space-y-1">
+      <div className="flex items-center gap-2 flex-wrap">
+        <Badge variant={priorityVariant} className="text-[10px] px-1 py-0">{fix.priority}</Badge>
+        <span className="font-medium">{fix.issueLabel}</span>
+        {fix.fixType !== 'advisory' && (
+          <Badge variant="outline" className="text-[9px] px-1 py-0">{fix.fixType}</Badge>
+        )}
+      </div>
+      <p className="text-muted-foreground">{fix.explanation}</p>
+
+      {/* Show suggested value preview for metadata */}
+      {isApplyable && (
+        <div className="bg-muted/30 rounded p-1.5">
+          <p className="text-[10px] text-muted-foreground">{fix.field}:</p>
+          <p className="text-[11px] font-medium">{fix.suggestedValue}</p>
+        </div>
+      )}
+
+      {/* Show content block preview */}
+      {isAppendable && (
+        <div className="bg-muted/30 rounded p-1.5 max-h-24 overflow-y-auto">
+          <p className="text-[10px] text-muted-foreground mb-1">Content to append:</p>
+          <div className="text-[11px]" dangerouslySetInnerHTML={{ __html: fix.suggestedValue }} />
+        </div>
+      )}
+
+      {/* Show rewrite review */}
+      {isRewritable && !showReview && (
+        <Button size="sm" variant="outline" className="h-5 text-[10px]" onClick={() => setShowReview(true)}>
+          Review Replacement
+        </Button>
+      )}
+      {isRewritable && showReview && (
+        <div className="space-y-1">
+          {fix.targetSnippet && (
+            <div>
+              <p className="text-[10px] text-muted-foreground">Original:</p>
+              <div className="bg-destructive/5 rounded p-1.5 text-[11px] max-h-20 overflow-y-auto" dangerouslySetInnerHTML={{ __html: fix.targetSnippet }} />
+            </div>
+          )}
+          <div>
+            <p className="text-[10px] text-muted-foreground">Suggested:</p>
+            <div className="bg-primary/5 rounded p-1.5 text-[11px] max-h-20 overflow-y-auto" dangerouslySetInnerHTML={{ __html: fix.suggestedValue }} />
+          </div>
+        </div>
+      )}
+
+      {/* Action buttons */}
+      <div className="flex gap-1.5 flex-wrap">
+        {isApplyable && (
+          <Button size="sm" variant="default" className="h-5 text-[10px]" onClick={onApply}>
+            <Check className="h-2.5 w-2.5" /> Apply to Field
+          </Button>
+        )}
+        {isAppendable && (
+          <Button size="sm" variant="default" className="h-5 text-[10px]" onClick={onInsertContent} disabled={!editorAvailable}>
+            <Plus className="h-2.5 w-2.5" /> Append to Content
+          </Button>
+        )}
+        {fix.suggestedValue && !isAdvisory && (
+          <Button size="sm" variant="outline" className="h-5 text-[10px]" onClick={onCopy}>
+            <Copy className="h-2.5 w-2.5" /> Copy
+          </Button>
+        )}
+        {isAdvisory && !isApplyable && !isAppendable && (
+          <span className="text-[10px] text-muted-foreground italic">Manual review required</span>
+        )}
+      </div>
     </div>
   );
 }

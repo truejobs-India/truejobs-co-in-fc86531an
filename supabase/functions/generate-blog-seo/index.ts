@@ -85,17 +85,22 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ results }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    // Single mode: { title, content, fields: [...] }
-    const { title, content, fields } = body;
+    // Single mode: { title, content, fields: [...], slug?, category?, tags? }
+    const { title, content, fields, slug, category, tags } = body;
     if (!title || !fields || !Array.isArray(fields)) {
       return new Response(JSON.stringify({ error: 'title and fields[] required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     const plainText = (content || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 1500);
     const result: Record<string, string> = {};
+    const extraContext = [
+      slug ? `Slug: ${slug}` : '',
+      category ? `Category: ${category}` : '',
+      tags?.length ? `Tags: ${tags.join(', ')}` : '',
+    ].filter(Boolean).join('\n');
 
     for (const field of fields) {
-      const prompt = buildPrompt(field, title, plainText);
+      const prompt = buildPrompt(field, title, plainText, extraContext);
       let generated = await callGemini(geminiApiKey, prompt);
       generated = cleanResult(field, generated);
       result[field] = generated;
@@ -108,37 +113,41 @@ Deno.serve(async (req) => {
   }
 });
 
-function buildPrompt(field: string, title: string, plainText: string): string {
+function buildPrompt(field: string, title: string, plainText: string, extraContext = ''): string {
+  const contextBlock = extraContext ? `\n${extraContext}` : '';
+
   if (field === 'metaTitle') {
-    return `You are an SEO expert for TrueJobs.co.in, an Indian job portal.
+    return `You are an SEO expert for TrueJobs.co.in, an Indian government job portal.
 Generate a meta title for this blog article. Requirements:
 - MUST be under 60 characters (STRICT)
 - Include the primary keyword from the title
 - Write in the same language as the title
 - Do NOT use quotes
-Title: ${title}
+- Optimize for Indian job seeker search intent
+Title: ${title}${contextBlock}
 Article excerpt: ${plainText}
 Return ONLY the meta title text, nothing else.`;
   }
   if (field === 'metaDescription') {
-    return `You are an SEO expert for TrueJobs.co.in, an Indian job portal.
+    return `You are an SEO expert for TrueJobs.co.in, an Indian government job portal.
 Generate a meta description for this blog article. Requirements:
 - MUST be between 140 and 155 characters (STRICT LIMIT)
 - Include the primary keyword from the title
-- Include a call-to-action phrase
+- Include a call-to-action phrase relevant to job seekers
 - Write in the same language as the title
 - Do NOT use quotes
-Title: ${title}
+- Focus on what the reader will learn or gain
+Title: ${title}${contextBlock}
 Article excerpt: ${plainText}
 Return ONLY the meta description text, nothing else.`;
   }
   if (field === 'excerpt') {
-    return `You are a content editor for TrueJobs.co.in, an Indian job portal.
+    return `You are a content editor for TrueJobs.co.in, an Indian government job portal.
 Write a brief excerpt/summary (2-3 sentences, under 200 characters) for this blog article.
-- Capture the main value proposition
+- Capture the main value proposition for job seekers
 - Write in the same language as the title
 - Do NOT use quotes
-Title: ${title}
+Title: ${title}${contextBlock}
 Article excerpt: ${plainText}
 Return ONLY the excerpt text, nothing else.`;
   }

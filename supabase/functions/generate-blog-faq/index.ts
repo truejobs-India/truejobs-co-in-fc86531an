@@ -55,7 +55,7 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'GEMINI_API_KEY not configured' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    const { title, content, existingFaqCount } = await req.json();
+    const { title, content, existingFaqCount, category, tags, slug } = await req.json();
     if (!title || !content) {
       return new Response(JSON.stringify({ error: 'title and content required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
@@ -65,7 +65,7 @@ Deno.serve(async (req) => {
       ? `\nIMPORTANT: The article already has ${existingFaqCount} FAQ items. Generate only NEW, non-duplicate questions that are different from what would logically already exist.`
       : '';
 
-    const prompt = `You are an SEO content expert for TrueJobs.co.in, an Indian job portal.
+    const prompt = `You are an SEO content expert for TrueJobs.co.in, an Indian government job portal.
 Generate 5 FAQ items for this blog article that would qualify for Google FAQ rich snippets.${existingNote}
 
 Requirements:
@@ -73,9 +73,14 @@ Requirements:
 - Answers should be concise (2-3 sentences each)
 - Write in the same language as the title (Hindi transliterated to English or English)
 - Questions should cover different aspects of the topic
+- Focus on practical information seekers need: eligibility, dates, process, documents
+- Maintain informational, non-official tone
 - Format as JSON array: [{"question": "...", "answer": "..."}]
 
 Title: ${title}
+Slug: ${slug || 'unknown'}
+Category: ${category || 'General'}
+Tags: ${(tags || []).join(', ') || 'none'}
 Article excerpt: ${plainText}
 
 Return ONLY the JSON array, no markdown formatting, no code blocks.`;

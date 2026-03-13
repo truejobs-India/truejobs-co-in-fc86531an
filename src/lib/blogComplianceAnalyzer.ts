@@ -394,12 +394,14 @@ export function analyzeAdsenseCompliance(metadata: ArticleMetadata): AdsenseComp
   // 15. Link density
   const linkCount = (metadata.content.match(/<a\s/gi) || []).length;
   const linkDensity = wordCount > 0 ? linkCount / wordCount : 0;
+  const linkDensityStatus = linkDensity <= 0.02 ? 'pass' : linkDensity <= 0.04 ? 'warn' : 'fail';
   checks.push({
     key: 'link-density', label: 'Reasonable link density', category: 'content-quality',
-    status: linkDensity <= 0.02 ? 'pass' : linkDensity <= 0.04 ? 'warn' : 'fail',
+    status: linkDensityStatus,
     detail: `${linkCount} links in ${wordCount} words (${(linkDensity * 100).toFixed(2)}%)`,
     recommendation: linkDensity > 0.02 ? 'Reduce link count — excessive linking may be penalized' : undefined,
   });
+  if (linkDensityStatus === 'fail') _logFail('link-density', `${linkCount} links / ${wordCount} words`);
 
   // 16. Trust signals — author + no deceptive official claims
   const hasAuthor = !!metadata.authorName;

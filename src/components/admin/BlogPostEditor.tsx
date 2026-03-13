@@ -375,6 +375,30 @@ export function BlogPostEditor() {
     }
   };
 
+  const handleCopyArticleTitles = async () => {
+    const { data } = await supabase.from('blog_posts').select('title').order('created_at', { ascending: false });
+    if (data && data.length > 0) {
+      const titles = data.map(p => p.title).join('\n');
+      await navigator.clipboard.writeText(titles);
+      toast({ title: '📋 Copied!', description: `${data.length} article titles copied to clipboard.` });
+    }
+  };
+
+  const handleDownloadArticleTitles = async () => {
+    const { data } = await supabase.from('blog_posts').select('title').order('created_at', { ascending: false });
+    if (data && data.length > 0) {
+      const titles = data.map(p => p.title).join('\n');
+      const blob = new Blob([titles], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `blog-article-titles-${new Date().toISOString().slice(0, 10)}.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast({ title: '⬇️ Downloaded!', description: `${data.length} article titles saved.` });
+    }
+  };
+
   const handleCheckDuplicateSlugs = async () => {
     const { data } = await supabase.from('blog_posts').select('slug');
     if (data) {

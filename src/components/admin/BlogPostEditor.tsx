@@ -97,6 +97,25 @@ export function BlogPostEditor() {
   const [drilldownOpen, setDrilldownOpen] = useState(false);
   const [duplicateSlugs, setDuplicateSlugs] = useState<{ slug: string; count: number }[]>([]);
 
+  // Fix All dialog state
+  const [fixAllDialogPost, setFixAllDialogPost] = useState<BlogPost | null>(null);
+  const [fixAllRunning, setFixAllRunning] = useState(false);
+  const [fixAllResults, setFixAllResults] = useState<{ autoFixed: { field: string; value: string }[]; reviewRequired: any[]; unresolved: any[] } | null>(null);
+
+  // Enrich dialog state
+  const [enrichDialogPost, setEnrichDialogPost] = useState<BlogPost | null>(null);
+  const [enrichWordLimit, setEnrichWordLimit] = useState(1500);
+  const [enrichResult, setEnrichResult] = useState<{ content: string; wordCount: number; changes: string[] } | null>(null);
+  const [isEnriching, setIsEnriching] = useState(false);
+
+  // Bulk generator state
+  const [showBulkGenerator, setShowBulkGenerator] = useState(false);
+  const [bulkTopics, setBulkTopics] = useState('');
+  const [bulkCategory, setBulkCategory] = useState<string | null>(null);
+  const [bulkWordCount, setBulkWordCount] = useState(1500);
+  const [bulkResults, setBulkResults] = useState<{ topic: string; status: 'queued' | 'generating' | 'success' | 'failed'; articleId?: string; error?: string }[]>([]);
+  const [isBulkGenerating, setIsBulkGenerating] = useState(false);
+
   // Search, filter, pagination
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'published' | 'draft'>('all');

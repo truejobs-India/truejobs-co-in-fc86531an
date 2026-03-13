@@ -184,6 +184,7 @@ export function BlogPostEditor() {
       author_name: post.author_name || 'TrueJobs Editorial Team',
       category: post.category || null,
       tags: post.tags || null,
+      canonical_url: post.canonical_url || '',
     });
     setHasUnsavedChanges(false);
     setPublishOverride(false);

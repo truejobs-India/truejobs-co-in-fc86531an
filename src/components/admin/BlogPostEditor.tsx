@@ -505,11 +505,24 @@ export function BlogPostEditor() {
 
       // Apply safe metadata to DB
       if (Object.keys(updatePayload).length > 0) {
+        // Also recalculate word_count from content to keep it fresh
+        const freshWordCount = post.content.replace(/<[^>]+>/g, '').split(/\s+/).filter(w => w.length > 0).length;
+        (updatePayload as any).word_count = freshWordCount;
+        (updatePayload as any).reading_time = Math.max(1, Math.ceil(freshWordCount / 200));
         await supabase.from('blog_posts').update(updatePayload).eq('id', post.id);
       }
 
       setFixAllResults({ autoFixed, reviewRequired, unresolved });
-      if (Object.keys(updatePayload).length > 0) fetchPosts();
+      // Mark this post as AI-fixed
+      setAiFixedPostIds(prev => new Set([...prev, post.id]));
+      if (Object.keys(updatePayload).length > 0) {
+        await fetchPosts();
+        toast({ title: '✨ Fix All complete', description: `${autoFixed.length} fixes applied, ${reviewRequired.length} need review` });
+      } else if (autoFixed.length === 0 && reviewRequired.length === 0) {
+        toast({ title: '✅ No issues found', description: 'All compliance checks passed.' });
+      } else {
+        toast({ title: '⚠️ Review needed', description: `${reviewRequired.length} items need manual review` });
+      }
     } catch (err: any) {
       toast({ title: 'Fix All failed', description: err.message, variant: 'destructive' });
       setFixAllResults({ autoFixed: [], reviewRequired: [], unresolved: [{ issueLabel: 'Error', explanation: err.message }] });

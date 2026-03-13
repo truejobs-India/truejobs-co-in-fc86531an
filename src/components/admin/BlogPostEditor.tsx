@@ -1039,9 +1039,9 @@ export function BlogPostEditor() {
                         <div>
                           <div className="font-medium truncate max-w-[200px] flex items-center gap-1">
                             {post.title}
-                            {aiFixedPostIds.has(post.id) && (
-                              <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 border-primary/40 text-primary shrink-0">
-                                <Sparkles className="h-2.5 w-2.5 mr-0.5" />AI Fixed
+                            {post.ai_fixed_at && (
+                              <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4 border-primary/40 text-primary shrink-0 gap-0.5">
+                                <Sparkles className="h-2.5 w-2.5" />AI Fixed
                               </Badge>
                             )}
                           </div>

@@ -24,6 +24,7 @@ import {
 interface RichTextEditorProps {
   content: string;
   onChange: (html: string) => void;
+  onEditorReady?: (editor: import('@tiptap/react').Editor | null) => void;
 }
 
 export function RichTextEditor({ content, onChange }: RichTextEditorProps) {

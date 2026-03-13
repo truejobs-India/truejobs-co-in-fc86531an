@@ -145,19 +145,15 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
       return;
     }
 
-    // Extract selected HTML
+    // Extract selected HTML using TipTap's built-in getHTML for the selection range
     const slice = editorInstance.state.doc.slice(from, to);
-    const div = document.createElement('div');
-    const fragment = (editorInstance.view.domSerializer || (editorInstance as any).view.domSerializer)
-      ? undefined : undefined;
-    // Use a simpler approach to get HTML from the selection
-    const selectedHtml = editorInstance.state.doc.textBetween(from, to, '\n');
-    // Actually get HTML properly
-    const tempDiv = document.createElement('div');
-    const serializer = (await import('@tiptap/pm/model')).DOMSerializer.fromSchema(editorInstance.schema);
+    const tempEditor = document.createElement('div');
+    // Use DOMSerializer from ProseMirror schema
+    const { DOMSerializer } = await import('@tiptap/pm/model');
+    const serializer = DOMSerializer.fromSchema(editorInstance.schema);
     const domFragment = serializer.serializeFragment(slice.content);
-    tempDiv.appendChild(domFragment);
-    const htmlContent = tempDiv.innerHTML;
+    tempEditor.appendChild(domFragment);
+    const htmlContent = tempEditor.innerHTML;
 
     setToolState('rewriteSection', { isLoading: true, error: null });
     try {

@@ -72,6 +72,7 @@ interface BlogPost {
   internal_links: any;
   canonical_url: string | null;
   author_name: string | null;
+  ai_fixed_at: string | null;
 }
 
 const POSTS_PER_PAGE = 20;
@@ -101,7 +102,6 @@ export function BlogPostEditor() {
   const [fixAllDialogPost, setFixAllDialogPost] = useState<BlogPost | null>(null);
   const [fixAllRunning, setFixAllRunning] = useState(false);
   const [fixAllResults, setFixAllResults] = useState<{ autoFixed: { field: string; value: string }[]; reviewRequired: any[]; unresolved: any[] } | null>(null);
-  const [aiFixedPostIds, setAiFixedPostIds] = useState<Set<string>>(new Set());
 
   // Enrich dialog state
   const [enrichDialogPost, setEnrichDialogPost] = useState<BlogPost | null>(null);
@@ -269,6 +269,7 @@ export function BlogPostEditor() {
     author_name: formData.author_name.trim() || null,
     canonical_url: formData.canonical_url.trim() || null,
     author_id: user!.id,
+    ai_fixed_at: null, // Clear AI fixed status on manual save
   });
 
   const executeSubmit = async () => {
@@ -512,9 +513,10 @@ export function BlogPostEditor() {
         await supabase.from('blog_posts').update(updatePayload).eq('id', post.id);
       }
 
+      // Always mark as AI-fixed in DB (even if no auto-fixes, the analysis ran)
+      await supabase.from('blog_posts').update({ ai_fixed_at: new Date().toISOString() } as any).eq('id', post.id);
+
       setFixAllResults({ autoFixed, reviewRequired, unresolved });
-      // Mark this post as AI-fixed
-      setAiFixedPostIds(prev => new Set([...prev, post.id]));
       if (Object.keys(updatePayload).length > 0) {
         await fetchPosts();
         toast({ title: '✨ Fix All complete', description: `${autoFixed.length} fixes applied, ${reviewRequired.length} need review` });
@@ -1038,9 +1040,9 @@ export function BlogPostEditor() {
                         <div>
                           <div className="font-medium truncate max-w-[200px] flex items-center gap-1">
                             {post.title}
-                            {aiFixedPostIds.has(post.id) && (
-                              <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 border-primary/40 text-primary shrink-0">
-                                <Sparkles className="h-2.5 w-2.5 mr-0.5" />AI Fixed
+                            {post.ai_fixed_at && (
+                              <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4 border-primary/40 text-primary shrink-0 gap-0.5">
+                                <Sparkles className="h-2.5 w-2.5" />AI Fixed
                               </Badge>
                             )}
                           </div>

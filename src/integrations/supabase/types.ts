@@ -195,6 +195,7 @@ export type Database = {
       }
       blog_posts: {
         Row: {
+          ai_fixed_at: string | null
           article_images: Json | null
           author_id: string
           author_name: string | null
@@ -226,6 +227,7 @@ export type Database = {
           word_count: number | null
         }
         Insert: {
+          ai_fixed_at?: string | null
           article_images?: Json | null
           author_id: string
           author_name?: string | null
@@ -257,6 +259,7 @@ export type Database = {
           word_count?: number | null
         }
         Update: {
+          ai_fixed_at?: string | null
           article_images?: Json | null
           author_id?: string
           author_name?: string | null

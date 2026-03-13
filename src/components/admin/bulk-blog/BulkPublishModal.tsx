@@ -142,8 +142,13 @@ export function BulkPublishModal({ open, onOpenChange, articles, onPublished }: 
           },
         });
         if (!error && data?.results) {
-          Object.assign(aiFixedMetas, data.results);
-          setFixedArticles(data.results);
+          // Map from nested { id: { metaDescription: "..." } } to flat { id: "..." }
+          const flat: Record<string, string> = {};
+          for (const [id, fields] of Object.entries(data.results as Record<string, Record<string, string>>)) {
+            flat[id] = fields.metaDescription || '';
+          }
+          Object.assign(aiFixedMetas, flat);
+          setFixedArticles(flat);
         }
       } catch {
         needsFix.forEach(a => {

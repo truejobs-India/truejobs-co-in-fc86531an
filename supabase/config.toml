@@ -51,9 +51,6 @@ verify_jwt = false
 [functions.build-seo-cache]
 verify_jwt = false
 
-[functions.generate-meta-description]
-verify_jwt = false
-
 [functions.gemini-generate]
 verify_jwt = false
 
@@ -76,4 +73,19 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.generate-blog-image]
+verify_jwt = false
+
+[functions.generate-blog-seo]
+verify_jwt = false
+
+[functions.generate-blog-faq]
+verify_jwt = false
+
+[functions.suggest-blog-internal-links]
+verify_jwt = false
+
+[functions.improve-blog-content]
+verify_jwt = false
+
+[functions.analyze-blog-compliance-fixes]
 verify_jwt = false

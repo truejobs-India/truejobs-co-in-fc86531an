@@ -67,7 +67,7 @@ interface ToolState {
   error: string | null;
 }
 
-type ToolKey = 'seo' | 'faq' | 'internalLinks' | 'structure' | 'rewriteSection' | 'complianceFixes';
+type ToolKey = 'seo' | 'faq' | 'internalLinks' | 'structure' | 'rewriteSection' | 'complianceFixes' | 'enrichArticle';
 
 // ── Editable fields whitelist (must match server-side) ──
 const EDITABLE_FIELDS = new Set(['meta_title', 'meta_description', 'excerpt', 'featured_image_alt', 'author_name', 'canonical_url', 'slug']);
@@ -273,9 +273,13 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
     structure: { isLoading: false, result: null, error: null },
     rewriteSection: { isLoading: false, result: null, error: null },
     complianceFixes: { isLoading: false, result: null, error: null },
+    enrichArticle: { isLoading: false, result: null, error: null },
   });
   const [rewritePreview, setRewritePreview] = useState<{ original: string; rewritten: string; from: number; to: number } | null>(null);
   const [resultsOpen, setResultsOpen] = useState(false);
+  const [fixAllRunning, setFixAllRunning] = useState(false);
+  const [fixAllResults, setFixAllResults] = useState<{ autoFixed: { field: string; value: string }[]; reviewRequired: any[]; unresolved: any[] } | null>(null);
+  const [enrichWordLimit, setEnrichWordLimit] = useState(1500);
 
   const setToolState = (key: ToolKey, partial: Partial<ToolState>) => {
     setTools(prev => ({ ...prev, [key]: { ...prev[key], ...partial } }));
@@ -288,6 +292,7 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
     structure: deriveStructureStatus(tools.structure, currentMetadata, currentQuality),
     rewriteSection: deriveRewriteStatus(tools.rewriteSection, !!rewritePreview),
     complianceFixes: deriveComplianceStatus(tools.complianceFixes, currentCompliance),
+    enrichArticle: tools.enrichArticle.isLoading ? 'running' as ToolStatus : tools.enrichArticle.error ? 'error' as ToolStatus : tools.enrichArticle.result ? 'needs-review' as ToolStatus : 'not-started' as ToolStatus,
   }), [tools, formData, existingFaqCount, currentMetadata, currentQuality, currentCompliance, rewritePreview]);
 
   const invokeFunction = useCallback(async (functionName: string, body: any) => {
@@ -502,7 +507,112 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
     }
   };
 
-  // ── Apply SEO field ──
+  // ── Fix All With AI (editor context) ──
+  const handleFixAll = async () => {
+    if (!currentCompliance) return;
+    setFixAllRunning(true);
+    setFixAllResults(null);
+    trackBlogToolEvent({ event_name: 'fix_all_started', tool_name: 'fixAll', slug: formData.slug });
+    try {
+      const failedChecks = currentCompliance.checks.filter(c => c.status === 'fail' || c.status === 'warn');
+      if (failedChecks.length === 0) {
+        setFixAllResults({ autoFixed: [], reviewRequired: [], unresolved: [{ issueLabel: 'No issues', explanation: 'All checks passed.' }] });
+        setFixAllRunning(false);
+        return;
+      }
+      const data = await invokeFunction('analyze-blog-compliance-fixes', {
+        title: formData.title, content: formData.content, slug: formData.slug,
+        issues: failedChecks.map(c => ({ key: c.key, label: c.label, detail: c.detail, recommendation: c.recommendation })),
+        existingMeta: {
+          meta_title: formData.meta_title || null, meta_description: formData.meta_description || null,
+          excerpt: formData.excerpt || null, featured_image_alt: formData.featured_image_alt || null,
+          author_name: formData.author_name || null, canonical_url: formData.canonical_url || null,
+          hasCoverImage: !!formData.cover_image_url, hasIntro: currentMetadata?.hasIntro ?? false,
+          hasConclusion: currentMetadata?.hasConclusion ?? false, headings: currentMetadata?.headings || [],
+          wordCount: currentMetadata?.wordCount || 0, featured_image: formData.cover_image_url || null,
+          faqCount: existingFaqCount ?? 0, internalLinkCount: currentMetadata?.internalLinks?.length ?? 0,
+        },
+      });
+      const fixes = normalizeComplianceFixes(data?.fixes);
+      const autoFixed: { field: string; value: string }[] = [];
+      const reviewRequired: any[] = [];
+      const unresolved: any[] = [];
+
+      for (const fix of fixes) {
+        const mode = normalizeApplyMode(fix.applyMode);
+        if (mode === 'apply_field' && fix.field && EDITABLE_FIELDS.has(fix.field) && fix.suggestedValue) {
+          const currentVal = (formData as any)[fix.field] || '';
+          if (!currentVal || currentVal.length < 3) {
+            onApplyField(fix.field, fix.suggestedValue);
+            logBlogAiAudit({ tool_name: 'fixAll', before_value: currentVal, after_value: fix.suggestedValue, apply_mode: mode, target_field: fix.field, slug: formData.slug });
+            autoFixed.push({ field: fix.field, value: fix.suggestedValue });
+          } else {
+            reviewRequired.push(fix);
+          }
+        } else if (mode === 'advisory' || fix.confidence === 'low') {
+          unresolved.push(fix);
+        } else {
+          // Safe additive content — only if duplicates don't exist
+          if (mode === 'insert_before_first_heading' && fix.fixType === 'intro' && editorInstance) {
+            if (!hasExistingIntro(formData.content) && !contentBlockAlreadyExists(formData.content, fix.suggestedValue)) {
+              insertBeforeFirstHeading(editorInstance, fix.suggestedValue);
+              logBlogAiAudit({ tool_name: 'fixAll', before_value: '', after_value: fix.suggestedValue.substring(0, 500), apply_mode: mode, slug: formData.slug });
+              autoFixed.push({ field: 'intro', value: 'Introduction added' });
+              continue;
+            }
+          }
+          if (mode === 'append_content' && fix.fixType === 'conclusion' && editorInstance) {
+            if (!hasExistingConclusion(formData.content) && !contentBlockAlreadyExists(formData.content, fix.suggestedValue)) {
+              editorInstance.commands.focus('end');
+              editorInstance.commands.insertContent(fix.suggestedValue);
+              logBlogAiAudit({ tool_name: 'fixAll', before_value: '', after_value: fix.suggestedValue.substring(0, 500), apply_mode: mode, slug: formData.slug });
+              autoFixed.push({ field: 'conclusion', value: 'Conclusion added' });
+              continue;
+            }
+          }
+          reviewRequired.push(fix);
+        }
+      }
+      setFixAllResults({ autoFixed, reviewRequired, unresolved });
+      setResultsOpen(true);
+      trackBlogToolEvent({ event_name: 'fix_all_completed', tool_name: 'fixAll', status: 'success', item_count: autoFixed.length, slug: formData.slug });
+    } catch (err: any) {
+      toast({ title: 'Fix All failed', description: err.message, variant: 'destructive' });
+      trackBlogToolEvent({ event_name: 'fix_all_completed', tool_name: 'fixAll', status: 'error', error_message: err.message, slug: formData.slug });
+    }
+    setFixAllRunning(false);
+  };
+
+  // ── Enrich Article (editor context) ──
+  const handleEnrichArticle = async () => {
+    setToolState('enrichArticle', { isLoading: true, error: null });
+    trackBlogToolEvent({ event_name: 'tool_run_started', tool_name: 'enrichArticle', slug: formData.slug });
+    try {
+      const data = await invokeFunction('improve-blog-content', {
+        title: formData.title, content: formData.content,
+        action: 'enrich-article', targetWordCount: enrichWordLimit,
+        category: formData.category || undefined, tags: formData.tags || undefined,
+      });
+      setToolState('enrichArticle', { isLoading: false, result: data });
+      setResultsOpen(true);
+      trackBlogToolEvent({ event_name: 'tool_run_finished', tool_name: 'enrichArticle', status: 'success', slug: formData.slug });
+    } catch (err: any) {
+      setToolState('enrichArticle', { isLoading: false, error: err.message });
+      toast({ title: 'Enrichment failed', description: err.message, variant: 'destructive' });
+      trackBlogToolEvent({ event_name: 'tool_run_finished', tool_name: 'enrichArticle', status: 'error', error_message: err.message, slug: formData.slug });
+    }
+  };
+
+  const applyEnrichment = () => {
+    if (!editorInstance || !tools.enrichArticle.result?.result) return;
+    const beforeVal = editorInstance.getHTML();
+    editorInstance.commands.setContent(tools.enrichArticle.result.result);
+    logBlogAiAudit({ tool_name: 'enrichArticle', before_value: beforeVal.substring(0, 500), after_value: tools.enrichArticle.result.result.substring(0, 500), apply_mode: 'replace_content', slug: formData.slug });
+    toast({ title: 'Enrichment applied', description: `Article expanded to ~${tools.enrichArticle.result.wordCount || 'N/A'} words` });
+    setToolState('enrichArticle', { isLoading: false, result: null, error: null });
+  };
+
+
   const applySeoField = (field: string, value: string) => {
     const fieldMap: Record<string, string> = {
       metaTitle: 'meta_title',
@@ -656,6 +766,7 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
     { key: 'structure', label: 'Improve Structure', icon: <Wrench className="h-3 w-3" />, handler: handleImproveStructure, disabled: tools.structure.isLoading || !formData.content },
     { key: 'rewriteSection', label: 'Rewrite Selection', icon: <RefreshCw className="h-3 w-3" />, handler: handleRewriteSection, disabled: tools.rewriteSection.isLoading || !editorInstance },
     { key: 'complianceFixes', label: 'Fix Compliance', icon: <ShieldCheck className="h-3 w-3" />, handler: handleComplianceFixes, disabled: tools.complianceFixes.isLoading || !currentCompliance },
+    { key: 'enrichArticle', label: 'Enrich Article', icon: <Sparkles className="h-3 w-3" />, handler: handleEnrichArticle, disabled: tools.enrichArticle.isLoading || !formData.content },
   ];
 
   // ── Detect reliable FAQ presence for replace option ──
@@ -666,7 +777,29 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
       <div className="flex items-center gap-2">
         <Sparkles className="h-4 w-4 text-primary" />
         <h4 className="text-sm font-semibold">AI Tools</h4>
-        {anyLoading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+        {(anyLoading || fixAllRunning) && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+      </div>
+
+      {/* Fix All With AI — prominent button */}
+      <Button
+        variant="default"
+        size="sm"
+        className="w-full text-xs gap-1 h-8"
+        onClick={handleFixAll}
+        disabled={fixAllRunning || !currentCompliance || !formData.title}
+      >
+        {fixAllRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+        Fix All With AI
+      </Button>
+
+      {/* Enrich word limit selector (inline) */}
+      <div className="flex items-center gap-1.5">
+        <select className="text-[10px] h-6 px-1 border rounded bg-background text-foreground" value={enrichWordLimit} onChange={(e) => setEnrichWordLimit(Number(e.target.value))}>
+          <option value={1200}>1200w</option>
+          <option value={1500}>1500w</option>
+          <option value={1800}>1800w</option>
+          <option value={2200}>2200w</option>
+        </select>
       </div>
 
       {/* Tool buttons with status indicators */}
@@ -972,6 +1105,61 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
               <Button size="sm" variant="ghost" className="h-5 text-[10px] text-muted-foreground" onClick={() => setToolState('complianceFixes', { result: null, isLoading: false, error: null })}>
                 <X className="h-3 w-3" /> Dismiss
               </Button>
+            </div>
+          )}
+
+          {/* Fix All Results */}
+          {fixAllResults && (
+            <div className="border rounded-lg p-3 space-y-2 border-primary/30">
+              <h5 className="text-xs font-semibold flex items-center gap-1"><Sparkles className="h-3 w-3" /> Fix All Results</h5>
+              {fixAllResults.autoFixed.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-[10px] font-medium text-green-700 dark:text-green-400 flex items-center gap-1"><CheckCircle2 className="h-2.5 w-2.5" /> Auto-Fixed ({fixAllResults.autoFixed.length})</p>
+                  {fixAllResults.autoFixed.map((f, i) => (
+                    <p key={i} className="text-[10px] bg-green-500/10 rounded px-1.5 py-0.5">{f.field}: {f.value.substring(0, 60)}</p>
+                  ))}
+                </div>
+              )}
+              {fixAllResults.reviewRequired.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-[10px] font-medium text-yellow-700 dark:text-yellow-400 flex items-center gap-1"><AlertTriangle className="h-2.5 w-2.5" /> Review Required ({fixAllResults.reviewRequired.length})</p>
+                  {fixAllResults.reviewRequired.map((f: any, i: number) => (
+                    <p key={i} className="text-[10px] bg-yellow-500/10 rounded px-1.5 py-0.5">{f.issueLabel}: {f.explanation?.substring(0, 80)}</p>
+                  ))}
+                </div>
+              )}
+              {fixAllResults.unresolved.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-[10px] font-medium text-muted-foreground">Unresolved ({fixAllResults.unresolved.length})</p>
+                  {fixAllResults.unresolved.map((f: any, i: number) => (
+                    <p key={i} className="text-[10px] text-muted-foreground bg-muted/50 rounded px-1.5 py-0.5">{f.issueLabel}: {f.explanation}</p>
+                  ))}
+                </div>
+              )}
+              <Button size="sm" variant="ghost" className="h-5 text-[10px] text-muted-foreground" onClick={() => setFixAllResults(null)}>
+                <X className="h-3 w-3" /> Dismiss
+              </Button>
+            </div>
+          )}
+
+          {/* Enrich Article Results */}
+          {tools.enrichArticle.result && (
+            <div className="border rounded-lg p-3 space-y-2 border-primary/30">
+              <h5 className="text-xs font-semibold flex items-center gap-1"><Sparkles className="h-3 w-3" /> Enriched Preview (~{tools.enrichArticle.result.wordCount || '?'} words)</h5>
+              {tools.enrichArticle.result.changes?.length > 0 && (
+                <div className="text-[10px] space-y-0.5">
+                  {tools.enrichArticle.result.changes.map((c: string, i: number) => <p key={i} className="text-muted-foreground">• {c}</p>)}
+                </div>
+              )}
+              <div className="max-h-48 overflow-y-auto border rounded p-2 bg-muted/20 text-xs" dangerouslySetInnerHTML={{ __html: tools.enrichArticle.result.result?.substring(0, 3000) || '' }} />
+              <div className="flex gap-2">
+                <Button size="sm" variant="default" className="h-6 text-[10px]" onClick={applyEnrichment} disabled={!editorInstance}>
+                  <Check className="h-3 w-3" /> Apply Enrichment
+                </Button>
+                <Button size="sm" variant="ghost" className="h-5 text-[10px] text-muted-foreground" onClick={() => setToolState('enrichArticle', { result: null, isLoading: false, error: null })}>
+                  <X className="h-3 w-3" /> Discard
+                </Button>
+              </div>
             </div>
           )}
         </CollapsibleContent>

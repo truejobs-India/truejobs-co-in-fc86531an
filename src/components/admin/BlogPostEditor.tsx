@@ -21,7 +21,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Edit, Trash2, Eye, EyeOff, ExternalLink, RefreshCw, ClipboardCopy, Link2, AlertTriangle, Search, ChevronDown, ChevronLeft, ChevronRight, ImageIcon } from 'lucide-react';
+import { Plus, Edit, Trash2, Eye, EyeOff, ExternalLink, RefreshCw, ClipboardCopy, Link2, AlertTriangle, Search, ChevronDown, ChevronLeft, ChevronRight, ImageIcon, Sparkles, Loader2, Check, X, Zap } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { RichTextEditor } from './blog/RichTextEditor';
 import { CoverImageUploader } from './blog/CoverImageUploader';
@@ -34,6 +34,8 @@ import { InternalLinkSuggester } from './blog/InternalLinkSuggester';
 import { FeaturedImageGenerator } from './blog/FeaturedImageGenerator';
 import { PublishReadinessBadge } from './blog/PublishReadinessBadge';
 import { BLOG_REDIRECTS } from '@/lib/blogRedirects';
+import { Textarea } from '@/components/ui/textarea';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   analyzeQuality, analyzeSEO, getReadinessStatus, blogPostToMetadata,
   type QualityReport, type SEOReport
@@ -94,6 +96,25 @@ export function BlogPostEditor() {
   const [drilldownFilter, setDrilldownFilter] = useState<DrilldownFilter | null>(null);
   const [drilldownOpen, setDrilldownOpen] = useState(false);
   const [duplicateSlugs, setDuplicateSlugs] = useState<{ slug: string; count: number }[]>([]);
+
+  // Fix All dialog state
+  const [fixAllDialogPost, setFixAllDialogPost] = useState<BlogPost | null>(null);
+  const [fixAllRunning, setFixAllRunning] = useState(false);
+  const [fixAllResults, setFixAllResults] = useState<{ autoFixed: { field: string; value: string }[]; reviewRequired: any[]; unresolved: any[] } | null>(null);
+
+  // Enrich dialog state
+  const [enrichDialogPost, setEnrichDialogPost] = useState<BlogPost | null>(null);
+  const [enrichWordLimit, setEnrichWordLimit] = useState(1500);
+  const [enrichResult, setEnrichResult] = useState<{ content: string; wordCount: number; changes: string[] } | null>(null);
+  const [isEnriching, setIsEnriching] = useState(false);
+
+  // Bulk generator state
+  const [showBulkGenerator, setShowBulkGenerator] = useState(false);
+  const [bulkTopics, setBulkTopics] = useState('');
+  const [bulkCategory, setBulkCategory] = useState<string | null>(null);
+  const [bulkWordCount, setBulkWordCount] = useState(1500);
+  const [bulkResults, setBulkResults] = useState<{ topic: string; status: 'queued' | 'generating' | 'success' | 'failed'; articleId?: string; error?: string }[]>([]);
+  const [isBulkGenerating, setIsBulkGenerating] = useState(false);
 
   // Search, filter, pagination
   const [searchQuery, setSearchQuery] = useState('');
@@ -420,6 +441,162 @@ export function BlogPostEditor() {
     return { quality: q.totalScore, seo: s.totalScore, readiness: r };
   };
 
+  // ── Safe metadata fields for auto-apply ──
+  const SAFE_METADATA_FIELDS = new Set(['meta_title', 'meta_description', 'excerpt', 'featured_image_alt', 'canonical_url', 'slug', 'author_name']);
+
+  // ── Fix All With AI handler (from list view) ──
+  const handleFixAllForPost = async (post: BlogPost) => {
+    setFixAllDialogPost(post);
+    setFixAllRunning(true);
+    setFixAllResults(null);
+    try {
+      const meta = blogPostToMetadata(post);
+      const compliance = analyzePublishCompliance(meta);
+      const failedChecks = compliance.checks.filter(c => c.status === 'fail' || c.status === 'warn');
+      if (failedChecks.length === 0) {
+        setFixAllResults({ autoFixed: [], reviewRequired: [], unresolved: [{ issueLabel: 'No issues found', explanation: 'All compliance checks passed.' }] });
+        setFixAllRunning(false);
+        return;
+      }
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Not authenticated');
+      const { data, error } = await supabase.functions.invoke('analyze-blog-compliance-fixes', {
+        body: {
+          title: post.title, content: post.content, slug: post.slug,
+          issues: failedChecks.map(c => ({ key: c.key, label: c.label, detail: c.detail, recommendation: c.recommendation })),
+          existingMeta: {
+            meta_title: post.meta_title, meta_description: post.meta_description, excerpt: post.excerpt,
+            featured_image_alt: post.featured_image_alt, author_name: post.author_name, canonical_url: post.canonical_url,
+            hasCoverImage: !!post.cover_image_url, hasIntro: meta.hasIntro, hasConclusion: meta.hasConclusion,
+            headings: meta.headings, wordCount: meta.wordCount, featured_image: post.cover_image_url,
+            faqCount: post.faq_count ?? 0, internalLinkCount: meta.internalLinks?.length ?? 0,
+          },
+        },
+      });
+      if (error) throw new Error(error.message);
+
+      const fixes: any[] = Array.isArray(data?.fixes) ? data.fixes : [];
+      const autoFixed: { field: string; value: string }[] = [];
+      const reviewRequired: any[] = [];
+      const unresolved: any[] = [];
+
+      // Separate and auto-apply safe metadata
+      const updatePayload: Record<string, string> = {};
+      for (const fix of fixes) {
+        const mode = fix.applyMode || 'advisory';
+        if (mode === 'apply_field' && fix.field && SAFE_METADATA_FIELDS.has(fix.field) && fix.suggestedValue) {
+          const currentVal = (post as any)[fix.field] || '';
+          if (!currentVal || currentVal.length < 3) {
+            updatePayload[fix.field] = fix.suggestedValue;
+            autoFixed.push({ field: fix.field, value: fix.suggestedValue });
+          } else {
+            reviewRequired.push(fix);
+          }
+        } else if (mode === 'advisory' || fix.confidence === 'low') {
+          unresolved.push(fix);
+        } else {
+          reviewRequired.push(fix);
+        }
+      }
+
+      // Apply safe metadata to DB
+      if (Object.keys(updatePayload).length > 0) {
+        await supabase.from('blog_posts').update(updatePayload).eq('id', post.id);
+      }
+
+      setFixAllResults({ autoFixed, reviewRequired, unresolved });
+      if (Object.keys(updatePayload).length > 0) fetchPosts();
+    } catch (err: any) {
+      toast({ title: 'Fix All failed', description: err.message, variant: 'destructive' });
+      setFixAllResults({ autoFixed: [], reviewRequired: [], unresolved: [{ issueLabel: 'Error', explanation: err.message }] });
+    }
+    setFixAllRunning(false);
+  };
+
+  // ── Enrich Now handler (from list view) ──
+  const handleEnrichPost = async () => {
+    if (!enrichDialogPost) return;
+    setIsEnriching(true);
+    setEnrichResult(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Not authenticated');
+      const { data, error } = await supabase.functions.invoke('improve-blog-content', {
+        body: {
+          title: enrichDialogPost.title, content: enrichDialogPost.content,
+          action: 'enrich-article', targetWordCount: enrichWordLimit,
+          category: enrichDialogPost.category, tags: enrichDialogPost.tags,
+        },
+      });
+      if (error) throw new Error(error.message);
+      setEnrichResult({ content: data.result || '', wordCount: data.wordCount || 0, changes: data.changes || [] });
+    } catch (err: any) {
+      toast({ title: 'Enrichment failed', description: err.message, variant: 'destructive' });
+    }
+    setIsEnriching(false);
+  };
+
+  const applyEnrichment = async () => {
+    if (!enrichDialogPost || !enrichResult) return;
+    const wordCount = enrichResult.content.replace(/<[^>]+>/g, '').split(/\s+/).filter(w => w.length > 0).length;
+    const { error } = await supabase.from('blog_posts').update({
+      content: enrichResult.content, word_count: wordCount,
+      reading_time: Math.max(1, Math.ceil(wordCount / 200)),
+    }).eq('id', enrichDialogPost.id);
+    if (error) {
+      toast({ title: 'Save failed', description: error.message, variant: 'destructive' });
+    } else {
+      toast({ title: 'Enrichment applied', description: `Article updated to ~${wordCount} words` });
+      setEnrichDialogPost(null);
+      setEnrichResult(null);
+      fetchPosts();
+    }
+  };
+
+  // ── Bulk Article Generator handler ──
+  const handleBulkGenerate = async () => {
+    const topics = bulkTopics.split('\n').map(t => t.trim()).filter(t => t.length > 0);
+    if (topics.length === 0) { toast({ title: 'Enter at least one topic', variant: 'destructive' }); return; }
+    if (topics.length > 20) { toast({ title: 'Maximum 20 topics at a time', variant: 'destructive' }); return; }
+
+    setIsBulkGenerating(true);
+    setBulkResults(topics.map(topic => ({ topic, status: 'queued' })));
+
+    for (let i = 0; i < topics.length; i++) {
+      setBulkResults(prev => prev.map((r, idx) => idx === i ? { ...r, status: 'generating' } : r));
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) throw new Error('Not authenticated');
+        const { data, error } = await supabase.functions.invoke('generate-blog-article', {
+          body: { topic: topics[i], category: bulkCategory, targetWordCount: bulkWordCount },
+        });
+        if (error) throw new Error(error.message);
+        if (!data?.title || !data?.content) throw new Error('Invalid AI response');
+
+        // Save as draft
+        const wordCount = data.content.replace(/<[^>]+>/g, '').split(/\s+/).filter((w: string) => w.length > 0).length;
+        const { data: inserted, error: insertErr } = await supabase.from('blog_posts').insert({
+          title: data.title, slug: data.slug, content: data.content,
+          excerpt: data.excerpt || null, meta_title: data.metaTitle || null,
+          meta_description: data.metaDescription || null, category: data.category || bulkCategory || 'Career Advice',
+          tags: data.tags || [], author_id: user!.id, author_name: 'TrueJobs Editorial Team',
+          canonical_url: `https://truejobs.co.in/blog/${data.slug}`,
+          is_published: false, word_count: wordCount, reading_time: Math.max(1, Math.ceil(wordCount / 200)),
+        }).select('id').single();
+        if (insertErr) throw new Error(insertErr.message);
+        setBulkResults(prev => prev.map((r, idx) => idx === i ? { ...r, status: 'success', articleId: inserted?.id } : r));
+      } catch (err: any) {
+        setBulkResults(prev => prev.map((r, idx) => idx === i ? { ...r, status: 'failed', error: err.message } : r));
+      }
+      // 2s delay between topics
+      if (i < topics.length - 1) await new Promise(r => setTimeout(r, 2000));
+    }
+
+    setIsBulkGenerating(false);
+    fetchPosts();
+    toast({ title: 'Bulk generation complete' });
+  };
+
   return (
     <>
     <Card>
@@ -658,6 +835,84 @@ export function BlogPostEditor() {
         </Button>
       </div>
 
+      {/* ── Bulk Article Generator ── */}
+      <div className="px-6 pb-4 border-b">
+        <Collapsible open={showBulkGenerator} onOpenChange={setShowBulkGenerator}>
+          <CollapsibleTrigger className="flex items-center gap-2 w-full py-2 text-sm font-medium hover:text-primary">
+            <ChevronDown className={`h-4 w-4 transition-transform ${showBulkGenerator ? 'rotate-180' : ''}`} />
+            <Sparkles className="h-4 w-4" /> Create Articles in Bulk
+          </CollapsibleTrigger>
+          <CollapsibleContent className="space-y-3 mt-2">
+            <div className="space-y-2">
+              <Label className="text-xs">Topics (one per line)</Label>
+              <Textarea
+                value={bulkTopics}
+                onChange={(e) => setBulkTopics(e.target.value)}
+                placeholder={"SSC CGL 2026 Notification Details\nRailway Group D Vacancy Update\nUPSC Civil Services Preparation Tips"}
+                rows={4}
+                className="text-xs"
+              />
+            </div>
+            <div className="flex gap-3 items-end flex-wrap">
+              <div className="space-y-1">
+                <Label className="text-xs">Category</Label>
+                <Select value={bulkCategory || ''} onValueChange={(v) => setBulkCategory(v || null)}>
+                  <SelectTrigger className="w-[180px] h-8 text-xs"><SelectValue placeholder="Auto-detect" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Career Advice">Career Advice</SelectItem>
+                    <SelectItem value="Government Jobs">Government Jobs</SelectItem>
+                    <SelectItem value="Exam Preparation">Exam Preparation</SelectItem>
+                    <SelectItem value="Results & Cutoffs">Results & Cutoffs</SelectItem>
+                    <SelectItem value="Admit Cards">Admit Cards</SelectItem>
+                    <SelectItem value="Syllabus">Syllabus</SelectItem>
+                    <SelectItem value="Current Affairs">Current Affairs</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Target Words</Label>
+                <Select value={String(bulkWordCount)} onValueChange={(v) => setBulkWordCount(Number(v))}>
+                  <SelectTrigger className="w-[100px] h-8 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1200">1200</SelectItem>
+                    <SelectItem value="1500">1500</SelectItem>
+                    <SelectItem value="1800">1800</SelectItem>
+                    <SelectItem value="2200">2200</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button size="sm" onClick={handleBulkGenerate} disabled={isBulkGenerating || !bulkTopics.trim()}>
+                {isBulkGenerating ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Sparkles className="h-4 w-4 mr-1" />}
+                Generate Articles
+              </Button>
+            </div>
+            {bulkResults.length > 0 && (
+              <div className="space-y-1 mt-2">
+                <div className="text-xs font-medium text-muted-foreground">
+                  {bulkResults.filter(r => r.status === 'success').length} succeeded, {bulkResults.filter(r => r.status === 'failed').length} failed
+                </div>
+                {bulkResults.map((r, i) => (
+                  <div key={i} className="flex items-center gap-2 text-xs">
+                    {r.status === 'queued' && <Badge variant="secondary" className="text-[10px]">Queued</Badge>}
+                    {r.status === 'generating' && <Badge className="text-[10px] bg-primary/10 text-primary"><Loader2 className="h-2.5 w-2.5 animate-spin mr-1" />Generating</Badge>}
+                    {r.status === 'success' && <Badge className="text-[10px] bg-green-500/15 text-green-700"><Check className="h-2.5 w-2.5 mr-1" />Done</Badge>}
+                    {r.status === 'failed' && <Badge variant="destructive" className="text-[10px]"><X className="h-2.5 w-2.5 mr-1" />Failed</Badge>}
+                    <span className="truncate max-w-[300px]">{r.topic}</span>
+                    {r.status === 'success' && r.articleId && (
+                      <Button variant="link" size="sm" className="h-5 text-[10px] p-0" onClick={() => {
+                        const found = posts.find(p => p.id === r.articleId);
+                        if (found) openEditDialog(found);
+                      }}>Open Draft</Button>
+                    )}
+                    {r.status === 'failed' && r.error && <span className="text-destructive text-[10px]">{r.error}</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </CollapsibleContent>
+        </Collapsible>
+      </div>
+
       {/* Redirect Map Dialog */}
       <Dialog open={showRedirectMap} onOpenChange={setShowRedirectMap}>
         <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
@@ -794,6 +1049,12 @@ export function BlogPostEditor() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">
+                          <Button variant="ghost" size="icon" className="h-8 w-8" title="Fix All With AI" onClick={() => handleFixAllForPost(post)}>
+                            <Sparkles className="h-4 w-4 text-primary" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-8 w-8" title="Enrich Now" onClick={() => { setEnrichDialogPost(post); setEnrichResult(null); setEnrichWordLimit(1500); }}>
+                            <Zap className="h-4 w-4 text-primary" />
+                          </Button>
                           {post.is_published && (
                             <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
                               <a href={`/blog/${post.slug}`} target="_blank" rel="noopener noreferrer">
@@ -864,6 +1125,118 @@ export function BlogPostEditor() {
       posts={posts}
       onEditPost={(post) => openEditDialog(post as any)}
     />
+
+    {/* ── Fix All With AI Dialog ── */}
+    <Dialog open={!!fixAllDialogPost} onOpenChange={(open) => { if (!open) { setFixAllDialogPost(null); setFixAllResults(null); } }}>
+      <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2"><Sparkles className="h-4 w-4" /> Fix All With AI</DialogTitle>
+          <DialogDescription className="truncate">{fixAllDialogPost?.title}</DialogDescription>
+        </DialogHeader>
+        {fixAllRunning && (
+          <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" /> Analyzing and applying safe fixes…
+          </div>
+        )}
+        {fixAllResults && (
+          <div className="space-y-3">
+            {fixAllResults.autoFixed.length > 0 && (
+              <div className="space-y-1">
+                <h4 className="text-xs font-semibold flex items-center gap-1 text-green-700 dark:text-green-400">
+                  <Check className="h-3 w-3" /> Auto-Fixed ({fixAllResults.autoFixed.length})
+                </h4>
+                {fixAllResults.autoFixed.map((f, i) => (
+                  <div key={i} className="text-xs bg-green-500/10 rounded px-2 py-1">
+                    <span className="font-medium">{f.field}:</span> {f.value.substring(0, 80)}{f.value.length > 80 ? '…' : ''}
+                  </div>
+                ))}
+              </div>
+            )}
+            {fixAllResults.reviewRequired.length > 0 && (
+              <div className="space-y-1">
+                <h4 className="text-xs font-semibold flex items-center gap-1 text-yellow-700 dark:text-yellow-400">
+                  <AlertTriangle className="h-3 w-3" /> Review Required ({fixAllResults.reviewRequired.length})
+                </h4>
+                {fixAllResults.reviewRequired.map((f: any, i: number) => (
+                  <div key={i} className="text-xs bg-yellow-500/10 rounded px-2 py-1">
+                    <span className="font-medium">{f.issueLabel}:</span> {f.explanation || 'Open in editor to apply'}
+                    <Button variant="link" size="sm" className="h-5 text-[10px] p-0 ml-2" onClick={() => {
+                      setFixAllDialogPost(null);
+                      const post = posts.find(p => p.id === fixAllDialogPost?.id);
+                      if (post) openEditDialog(post);
+                    }}>Open in Editor</Button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {fixAllResults.unresolved.length > 0 && (
+              <div className="space-y-1">
+                <h4 className="text-xs font-semibold text-muted-foreground">Unresolved ({fixAllResults.unresolved.length})</h4>
+                {fixAllResults.unresolved.map((f: any, i: number) => (
+                  <div key={i} className="text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1">
+                    <span className="font-medium">{f.issueLabel}:</span> {f.explanation}
+                  </div>
+                ))}
+              </div>
+            )}
+            {fixAllResults.autoFixed.length === 0 && fixAllResults.reviewRequired.length === 0 && fixAllResults.unresolved.length === 0 && (
+              <p className="text-xs text-muted-foreground">No issues found — article looks good!</p>
+            )}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+
+    {/* ── Enrich Now Dialog ── */}
+    <Dialog open={!!enrichDialogPost} onOpenChange={(open) => { if (!open) { setEnrichDialogPost(null); setEnrichResult(null); } }}>
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2"><Zap className="h-4 w-4" /> Enrich Article</DialogTitle>
+          <DialogDescription className="truncate">
+            {enrichDialogPost?.title} — Currently {(enrichDialogPost?.word_count || 0).toLocaleString()} words
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="flex items-center gap-3">
+            <Label className="text-xs whitespace-nowrap">Target Words:</Label>
+            {[1200, 1500, 1800, 2200].map(n => (
+              <Button key={n} size="sm" variant={enrichWordLimit === n ? 'default' : 'outline'} className="h-7 text-xs" onClick={() => setEnrichWordLimit(n)}>
+                {n}
+              </Button>
+            ))}
+            <Input type="number" value={enrichWordLimit} onChange={(e) => setEnrichWordLimit(Number(e.target.value))} className="w-20 h-7 text-xs" min={800} max={3000} />
+          </div>
+          <Button onClick={handleEnrichPost} disabled={isEnriching}>
+            {isEnriching ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Zap className="h-4 w-4 mr-1" />}
+            Enrich to ~{enrichWordLimit} words
+          </Button>
+          {enrichResult && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                <span>Enriched: ~{enrichResult.wordCount} words</span>
+                <span>{enrichResult.changes.length} improvements</span>
+              </div>
+              {enrichResult.changes.length > 0 && (
+                <div className="text-xs space-y-0.5">
+                  {enrichResult.changes.map((c, i) => <p key={i} className="text-muted-foreground">• {c}</p>)}
+                </div>
+              )}
+              <ScrollArea className="h-[300px] border rounded-lg p-3">
+                <div className="prose prose-sm max-w-none text-xs" dangerouslySetInnerHTML={{ __html: enrichResult.content }} />
+              </ScrollArea>
+              <div className="flex gap-2">
+                <Button onClick={applyEnrichment}>
+                  <Check className="h-4 w-4 mr-1" /> Apply Enrichment
+                </Button>
+                <Button variant="outline" onClick={() => setEnrichResult(null)}>
+                  <X className="h-4 w-4 mr-1" /> Discard
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
     </>
   );
 }

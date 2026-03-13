@@ -911,6 +911,7 @@ export function BlogPostEditor() {
             )}
           </CollapsibleContent>
         </Collapsible>
+      </div>
 
       {/* Redirect Map Dialog */}
       <Dialog open={showRedirectMap} onOpenChange={setShowRedirectMap}>

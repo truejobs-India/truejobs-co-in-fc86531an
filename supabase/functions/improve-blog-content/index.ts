@@ -116,10 +116,15 @@ RULES:
 - Do NOT add keyword stuffing
 - Keep the same language (Hindi/English) as the original
 - Maintain an informational, non-official tone
+- Output MUST use HTML tags: <h2>, <h3>, <p>, <ul>, <li>, <ol>, <strong>, <em>, <table>, <tr>, <td>, <th>
+- Do NOT use markdown syntax (no ##, no **, no *, no - for lists). Use ONLY HTML tags.
 - Keep all existing HTML structure (H2, H3, lists, tables)
-- Add new subsections (H3) under existing H2s where appropriate
+- Add new subsections (<h3>) under existing <h2>s where appropriate
 - If the article has FAQs, you may add 1-2 more relevant FAQs
 - Do NOT remove any existing content
+- Wrap every paragraph in <p> tags
+- Wrap every heading in <h2> or <h3> tags
+- Wrap every list in <ul> or <ol> with <li> items
 
 Article title: ${title}
 Category: ${category || 'General'}
@@ -128,8 +133,8 @@ Tags: ${(tags || []).join(', ') || 'none'}
 Current content:
 ${content}
 
-Return ONLY the full enriched article HTML.
-No JSON, no markdown code blocks, no explanations.`;
+Return ONLY the full enriched article as valid HTML.
+No JSON wrappers, no markdown, no code blocks, no explanations.`;
       maxTokens = 8000;
 
     } else if (action === 'structure') {

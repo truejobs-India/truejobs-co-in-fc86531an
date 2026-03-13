@@ -51,6 +51,14 @@ export function RichTextEditor({ content, onChange, onEditorReady }: RichTextEdi
     },
   });
 
+  // Notify parent of editor instance (with null on teardown)
+  useEffect(() => {
+    if (editor && onEditorReady) onEditorReady(editor);
+    return () => {
+      if (onEditorReady) onEditorReady(null);
+    };
+  }, [editor, onEditorReady]);
+
   useEffect(() => {
     if (editor && content !== editor.getHTML()) {
       editor.commands.setContent(content);

@@ -29,6 +29,37 @@ async function verifyAdmin(req: Request): Promise<{ userId: string } | Response>
 const GEMINI_MODEL = 'gemini-2.5-flash';
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
+// ── Server-side normalization whitelists ──
+const VALID_FIX_TYPES = new Set(['metadata', 'content-block', 'rewrite', 'advisory']);
+const VALID_APPLY_MODES = new Set(['field', 'append', 'review-and-replace', 'manual']);
+const EDITABLE_FIELDS = new Set(['meta_title', 'meta_description', 'excerpt', 'featured_image_alt', 'author_name']);
+
+function normalizeFix(raw: any): {
+  issueKey: string; issueLabel: string; priority: string; fixType: string;
+  field: string; suggestedValue: string; explanation: string; applyMode: string;
+  targetSnippet?: string;
+} {
+  const issueKey = typeof raw.issueKey === 'string' ? raw.issueKey : 'unknown';
+  const issueLabel = typeof raw.issueLabel === 'string' ? raw.issueLabel : (typeof raw.issue === 'string' ? raw.issue : 'Unknown issue');
+  const priority = ['high', 'medium', 'low'].includes(raw.priority) ? raw.priority : 'medium';
+  let fixType = typeof raw.fixType === 'string' ? raw.fixType : 'advisory';
+  let applyMode = typeof raw.applyMode === 'string' ? raw.applyMode : 'manual';
+  let field = typeof raw.field === 'string' ? raw.field : '';
+  const suggestedValue = typeof raw.suggestedValue === 'string' ? raw.suggestedValue : '';
+  const explanation = typeof raw.explanation === 'string' ? raw.explanation : (typeof raw.suggestion === 'string' ? raw.suggestion : '');
+  const targetSnippet = typeof raw.targetSnippet === 'string' ? raw.targetSnippet : undefined;
+
+  // Whitelist enforcement — unknown values downgrade to advisory
+  if (!VALID_FIX_TYPES.has(fixType)) fixType = 'advisory';
+  if (!VALID_APPLY_MODES.has(applyMode)) applyMode = 'manual';
+  if (fixType === 'metadata' && field && !EDITABLE_FIELDS.has(field)) {
+    // Non-editable field (e.g. canonical_url) → suggestion only
+    applyMode = 'manual';
+  }
+
+  return { issueKey, issueLabel, priority, fixType, field, suggestedValue, explanation, applyMode, targetSnippet };
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
@@ -41,7 +72,7 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'GEMINI_API_KEY not configured' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    const { title, content, issues } = await req.json();
+    const { title, content, issues, slug, existingMeta } = await req.json();
     if (!title || !issues || !Array.isArray(issues)) {
       return new Response(JSON.stringify({ error: 'title and issues[] required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
@@ -49,21 +80,53 @@ Deno.serve(async (req) => {
     const plainText = (content || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 2000);
     const issueList = issues.map((i: any) => `- ${i.label}: ${i.detail}${i.recommendation ? ` (${i.recommendation})` : ''}`).join('\n');
 
-    const prompt = `You are an editorial compliance expert for TrueJobs.co.in, an Indian job portal.
-The following compliance issues were detected in a blog article. For each issue, suggest a specific, actionable fix.
+    // Build existing metadata context for the AI
+    const meta = existingMeta || {};
+    const metaContext = [
+      `Current meta_title: ${meta.meta_title || '(empty)'}`,
+      `Current meta_description: ${meta.meta_description || '(empty)'}`,
+      `Current excerpt: ${meta.excerpt || '(empty)'}`,
+      `Current featured_image_alt: ${meta.featured_image_alt || '(empty)'}`,
+      `Current author_name: ${meta.author_name || '(empty)'}`,
+      `Has cover image: ${meta.hasCoverImage ? 'yes' : 'no'}`,
+      `FAQ count: ${meta.faqCount ?? 0}`,
+      `Internal link count: ${meta.internalLinkCount ?? 0}`,
+    ].join('\n');
+
+    const prompt = `You are an editorial compliance expert for TrueJobs.co.in, an Indian government job portal.
+The following compliance issues were detected in a blog article. For each issue, provide a SPECIFIC, ACTIONABLE fix with concrete values.
 
 Article title: ${title}
+Article slug: ${slug || 'unknown'}
 Article excerpt: ${plainText}
 
-Issues:
+Current article metadata:
+${metaContext}
+
+Issues detected:
 ${issueList}
 
-For each issue, provide:
-- issue: the issue label
-- suggestion: specific actionable fix (1-2 sentences)
+For each issue, return a structured fix object:
+- issueKey: short machine key (e.g., "missing-meta-title", "weak-trust-signals")
+- issueLabel: human-readable issue name
 - priority: "high", "medium", or "low"
+- fixType: one of "metadata" (for editable fields), "content-block" (for content to append), "rewrite" (for content replacement), or "advisory" (for manual guidance)
+- field: the target field name if fixType is "metadata". Use ONLY these field names: meta_title, meta_description, excerpt, featured_image_alt, author_name. For canonical_url or other non-editable fields, use fixType "advisory" instead.
+- suggestedValue: the EXACT value to use (complete meta title text, full meta description, HTML block, etc.)
+- explanation: why this fix is needed (1 sentence)
+- applyMode: "field" (for metadata), "append" (for content blocks), "review-and-replace" (for rewrites), or "manual" (for advisory)
+- targetSnippet: (optional, for rewrite type only) the original text snippet to be replaced
 
-Return ONLY a JSON array: [{"issue": "...", "suggestion": "...", "priority": "..."}]
+IMPORTANT:
+- For metadata fixes, provide the COMPLETE ready-to-use value (not "add a meta title" but the actual title text)
+- For content-block fixes, provide the actual HTML to append
+- For rewrite fixes, include both targetSnippet and suggestedValue
+- For advisory fixes, provide clear manual instructions
+- Meta titles must be under 60 characters
+- Meta descriptions must be 140-155 characters
+- Maintain informational, non-official tone appropriate for TrueJobs.co.in
+
+Return ONLY a JSON array: [{ ... }]
 No markdown code blocks.`;
 
     const resp = await fetch(`${GEMINI_URL}?key=${geminiApiKey}`, {
@@ -71,7 +134,7 @@ No markdown code blocks.`;
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { maxOutputTokens: 2000, temperature: 0.3 },
+        generationConfig: { maxOutputTokens: 3000, temperature: 0.3 },
       }),
     });
     if (!resp.ok) throw new Error(`Gemini API error ${resp.status}`);
@@ -79,13 +142,16 @@ No markdown code blocks.`;
     let raw = data?.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
     raw = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
 
-    let fixes: { issue: string; suggestion: string; priority: string }[];
+    let parsed: any[];
     try {
-      fixes = JSON.parse(raw);
-      if (!Array.isArray(fixes)) fixes = [];
+      parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) parsed = [];
     } catch {
-      fixes = [];
+      parsed = [];
     }
+
+    // Normalize each fix with whitelist enforcement
+    const fixes = parsed.map(normalizeFix).filter(f => f.issueLabel !== 'Unknown issue' || f.explanation);
 
     return new Response(JSON.stringify({ fixes }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   } catch (err) {

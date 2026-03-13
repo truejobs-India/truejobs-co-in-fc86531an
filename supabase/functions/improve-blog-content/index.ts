@@ -41,7 +41,7 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'GEMINI_API_KEY not configured' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    const { title, content, action, selectedHtml } = await req.json();
+    const { title, content, action, selectedHtml, headings, hasIntro, hasConclusion, wordCount, category, tags } = await req.json();
     if (!title || !action) {
       return new Response(JSON.stringify({ error: 'title and action required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
@@ -57,8 +57,10 @@ Deno.serve(async (req) => {
 Rewrite the following HTML section to improve clarity, readability, and SEO quality.
 Keep the same HTML structure (headings, paragraphs, lists). Preserve all factual content.
 Write in the same language as the original.
+Maintain an informational, non-official tone appropriate for a job portal.
 
 Article title: ${title}
+Category: ${category || 'General'}
 Section to rewrite:
 ${selectedHtml}
 
@@ -66,19 +68,43 @@ Return ONLY the rewritten HTML, nothing else. No markdown code blocks.`;
       maxTokens = 3000;
     } else if (action === 'structure') {
       const plainText = (content || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 3000);
-      prompt = `You are a content structure expert for TrueJobs.co.in.
-Analyze this article and suggest heading reorganization improvements.
+      const headingsList = Array.isArray(headings) ? headings.map((h: any) => `${'  '.repeat((h.level || 2) - 1)}H${h.level}: ${h.text}`).join('\n') : '(no headings detected)';
+
+      prompt = `You are a content structure expert for TrueJobs.co.in, an Indian government job portal.
+Analyze this article and suggest structural improvements.
 
 Title: ${title}
+Category: ${category || 'General'}
+Tags: ${(tags || []).join(', ') || 'none'}
+Word count: ${wordCount || 'unknown'}
+Has introduction: ${hasIntro ? 'yes' : 'no'}
+Has conclusion: ${hasConclusion ? 'yes' : 'no'}
+
+Current headings:
+${headingsList}
+
 Content excerpt: ${plainText}
 
 Return a JSON object with:
-- result: a brief summary of suggested structural changes (1-2 paragraphs)
-- changes: array of specific suggestions (strings)
+- result: a brief summary of structural suggestions (2-3 sentences)
+- changes: array of specific actionable suggestions (strings)
+- proposedOutline: array of suggested H2 heading strings for the article (ordered, 5-8 items). Include existing good headings and add missing ones.
+- missingSections: array of section names that should be added (e.g., "Eligibility Criteria", "How to Apply", "Important Dates", "FAQ")
 
-Format: {"result": "...", "changes": ["...", "..."]}
+Consider typical sections for Indian government job/exam articles:
+- Overview/Introduction
+- Important Dates
+- Eligibility Criteria (age, qualification)
+- Application Process / How to Apply
+- Selection Process
+- Exam Pattern
+- Salary & Pay Scale
+- FAQ
+- Conclusion
+
+Format: {"result": "...", "changes": ["...", "..."], "proposedOutline": ["...", "..."], "missingSections": ["...", "..."]}
 No markdown code blocks.`;
-      maxTokens = 1500;
+      maxTokens = 2500;
     } else {
       return new Response(JSON.stringify({ error: 'Invalid action. Use "structure" or "rewrite-section"' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
@@ -101,13 +127,18 @@ No markdown code blocks.`;
     }
 
     // structure action
-    let parsed: { result: string; changes: string[] };
+    let parsed: { result: string; changes: string[]; proposedOutline?: string[]; missingSections?: string[] };
     try {
       const cleanedJson = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
       parsed = JSON.parse(cleanedJson);
     } catch {
-      parsed = { result: raw, changes: [] };
+      parsed = { result: raw, changes: [], proposedOutline: [], missingSections: [] };
     }
+
+    // Ensure arrays
+    if (!Array.isArray(parsed.proposedOutline)) parsed.proposedOutline = [];
+    if (!Array.isArray(parsed.missingSections)) parsed.missingSections = [];
+    if (!Array.isArray(parsed.changes)) parsed.changes = [];
 
     return new Response(JSON.stringify(parsed), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   } catch (err) {

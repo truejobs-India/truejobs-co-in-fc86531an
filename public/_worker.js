@@ -69,35 +69,33 @@ function mergeHTML(originHTML, headHtml, bodyHtml) {
   const headMatch = originHTML.match(/<head[^>]*>([\s\S]*?)<\/head>/i);
   if (!headMatch) return null;
 
-  const originHead = headMatch[1];
+  let originHead = headMatch[1];
 
-  const assetTags = [];
-  const linkRe = /<link[^>]+(?:rel="(?:stylesheet|modulepreload|icon|manifest|apple-touch-icon)")[^>]*\/?>/gi;
-  const scriptRe = /<script[^>]+type="module"[^>]*>[^<]*<\/script>/gi;
-  const metaCharset = /<meta[^>]+charset[^>]*\/?>/gi;
-  const metaViewport = /<meta[^>]+viewport[^>]*\/?>/gi;
+  // Remove SEO-replaceable tags from original head (will be replaced by headHtml)
+  // Remove: <title>, meta description, canonical, OG tags, twitter tags
+  originHead = originHead
+    .replace(/<title[^>]*>[\s\S]*?<\/title>/gi, '')
+    .replace(/<meta[^>]+name=["']description["'][^>]*\/?>/gi, '')
+    .replace(/<meta[^>]+name=["']robots["'][^>]*\/?>/gi, '')
+    .replace(/<meta[^>]+property=["']og:[^"']*["'][^>]*\/?>/gi, '')
+    .replace(/<meta[^>]+name=["']twitter:[^"']*["'][^>]*\/?>/gi, '')
+    .replace(/<link[^>]+rel=["']canonical["'][^>]*\/?>/gi, '')
+    .replace(/<meta[^>]+name=["']fragment["'][^>]*\/?>/gi, '');
 
-  let match;
-  while ((match = metaCharset.exec(originHead)) !== null) assetTags.push(match[0]);
-  while ((match = metaViewport.exec(originHead)) !== null) assetTags.push(match[0]);
-  while ((match = linkRe.exec(originHead)) !== null) assetTags.push(match[0]);
-
-  const bodyScripts = [];
+  // Extract body scripts from original
   const bodyMatch = originHTML.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  const bodyScripts = [];
   if (bodyMatch) {
     const bodyContent = bodyMatch[1];
-    const bodyScriptRe = /<script[^>]+type="module"[^>]*>[^<]*<\/script>/gi;
+    const bodyScriptRe = /<script[^>]*>[\s\S]*?<\/script>/gi;
+    let match;
     while ((match = bodyScriptRe.exec(bodyContent)) !== null) bodyScripts.push(match[0]);
   }
-  while ((match = scriptRe.exec(originHead)) !== null) assetTags.push(match[0]);
-
-  const extLinkRe = /<link[^>]+href="https:\/\/fonts[^"]*"[^>]*\/?>/gi;
-  while ((match = extLinkRe.exec(originHead)) !== null) assetTags.push(match[0]);
 
   return `<!DOCTYPE html>
 <html lang="en-IN">
 <head>
-${assetTags.join('\n')}
+${originHead}
 ${headHtml}
 </head>
 <body>

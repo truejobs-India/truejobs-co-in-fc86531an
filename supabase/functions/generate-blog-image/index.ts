@@ -117,14 +117,33 @@ Deno.serve(async (req) => {
         );
       }
 
-      const data = await gatewayResponse.json();
+      const rawText = await gatewayResponse.text();
+      if (!rawText || rawText.trim().length === 0) {
+        console.error("Gateway returned empty response body");
+        return new Response(
+          JSON.stringify({ error: "AI gateway returned empty response", model: modelUsed }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      let data: any;
+      try {
+        data = JSON.parse(rawText);
+      } catch (parseErr) {
+        console.error("Failed to parse gateway response:", rawText.substring(0, 500));
+        return new Response(
+          JSON.stringify({ error: "AI gateway returned invalid JSON", model: modelUsed }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
       const choice = data.choices?.[0]?.message;
 
       // Extract image from response
       if (choice?.images?.length > 0) {
         const imgUrl = choice.images[0]?.image_url?.url || "";
         if (imgUrl.startsWith("data:")) {
-          const match = imgUrl.match(/^data:(image\/\w+);base64,(.+)$/);
+          const match = imgUrl.match(/^data:(image\/\w+);base64,(.+)$/s);
           if (match) {
             mimeType = match[1];
             imageBase64 = match[2];

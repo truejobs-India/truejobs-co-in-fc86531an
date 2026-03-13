@@ -102,7 +102,6 @@ export function BlogPostEditor() {
   const [fixAllDialogPost, setFixAllDialogPost] = useState<BlogPost | null>(null);
   const [fixAllRunning, setFixAllRunning] = useState(false);
   const [fixAllResults, setFixAllResults] = useState<{ autoFixed: { field: string; value: string }[]; reviewRequired: any[]; unresolved: any[] } | null>(null);
-  const [aiFixedPostIds, setAiFixedPostIds] = useState<Set<string>>(new Set());
 
   // Enrich dialog state
   const [enrichDialogPost, setEnrichDialogPost] = useState<BlogPost | null>(null);

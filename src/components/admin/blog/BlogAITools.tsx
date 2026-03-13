@@ -109,7 +109,9 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
         title: formData.title,
         content: formData.content,
       });
-      setToolState('internalLinks', { isLoading: false, result: data });
+      // Frontend safety: filter out any invalid paths that slipped through
+      const validSuggestions = filterValidInternalLinks(data.suggestions || []);
+      setToolState('internalLinks', { isLoading: false, result: { ...data, suggestions: validSuggestions } });
       setResultsOpen(true);
     } catch (err: any) {
       setToolState('internalLinks', { isLoading: false, error: err.message });

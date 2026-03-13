@@ -24,9 +24,10 @@ import {
 interface RichTextEditorProps {
   content: string;
   onChange: (html: string) => void;
+  onEditorReady?: (editor: import('@tiptap/react').Editor | null) => void;
 }
 
-export function RichTextEditor({ content, onChange }: RichTextEditorProps) {
+export function RichTextEditor({ content, onChange, onEditorReady }: RichTextEditorProps) {
   const { toast } = useToast();
   const imageInputRef = useRef<HTMLInputElement>(null);
 
@@ -49,6 +50,14 @@ export function RichTextEditor({ content, onChange }: RichTextEditorProps) {
       onChange(editor.getHTML());
     },
   });
+
+  // Notify parent of editor instance (with null on teardown)
+  useEffect(() => {
+    if (editor && onEditorReady) onEditorReady(editor);
+    return () => {
+      if (onEditorReady) onEditorReady(null);
+    };
+  }, [editor, onEditorReady]);
 
   useEffect(() => {
     if (editor && content !== editor.getHTML()) {

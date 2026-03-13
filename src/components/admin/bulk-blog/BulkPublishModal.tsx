@@ -132,18 +132,23 @@ export function BulkPublishModal({ open, onOpenChange, articles, onPublished }: 
     if (needsFix.length > 0) {
       needsFix.forEach(a => setStatuses(prev => ({ ...prev, [a.id]: 'fixing-meta' })));
       try {
-        const { data, error } = await supabase.functions.invoke('generate-meta-description', {
+        const { data, error } = await supabase.functions.invoke('generate-blog-seo', {
           body: {
             articles: needsFix.map(a => ({
               id: a.id, title: a.title,
               content: a.content.substring(0, 2000),
-              existingMeta: a.metaDescription || '',
             })),
+            fields: ['metaDescription'],
           },
         });
         if (!error && data?.results) {
-          Object.assign(aiFixedMetas, data.results);
-          setFixedArticles(data.results);
+          // Map from nested { id: { metaDescription: "..." } } to flat { id: "..." }
+          const flat: Record<string, string> = {};
+          for (const [id, fields] of Object.entries(data.results as Record<string, Record<string, string>>)) {
+            flat[id] = fields.metaDescription || '';
+          }
+          Object.assign(aiFixedMetas, flat);
+          setFixedArticles(flat);
         }
       } catch {
         needsFix.forEach(a => {

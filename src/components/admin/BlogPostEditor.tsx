@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import type { Editor } from '@tiptap/react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
@@ -43,6 +44,8 @@ import { ComplianceReadinessBadge } from './blog/ComplianceReadinessBadge';
 import { BlogComplianceChecklist } from './blog/BlogComplianceChecklist';
 import { BlogPolicyWarnings } from './blog/BlogPolicyWarnings';
 import { Checkbox } from '@/components/ui/checkbox';
+import { BlogAITools } from './blog/BlogAITools';
+import { BlogScoreBreakdown } from './blog/BlogScoreBreakdown';
 
 interface BlogPost {
   id: string;
@@ -105,6 +108,7 @@ export function BlogPostEditor() {
   const [complianceOpen, setComplianceOpen] = useState(false);
   const [publishOverride, setPublishOverride] = useState(false);
   const [showNeedsReviewConfirm, setShowNeedsReviewConfirm] = useState(false);
+  const [editorInstance, setEditorInstance] = useState<Editor | null>(null);
 
   const [formData, setFormData] = useState({
     title: '',
@@ -434,12 +438,15 @@ export function BlogPostEditor() {
 
             <div className="space-y-4">
               {/* Live stats bar */}
-              <div className="flex gap-4 text-xs text-muted-foreground bg-muted/50 rounded px-3 py-2">
+              <div className="flex flex-wrap gap-4 items-center text-xs text-muted-foreground bg-muted/50 rounded px-3 py-2">
                 <span>{liveWordCount.toLocaleString()} words</span>
                 <span>~{liveReadingTime} min read</span>
                 {currentQuality && <span>Quality: {currentQuality.totalScore}/100</span>}
                 {currentSEO && <span>SEO: {currentSEO.totalScore}/100</span>}
                 {currentCompliance && <span>Compliance: {currentCompliance.overallScore}/100</span>}
+                {currentMetadata && currentQuality && currentSEO && currentCompliance && (
+                  <BlogScoreBreakdown metadata={currentMetadata} quality={currentQuality} seo={currentSEO} compliance={currentCompliance} />
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -463,8 +470,17 @@ export function BlogPostEditor() {
                   <Label>Content *</Label>
                   <WordFileImporter onImport={handleWordImport} onArticleParsed={handleArticleParsed} onCoverGenerated={handleCoverGenerated} />
                 </div>
-                <RichTextEditor content={formData.content} onChange={(html) => handleFormChange({ content: html })} />
+                <RichTextEditor content={formData.content} onChange={(html) => handleFormChange({ content: html })} onEditorReady={setEditorInstance} />
               </div>
+
+              {/* AI Tools */}
+              <BlogAITools
+                formData={formData}
+                onApplyField={(field, value) => handleFormChange({ [field]: value })}
+                editorInstance={editorInstance}
+                currentCompliance={currentCompliance}
+                existingFaqCount={currentMetadata?.faqCount || 0}
+              />
 
               {/* Cover Image with Upload + AI Generate */}
               <div className="space-y-2">

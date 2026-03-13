@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { ParsedArticle, generateSlug } from '@/lib/blogParser';
 import { analyzeQuality, analyzeSEO, type ArticleMetadata } from '@/lib/blogArticleAnalyzer';
 import { analyzePublishCompliance, getComplianceReadinessStatus } from '@/lib/blogComplianceAnalyzer';
@@ -9,6 +9,8 @@ import { BlogPolicyWarnings } from '../blog/BlogPolicyWarnings';
 import { ComplianceReadinessBadge } from '../blog/ComplianceReadinessBadge';
 import { InternalLinkSuggester } from '../blog/InternalLinkSuggester';
 import { FeaturedImageGenerator } from '../blog/FeaturedImageGenerator';
+import { BlogScoreBreakdown } from '../blog/BlogScoreBreakdown';
+import { BlogAITools } from '../blog/BlogAITools';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
@@ -135,7 +137,7 @@ export function ArticleEditPanel({ article, onUpdate }: ArticleEditPanelProps) {
       <h3 className="font-semibold text-lg">Edit Article</h3>
 
       {/* Quality & SEO Summary */}
-      <div className="flex gap-2 text-xs">
+      <div className="flex flex-wrap gap-2 text-xs">
         <Badge variant={qualityReport.totalScore >= 70 ? 'default' : qualityReport.totalScore >= 50 ? 'secondary' : 'destructive'}>
           Quality: {qualityReport.totalScore}
         </Badge>
@@ -143,6 +145,7 @@ export function ArticleEditPanel({ article, onUpdate }: ArticleEditPanelProps) {
           SEO: {seoReport.totalScore}
         </Badge>
         <ComplianceReadinessBadge status={complianceStatus} />
+        <BlogScoreBreakdown metadata={meta} quality={qualityReport} seo={seoReport} compliance={compliance} />
       </div>
 
       {/* Collapsible Quality Report */}
@@ -177,6 +180,27 @@ export function ArticleEditPanel({ article, onUpdate }: ArticleEditPanelProps) {
           <BlogComplianceChecklist compliance={compliance} />
         </CollapsibleContent>
       </Collapsible>
+
+      {/* AI Tools */}
+      <BlogAITools
+        formData={{
+          title: article.title, slug: article.slug, content: article.content,
+          excerpt: article.excerpt || '', meta_title: article.metaTitle || '',
+          meta_description: article.metaDescription || '', cover_image_url: article.coverImageUrl || '',
+          featured_image_alt: article.coverImageAlt || '', author_name: article.authorName || '',
+        }}
+        onApplyField={(field, value) => {
+          const fieldMap: Record<string, string> = {
+            meta_title: 'metaTitle', meta_description: 'metaDescription',
+            excerpt: 'excerpt', cover_image_url: 'coverImageUrl', featured_image_alt: 'coverImageAlt',
+          };
+          const articleField = fieldMap[field] || field;
+          update({ [articleField]: value } as Partial<ParsedArticle>);
+        }}
+        editorInstance={null}
+        currentCompliance={compliance}
+        existingFaqCount={article.faqCount}
+      />
 
       <Separator />
 

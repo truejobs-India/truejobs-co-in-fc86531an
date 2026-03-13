@@ -121,6 +121,12 @@ export function BlogPostEditor() {
   const [isBulkCoverRunning, setIsBulkCoverRunning] = useState(false);
   const [bulkCoverProgress, setBulkCoverProgress] = useState<{ total: number; done: number; failed: number; current: string } | null>(null);
 
+  // Bulk auto-fix & enrich state
+  const [isBulkFixEnrichRunning, setIsBulkFixEnrichRunning] = useState(false);
+  const [bulkFixEnrichProgress, setBulkFixEnrichProgress] = useState<{
+    total: number; done: number; fixed: number; enriched: number; failed: number; current: string; phase: 'scanning' | 'fixing' | 'enriching';
+  } | null>(null);
+
   // Search, filter, pagination
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'published' | 'draft'>('all');

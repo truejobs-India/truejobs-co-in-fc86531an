@@ -1048,6 +1048,12 @@ export function BlogPostEditor() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">
+                          <Button variant="ghost" size="icon" className="h-8 w-8" title="Fix All With AI" onClick={() => handleFixAllForPost(post)}>
+                            <Sparkles className="h-4 w-4 text-primary" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-8 w-8" title="Enrich Now" onClick={() => { setEnrichDialogPost(post); setEnrichResult(null); setEnrichWordLimit(1500); }}>
+                            <Zap className="h-4 w-4 text-primary" />
+                          </Button>
                           {post.is_published && (
                             <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
                               <a href={`/blog/${post.slug}`} target="_blank" rel="noopener noreferrer">

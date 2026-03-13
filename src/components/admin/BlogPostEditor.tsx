@@ -517,8 +517,8 @@ export function BlogPostEditor() {
       await supabase.from('blog_posts').update({ ai_fixed_at: new Date().toISOString() } as any).eq('id', post.id);
 
       setFixAllResults({ autoFixed, reviewRequired, unresolved });
+      await fetchPosts();
       if (Object.keys(updatePayload).length > 0) {
-        await fetchPosts();
         toast({ title: '✨ Fix All complete', description: `${autoFixed.length} fixes applied, ${reviewRequired.length} need review` });
       } else if (autoFixed.length === 0 && reviewRequired.length === 0) {
         toast({ title: '✅ No issues found', description: 'All compliance checks passed.' });

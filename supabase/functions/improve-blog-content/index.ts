@@ -1,6 +1,42 @@
 // Direct Gemini 2.5 API only for non-image AI features — does NOT use Lovable AI gateway
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
+/** Lightweight markdown-to-HTML converter for AI output that ignores the HTML-only instruction */
+function markdownToHtml(md: string): string {
+  let html = md;
+  // Headings: ### before ##
+  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+  // Bold and italic
+  html = html.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  // Unordered lists: lines starting with * or -
+  html = html.replace(/(?:^|\n)((?:[ \t]*[\*\-] .+\n?)+)/g, (_: string, block: string) => {
+    const items = block.trim().split('\n').map((line: string) => {
+      const text = line.replace(/^[ \t]*[\*\-] /, '');
+      return `<li>${text}</li>`;
+    }).join('\n');
+    return `\n<ul>\n${items}\n</ul>\n`;
+  });
+  // Ordered lists
+  html = html.replace(/(?:^|\n)((?:\d+\. .+\n?)+)/g, (_: string, block: string) => {
+    const items = block.trim().split('\n').map((line: string) => {
+      const text = line.replace(/^\d+\.\s*/, '');
+      return `<li>${text}</li>`;
+    }).join('\n');
+    return `\n<ol>\n${items}\n</ol>\n`;
+  });
+  // Wrap remaining bare text lines in <p> tags
+  html = html.split('\n').map((line: string) => {
+    const trimmed = line.trim();
+    if (!trimmed) return '';
+    if (/^<(?:h[1-6]|ul|ol|li|p|table|tr|td|th|div|section|blockquote|\/)/i.test(trimmed)) return line;
+    return `<p>${trimmed}</p>`;
+  }).join('\n');
+  html = html.replace(/\n{3,}/g, '\n\n').trim();
+  return html;
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
@@ -116,10 +152,15 @@ RULES:
 - Do NOT add keyword stuffing
 - Keep the same language (Hindi/English) as the original
 - Maintain an informational, non-official tone
+- Output MUST use HTML tags: <h2>, <h3>, <p>, <ul>, <li>, <ol>, <strong>, <em>, <table>, <tr>, <td>, <th>
+- Do NOT use markdown syntax (no ##, no **, no *, no - for lists). Use ONLY HTML tags.
 - Keep all existing HTML structure (H2, H3, lists, tables)
-- Add new subsections (H3) under existing H2s where appropriate
+- Add new subsections (<h3>) under existing <h2>s where appropriate
 - If the article has FAQs, you may add 1-2 more relevant FAQs
 - Do NOT remove any existing content
+- Wrap every paragraph in <p> tags
+- Wrap every heading in <h2> or <h3> tags
+- Wrap every list in <ul> or <ol> with <li> items
 
 Article title: ${title}
 Category: ${category || 'General'}
@@ -128,8 +169,8 @@ Tags: ${(tags || []).join(', ') || 'none'}
 Current content:
 ${content}
 
-Return ONLY the full enriched article HTML.
-No JSON, no markdown code blocks, no explanations.`;
+Return ONLY the full enriched article as valid HTML.
+No JSON wrappers, no markdown, no code blocks, no explanations.`;
       maxTokens = 8000;
 
     } else if (action === 'structure') {
@@ -281,6 +322,11 @@ No markdown code blocks.`;
 
       if (!resultHtml || resultHtml === '{}' || /^\{[\s\S]*\}$/.test(resultHtml)) {
         resultHtml = '';
+      }
+
+      // Convert any remaining markdown to HTML as safety net
+      if (resultHtml && !resultHtml.includes('<h2') && !resultHtml.includes('<h3') && /^#{2,3}\s/m.test(resultHtml)) {
+        resultHtml = markdownToHtml(resultHtml);
       }
 
       const wordCountComputed = resultHtml.replace(/<[^>]+>/g, ' ').split(/\s+/).filter(w => w.length > 0).length;

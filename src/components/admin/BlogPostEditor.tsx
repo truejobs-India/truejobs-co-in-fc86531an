@@ -835,6 +835,83 @@ export function BlogPostEditor() {
         </Button>
       </div>
 
+      {/* ── Bulk Article Generator ── */}
+      <div className="px-6 pb-4 border-b">
+        <Collapsible open={showBulkGenerator} onOpenChange={setShowBulkGenerator}>
+          <CollapsibleTrigger className="flex items-center gap-2 w-full py-2 text-sm font-medium hover:text-primary">
+            <ChevronDown className={`h-4 w-4 transition-transform ${showBulkGenerator ? 'rotate-180' : ''}`} />
+            <Sparkles className="h-4 w-4" /> Create Articles in Bulk
+          </CollapsibleTrigger>
+          <CollapsibleContent className="space-y-3 mt-2">
+            <div className="space-y-2">
+              <Label className="text-xs">Topics (one per line)</Label>
+              <Textarea
+                value={bulkTopics}
+                onChange={(e) => setBulkTopics(e.target.value)}
+                placeholder={"SSC CGL 2026 Notification Details\nRailway Group D Vacancy Update\nUPSC Civil Services Preparation Tips"}
+                rows={4}
+                className="text-xs"
+              />
+            </div>
+            <div className="flex gap-3 items-end flex-wrap">
+              <div className="space-y-1">
+                <Label className="text-xs">Category</Label>
+                <Select value={bulkCategory || ''} onValueChange={(v) => setBulkCategory(v || null)}>
+                  <SelectTrigger className="w-[180px] h-8 text-xs"><SelectValue placeholder="Auto-detect" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Career Advice">Career Advice</SelectItem>
+                    <SelectItem value="Government Jobs">Government Jobs</SelectItem>
+                    <SelectItem value="Exam Preparation">Exam Preparation</SelectItem>
+                    <SelectItem value="Results & Cutoffs">Results & Cutoffs</SelectItem>
+                    <SelectItem value="Admit Cards">Admit Cards</SelectItem>
+                    <SelectItem value="Syllabus">Syllabus</SelectItem>
+                    <SelectItem value="Current Affairs">Current Affairs</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Target Words</Label>
+                <Select value={String(bulkWordCount)} onValueChange={(v) => setBulkWordCount(Number(v))}>
+                  <SelectTrigger className="w-[100px] h-8 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1200">1200</SelectItem>
+                    <SelectItem value="1500">1500</SelectItem>
+                    <SelectItem value="1800">1800</SelectItem>
+                    <SelectItem value="2200">2200</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button size="sm" onClick={handleBulkGenerate} disabled={isBulkGenerating || !bulkTopics.trim()}>
+                {isBulkGenerating ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Sparkles className="h-4 w-4 mr-1" />}
+                Generate Articles
+              </Button>
+            </div>
+            {bulkResults.length > 0 && (
+              <div className="space-y-1 mt-2">
+                <div className="text-xs font-medium text-muted-foreground">
+                  {bulkResults.filter(r => r.status === 'success').length} succeeded, {bulkResults.filter(r => r.status === 'failed').length} failed
+                </div>
+                {bulkResults.map((r, i) => (
+                  <div key={i} className="flex items-center gap-2 text-xs">
+                    {r.status === 'queued' && <Badge variant="secondary" className="text-[10px]">Queued</Badge>}
+                    {r.status === 'generating' && <Badge className="text-[10px] bg-primary/10 text-primary"><Loader2 className="h-2.5 w-2.5 animate-spin mr-1" />Generating</Badge>}
+                    {r.status === 'success' && <Badge className="text-[10px] bg-green-500/15 text-green-700"><Check className="h-2.5 w-2.5 mr-1" />Done</Badge>}
+                    {r.status === 'failed' && <Badge variant="destructive" className="text-[10px]"><X className="h-2.5 w-2.5 mr-1" />Failed</Badge>}
+                    <span className="truncate max-w-[300px]">{r.topic}</span>
+                    {r.status === 'success' && r.articleId && (
+                      <Button variant="link" size="sm" className="h-5 text-[10px] p-0" onClick={() => {
+                        const found = posts.find(p => p.id === r.articleId);
+                        if (found) openEditDialog(found);
+                      }}>Open Draft</Button>
+                    )}
+                    {r.status === 'failed' && r.error && <span className="text-destructive text-[10px]">{r.error}</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </CollapsibleContent>
+        </Collapsible>
+
       {/* Redirect Map Dialog */}
       <Dialog open={showRedirectMap} onOpenChange={setShowRedirectMap}>
         <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">

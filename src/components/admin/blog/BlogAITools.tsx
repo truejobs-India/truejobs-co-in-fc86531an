@@ -506,7 +506,112 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
     }
   };
 
-  // ── Apply SEO field ──
+  // ── Fix All With AI (editor context) ──
+  const handleFixAll = async () => {
+    if (!currentCompliance) return;
+    setFixAllRunning(true);
+    setFixAllResults(null);
+    trackBlogToolEvent({ event_name: 'fix_all_started', tool_name: 'fixAll', slug: formData.slug });
+    try {
+      const failedChecks = currentCompliance.checks.filter(c => c.status === 'fail' || c.status === 'warn');
+      if (failedChecks.length === 0) {
+        setFixAllResults({ autoFixed: [], reviewRequired: [], unresolved: [{ issueLabel: 'No issues', explanation: 'All checks passed.' }] });
+        setFixAllRunning(false);
+        return;
+      }
+      const data = await invokeFunction('analyze-blog-compliance-fixes', {
+        title: formData.title, content: formData.content, slug: formData.slug,
+        issues: failedChecks.map(c => ({ key: c.key, label: c.label, detail: c.detail, recommendation: c.recommendation })),
+        existingMeta: {
+          meta_title: formData.meta_title || null, meta_description: formData.meta_description || null,
+          excerpt: formData.excerpt || null, featured_image_alt: formData.featured_image_alt || null,
+          author_name: formData.author_name || null, canonical_url: formData.canonical_url || null,
+          hasCoverImage: !!formData.cover_image_url, hasIntro: currentMetadata?.hasIntro ?? false,
+          hasConclusion: currentMetadata?.hasConclusion ?? false, headings: currentMetadata?.headings || [],
+          wordCount: currentMetadata?.wordCount || 0, featured_image: formData.cover_image_url || null,
+          faqCount: existingFaqCount ?? 0, internalLinkCount: currentMetadata?.internalLinks?.length ?? 0,
+        },
+      });
+      const fixes = normalizeComplianceFixes(data?.fixes);
+      const autoFixed: { field: string; value: string }[] = [];
+      const reviewRequired: any[] = [];
+      const unresolved: any[] = [];
+
+      for (const fix of fixes) {
+        const mode = normalizeApplyMode(fix.applyMode);
+        if (mode === 'apply_field' && fix.field && EDITABLE_FIELDS.has(fix.field) && fix.suggestedValue) {
+          const currentVal = (formData as any)[fix.field] || '';
+          if (!currentVal || currentVal.length < 3) {
+            onApplyField(fix.field, fix.suggestedValue);
+            logBlogAiAudit({ tool_name: 'fixAll', before_value: currentVal, after_value: fix.suggestedValue, apply_mode: mode, target_field: fix.field, slug: formData.slug });
+            autoFixed.push({ field: fix.field, value: fix.suggestedValue });
+          } else {
+            reviewRequired.push(fix);
+          }
+        } else if (mode === 'advisory' || fix.confidence === 'low') {
+          unresolved.push(fix);
+        } else {
+          // Safe additive content — only if duplicates don't exist
+          if (mode === 'insert_before_first_heading' && fix.fixType === 'intro' && editorInstance) {
+            if (!hasExistingIntro(formData.content) && !contentBlockAlreadyExists(formData.content, fix.suggestedValue)) {
+              insertBeforeFirstHeading(editorInstance, fix.suggestedValue);
+              logBlogAiAudit({ tool_name: 'fixAll', before_value: '', after_value: fix.suggestedValue.substring(0, 500), apply_mode: mode, slug: formData.slug });
+              autoFixed.push({ field: 'intro', value: 'Introduction added' });
+              continue;
+            }
+          }
+          if (mode === 'append_content' && fix.fixType === 'conclusion' && editorInstance) {
+            if (!hasExistingConclusion(formData.content) && !contentBlockAlreadyExists(formData.content, fix.suggestedValue)) {
+              editorInstance.commands.focus('end');
+              editorInstance.commands.insertContent(fix.suggestedValue);
+              logBlogAiAudit({ tool_name: 'fixAll', before_value: '', after_value: fix.suggestedValue.substring(0, 500), apply_mode: mode, slug: formData.slug });
+              autoFixed.push({ field: 'conclusion', value: 'Conclusion added' });
+              continue;
+            }
+          }
+          reviewRequired.push(fix);
+        }
+      }
+      setFixAllResults({ autoFixed, reviewRequired, unresolved });
+      setResultsOpen(true);
+      trackBlogToolEvent({ event_name: 'fix_all_completed', tool_name: 'fixAll', status: 'success', item_count: autoFixed.length, slug: formData.slug });
+    } catch (err: any) {
+      toast({ title: 'Fix All failed', description: err.message, variant: 'destructive' });
+      trackBlogToolEvent({ event_name: 'fix_all_completed', tool_name: 'fixAll', status: 'error', error_message: err.message, slug: formData.slug });
+    }
+    setFixAllRunning(false);
+  };
+
+  // ── Enrich Article (editor context) ──
+  const handleEnrichArticle = async () => {
+    setToolState('enrichArticle', { isLoading: true, error: null });
+    trackBlogToolEvent({ event_name: 'tool_run_started', tool_name: 'enrichArticle', slug: formData.slug });
+    try {
+      const data = await invokeFunction('improve-blog-content', {
+        title: formData.title, content: formData.content,
+        action: 'enrich-article', targetWordCount: enrichWordLimit,
+        category: formData.category || undefined, tags: formData.tags || undefined,
+      });
+      setToolState('enrichArticle', { isLoading: false, result: data });
+      setResultsOpen(true);
+      trackBlogToolEvent({ event_name: 'tool_run_finished', tool_name: 'enrichArticle', status: 'success', slug: formData.slug });
+    } catch (err: any) {
+      setToolState('enrichArticle', { isLoading: false, error: err.message });
+      toast({ title: 'Enrichment failed', description: err.message, variant: 'destructive' });
+      trackBlogToolEvent({ event_name: 'tool_run_finished', tool_name: 'enrichArticle', status: 'error', error_message: err.message, slug: formData.slug });
+    }
+  };
+
+  const applyEnrichment = () => {
+    if (!editorInstance || !tools.enrichArticle.result?.result) return;
+    const beforeVal = editorInstance.getHTML();
+    editorInstance.commands.setContent(tools.enrichArticle.result.result);
+    logBlogAiAudit({ tool_name: 'enrichArticle', before_value: beforeVal.substring(0, 500), after_value: tools.enrichArticle.result.result.substring(0, 500), apply_mode: 'replace_content', slug: formData.slug });
+    toast({ title: 'Enrichment applied', description: `Article expanded to ~${tools.enrichArticle.result.wordCount || 'N/A'} words` });
+    setToolState('enrichArticle', { isLoading: false, result: null, error: null });
+  };
+
+
   const applySeoField = (field: string, value: string) => {
     const fieldMap: Record<string, string> = {
       metaTitle: 'meta_title',

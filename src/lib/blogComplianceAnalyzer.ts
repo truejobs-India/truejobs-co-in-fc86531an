@@ -332,13 +332,16 @@ export function analyzeAdsenseCompliance(metadata: ArticleMetadata): AdsenseComp
   });
 
   // 9. Illegal/drug/gambling
-  const illegalContent = /\b(buy drugs|illegal download|pirated|gambling tips|bet(?:ting)? tips|casino hack|weed delivery)\b/i.test(plainText);
+  const illegalRegex = /\b(buy drugs|illegal download|pirated|gambling tips|bet(?:ting)? tips|casino hack|weed delivery)\b/i;
+  const illegalMatch = plainText.match(illegalRegex);
+  const illegalContent = !!illegalMatch;
   checks.push({
     key: 'illegal-content', label: 'No prohibited content signals', category: 'adsense-safety',
     status: illegalContent ? 'fail' : 'pass',
     detail: illegalContent ? 'Prohibited content keywords detected' : 'Clean',
     recommendation: illegalContent ? 'Remove content related to illegal activities' : undefined,
   });
+  if (illegalContent) _logFail('illegal-content', illegalMatch?.[0] ?? null);
 
   // 10. Dangerous policy risk (composite)
   const dangerousRisk = adultContent || illegalContent;

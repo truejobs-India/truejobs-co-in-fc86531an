@@ -30,34 +30,63 @@ const GEMINI_MODEL = 'gemini-2.5-flash';
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
 // ── Server-side normalization whitelists ──
-const VALID_FIX_TYPES = new Set(['metadata', 'content-block', 'rewrite', 'advisory']);
-const VALID_APPLY_MODES = new Set(['field', 'append', 'review-and-replace', 'manual']);
-const EDITABLE_FIELDS = new Set(['meta_title', 'meta_description', 'excerpt', 'featured_image_alt', 'author_name']);
+const VALID_FIX_TYPES = new Set([
+  'metadata', 'content-block', 'rewrite', 'advisory',
+  'canonical_url', 'slug', 'meta_description', 'image_alt',
+  'faq', 'intro', 'conclusion', 'trust_signal',
+  'affiliate_links', 'internal_links', 'content_rewrite',
+]);
+
+const VALID_APPLY_MODES = new Set([
+  'apply_field', 'append_content', 'prepend_content',
+  'insert_before_first_heading', 'replace_section',
+  'review_replacement', 'advisory',
+]);
+
+const EDITABLE_FIELDS = new Set([
+  'meta_title', 'meta_description', 'excerpt',
+  'featured_image_alt', 'author_name',
+  'canonical_url', 'slug',
+]);
+
+// Legacy applyMode normalization map
+const APPLY_MODE_LEGACY_MAP: Record<string, string> = {
+  'field': 'apply_field',
+  'append': 'append_content',
+  'review-and-replace': 'review_replacement',
+  'manual': 'advisory',
+};
 
 function normalizeFix(raw: any): {
   issueKey: string; issueLabel: string; priority: string; fixType: string;
   field: string; suggestedValue: string; explanation: string; applyMode: string;
-  targetSnippet?: string;
+  targetSnippet?: string; confidence: string;
 } {
   const issueKey = typeof raw.issueKey === 'string' ? raw.issueKey : 'unknown';
   const issueLabel = typeof raw.issueLabel === 'string' ? raw.issueLabel : (typeof raw.issue === 'string' ? raw.issue : 'Unknown issue');
   const priority = ['high', 'medium', 'low'].includes(raw.priority) ? raw.priority : 'medium';
   let fixType = typeof raw.fixType === 'string' ? raw.fixType : 'advisory';
-  let applyMode = typeof raw.applyMode === 'string' ? raw.applyMode : 'manual';
+  let applyMode = typeof raw.applyMode === 'string' ? raw.applyMode : 'advisory';
   let field = typeof raw.field === 'string' ? raw.field : '';
   const suggestedValue = typeof raw.suggestedValue === 'string' ? raw.suggestedValue : '';
   const explanation = typeof raw.explanation === 'string' ? raw.explanation : (typeof raw.suggestion === 'string' ? raw.suggestion : '');
   const targetSnippet = typeof raw.targetSnippet === 'string' ? raw.targetSnippet : undefined;
+  const confidence = ['high', 'medium', 'low'].includes(raw.confidence) ? raw.confidence : 'medium';
+
+  // Normalize legacy applyMode names BEFORE whitelist checks
+  if (APPLY_MODE_LEGACY_MAP[applyMode]) {
+    applyMode = APPLY_MODE_LEGACY_MAP[applyMode];
+  }
 
   // Whitelist enforcement — unknown values downgrade to advisory
   if (!VALID_FIX_TYPES.has(fixType)) fixType = 'advisory';
-  if (!VALID_APPLY_MODES.has(applyMode)) applyMode = 'manual';
+  if (!VALID_APPLY_MODES.has(applyMode)) applyMode = 'advisory';
   if (fixType === 'metadata' && field && !EDITABLE_FIELDS.has(field)) {
-    // Non-editable field (e.g. canonical_url) → suggestion only
-    applyMode = 'manual';
+    // Non-editable field → suggestion only
+    applyMode = 'advisory';
   }
 
-  return { issueKey, issueLabel, priority, fixType, field, suggestedValue, explanation, applyMode, targetSnippet };
+  return { issueKey, issueLabel, priority, fixType, field, suggestedValue, explanation, applyMode, targetSnippet, confidence };
 }
 
 Deno.serve(async (req) => {
@@ -82,15 +111,25 @@ Deno.serve(async (req) => {
 
     // Build existing metadata context for the AI
     const meta = existingMeta || {};
+    const headingsList = Array.isArray(meta.headings)
+      ? meta.headings.map((h: any) => `  H${h.level}: ${h.text}`).join('\n')
+      : '(no headings data)';
+
     const metaContext = [
       `Current meta_title: ${meta.meta_title || '(empty)'}`,
       `Current meta_description: ${meta.meta_description || '(empty)'}`,
       `Current excerpt: ${meta.excerpt || '(empty)'}`,
       `Current featured_image_alt: ${meta.featured_image_alt || '(empty)'}`,
       `Current author_name: ${meta.author_name || '(empty)'}`,
+      `Current canonical_url: ${meta.canonical_url || '(empty)'}`,
       `Has cover image: ${meta.hasCoverImage ? 'yes' : 'no'}`,
+      `Has featured image: ${meta.featured_image ? 'yes' : 'no'}`,
+      `Has intro: ${meta.hasIntro ? 'yes' : 'no'}`,
+      `Has conclusion: ${meta.hasConclusion ? 'yes' : 'no'}`,
+      `Word count: ${meta.wordCount ?? 'unknown'}`,
       `FAQ count: ${meta.faqCount ?? 0}`,
       `Internal link count: ${meta.internalLinkCount ?? 0}`,
+      `Headings:\n${headingsList}`,
     ].join('\n');
 
     const prompt = `You are an editorial compliance expert for TrueJobs.co.in, an Indian government job portal.
@@ -110,20 +149,27 @@ For each issue, return a structured fix object:
 - issueKey: short machine key (e.g., "missing-meta-title", "weak-trust-signals")
 - issueLabel: human-readable issue name
 - priority: "high", "medium", or "low"
-- fixType: one of "metadata" (for editable fields), "content-block" (for content to append), "rewrite" (for content replacement), or "advisory" (for manual guidance)
-- field: the target field name if fixType is "metadata". Use ONLY these field names: meta_title, meta_description, excerpt, featured_image_alt, author_name. For canonical_url or other non-editable fields, use fixType "advisory" instead.
+- fixType: one of "metadata" (for editable fields), "content-block" (for content to append/prepend), "rewrite" (for content replacement), "advisory" (for manual guidance), "canonical_url", "slug", "meta_description", "image_alt", "faq", "intro", "conclusion", "trust_signal", "affiliate_links", "internal_links", "content_rewrite"
+- field: the target field name if fixType is "metadata". Use ONLY these field names: meta_title, meta_description, excerpt, featured_image_alt, author_name, canonical_url, slug. For non-editable fields, use fixType "advisory" instead.
 - suggestedValue: the EXACT value to use (complete meta title text, full meta description, HTML block, etc.)
 - explanation: why this fix is needed (1 sentence)
-- applyMode: "field" (for metadata), "append" (for content blocks), "review-and-replace" (for rewrites), or "manual" (for advisory)
-- targetSnippet: (optional, for rewrite type only) the original text snippet to be replaced
+- applyMode: one of "apply_field" (for metadata field updates), "append_content" (for content to append at end), "prepend_content" (for content at start), "insert_before_first_heading" (for intro before first H1/H2), "replace_section" (for replacing a section), "review_replacement" (for reviewed replacement), or "advisory" (for manual guidance)
+- targetSnippet: (optional, for rewrite/replace types only) the original text snippet to be replaced
+- confidence: "high", "medium", or "low"
 
-IMPORTANT:
-- For metadata fixes, provide the COMPLETE ready-to-use value (not "add a meta title" but the actual title text)
-- For content-block fixes, provide the actual HTML to append
+IMPORTANT RULES:
+- For canonical_url fixes: the value should be https://truejobs.co.in/blog/{cleaned-slug} (no double slashes)
+- For slug fixes: lowercase, hyphens only, no trailing hyphens
+- For meta_description: target 140-155 characters
+- For intro fixes: use applyMode "insert_before_first_heading"
+- For conclusion fixes: use applyMode "append_content"
+- For trust signal fixes: use applyMode "review_replacement"
+- For affiliate link fixes: use applyMode "advisory"
+- For metadata fixes, provide the COMPLETE ready-to-use value
+- For content-block fixes, provide actual HTML to append/prepend
 - For rewrite fixes, include both targetSnippet and suggestedValue
 - For advisory fixes, provide clear manual instructions
 - Meta titles must be under 60 characters
-- Meta descriptions must be 140-155 characters
 - Maintain informational, non-official tone appropriate for TrueJobs.co.in
 
 Return ONLY a JSON array: [{ ... }]
@@ -134,7 +180,7 @@ No markdown code blocks.`;
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { maxOutputTokens: 3000, temperature: 0.3 },
+        generationConfig: { maxOutputTokens: 4000, temperature: 0.3 },
       }),
     });
     if (!resp.ok) throw new Error(`Gemini API error ${resp.status}`);

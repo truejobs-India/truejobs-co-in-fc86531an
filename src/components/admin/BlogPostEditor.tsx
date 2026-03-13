@@ -108,6 +108,7 @@ export function BlogPostEditor() {
   const [complianceOpen, setComplianceOpen] = useState(false);
   const [publishOverride, setPublishOverride] = useState(false);
   const [showNeedsReviewConfirm, setShowNeedsReviewConfirm] = useState(false);
+  const [editorInstance, setEditorInstance] = useState<Editor | null>(null);
 
   const [formData, setFormData] = useState({
     title: '',

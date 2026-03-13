@@ -1036,14 +1036,21 @@ export function BlogPostEditor() {
                     <TableRow key={post.id}>
                       <TableCell>
                         <div>
-                          <div className="font-medium truncate max-w-[200px]">{post.title}</div>
+                          <div className="font-medium truncate max-w-[200px] flex items-center gap-1">
+                            {post.title}
+                            {aiFixedPostIds.has(post.id) && (
+                              <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 border-primary/40 text-primary shrink-0">
+                                <Sparkles className="h-2.5 w-2.5 mr-0.5" />AI Fixed
+                              </Badge>
+                            )}
+                          </div>
                           <div className="text-xs text-muted-foreground truncate max-w-[200px]">/blog/{post.slug}</div>
                         </div>
                       </TableCell>
                       <TableCell>
                         <PublishReadinessBadge status={scores.readiness} />
                       </TableCell>
-                      <TableCell className="text-xs">{(post.word_count || 0).toLocaleString()}</TableCell>
+                      <TableCell className="text-xs">{scores.wordCount.toLocaleString()}</TableCell>
                       <TableCell>
                         <Badge variant={scores.quality >= 70 ? 'default' : scores.quality >= 50 ? 'secondary' : 'destructive'} className="text-xs">
                           {scores.quality}

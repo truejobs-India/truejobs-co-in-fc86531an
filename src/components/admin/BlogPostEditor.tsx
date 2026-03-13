@@ -1083,6 +1083,12 @@ export function BlogPostEditor() {
             ? `Generating… ${bulkCoverProgress ? `${bulkCoverProgress.done}/${bulkCoverProgress.total}` : ''}`
             : 'Generate Missing Cover Images'}
         </Button>
+        <Button variant="outline" size="sm" onClick={handleBulkFixAndEnrich} disabled={isBulkFixEnrichRunning}>
+          {isBulkFixEnrichRunning ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Zap className="h-4 w-4 mr-1" />}
+          {isBulkFixEnrichRunning
+            ? `${bulkFixEnrichProgress?.phase === 'enriching' ? 'Enriching' : 'Fixing'}… ${bulkFixEnrichProgress ? `${bulkFixEnrichProgress.done}/${bulkFixEnrichProgress.total}` : ''}`
+            : 'Auto Fix & Enrich All'}
+        </Button>
       </div>
 
       {/* ── Bulk Article Generator ── */}

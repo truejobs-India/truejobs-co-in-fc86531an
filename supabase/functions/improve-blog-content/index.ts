@@ -128,13 +128,8 @@ Tags: ${(tags || []).join(', ') || 'none'}
 Current content:
 ${content}
 
-Return a JSON object:
-- result: the full enriched article HTML
-- wordCount: approximate word count of the enriched version
-- changes: array of strings describing what was added/improved
-
-Format: {"result": "...", "wordCount": ..., "changes": [...]}
-No markdown code blocks.`;
+Return ONLY the full enriched article HTML.
+No JSON, no markdown code blocks, no explanations.`;
       maxTokens = 8000;
 
     } else if (action === 'structure') {

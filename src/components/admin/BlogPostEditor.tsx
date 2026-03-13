@@ -269,6 +269,7 @@ export function BlogPostEditor() {
     author_name: formData.author_name.trim() || null,
     canonical_url: formData.canonical_url.trim() || null,
     author_id: user!.id,
+    ai_fixed_at: null, // Clear AI fixed status on manual save
   });
 
   const executeSubmit = async () => {

@@ -309,14 +309,17 @@ export function analyzeAdsenseCompliance(metadata: ArticleMetadata): AdsenseComp
     recommendation: clickbait ? 'Remove sensationalized clickbait phrasing' : undefined,
   });
 
-  // 7. Adult/sexual keywords
-  const adultContent = /\b(porn|xxx|nude|naked|sex(?:ual|ting)?|escort|erotic|adult content)\b/i.test(plainText);
+  // 7. Adult/explicit keywords (refined to avoid HR/legal false positives)
+  const adultRegex = /\b(porn(?:ography)?|xxx|nude|naked|sexting|escort\s*service|erotic(?:a|ism)?|adult\s*content|adult\s*entertainment)\b/i;
+  const adultMatch = plainText.match(adultRegex);
+  const adultContent = !!adultMatch;
   checks.push({
     key: 'adult-content', label: 'No adult content signals', category: 'adsense-safety',
     status: adultContent ? 'fail' : 'pass',
     detail: adultContent ? 'Adult content keywords detected' : 'Clean',
     recommendation: adultContent ? 'Remove adult/explicit content — violates AdSense policies' : undefined,
   });
+  if (adultContent) _logFail('adult-content', adultMatch?.[0] ?? null);
 
   // 8. Hate/violence/extremist
   const hateViolence = /\b(kill|murder|terrorist|extremist|hate (?:speech|crime)|genocide|ethnic cleansing)\b/i.test(plainText);

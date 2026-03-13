@@ -1,6 +1,42 @@
 // Direct Gemini 2.5 API only for non-image AI features — does NOT use Lovable AI gateway
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
+/** Lightweight markdown-to-HTML converter for AI output that ignores the HTML-only instruction */
+function markdownToHtml(md: string): string {
+  let html = md;
+  // Headings: ### before ##
+  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+  // Bold and italic
+  html = html.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  // Unordered lists: lines starting with * or -
+  html = html.replace(/(?:^|\n)((?:[ \t]*[\*\-] .+\n?)+)/g, (_: string, block: string) => {
+    const items = block.trim().split('\n').map((line: string) => {
+      const text = line.replace(/^[ \t]*[\*\-] /, '');
+      return `<li>${text}</li>`;
+    }).join('\n');
+    return `\n<ul>\n${items}\n</ul>\n`;
+  });
+  // Ordered lists
+  html = html.replace(/(?:^|\n)((?:\d+\. .+\n?)+)/g, (_: string, block: string) => {
+    const items = block.trim().split('\n').map((line: string) => {
+      const text = line.replace(/^\d+\.\s*/, '');
+      return `<li>${text}</li>`;
+    }).join('\n');
+    return `\n<ol>\n${items}\n</ol>\n`;
+  });
+  // Wrap remaining bare text lines in <p> tags
+  html = html.split('\n').map((line: string) => {
+    const trimmed = line.trim();
+    if (!trimmed) return '';
+    if (/^<(?:h[1-6]|ul|ol|li|p|table|tr|td|th|div|section|blockquote|\/)/i.test(trimmed)) return line;
+    return `<p>${trimmed}</p>`;
+  }).join('\n');
+  html = html.replace(/\n{3,}/g, '\n\n').trim();
+  return html;
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',

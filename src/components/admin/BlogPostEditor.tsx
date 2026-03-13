@@ -512,9 +512,10 @@ export function BlogPostEditor() {
         await supabase.from('blog_posts').update(updatePayload).eq('id', post.id);
       }
 
+      // Always mark as AI-fixed in DB (even if no auto-fixes, the analysis ran)
+      await supabase.from('blog_posts').update({ ai_fixed_at: new Date().toISOString() } as any).eq('id', post.id);
+
       setFixAllResults({ autoFixed, reviewRequired, unresolved });
-      // Mark this post as AI-fixed
-      setAiFixedPostIds(prev => new Set([...prev, post.id]));
       if (Object.keys(updatePayload).length > 0) {
         await fetchPosts();
         toast({ title: '✨ Fix All complete', description: `${autoFixed.length} fixes applied, ${reviewRequired.length} need review` });

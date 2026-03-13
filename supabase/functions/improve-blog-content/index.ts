@@ -288,6 +288,11 @@ No markdown code blocks.`;
         resultHtml = '';
       }
 
+      // Convert any remaining markdown to HTML as safety net
+      if (resultHtml && !resultHtml.includes('<h2') && !resultHtml.includes('<h3') && /^#{2,3}\s/m.test(resultHtml)) {
+        resultHtml = markdownToHtml(resultHtml);
+      }
+
       const wordCountComputed = resultHtml.replace(/<[^>]+>/g, ' ').split(/\s+/).filter(w => w.length > 0).length;
       return new Response(JSON.stringify({
         result: resultHtml,

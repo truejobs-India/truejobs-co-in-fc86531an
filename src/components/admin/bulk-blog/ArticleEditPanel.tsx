@@ -181,6 +181,27 @@ export function ArticleEditPanel({ article, onUpdate }: ArticleEditPanelProps) {
         </CollapsibleContent>
       </Collapsible>
 
+      {/* AI Tools */}
+      <BlogAITools
+        formData={{
+          title: article.title, slug: article.slug, content: article.content,
+          excerpt: article.excerpt || '', meta_title: article.metaTitle || '',
+          meta_description: article.metaDescription || '', cover_image_url: article.coverImageUrl || '',
+          featured_image_alt: article.coverImageAlt || '', author_name: article.authorName || '',
+        }}
+        onApplyField={(field, value) => {
+          const fieldMap: Record<string, string> = {
+            meta_title: 'metaTitle', meta_description: 'metaDescription',
+            excerpt: 'excerpt', cover_image_url: 'coverImageUrl', featured_image_alt: 'coverImageAlt',
+          };
+          const articleField = fieldMap[field] || field;
+          update({ [articleField]: value } as Partial<ParsedArticle>);
+        }}
+        editorInstance={null}
+        currentCompliance={compliance}
+        existingFaqCount={article.faqCount}
+      />
+
       <Separator />
 
       {/* SEO Settings */}

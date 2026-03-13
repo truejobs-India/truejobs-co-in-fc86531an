@@ -182,7 +182,7 @@ Format: {"result": "...", "changes": [...], "proposedOutline": [...], "missingSe
 No markdown code blocks.`;
       maxTokens = 3000;
     } else {
-      return new Response(JSON.stringify({ error: 'Invalid action. Use "structure", "rewrite-section", "generate-intro", or "generate-conclusion"' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ error: 'Invalid action. Use "structure", "rewrite-section", "generate-intro", "generate-conclusion", or "enrich-article"' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     const resp = await fetch(`${GEMINI_URL}?key=${geminiApiKey}`, {

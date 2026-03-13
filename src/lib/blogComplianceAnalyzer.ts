@@ -323,6 +323,7 @@ export function analyzeAdsenseCompliance(metadata: ArticleMetadata): AdsenseComp
 
   // 8. Hate/violence/extremist
   const hateViolence = /\b(kill|murder|terrorist|extremist|hate (?:speech|crime)|genocide|ethnic cleansing)\b/i.test(plainText);
+
   checks.push({
     key: 'hate-violence', label: 'No hate/violence signals', category: 'adsense-safety',
     status: hateViolence ? 'warn' : 'pass',

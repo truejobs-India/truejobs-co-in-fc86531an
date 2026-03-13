@@ -80,7 +80,7 @@ Deno.serve(async (req) => {
     let mimeType = "image/png";
     let altText = title;
 
-    console.log("Calling Lovable AI gateway with gemini-2.5-flash-image...");
+    console.log("Calling Lovable AI gateway with gemini-3.1-flash-image-preview...");
 
     try {
       const gatewayResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {

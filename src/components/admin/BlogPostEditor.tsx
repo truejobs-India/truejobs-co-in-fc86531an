@@ -91,6 +91,8 @@ export function BlogPostEditor() {
   const [isSaving, setIsSaving] = useState(false);
   const [showRedirectMap, setShowRedirectMap] = useState(false);
   const [showDuplicates, setShowDuplicates] = useState(false);
+  const [drilldownFilter, setDrilldownFilter] = useState<DrilldownFilter | null>(null);
+  const [drilldownOpen, setDrilldownOpen] = useState(false);
   const [duplicateSlugs, setDuplicateSlugs] = useState<{ slug: string; count: number }[]>([]);
 
   // Search, filter, pagination

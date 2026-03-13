@@ -124,6 +124,8 @@ export function BlogPostEditor() {
     meta_title: '',
     meta_description: '',
     author_name: 'TrueJobs Editorial Team',
+    category: null as string | null,
+    tags: null as string[] | null,
   });
 
   useEffect(() => {

@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { ParsedArticle, generateSlug } from '@/lib/blogParser';
 import { analyzeQuality, analyzeSEO, type ArticleMetadata } from '@/lib/blogArticleAnalyzer';
 import { analyzePublishCompliance, getComplianceReadinessStatus } from '@/lib/blogComplianceAnalyzer';

@@ -765,6 +765,7 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
     { key: 'structure', label: 'Improve Structure', icon: <Wrench className="h-3 w-3" />, handler: handleImproveStructure, disabled: tools.structure.isLoading || !formData.content },
     { key: 'rewriteSection', label: 'Rewrite Selection', icon: <RefreshCw className="h-3 w-3" />, handler: handleRewriteSection, disabled: tools.rewriteSection.isLoading || !editorInstance },
     { key: 'complianceFixes', label: 'Fix Compliance', icon: <ShieldCheck className="h-3 w-3" />, handler: handleComplianceFixes, disabled: tools.complianceFixes.isLoading || !currentCompliance },
+    { key: 'enrichArticle', label: 'Enrich Article', icon: <Sparkles className="h-3 w-3" />, handler: handleEnrichArticle, disabled: tools.enrichArticle.isLoading || !formData.content },
   ];
 
   // ── Detect reliable FAQ presence for replace option ──
@@ -775,7 +776,29 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
       <div className="flex items-center gap-2">
         <Sparkles className="h-4 w-4 text-primary" />
         <h4 className="text-sm font-semibold">AI Tools</h4>
-        {anyLoading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+        {(anyLoading || fixAllRunning) && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+      </div>
+
+      {/* Fix All With AI — prominent button */}
+      <Button
+        variant="default"
+        size="sm"
+        className="w-full text-xs gap-1 h-8"
+        onClick={handleFixAll}
+        disabled={fixAllRunning || !currentCompliance || !formData.title}
+      >
+        {fixAllRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+        Fix All With AI
+      </Button>
+
+      {/* Enrich word limit selector (inline) */}
+      <div className="flex items-center gap-1.5">
+        <select className="text-[10px] h-6 px-1 border rounded bg-background text-foreground" value={enrichWordLimit} onChange={(e) => setEnrichWordLimit(Number(e.target.value))}>
+          <option value={1200}>1200w</option>
+          <option value={1500}>1500w</option>
+          <option value={1800}>1800w</option>
+          <option value={2200}>2200w</option>
+        </select>
       </div>
 
       {/* Tool buttons with status indicators */}

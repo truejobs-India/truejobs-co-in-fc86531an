@@ -106,6 +106,93 @@ export type Database = {
           },
         ]
       }
+      blog_ai_audit_log: {
+        Row: {
+          after_value: string
+          apply_mode: string
+          before_value: string
+          created_at: string
+          id: string
+          slug: string | null
+          target_field: string | null
+          timestamp: string
+          tool_name: string
+        }
+        Insert: {
+          after_value?: string
+          apply_mode?: string
+          before_value?: string
+          created_at?: string
+          id?: string
+          slug?: string | null
+          target_field?: string | null
+          timestamp?: string
+          tool_name: string
+        }
+        Update: {
+          after_value?: string
+          apply_mode?: string
+          before_value?: string
+          created_at?: string
+          id?: string
+          slug?: string | null
+          target_field?: string | null
+          timestamp?: string
+          tool_name?: string
+        }
+        Relationships: []
+      }
+      blog_ai_telemetry: {
+        Row: {
+          action: string | null
+          apply_mode: string | null
+          category: string | null
+          created_at: string
+          error_message: string | null
+          event_name: string
+          id: string
+          item_count: number | null
+          slug: string | null
+          status: string | null
+          tags: string[] | null
+          target: string | null
+          timestamp: string
+          tool_name: string
+        }
+        Insert: {
+          action?: string | null
+          apply_mode?: string | null
+          category?: string | null
+          created_at?: string
+          error_message?: string | null
+          event_name: string
+          id?: string
+          item_count?: number | null
+          slug?: string | null
+          status?: string | null
+          tags?: string[] | null
+          target?: string | null
+          timestamp?: string
+          tool_name: string
+        }
+        Update: {
+          action?: string | null
+          apply_mode?: string | null
+          category?: string | null
+          created_at?: string
+          error_message?: string | null
+          event_name?: string
+          id?: string
+          item_count?: number | null
+          slug?: string | null
+          status?: string | null
+          tags?: string[] | null
+          target?: string | null
+          timestamp?: string
+          tool_name?: string
+        }
+        Relationships: []
+      }
       blog_posts: {
         Row: {
           article_images: Json | null

@@ -66,6 +66,41 @@ ${selectedHtml}
 
 Return ONLY the rewritten HTML, nothing else. No markdown code blocks.`;
       maxTokens = 3000;
+
+    } else if (action === 'generate-intro') {
+      const plainText = (content || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 2000);
+      prompt = `You are a professional content editor for TrueJobs.co.in, an Indian government job portal.
+Generate a short introductory paragraph (2-3 sentences) for this article.
+Do NOT repeat the H1 title. Provide context about what the reader will learn.
+Write in the same language as the article content.
+Maintain an informational, non-official tone.
+
+Article title: ${title}
+Category: ${category || 'General'}
+Tags: ${(tags || []).join(', ') || 'none'}
+Content excerpt: ${plainText}
+
+Return ONLY the HTML paragraph, e.g. <p>Your intro text here.</p>
+No markdown code blocks.`;
+      maxTokens = 500;
+
+    } else if (action === 'generate-conclusion') {
+      const plainText = (content || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 2000);
+      prompt = `You are a professional content editor for TrueJobs.co.in, an Indian government job portal.
+Generate a short conclusion section for this article with an H2 heading and 2-3 sentence paragraph.
+Summarize the key takeaways. Write in the same language as the article content.
+Maintain an informational, non-official tone.
+
+Article title: ${title}
+Category: ${category || 'General'}
+Tags: ${(tags || []).join(', ') || 'none'}
+Content excerpt: ${plainText}
+
+Return ONLY the HTML, e.g.:
+<h2>Conclusion</h2><p>Your conclusion text here.</p>
+No markdown code blocks.`;
+      maxTokens = 500;
+
     } else if (action === 'structure') {
       const plainText = (content || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 3000);
       const headingsList = Array.isArray(headings) ? headings.map((h: any) => `${'  '.repeat((h.level || 2) - 1)}H${h.level}: ${h.text}`).join('\n') : '(no headings detected)';
@@ -90,6 +125,11 @@ Return a JSON object with:
 - changes: array of specific actionable suggestions (strings)
 - proposedOutline: array of suggested H2 heading strings for the article (ordered, 5-8 items). Include existing good headings and add missing ones.
 - missingSections: array of section names that should be added (e.g., "Eligibility Criteria", "How to Apply", "Important Dates", "FAQ")
+- suggestedInsertions: array of objects, each with:
+  - label: short name (e.g., "Introduction", "Conclusion", "Bridge paragraph")
+  - content: the actual HTML content to insert
+  - suggestedPlacement: where it should go (e.g., "before first heading", "after last paragraph", "between section X and Y")
+  - applyMode: one of "insert_before_first_heading", "append_content", "prepend_content"
 
 Consider typical sections for Indian government job/exam articles:
 - Overview/Introduction
@@ -102,11 +142,11 @@ Consider typical sections for Indian government job/exam articles:
 - FAQ
 - Conclusion
 
-Format: {"result": "...", "changes": ["...", "..."], "proposedOutline": ["...", "..."], "missingSections": ["...", "..."]}
+Format: {"result": "...", "changes": [...], "proposedOutline": [...], "missingSections": [...], "suggestedInsertions": [...]}
 No markdown code blocks.`;
-      maxTokens = 2500;
+      maxTokens = 3000;
     } else {
-      return new Response(JSON.stringify({ error: 'Invalid action. Use "structure" or "rewrite-section"' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ error: 'Invalid action. Use "structure", "rewrite-section", "generate-intro", or "generate-conclusion"' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     const resp = await fetch(`${GEMINI_URL}?key=${geminiApiKey}`, {
@@ -126,19 +166,30 @@ No markdown code blocks.`;
       return new Response(JSON.stringify({ result: cleaned, changes: ['Section rewritten for improved clarity'] }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
+    if (action === 'generate-intro') {
+      const cleaned = raw.replace(/```html\n?/g, '').replace(/```\n?/g, '').trim();
+      return new Response(JSON.stringify({ result: cleaned, applyMode: 'insert_before_first_heading' }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    if (action === 'generate-conclusion') {
+      const cleaned = raw.replace(/```html\n?/g, '').replace(/```\n?/g, '').trim();
+      return new Response(JSON.stringify({ result: cleaned, applyMode: 'append_content' }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
     // structure action
-    let parsed: { result: string; changes: string[]; proposedOutline?: string[]; missingSections?: string[] };
+    let parsed: { result: string; changes: string[]; proposedOutline?: string[]; missingSections?: string[]; suggestedInsertions?: any[] };
     try {
       const cleanedJson = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
       parsed = JSON.parse(cleanedJson);
     } catch {
-      parsed = { result: raw, changes: [], proposedOutline: [], missingSections: [] };
+      parsed = { result: raw, changes: [], proposedOutline: [], missingSections: [], suggestedInsertions: [] };
     }
 
     // Ensure arrays
     if (!Array.isArray(parsed.proposedOutline)) parsed.proposedOutline = [];
     if (!Array.isArray(parsed.missingSections)) parsed.missingSections = [];
     if (!Array.isArray(parsed.changes)) parsed.changes = [];
+    if (!Array.isArray(parsed.suggestedInsertions)) parsed.suggestedInsertions = [];
 
     return new Response(JSON.stringify(parsed), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   } catch (err) {

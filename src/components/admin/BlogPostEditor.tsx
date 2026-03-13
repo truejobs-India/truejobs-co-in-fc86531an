@@ -126,6 +126,7 @@ export function BlogPostEditor() {
     author_name: 'TrueJobs Editorial Team',
     category: null as string | null,
     tags: null as string[] | null,
+    canonical_url: '',
   });
 
   useEffect(() => {
@@ -161,7 +162,7 @@ export function BlogPostEditor() {
       title: '', slug: '', content: '', excerpt: '',
       cover_image_url: '', featured_image_alt: '', is_published: false,
       meta_title: '', meta_description: '', author_name: 'TrueJobs Editorial Team',
-      category: null, tags: null,
+      category: null, tags: null, canonical_url: '',
     });
     setEditingPost(null);
     setHasUnsavedChanges(false);
@@ -183,6 +184,7 @@ export function BlogPostEditor() {
       author_name: post.author_name || 'TrueJobs Editorial Team',
       category: post.category || null,
       tags: post.tags || null,
+      canonical_url: post.canonical_url || '',
     });
     setHasUnsavedChanges(false);
     setPublishOverride(false);
@@ -243,6 +245,7 @@ export function BlogPostEditor() {
     meta_title: formData.meta_title.trim() || null,
     meta_description: formData.meta_description.trim() || null,
     author_name: formData.author_name.trim() || null,
+    canonical_url: formData.canonical_url.trim() || null,
     author_id: user!.id,
   });
 

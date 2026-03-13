@@ -234,13 +234,22 @@ export function analyzeAdsenseCompliance(metadata: ArticleMetadata): AdsenseComp
   const words = plainText.split(/\s+/).filter(w => w.length > 0);
   const wordCount = words.length;
 
+  // Temporary debug helper — log matched snippets for failed checks only
+  const _debugSlug = metadata.slug || metadata.title?.substring(0, 40) || 'unknown';
+  const _storedWC = metadata.wordCount ?? -1;
+  function _logFail(key: string, matchSnippet: string | null) {
+    console.warn(`[COMPLIANCE-DEBUG] slug="${_debugSlug}" rule="${key}" match="${matchSnippet?.substring(0, 80) || 'N/A'}" storedWC=${_storedWC} liveWC=${wordCount}`);
+  }
+
   // 1. Thin/doorway content
+  const thinStatus = wordCount >= 300 ? 'pass' : 'fail';
   checks.push({
     key: 'thin-doorway', label: 'Not thin/doorway content', category: 'adsense-safety',
-    status: wordCount >= 300 ? 'pass' : 'fail',
+    status: thinStatus,
     detail: wordCount < 300 ? `Only ${wordCount} words — may be flagged as thin` : `${wordCount} words`,
     recommendation: wordCount < 300 ? 'Expand content to 300+ words minimum' : undefined,
   });
+  if (thinStatus === 'fail') _logFail('thin-doorway', `${wordCount} words`);
 
   // 2. Repeated sentence ratio
   const sentences = plainText.split(/[.!?।]+/).map(s => s.trim().toLowerCase()).filter(s => s.length > 10);

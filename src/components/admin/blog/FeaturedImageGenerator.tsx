@@ -57,7 +57,7 @@ export function FeaturedImageGenerator({
 
       setGeneratedAlt(data.altText || title);
       onImageGenerated(data.imageUrl, data.altText || title);
-      toast({ title: 'Cover image generated', description: 'AI Generated via gemini-2.5-flash' });
+      toast({ title: 'Cover image generated', description: 'AI Generated via gemini-3.1-flash-image-preview' });
     } catch (err: any) {
       console.error('Image generation failed:', err);
       toast({

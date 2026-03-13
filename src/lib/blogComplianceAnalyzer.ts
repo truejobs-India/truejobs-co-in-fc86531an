@@ -380,14 +380,16 @@ export function analyzeAdsenseCompliance(metadata: ArticleMetadata): AdsenseComp
     recommendation: urgency ? 'Tone down aggressive urgency language' : undefined,
   });
 
-  // 14. Excessive affiliate links
-  const affiliateMatches = (metadata.content.match(/(?:utm_|ref=|affiliate|partner=|aff_id)/gi) || []).length;
+  // 14. Excessive affiliate links (ref= removed — too generic)
+  const affiliateMatches = (metadata.content.match(/(?:utm_|affiliate|partner=|aff_id)/gi) || []).length;
+  const affiliateStatus = affiliateMatches <= 3 ? 'pass' : affiliateMatches <= 5 ? 'warn' : 'fail';
   checks.push({
     key: 'excessive-affiliates', label: 'Reasonable affiliate link count', category: 'adsense-safety',
-    status: affiliateMatches <= 3 ? 'pass' : affiliateMatches <= 5 ? 'warn' : 'fail',
+    status: affiliateStatus,
     detail: `${affiliateMatches} affiliate-pattern links`,
     recommendation: affiliateMatches > 3 ? 'Reduce affiliate links — high density may trigger AdSense flags' : undefined,
   });
+  if (affiliateStatus === 'fail') _logFail('excessive-affiliates', `${affiliateMatches} matches`);
 
   // 15. Link density
   const linkCount = (metadata.content.match(/<a\s/gi) || []).length;

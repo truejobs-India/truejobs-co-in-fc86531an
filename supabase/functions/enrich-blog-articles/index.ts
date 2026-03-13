@@ -135,6 +135,7 @@ ${article.content}`;
               content: expandedContent,
               faq_schema: faqSchema,
               reading_time: readingTime,
+              word_count: wordCount,
               excerpt,
               updated_at: new Date().toISOString(),
             })

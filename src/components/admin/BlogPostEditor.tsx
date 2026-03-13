@@ -117,6 +117,10 @@ export function BlogPostEditor() {
   const [bulkResults, setBulkResults] = useState<{ topic: string; status: 'queued' | 'generating' | 'success' | 'failed'; articleId?: string; error?: string }[]>([]);
   const [isBulkGenerating, setIsBulkGenerating] = useState(false);
 
+  // Bulk cover image generation state
+  const [isBulkCoverRunning, setIsBulkCoverRunning] = useState(false);
+  const [bulkCoverProgress, setBulkCoverProgress] = useState<{ total: number; done: number; failed: number; current: string } | null>(null);
+
   // Search, filter, pagination
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'published' | 'draft'>('all');
@@ -377,6 +381,73 @@ export function BlogPostEditor() {
       } else {
         toast({ title: '✅ No duplicate slugs found' });
       }
+    }
+  };
+
+  // ── Bulk Generate Missing Cover Images ──────────────
+  const handleBulkGenerateCoverImages = async () => {
+    setIsBulkCoverRunning(true);
+    setBulkCoverProgress(null);
+    try {
+      // Fetch all articles without cover images
+      const { data: noCoverPosts, error } = await supabase
+        .from('blog_posts')
+        .select('id, title, slug, category, tags, cover_image_url')
+        .or('cover_image_url.is.null,cover_image_url.eq.')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      if (!noCoverPosts || noCoverPosts.length === 0) {
+        toast({ title: '✅ All articles already have cover images!' });
+        setIsBulkCoverRunning(false);
+        return;
+      }
+
+      const total = noCoverPosts.length;
+      let done = 0;
+      let failed = 0;
+      setBulkCoverProgress({ total, done, failed, current: noCoverPosts[0].title });
+
+      for (const post of noCoverPosts) {
+        setBulkCoverProgress({ total, done, failed, current: post.title });
+        try {
+          const { data: imgData, error: imgError } = await supabase.functions.invoke('generate-blog-image', {
+            body: { slug: post.slug, title: post.title, category: post.category || 'General', keywords: post.tags || [] },
+          });
+
+          if (imgError || !imgData?.imageUrl) {
+            console.warn(`Cover image failed for "${post.title}":`, imgError?.message || 'No image returned');
+            failed++;
+          } else {
+            // Update the article with the generated image
+            await supabase.from('blog_posts').update({
+              cover_image_url: imgData.imageUrl,
+              featured_image_alt: imgData.altText || post.title,
+            }).eq('id', post.id);
+            done++;
+          }
+        } catch (genErr: any) {
+          console.warn(`Cover image error for "${post.title}":`, genErr.message);
+          failed++;
+        }
+        setBulkCoverProgress({ total, done: done + failed, failed, current: post.title });
+
+        // Rate limit: wait 3s between requests
+        if (done + failed < total) {
+          await new Promise(r => setTimeout(r, 3000));
+        }
+      }
+
+      toast({
+        title: '🖼️ Cover image generation complete',
+        description: `${done} generated, ${failed} failed out of ${total} articles.`,
+      });
+      fetchPosts(); // Refresh the list
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    } finally {
+      setIsBulkCoverRunning(false);
+      setBulkCoverProgress(null);
     }
   };
 
@@ -851,6 +922,12 @@ export function BlogPostEditor() {
         </Button>
         <Button variant="outline" size="sm" onClick={handleCheckDuplicateSlugs}>
           <AlertTriangle className="h-4 w-4 mr-1" />Check Duplicate Slugs
+        </Button>
+        <Button variant="outline" size="sm" onClick={handleBulkGenerateCoverImages} disabled={isBulkCoverRunning}>
+          {isBulkCoverRunning ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <ImageIcon className="h-4 w-4 mr-1" />}
+          {isBulkCoverRunning
+            ? `Generating… ${bulkCoverProgress ? `${bulkCoverProgress.done}/${bulkCoverProgress.total}` : ''}`
+            : 'Generate Missing Cover Images'}
         </Button>
       </div>
 

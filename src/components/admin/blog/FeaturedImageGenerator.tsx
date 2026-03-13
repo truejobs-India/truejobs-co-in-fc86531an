@@ -57,7 +57,7 @@ export function FeaturedImageGenerator({
 
       setGeneratedAlt(data.altText || title);
       onImageGenerated(data.imageUrl, data.altText || title);
-      toast({ title: 'Cover image generated', description: 'AI Generated via gemini-2.5-flash' });
+      toast({ title: 'Cover image generated', description: 'AI Generated via gemini-3.1-flash-image-preview' });
     } catch (err: any) {
       console.error('Image generation failed:', err);
       toast({
@@ -89,7 +89,7 @@ export function FeaturedImageGenerator({
           )}
           {isGenerating ? 'Generating...' : currentImageUrl ? 'Regenerate' : 'Generate Cover'}
         </Button>
-        <span className="text-[10px] text-muted-foreground">AI via gemini-2.5-flash</span>
+        <span className="text-[10px] text-muted-foreground">AI via gemini-3.1-flash-image</span>
       </div>
 
       {generatedAlt && (

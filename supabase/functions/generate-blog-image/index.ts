@@ -75,12 +75,12 @@ Deno.serve(async (req) => {
     const keywordList = Array.isArray(keywords) ? keywords.join(", ") : "";
     const imagePrompt = `Create a clean, professional editorial illustration for a blog article titled "${title}" about ${category || "government jobs and exams"}.${keywordList ? ` Related topics: ${keywordList}.` : ""} Style: modern flat illustration, suitable for an Indian government jobs and exam preparation portal. Landscape format 1200x630 pixels. Use warm, professional colors. Do not include any text overlays, official government seals, emblems, or logos. Do not include any misleading official symbols. The image should be abstract and editorial in nature.`;
 
-    const modelUsed = "google/gemini-2.5-flash-image";
+    const modelUsed = "google/gemini-3.1-flash-image-preview";
     let imageBase64 = "";
     let mimeType = "image/png";
     let altText = title;
 
-    console.log("Calling Lovable AI gateway with gemini-2.5-flash-image...");
+    console.log("Calling Lovable AI gateway with gemini-3.1-flash-image-preview...");
 
     try {
       const gatewayResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -138,22 +138,43 @@ Deno.serve(async (req) => {
       }
 
       const choice = data.choices?.[0]?.message;
+      console.log("Gateway response keys:", JSON.stringify({
+        hasImages: !!choice?.images?.length,
+        hasContent: !!choice?.content,
+        contentLength: choice?.content?.length,
+        imageCount: choice?.images?.length || 0,
+      }));
 
       // Extract image from response
       if (choice?.images?.length > 0) {
-        const imgUrl = choice.images[0]?.image_url?.url || "";
-        if (imgUrl.startsWith("data:")) {
-          const match = imgUrl.match(/^data:(image\/\w+);base64,(.+)$/s);
-          if (match) {
-            mimeType = match[1];
-            imageBase64 = match[2];
+        for (const img of choice.images) {
+          const imgUrl = img?.image_url?.url || img?.url || "";
+          if (imgUrl.startsWith("data:")) {
+            const match = imgUrl.match(/^data:(image\/\w+);base64,(.+)$/s);
+            if (match) {
+              mimeType = match[1];
+              imageBase64 = match[2];
+              break;
+            }
+          } else if (imgUrl.startsWith("http")) {
+            // Download external URL to base64
+            const imgResp = await fetch(imgUrl);
+            if (imgResp.ok) {
+              const arrBuf = await imgResp.arrayBuffer();
+              const bytes = new Uint8Array(arrBuf);
+              let binary = "";
+              for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+              imageBase64 = btoa(binary);
+              mimeType = imgResp.headers.get("content-type") || "image/png";
+              break;
+            }
           }
         }
       }
 
       // Extract alt text from text content
       if (choice?.content) {
-        const text = choice.content.trim();
+        const text = typeof choice.content === "string" ? choice.content.trim() : "";
         if (text.length > 10 && text.length < 200) altText = text;
       }
     } catch (fetchErr) {

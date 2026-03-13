@@ -461,7 +461,7 @@ export function BlogPostEditor() {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label>Content *</Label>
-                  <WordFileImporter onImport={handleWordImport} />
+                  <WordFileImporter onImport={handleWordImport} onArticleParsed={handleArticleParsed} onCoverGenerated={handleCoverGenerated} />
                 </div>
                 <RichTextEditor content={formData.content} onChange={(html) => handleFormChange({ content: html })} />
               </div>

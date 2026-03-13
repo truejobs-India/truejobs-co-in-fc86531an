@@ -193,6 +193,23 @@ export function BlogPostEditor() {
     handleFormChange({ content: html });
   };
 
+  const handleArticleParsed = (article: import('@/lib/blogParser').ParsedArticle) => {
+    const updates: Partial<typeof formData> = { content: article.content };
+    if (article.title) updates.title = article.title;
+    if (article.slug) updates.slug = article.slug;
+    if (article.excerpt) updates.excerpt = article.excerpt;
+    if (article.metaTitle) updates.meta_title = article.metaTitle;
+    if (article.metaDescription) updates.meta_description = article.metaDescription;
+    if (article.coverImageAlt) updates.featured_image_alt = article.coverImageAlt;
+    if (article.coverImageUrl) updates.cover_image_url = article.coverImageUrl;
+    if (article.author) updates.author_name = article.author;
+    handleFormChange(updates);
+  };
+
+  const handleCoverGenerated = (url: string, alt: string) => {
+    handleFormChange({ cover_image_url: url, featured_image_alt: alt });
+  };
+
   const handleAutoSave = async () => {
     if (!editingPost || !formData.title.trim()) return;
     const postData = buildPostData();

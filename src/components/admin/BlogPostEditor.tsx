@@ -700,7 +700,7 @@ export function BlogPostEditor() {
 
       <CardContent>
         {/* Admin Stats */}
-        <BlogAdminStats />
+        <BlogAdminStats onDrilldown={(filter) => { setDrilldownFilter(filter); setDrilldownOpen(true); }} />
 
         {/* Search & Filter Bar */}
         <div className="flex gap-2 mb-4">

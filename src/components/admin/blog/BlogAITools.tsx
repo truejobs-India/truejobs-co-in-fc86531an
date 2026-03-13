@@ -292,6 +292,7 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
     structure: deriveStructureStatus(tools.structure, currentMetadata, currentQuality),
     rewriteSection: deriveRewriteStatus(tools.rewriteSection, !!rewritePreview),
     complianceFixes: deriveComplianceStatus(tools.complianceFixes, currentCompliance),
+    enrichArticle: tools.enrichArticle.isLoading ? 'running' as ToolStatus : tools.enrichArticle.error ? 'error' as ToolStatus : tools.enrichArticle.result ? 'needs-review' as ToolStatus : 'not-started' as ToolStatus,
   }), [tools, formData, existingFaqCount, currentMetadata, currentQuality, currentCompliance, rewritePreview]);
 
   const invokeFunction = useCallback(async (functionName: string, body: any) => {

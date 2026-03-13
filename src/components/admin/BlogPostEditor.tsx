@@ -21,7 +21,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Edit, Trash2, Eye, EyeOff, ExternalLink, RefreshCw, ClipboardCopy, Link2, AlertTriangle, Search, ChevronDown, ChevronLeft, ChevronRight, ImageIcon } from 'lucide-react';
+import { Plus, Edit, Trash2, Eye, EyeOff, ExternalLink, RefreshCw, ClipboardCopy, Link2, AlertTriangle, Search, ChevronDown, ChevronLeft, ChevronRight, ImageIcon, Sparkles, Loader2, Check, X, Zap } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { RichTextEditor } from './blog/RichTextEditor';
 import { CoverImageUploader } from './blog/CoverImageUploader';

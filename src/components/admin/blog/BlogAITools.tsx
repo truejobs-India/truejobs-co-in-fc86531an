@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { filterValidInternalLinks } from '@/lib/blogLinkValidator';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -108,7 +109,9 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
         title: formData.title,
         content: formData.content,
       });
-      setToolState('internalLinks', { isLoading: false, result: data });
+      // Frontend safety: filter out any invalid paths that slipped through
+      const validSuggestions = filterValidInternalLinks(data.suggestions || []);
+      setToolState('internalLinks', { isLoading: false, result: { ...data, suggestions: validSuggestions } });
       setResultsOpen(true);
     } catch (err: any) {
       setToolState('internalLinks', { isLoading: false, error: err.message });

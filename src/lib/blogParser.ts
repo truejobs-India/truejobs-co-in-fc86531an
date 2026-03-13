@@ -377,10 +377,21 @@ function extractTags(doc: Document): string[] {
 function extractInternalLinks(doc: Document): { path: string; anchorText: string }[] {
   const links: { path: string; anchorText: string }[] = [];
   const anchors = doc.querySelectorAll('a[href]');
+
+  // Blocked patterns — storage/asset/image URLs must not count as internal links
+  const blockedSegments = ['/storage/', '/blog-assets/', '/covers/', '/api/', '/auth/'];
+  const blockedExtensions = /\.(png|jpg|jpeg|webp|gif|svg|pdf|css|js|json|xml|mp4|mp3|zip)$/i;
+
   anchors.forEach(a => {
     const href = a.getAttribute('href') || '';
     if (href.includes('truejobs.co.in/') || href.startsWith('/')) {
       const path = href.replace(/https?:\/\/(?:www\.)?truejobs\.co\.in/, '');
+      // Skip storage, asset, and image URLs
+      const lower = path.toLowerCase();
+      if (blockedSegments.some(seg => lower.includes(seg))) return;
+      if (blockedExtensions.test(path)) return;
+      if (lower.includes('supabase.co')) return;
+      if (path.startsWith('//')) return;
       links.push({ path, anchorText: a.textContent?.trim() || path });
     }
   });

@@ -101,6 +101,7 @@ export function BlogPostEditor() {
   const [fixAllDialogPost, setFixAllDialogPost] = useState<BlogPost | null>(null);
   const [fixAllRunning, setFixAllRunning] = useState(false);
   const [fixAllResults, setFixAllResults] = useState<{ autoFixed: { field: string; value: string }[]; reviewRequired: any[]; unresolved: any[] } | null>(null);
+  const [aiFixedPostIds, setAiFixedPostIds] = useState<Set<string>>(new Set());
 
   // Enrich dialog state
   const [enrichDialogPost, setEnrichDialogPost] = useState<BlogPost | null>(null);
@@ -434,11 +435,14 @@ export function BlogPostEditor() {
 
   // Helper to get score for a post in the table
   const getPostScores = (post: BlogPost) => {
-    const meta = blogPostToMetadata(post);
+    // Recalculate word count from content to avoid stale DB values
+    const liveWc = post.content.replace(/<[^>]+>/g, '').split(/\s+/).filter(w => w.length > 0).length;
+    const postWithLiveWc = { ...post, word_count: liveWc };
+    const meta = blogPostToMetadata(postWithLiveWc);
     const q = analyzeQuality(meta);
     const s = analyzeSEO(meta);
     const r = getReadinessStatus(q, s, meta);
-    return { quality: q.totalScore, seo: s.totalScore, readiness: r };
+    return { quality: q.totalScore, seo: s.totalScore, readiness: r, wordCount: liveWc };
   };
 
   // ── Safe metadata fields for auto-apply ──
@@ -501,11 +505,24 @@ export function BlogPostEditor() {
 
       // Apply safe metadata to DB
       if (Object.keys(updatePayload).length > 0) {
+        // Also recalculate word_count from content to keep it fresh
+        const freshWordCount = post.content.replace(/<[^>]+>/g, '').split(/\s+/).filter(w => w.length > 0).length;
+        (updatePayload as any).word_count = freshWordCount;
+        (updatePayload as any).reading_time = Math.max(1, Math.ceil(freshWordCount / 200));
         await supabase.from('blog_posts').update(updatePayload).eq('id', post.id);
       }
 
       setFixAllResults({ autoFixed, reviewRequired, unresolved });
-      if (Object.keys(updatePayload).length > 0) fetchPosts();
+      // Mark this post as AI-fixed
+      setAiFixedPostIds(prev => new Set([...prev, post.id]));
+      if (Object.keys(updatePayload).length > 0) {
+        await fetchPosts();
+        toast({ title: '✨ Fix All complete', description: `${autoFixed.length} fixes applied, ${reviewRequired.length} need review` });
+      } else if (autoFixed.length === 0 && reviewRequired.length === 0) {
+        toast({ title: '✅ No issues found', description: 'All compliance checks passed.' });
+      } else {
+        toast({ title: '⚠️ Review needed', description: `${reviewRequired.length} items need manual review` });
+      }
     } catch (err: any) {
       toast({ title: 'Fix All failed', description: err.message, variant: 'destructive' });
       setFixAllResults({ autoFixed: [], reviewRequired: [], unresolved: [{ issueLabel: 'Error', explanation: err.message }] });
@@ -1019,14 +1036,21 @@ export function BlogPostEditor() {
                     <TableRow key={post.id}>
                       <TableCell>
                         <div>
-                          <div className="font-medium truncate max-w-[200px]">{post.title}</div>
+                          <div className="font-medium truncate max-w-[200px] flex items-center gap-1">
+                            {post.title}
+                            {aiFixedPostIds.has(post.id) && (
+                              <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 border-primary/40 text-primary shrink-0">
+                                <Sparkles className="h-2.5 w-2.5 mr-0.5" />AI Fixed
+                              </Badge>
+                            )}
+                          </div>
                           <div className="text-xs text-muted-foreground truncate max-w-[200px]">/blog/{post.slug}</div>
                         </div>
                       </TableCell>
                       <TableCell>
                         <PublishReadinessBadge status={scores.readiness} />
                       </TableCell>
-                      <TableCell className="text-xs">{(post.word_count || 0).toLocaleString()}</TableCell>
+                      <TableCell className="text-xs">{scores.wordCount.toLocaleString()}</TableCell>
                       <TableCell>
                         <Badge variant={scores.quality >= 70 ? 'default' : scores.quality >= 50 ? 'secondary' : 'destructive'} className="text-xs">
                           {scores.quality}

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { filterValidInternalLinks } from '@/lib/blogLinkValidator';
@@ -9,9 +9,34 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import {
   Sparkles, FileText, MessageSquare, Link2, Wrench, ShieldCheck,
   ImageIcon, RefreshCw, Loader2, ChevronDown, Check, X, AlertTriangle,
+  Circle, CheckCircle2, AlertCircle, Clock,
 } from 'lucide-react';
 import type { Editor } from '@tiptap/react';
 import type { PublishComplianceReport } from '@/lib/blogComplianceAnalyzer';
+import type { ArticleMetadata, QualityReport, SEOReport } from '@/lib/blogArticleAnalyzer';
+
+// ── Status types ──
+type ToolStatus = 'not-started' | 'ready' | 'running' | 'needs-review' | 'applied' | 'warning' | 'error';
+
+const STATUS_CONFIG: Record<ToolStatus, { label: string; className: string; icon: React.ReactNode }> = {
+  'not-started': { label: 'Not Started', className: 'bg-muted text-muted-foreground', icon: <Circle className="h-2.5 w-2.5" /> },
+  'ready': { label: 'Ready', className: 'bg-primary/10 text-primary', icon: <CheckCircle2 className="h-2.5 w-2.5" /> },
+  'running': { label: 'Running…', className: 'bg-primary/10 text-primary animate-pulse', icon: <Loader2 className="h-2.5 w-2.5 animate-spin" /> },
+  'needs-review': { label: 'Review', className: 'bg-yellow-500/15 text-yellow-700 dark:text-yellow-400', icon: <Clock className="h-2.5 w-2.5" /> },
+  'applied': { label: 'Done', className: 'bg-green-500/15 text-green-700 dark:text-green-400', icon: <CheckCircle2 className="h-2.5 w-2.5" /> },
+  'warning': { label: 'Warning', className: 'bg-orange-500/15 text-orange-700 dark:text-orange-400', icon: <AlertTriangle className="h-2.5 w-2.5" /> },
+  'error': { label: 'Error', className: 'bg-destructive/15 text-destructive', icon: <AlertCircle className="h-2.5 w-2.5" /> },
+};
+
+function StatusBadge({ status }: { status: ToolStatus }) {
+  const cfg = STATUS_CONFIG[status];
+  return (
+    <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${cfg.className}`}>
+      {cfg.icon}
+      {cfg.label}
+    </span>
+  );
+}
 
 interface BlogAIToolsProps {
   formData: {
@@ -29,6 +54,9 @@ interface BlogAIToolsProps {
   editorInstance: Editor | null;
   currentCompliance: PublishComplianceReport | null;
   existingFaqCount?: number;
+  currentMetadata?: ArticleMetadata | null;
+  currentQuality?: QualityReport | null;
+  currentSEO?: SEOReport | null;
 }
 
 interface ToolState {
@@ -39,7 +67,73 @@ interface ToolState {
 
 type ToolKey = 'seo' | 'faq' | 'internalLinks' | 'structure' | 'rewriteSection' | 'complianceFixes';
 
-export function BlogAITools({ formData, onApplyField, editorInstance, currentCompliance, existingFaqCount }: BlogAIToolsProps) {
+// ── Status derivation ──
+function deriveSeoStatus(tool: ToolState, formData: BlogAIToolsProps['formData']): ToolStatus {
+  if (tool.isLoading) return 'running';
+  if (tool.error) return 'error';
+  if (tool.result) return 'needs-review'; // generated but not all applied yet
+  const hasMeta = !!formData.meta_title && !!formData.meta_description;
+  const hasExcerpt = !!formData.excerpt;
+  if (hasMeta && hasExcerpt) return 'applied';
+  if (hasMeta || hasExcerpt) return 'needs-review';
+  return 'not-started';
+}
+
+function deriveFaqStatus(tool: ToolState, faqCount: number): ToolStatus {
+  if (tool.isLoading) return 'running';
+  if (tool.error) return 'error';
+  if (tool.result) return 'needs-review';
+  if (faqCount > 0) return 'applied';
+  return 'not-started';
+}
+
+function deriveInternalLinksStatus(tool: ToolState, metadata?: ArticleMetadata | null): ToolStatus {
+  if (tool.isLoading) return 'running';
+  if (tool.error) return 'error';
+  if (tool.result) {
+    const suggestions = tool.result.suggestions || [];
+    if (suggestions.length === 0) return 'warning'; // all filtered out
+    return 'needs-review';
+  }
+  const linkCount = metadata?.internalLinks?.length || 0;
+  if (linkCount >= 2) return 'applied';
+  if (linkCount >= 1) return 'needs-review';
+  return 'not-started';
+}
+
+function deriveStructureStatus(tool: ToolState, metadata?: ArticleMetadata | null, quality?: QualityReport | null): ToolStatus {
+  if (tool.isLoading) return 'running';
+  if (tool.error) return 'error';
+  if (tool.result) return 'needs-review';
+  if (!metadata) return 'not-started';
+  const hasIntro = metadata.hasIntro;
+  const hasConclusion = metadata.hasConclusion;
+  const h2Count = metadata.headings?.filter(h => h.level === 2).length || 0;
+  if (hasIntro && hasConclusion && h2Count >= 2) return 'applied';
+  if (hasIntro || hasConclusion || h2Count >= 1) return 'needs-review';
+  return 'not-started';
+}
+
+function deriveRewriteStatus(tool: ToolState, hasRewritePreview: boolean): ToolStatus {
+  if (tool.isLoading) return 'running';
+  if (tool.error) return 'error';
+  if (hasRewritePreview) return 'needs-review';
+  return 'not-started';
+}
+
+function deriveComplianceStatus(tool: ToolState, compliance: PublishComplianceReport | null): ToolStatus {
+  if (tool.isLoading) return 'running';
+  if (tool.error) return 'error';
+  if (tool.result) return 'needs-review';
+  if (!compliance) return 'not-started';
+  const fails = compliance.checks.filter(c => c.status === 'fail').length;
+  const warns = compliance.checks.filter(c => c.status === 'warn').length;
+  if (fails === 0 && warns === 0) return 'applied';
+  if (fails > 0) return 'warning';
+  return 'needs-review';
+}
+
+export function BlogAITools({ formData, onApplyField, editorInstance, currentCompliance, existingFaqCount, currentMetadata, currentQuality, currentSEO }: BlogAIToolsProps) {
   const { toast } = useToast();
   const [tools, setTools] = useState<Record<ToolKey, ToolState>>({
     seo: { isLoading: false, result: null, error: null },
@@ -55,6 +149,16 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
   const setToolState = (key: ToolKey, partial: Partial<ToolState>) => {
     setTools(prev => ({ ...prev, [key]: { ...prev[key], ...partial } }));
   };
+
+  // ── Derive statuses ──
+  const statuses = useMemo(() => ({
+    seo: deriveSeoStatus(tools.seo, formData),
+    faq: deriveFaqStatus(tools.faq, existingFaqCount || 0),
+    internalLinks: deriveInternalLinksStatus(tools.internalLinks, currentMetadata),
+    structure: deriveStructureStatus(tools.structure, currentMetadata, currentQuality),
+    rewriteSection: deriveRewriteStatus(tools.rewriteSection, !!rewritePreview),
+    complianceFixes: deriveComplianceStatus(tools.complianceFixes, currentCompliance),
+  }), [tools, formData, existingFaqCount, currentMetadata, currentQuality, currentCompliance, rewritePreview]);
 
   const invokeFunction = useCallback(async (functionName: string, body: any) => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -84,7 +188,6 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
 
   // ── Generate FAQ ──
   const handleGenerateFAQ = async () => {
-    // Check existing FAQ section
     const faqCount = existingFaqCount || 0;
     setToolState('faq', { isLoading: true, error: null });
     try {
@@ -109,7 +212,6 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
         title: formData.title,
         content: formData.content,
       });
-      // Frontend safety: filter out any invalid paths that slipped through
       const validSuggestions = filterValidInternalLinks(data.suggestions || []);
       setToolState('internalLinks', { isLoading: false, result: { ...data, suggestions: validSuggestions } });
       setResultsOpen(true);
@@ -148,10 +250,8 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
       return;
     }
 
-    // Extract selected HTML using TipTap's built-in getHTML for the selection range
     const slice = editorInstance.state.doc.slice(from, to);
     const tempEditor = document.createElement('div');
-    // Use DOMSerializer from ProseMirror schema
     const { DOMSerializer } = await import('@tiptap/pm/model');
     const serializer = DOMSerializer.fromSchema(editorInstance.schema);
     const domFragment = serializer.serializeFragment(slice.content);
@@ -224,13 +324,23 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
   // ── Apply FAQ via editor (not stale formData) ──
   const applyFaq = () => {
     if (!editorInstance || !tools.faq.result?.faqHtml) return;
-    // Move cursor to end then insert
     editorInstance.commands.focus('end');
     editorInstance.commands.insertContent(tools.faq.result.faqHtml);
+    setToolState('faq', { isLoading: false, result: null, error: null });
     toast({ title: 'FAQ section appended' });
   };
 
   const anyLoading = Object.values(tools).some(t => t.isLoading);
+
+  // ── Tool definitions for rendering ──
+  const toolDefs: { key: ToolKey; label: string; icon: React.ReactNode; handler: () => void; disabled: boolean }[] = [
+    { key: 'seo', label: 'SEO Metadata', icon: <FileText className="h-3 w-3" />, handler: handleGenerateSEO, disabled: tools.seo.isLoading || !formData.title },
+    { key: 'faq', label: 'Generate FAQ', icon: <MessageSquare className="h-3 w-3" />, handler: handleGenerateFAQ, disabled: tools.faq.isLoading || !formData.title },
+    { key: 'internalLinks', label: 'Internal Links', icon: <Link2 className="h-3 w-3" />, handler: handleSuggestLinks, disabled: tools.internalLinks.isLoading || !formData.title },
+    { key: 'structure', label: 'Improve Structure', icon: <Wrench className="h-3 w-3" />, handler: handleImproveStructure, disabled: tools.structure.isLoading || !formData.content },
+    { key: 'rewriteSection', label: 'Rewrite Selection', icon: <RefreshCw className="h-3 w-3" />, handler: handleRewriteSection, disabled: tools.rewriteSection.isLoading || !editorInstance },
+    { key: 'complianceFixes', label: 'Fix Compliance', icon: <ShieldCheck className="h-3 w-3" />, handler: handleComplianceFixes, disabled: tools.complianceFixes.isLoading || !currentCompliance },
+  ];
 
   return (
     <div className="space-y-3">
@@ -240,32 +350,23 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
         {anyLoading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
       </div>
 
-      {/* Tool buttons */}
-      <div className="flex flex-wrap gap-1.5">
-        <Button variant="outline" size="sm" className="text-xs gap-1" onClick={handleGenerateSEO} disabled={tools.seo.isLoading || !formData.title}>
-          {tools.seo.isLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileText className="h-3 w-3" />}
-          SEO Metadata
-        </Button>
-        <Button variant="outline" size="sm" className="text-xs gap-1" onClick={handleGenerateFAQ} disabled={tools.faq.isLoading || !formData.title}>
-          {tools.faq.isLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <MessageSquare className="h-3 w-3" />}
-          Generate FAQ
-        </Button>
-        <Button variant="outline" size="sm" className="text-xs gap-1" onClick={handleSuggestLinks} disabled={tools.internalLinks.isLoading || !formData.title}>
-          {tools.internalLinks.isLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Link2 className="h-3 w-3" />}
-          Internal Links
-        </Button>
-        <Button variant="outline" size="sm" className="text-xs gap-1" onClick={handleImproveStructure} disabled={tools.structure.isLoading || !formData.content}>
-          {tools.structure.isLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wrench className="h-3 w-3" />}
-          Improve Structure
-        </Button>
-        <Button variant="outline" size="sm" className="text-xs gap-1" onClick={handleRewriteSection} disabled={tools.rewriteSection.isLoading || !editorInstance}>
-          {tools.rewriteSection.isLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-          Rewrite Selection
-        </Button>
-        <Button variant="outline" size="sm" className="text-xs gap-1" onClick={handleComplianceFixes} disabled={tools.complianceFixes.isLoading || !currentCompliance}>
-          {tools.complianceFixes.isLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <ShieldCheck className="h-3 w-3" />}
-          Fix Compliance
-        </Button>
+      {/* Tool buttons with status indicators */}
+      <div className="space-y-1">
+        {toolDefs.map(({ key, label, icon, handler, disabled }) => (
+          <div key={key} className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs gap-1 flex-1 justify-start h-7"
+              onClick={handler}
+              disabled={disabled}
+            >
+              {tools[key].isLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : icon}
+              {label}
+            </Button>
+            <StatusBadge status={statuses[key]} />
+          </div>
+        ))}
       </div>
 
       {/* Results */}
@@ -345,14 +446,18 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
           {tools.internalLinks.result && (
             <div className="border rounded-lg p-3 space-y-2">
               <h5 className="text-xs font-semibold flex items-center gap-1"><Link2 className="h-3 w-3" /> Suggested Links</h5>
-              {tools.internalLinks.result.suggestions?.map((s: any, i: number) => (
-                <div key={i} className="text-xs border-b border-border/30 pb-1.5">
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="text-[10px] px-1 py-0 font-mono">{s.path}</Badge>
+              {tools.internalLinks.result.suggestions?.length === 0 ? (
+                <p className="text-xs text-muted-foreground">No valid link suggestions for this article.</p>
+              ) : (
+                tools.internalLinks.result.suggestions?.map((s: any, i: number) => (
+                  <div key={i} className="text-xs border-b border-border/30 pb-1.5">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-[10px] px-1 py-0 font-mono">{s.path}</Badge>
+                    </div>
+                    <p className="text-muted-foreground">Anchor: "{s.anchorText}" — {s.reason}</p>
                   </div>
-                  <p className="text-muted-foreground">Anchor: "{s.anchorText}" — {s.reason}</p>
-                </div>
-              ))}
+                ))
+              )}
               <Button size="sm" variant="ghost" className="h-5 text-[10px] text-muted-foreground" onClick={() => setToolState('internalLinks', { result: null, isLoading: false, error: null })}>
                 <X className="h-3 w-3" /> Dismiss
               </Button>

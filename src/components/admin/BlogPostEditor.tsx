@@ -34,6 +34,8 @@ import { InternalLinkSuggester } from './blog/InternalLinkSuggester';
 import { FeaturedImageGenerator } from './blog/FeaturedImageGenerator';
 import { PublishReadinessBadge } from './blog/PublishReadinessBadge';
 import { BLOG_REDIRECTS } from '@/lib/blogRedirects';
+import { Textarea } from '@/components/ui/textarea';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   analyzeQuality, analyzeSEO, getReadinessStatus, blogPostToMetadata,
   type QualityReport, type SEOReport

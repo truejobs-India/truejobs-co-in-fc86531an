@@ -457,6 +457,154 @@ export function BlogPostEditor() {
     }
   };
 
+  // ── Bulk Auto-Fix & Enrich All handler ──────────────
+  const handleBulkFixAndEnrich = async () => {
+    setIsBulkFixEnrichRunning(true);
+    setBulkFixEnrichProgress({ total: 0, done: 0, fixed: 0, enriched: 0, failed: 0, current: 'Scanning articles…', phase: 'scanning' });
+
+    try {
+      // Fetch all posts
+      const { data: allPosts, error: fetchErr } = await supabase
+        .from('blog_posts')
+        .select('id, title, slug, content, category, tags, meta_title, meta_description, excerpt, cover_image_url, featured_image_alt, author_name, canonical_url, is_published, word_count, faq_count, has_faq_schema, internal_links, ai_fixed_at')
+        .order('created_at', { ascending: false });
+
+      if (fetchErr) throw fetchErr;
+
+      // Fetch enriched slugs
+      const { data: enrichedSlugs } = await supabase
+        .from('content_enrichments')
+        .select('page_slug')
+        .eq('page_type', 'blog');
+      const enrichedSet = new Set((enrichedSlugs || []).map(e => e.page_slug));
+
+      // Filter: needs fix (ai_fixed_at is null) OR needs enrichment (not in enrichedSet)
+      const queue = (allPosts || []).filter(p => !p.ai_fixed_at || !enrichedSet.has(p.slug));
+
+      if (queue.length === 0) {
+        toast({ title: '✅ All articles are already fixed and enriched!' });
+        setIsBulkFixEnrichRunning(false);
+        setBulkFixEnrichProgress(null);
+        return;
+      }
+
+      const total = queue.length;
+      let done = 0, fixed = 0, enriched = 0, failed = 0;
+      setBulkFixEnrichProgress({ total, done, fixed, enriched, failed, current: queue[0].title, phase: 'fixing' });
+
+      for (const post of queue) {
+        const needsFix = !post.ai_fixed_at;
+        const needsEnrich = !enrichedSet.has(post.slug);
+
+        // ── Step 1: Fix All With AI (if needed) ──
+        if (needsFix) {
+          setBulkFixEnrichProgress({ total, done, fixed, enriched, failed, current: post.title, phase: 'fixing' });
+          try {
+            const meta = blogPostToMetadata(post as any);
+            const compliance = analyzePublishCompliance(meta);
+            const failedChecks = compliance.checks.filter(c => c.status === 'fail' || c.status === 'warn');
+
+            if (failedChecks.length > 0) {
+              const { data: fixData, error: fixError } = await supabase.functions.invoke('analyze-blog-compliance-fixes', {
+                body: {
+                  title: post.title, content: post.content, slug: post.slug,
+                  issues: failedChecks.map(c => ({ key: c.key, label: c.label, detail: c.detail, recommendation: c.recommendation })),
+                  existingMeta: {
+                    meta_title: post.meta_title, meta_description: post.meta_description, excerpt: post.excerpt,
+                    featured_image_alt: post.featured_image_alt, author_name: post.author_name, canonical_url: post.canonical_url,
+                    hasCoverImage: !!post.cover_image_url, hasIntro: meta.hasIntro, hasConclusion: meta.hasConclusion,
+                    headings: meta.headings, wordCount: meta.wordCount, featured_image: post.cover_image_url,
+                    faqCount: post.faq_count ?? 0, internalLinkCount: meta.internalLinks?.length ?? 0,
+                  },
+                },
+              });
+              if (fixError) throw new Error(fixError.message);
+
+              const fixes: any[] = Array.isArray(fixData?.fixes) ? fixData.fixes : [];
+              const updatePayload: Record<string, any> = {};
+              for (const fix of fixes) {
+                const mode = fix.applyMode || 'advisory';
+                if (mode === 'apply_field' && fix.field && SAFE_METADATA_FIELDS.has(fix.field) && fix.suggestedValue) {
+                  const currentVal = (post as any)[fix.field] || '';
+                  if (!currentVal || currentVal.length < 3) {
+                    updatePayload[fix.field] = fix.suggestedValue;
+                  }
+                }
+              }
+              if (Object.keys(updatePayload).length > 0) {
+                const freshWordCount = post.content.replace(/<[^>]+>/g, '').split(/\s+/).filter(w => w.length > 0).length;
+                updatePayload.word_count = freshWordCount;
+                updatePayload.reading_time = Math.max(1, Math.ceil(freshWordCount / 200));
+                await supabase.from('blog_posts').update(updatePayload).eq('id', post.id);
+              }
+            }
+            // Mark as AI-fixed
+            await supabase.from('blog_posts').update({ ai_fixed_at: new Date().toISOString() } as any).eq('id', post.id);
+            fixed++;
+          } catch (fixErr: any) {
+            console.warn(`Fix failed for "${post.title}":`, fixErr.message);
+            failed++;
+            done++;
+            setBulkFixEnrichProgress({ total, done, fixed, enriched, failed, current: post.title, phase: 'fixing' });
+            await new Promise(r => setTimeout(r, 2000));
+            continue;
+          }
+        }
+
+        // ── Step 2: Enrich (if needed) ──
+        if (needsEnrich) {
+          setBulkFixEnrichProgress({ total, done, fixed, enriched, failed, current: post.title, phase: 'enriching' });
+          try {
+            const { data: enrichData, error: enrichError } = await supabase.functions.invoke('improve-blog-content', {
+              body: {
+                title: post.title, content: post.content,
+                action: 'enrich-article', targetWordCount: 1500,
+                category: post.category, tags: post.tags,
+              },
+            });
+            if (enrichError) throw new Error(enrichError.message);
+
+            if (enrichData?.result) {
+              const newContent = enrichData.result;
+              const wordCount = newContent.replace(/<[^>]+>/g, '').split(/\s+/).filter((w: string) => w.length > 0).length;
+              await supabase.from('blog_posts').update({
+                content: newContent, word_count: wordCount,
+                reading_time: Math.max(1, Math.ceil(wordCount / 200)),
+              }).eq('id', post.id);
+              enriched++;
+            }
+          } catch (enrichErr: any) {
+            console.warn(`Enrich failed for "${post.title}":`, enrichErr.message);
+            failed++;
+            done++;
+            setBulkFixEnrichProgress({ total, done, fixed, enriched, failed, current: post.title, phase: 'enriching' });
+            await new Promise(r => setTimeout(r, 2000));
+            continue;
+          }
+        }
+
+        done++;
+        setBulkFixEnrichProgress({ total, done, fixed, enriched, failed, current: post.title, phase: 'fixing' });
+
+        // Rate limit: 3s between articles
+        if (done < total) {
+          await new Promise(r => setTimeout(r, 3000));
+        }
+      }
+
+      toast({
+        title: '🚀 Bulk Fix & Enrich complete',
+        description: `${fixed} fixed, ${enriched} enriched, ${failed} failed out of ${total} articles.`,
+      });
+      fetchPosts();
+    } catch (err: any) {
+      toast({ title: 'Bulk Fix & Enrich failed', description: err.message, variant: 'destructive' });
+    } finally {
+      setIsBulkFixEnrichRunning(false);
+      setBulkFixEnrichProgress(null);
+    }
+  };
+
   // ── Filtered & paginated posts ─────────────────────
   const filteredPosts = posts.filter(post => {
     const matchesSearch = !searchQuery ||

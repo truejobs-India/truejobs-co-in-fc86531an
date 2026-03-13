@@ -1037,16 +1037,17 @@ export function BlogPostEditor() {
                   return (
                     <TableRow key={post.id}>
                       <TableCell>
-                        <div>
-                          <div className="font-medium truncate max-w-[200px] flex items-center gap-1">
-                            {post.title}
+                        <div className="max-w-[280px]">
+                          <div className="font-medium truncate">{post.title}</div>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <span className="text-xs text-muted-foreground truncate">/blog/{post.slug}</span>
                             {post.ai_fixed_at && (
-                              <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4 border-primary/40 text-primary shrink-0 gap-0.5">
-                                <Sparkles className="h-2.5 w-2.5" />AI Fixed
+                              <Badge variant="outline" className="text-[9px] px-1 py-0 h-[18px] border-green-500/40 bg-green-500/10 text-green-700 dark:text-green-400 shrink-0 inline-flex items-center gap-0.5 whitespace-nowrap">
+                                <Sparkles className="h-2.5 w-2.5 fill-current" />
+                                AI Fixed
                               </Badge>
                             )}
                           </div>
-                          <div className="text-xs text-muted-foreground truncate max-w-[200px]">/blog/{post.slug}</div>
                         </div>
                       </TableCell>
                       <TableCell>

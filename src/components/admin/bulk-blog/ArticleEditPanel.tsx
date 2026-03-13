@@ -137,7 +137,7 @@ export function ArticleEditPanel({ article, onUpdate }: ArticleEditPanelProps) {
       <h3 className="font-semibold text-lg">Edit Article</h3>
 
       {/* Quality & SEO Summary */}
-      <div className="flex gap-2 text-xs">
+      <div className="flex flex-wrap gap-2 text-xs">
         <Badge variant={qualityReport.totalScore >= 70 ? 'default' : qualityReport.totalScore >= 50 ? 'secondary' : 'destructive'}>
           Quality: {qualityReport.totalScore}
         </Badge>
@@ -146,12 +146,6 @@ export function ArticleEditPanel({ article, onUpdate }: ArticleEditPanelProps) {
         </Badge>
         <ComplianceReadinessBadge status={complianceStatus} />
         <BlogScoreBreakdown metadata={meta} quality={qualityReport} seo={seoReport} compliance={compliance} />
-      </div>
-        </Badge>
-        <Badge variant={seoReport.totalScore >= 70 ? 'default' : seoReport.totalScore >= 50 ? 'secondary' : 'destructive'}>
-          SEO: {seoReport.totalScore}
-        </Badge>
-        <ComplianceReadinessBadge status={complianceStatus} />
       </div>
 
       {/* Collapsible Quality Report */}

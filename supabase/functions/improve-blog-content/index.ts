@@ -102,10 +102,7 @@ No markdown code blocks.`;
       maxTokens = 500;
 
     } else if (action === 'enrich-article') {
-      const targetWords = Math.min(Math.max(Number(req.json ? 0 : 0) || 1500, 800), 3000);
-      // Re-parse targetWordCount from the already-parsed body
-      const bodyTargetWordCount = (await Promise.resolve(targetWordCount)) || 1500;
-      const effectiveTarget = Math.min(Math.max(Number(bodyTargetWordCount) || 1500, 800), 3000);
+      const effectiveTarget = Math.min(Math.max(Number(targetWordCount) || 1500, 800), 3000);
       const plainText = (content || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
       const currentWords = plainText.split(/\s+/).filter((w: string) => w.length > 0).length;
 

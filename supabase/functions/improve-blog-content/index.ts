@@ -213,18 +213,42 @@ No markdown code blocks.`;
     }
 
     if (action === 'enrich-article') {
-      const cleanedJson = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      // Aggressively strip markdown code fences (```json, ```html, ``` etc.)
+      let cleaned = raw.replace(/^```(?:json|html)?\s*\n?/gm, '').replace(/\n?```\s*$/gm, '').trim();
+
       let enrichParsed: { result: string; wordCount: number; changes: string[] };
       try {
-        enrichParsed = JSON.parse(cleanedJson);
+        enrichParsed = JSON.parse(cleaned);
       } catch {
-        // Fallback: treat raw as HTML content
-        const cleanedHtml = raw.replace(/```html\n?/g, '').replace(/```\n?/g, '').trim();
-        enrichParsed = { result: cleanedHtml, wordCount: 0, changes: ['Content enriched'] };
+        // Second attempt: extract JSON object from within the response
+        const jsonMatch = cleaned.match(/\{[\s\S]*"result"\s*:\s*"[\s\S]*\}/);
+        if (jsonMatch) {
+          try {
+            enrichParsed = JSON.parse(jsonMatch[0]);
+          } catch {
+            enrichParsed = { result: '', wordCount: 0, changes: [] };
+          }
+        } else {
+          enrichParsed = { result: '', wordCount: 0, changes: [] };
+        }
+
+        // If JSON parsing fully failed, try treating raw as plain HTML
+        if (!enrichParsed.result) {
+          const htmlContent = raw.replace(/^```(?:json|html)?\s*\n?/gm, '').replace(/\n?```\s*$/gm, '').trim();
+          // Only use as HTML if it actually looks like HTML (contains tags)
+          if (/<[a-z][\s\S]*>/i.test(htmlContent) && !htmlContent.startsWith('{')) {
+            enrichParsed = { result: htmlContent, wordCount: 0, changes: ['Content enriched'] };
+          }
+        }
       }
-      if (!enrichParsed.result) enrichParsed.result = '';
+
+      // Clean up the result: replace literal \n with actual newlines if present as text
+      if (enrichParsed.result) {
+        enrichParsed.result = enrichParsed.result.replace(/\\n/g, '\n').trim();
+      } else {
+        enrichParsed.result = '';
+      }
       if (!Array.isArray(enrichParsed.changes)) enrichParsed.changes = [];
-      // Calculate word count if not provided
       if (!enrichParsed.wordCount) {
         enrichParsed.wordCount = enrichParsed.result.replace(/<[^>]+>/g, ' ').split(/\s+/).filter(w => w.length > 0).length;
       }

@@ -138,22 +138,43 @@ Deno.serve(async (req) => {
       }
 
       const choice = data.choices?.[0]?.message;
+      console.log("Gateway response keys:", JSON.stringify({
+        hasImages: !!choice?.images?.length,
+        hasContent: !!choice?.content,
+        contentLength: choice?.content?.length,
+        imageCount: choice?.images?.length || 0,
+      }));
 
       // Extract image from response
       if (choice?.images?.length > 0) {
-        const imgUrl = choice.images[0]?.image_url?.url || "";
-        if (imgUrl.startsWith("data:")) {
-          const match = imgUrl.match(/^data:(image\/\w+);base64,(.+)$/s);
-          if (match) {
-            mimeType = match[1];
-            imageBase64 = match[2];
+        for (const img of choice.images) {
+          const imgUrl = img?.image_url?.url || img?.url || "";
+          if (imgUrl.startsWith("data:")) {
+            const match = imgUrl.match(/^data:(image\/\w+);base64,(.+)$/s);
+            if (match) {
+              mimeType = match[1];
+              imageBase64 = match[2];
+              break;
+            }
+          } else if (imgUrl.startsWith("http")) {
+            // Download external URL to base64
+            const imgResp = await fetch(imgUrl);
+            if (imgResp.ok) {
+              const arrBuf = await imgResp.arrayBuffer();
+              const bytes = new Uint8Array(arrBuf);
+              let binary = "";
+              for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+              imageBase64 = btoa(binary);
+              mimeType = imgResp.headers.get("content-type") || "image/png";
+              break;
+            }
           }
         }
       }
 
       // Extract alt text from text content
       if (choice?.content) {
-        const text = choice.content.trim();
+        const text = typeof choice.content === "string" ? choice.content.trim() : "";
         if (text.length > 10 && text.length < 200) altText = text;
       }
     } catch (fetchErr) {

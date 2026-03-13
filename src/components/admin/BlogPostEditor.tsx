@@ -257,7 +257,7 @@ export function BlogPostEditor() {
 
   const buildPostData = () => ({
     title: formData.title.trim(),
-    slug: formData.slug || generateSlug(formData.title),
+    slug: (formData.slug || generateSlug(formData.title)).replace(/^\/+/, ''),
     content: formData.content.trim(),
     excerpt: formData.excerpt.trim() || null,
     cover_image_url: formData.cover_image_url.trim() || null,

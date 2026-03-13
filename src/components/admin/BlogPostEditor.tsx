@@ -1090,6 +1090,12 @@ export function BlogPostEditor() {
         <Button variant="outline" size="sm" onClick={handleCopyUrlsForGSC}>
           <ClipboardCopy className="h-4 w-4 mr-1" />Copy Blog URLs for GSC
         </Button>
+        <Button variant="outline" size="sm" onClick={handleCopyArticleTitles}>
+          <FileText className="h-4 w-4 mr-1" />Copy Article Titles
+        </Button>
+        <Button variant="outline" size="sm" onClick={handleDownloadArticleTitles}>
+          <Download className="h-4 w-4 mr-1" />Download Titles (.txt)
+        </Button>
         <Button variant="outline" size="sm" asChild>
           <a href="https://search.google.com/search-console/inspect?resource_id=https://truejobs.co.in" target="_blank" rel="noopener noreferrer">
             <Search className="h-4 w-4 mr-1" />Open GSC URL Inspection →

@@ -193,6 +193,23 @@ export function BlogPostEditor() {
     handleFormChange({ content: html });
   };
 
+  const handleArticleParsed = (article: import('@/lib/blogParser').ParsedArticle) => {
+    const updates: Partial<typeof formData> = { content: article.content };
+    if (article.title) updates.title = article.title;
+    if (article.slug) updates.slug = article.slug;
+    if (article.excerpt) updates.excerpt = article.excerpt;
+    if (article.metaTitle) updates.meta_title = article.metaTitle;
+    if (article.metaDescription) updates.meta_description = article.metaDescription;
+    if (article.coverImageAlt) updates.featured_image_alt = article.coverImageAlt;
+    if (article.coverImageUrl) updates.cover_image_url = article.coverImageUrl;
+    if (article.authorName) updates.author_name = article.authorName;
+    handleFormChange(updates);
+  };
+
+  const handleCoverGenerated = (url: string, alt: string) => {
+    handleFormChange({ cover_image_url: url, featured_image_alt: alt });
+  };
+
   const handleAutoSave = async () => {
     if (!editingPost || !formData.title.trim()) return;
     const postData = buildPostData();
@@ -444,7 +461,7 @@ export function BlogPostEditor() {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label>Content *</Label>
-                  <WordFileImporter onImport={handleWordImport} />
+                  <WordFileImporter onImport={handleWordImport} onArticleParsed={handleArticleParsed} onCoverGenerated={handleCoverGenerated} />
                 </div>
                 <RichTextEditor content={formData.content} onChange={(html) => handleFormChange({ content: html })} />
               </div>

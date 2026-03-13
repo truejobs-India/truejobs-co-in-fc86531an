@@ -1106,6 +1106,61 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
               </Button>
             </div>
           )}
+
+          {/* Fix All Results */}
+          {fixAllResults && (
+            <div className="border rounded-lg p-3 space-y-2 border-primary/30">
+              <h5 className="text-xs font-semibold flex items-center gap-1"><Sparkles className="h-3 w-3" /> Fix All Results</h5>
+              {fixAllResults.autoFixed.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-[10px] font-medium text-green-700 dark:text-green-400 flex items-center gap-1"><CheckCircle2 className="h-2.5 w-2.5" /> Auto-Fixed ({fixAllResults.autoFixed.length})</p>
+                  {fixAllResults.autoFixed.map((f, i) => (
+                    <p key={i} className="text-[10px] bg-green-500/10 rounded px-1.5 py-0.5">{f.field}: {f.value.substring(0, 60)}</p>
+                  ))}
+                </div>
+              )}
+              {fixAllResults.reviewRequired.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-[10px] font-medium text-yellow-700 dark:text-yellow-400 flex items-center gap-1"><AlertTriangle className="h-2.5 w-2.5" /> Review Required ({fixAllResults.reviewRequired.length})</p>
+                  {fixAllResults.reviewRequired.map((f: any, i: number) => (
+                    <p key={i} className="text-[10px] bg-yellow-500/10 rounded px-1.5 py-0.5">{f.issueLabel}: {f.explanation?.substring(0, 80)}</p>
+                  ))}
+                </div>
+              )}
+              {fixAllResults.unresolved.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-[10px] font-medium text-muted-foreground">Unresolved ({fixAllResults.unresolved.length})</p>
+                  {fixAllResults.unresolved.map((f: any, i: number) => (
+                    <p key={i} className="text-[10px] text-muted-foreground bg-muted/50 rounded px-1.5 py-0.5">{f.issueLabel}: {f.explanation}</p>
+                  ))}
+                </div>
+              )}
+              <Button size="sm" variant="ghost" className="h-5 text-[10px] text-muted-foreground" onClick={() => setFixAllResults(null)}>
+                <X className="h-3 w-3" /> Dismiss
+              </Button>
+            </div>
+          )}
+
+          {/* Enrich Article Results */}
+          {tools.enrichArticle.result && (
+            <div className="border rounded-lg p-3 space-y-2 border-primary/30">
+              <h5 className="text-xs font-semibold flex items-center gap-1"><Sparkles className="h-3 w-3" /> Enriched Preview (~{tools.enrichArticle.result.wordCount || '?'} words)</h5>
+              {tools.enrichArticle.result.changes?.length > 0 && (
+                <div className="text-[10px] space-y-0.5">
+                  {tools.enrichArticle.result.changes.map((c: string, i: number) => <p key={i} className="text-muted-foreground">• {c}</p>)}
+                </div>
+              )}
+              <div className="max-h-48 overflow-y-auto border rounded p-2 bg-muted/20 text-xs" dangerouslySetInnerHTML={{ __html: tools.enrichArticle.result.result?.substring(0, 3000) || '' }} />
+              <div className="flex gap-2">
+                <Button size="sm" variant="default" className="h-6 text-[10px]" onClick={applyEnrichment} disabled={!editorInstance}>
+                  <Check className="h-3 w-3" /> Apply Enrichment
+                </Button>
+                <Button size="sm" variant="ghost" className="h-5 text-[10px] text-muted-foreground" onClick={() => setToolState('enrichArticle', { result: null, isLoading: false, error: null })}>
+                  <X className="h-3 w-3" /> Discard
+                </Button>
+              </div>
+            </div>
+          )}
         </CollapsibleContent>
       </Collapsible>
     </div>

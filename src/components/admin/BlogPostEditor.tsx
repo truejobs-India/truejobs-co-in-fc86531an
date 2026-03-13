@@ -480,6 +480,9 @@ export function BlogPostEditor() {
                 editorInstance={editorInstance}
                 currentCompliance={currentCompliance}
                 existingFaqCount={currentMetadata?.faqCount || 0}
+                currentMetadata={currentMetadata}
+                currentQuality={currentQuality}
+                currentSEO={currentSEO}
               />
 
               {/* Cover Image with Upload + AI Generate */}

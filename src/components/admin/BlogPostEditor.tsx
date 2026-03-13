@@ -27,6 +27,7 @@ import { RichTextEditor } from './blog/RichTextEditor';
 import { CoverImageUploader } from './blog/CoverImageUploader';
 import { WordFileImporter } from './blog/WordFileImporter';
 import { BlogAdminStats } from './blog/BlogAdminStats';
+import { BlogStatsDrilldown, type DrilldownFilter } from './blog/BlogStatsDrilldown';
 import { BlogArticleReport } from './blog/BlogArticleReport';
 import { BlogSEOChecklist } from './blog/BlogSEOChecklist';
 import { InternalLinkSuggester } from './blog/InternalLinkSuggester';
@@ -90,6 +91,8 @@ export function BlogPostEditor() {
   const [isSaving, setIsSaving] = useState(false);
   const [showRedirectMap, setShowRedirectMap] = useState(false);
   const [showDuplicates, setShowDuplicates] = useState(false);
+  const [drilldownFilter, setDrilldownFilter] = useState<DrilldownFilter | null>(null);
+  const [drilldownOpen, setDrilldownOpen] = useState(false);
   const [duplicateSlugs, setDuplicateSlugs] = useState<{ slug: string; count: number }[]>([]);
 
   // Search, filter, pagination
@@ -410,6 +413,7 @@ export function BlogPostEditor() {
   };
 
   return (
+    <>
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <div>
@@ -697,7 +701,7 @@ export function BlogPostEditor() {
 
       <CardContent>
         {/* Admin Stats */}
-        <BlogAdminStats />
+        <BlogAdminStats onDrilldown={(filter) => { setDrilldownFilter(filter); setDrilldownOpen(true); }} />
 
         {/* Search & Filter Bar */}
         <div className="flex gap-2 mb-4">
@@ -844,5 +848,14 @@ export function BlogPostEditor() {
         )}
       </CardContent>
     </Card>
+
+    <BlogStatsDrilldown
+      open={drilldownOpen}
+      onOpenChange={setDrilldownOpen}
+      filter={drilldownFilter}
+      posts={posts}
+      onEditPost={(post) => openEditDialog(post as any)}
+    />
+    </>
   );
 }

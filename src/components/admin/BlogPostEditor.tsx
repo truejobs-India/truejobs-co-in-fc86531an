@@ -923,6 +923,12 @@ export function BlogPostEditor() {
         <Button variant="outline" size="sm" onClick={handleCheckDuplicateSlugs}>
           <AlertTriangle className="h-4 w-4 mr-1" />Check Duplicate Slugs
         </Button>
+        <Button variant="outline" size="sm" onClick={handleBulkGenerateCoverImages} disabled={isBulkCoverRunning}>
+          {isBulkCoverRunning ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <ImageIcon className="h-4 w-4 mr-1" />}
+          {isBulkCoverRunning
+            ? `Generating… ${bulkCoverProgress ? `${bulkCoverProgress.done}/${bulkCoverProgress.total}` : ''}`
+            : 'Generate Missing Cover Images'}
+        </Button>
       </div>
 
       {/* ── Bulk Article Generator ── */}

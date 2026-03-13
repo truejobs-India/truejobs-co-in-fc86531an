@@ -67,7 +67,7 @@ interface ToolState {
   error: string | null;
 }
 
-type ToolKey = 'seo' | 'faq' | 'internalLinks' | 'structure' | 'rewriteSection' | 'complianceFixes';
+type ToolKey = 'seo' | 'faq' | 'internalLinks' | 'structure' | 'rewriteSection' | 'complianceFixes' | 'enrichArticle';
 
 // ── Editable fields whitelist (must match server-side) ──
 const EDITABLE_FIELDS = new Set(['meta_title', 'meta_description', 'excerpt', 'featured_image_alt', 'author_name', 'canonical_url', 'slug']);

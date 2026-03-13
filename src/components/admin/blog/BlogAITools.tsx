@@ -273,9 +273,13 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
     structure: { isLoading: false, result: null, error: null },
     rewriteSection: { isLoading: false, result: null, error: null },
     complianceFixes: { isLoading: false, result: null, error: null },
+    enrichArticle: { isLoading: false, result: null, error: null },
   });
   const [rewritePreview, setRewritePreview] = useState<{ original: string; rewritten: string; from: number; to: number } | null>(null);
   const [resultsOpen, setResultsOpen] = useState(false);
+  const [fixAllRunning, setFixAllRunning] = useState(false);
+  const [fixAllResults, setFixAllResults] = useState<{ autoFixed: { field: string; value: string }[]; reviewRequired: any[]; unresolved: any[] } | null>(null);
+  const [enrichWordLimit, setEnrichWordLimit] = useState(1500);
 
   const setToolState = (key: ToolKey, partial: Partial<ToolState>) => {
     setTools(prev => ({ ...prev, [key]: { ...prev[key], ...partial } }));

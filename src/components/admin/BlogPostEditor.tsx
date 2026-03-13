@@ -21,7 +21,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Edit, Trash2, Eye, EyeOff, ExternalLink, RefreshCw, ClipboardCopy, Link2, AlertTriangle, Search, ChevronDown, ChevronLeft, ChevronRight, ImageIcon, Sparkles, Loader2, Check, X, Zap } from 'lucide-react';
+import { Plus, Edit, Trash2, Eye, EyeOff, ExternalLink, RefreshCw, ClipboardCopy, Link2, AlertTriangle, Search, ChevronDown, ChevronLeft, ChevronRight, ImageIcon, Sparkles, Loader2, Check, X, Zap, Download, FileText } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { RichTextEditor } from './blog/RichTextEditor';
 import { CoverImageUploader } from './blog/CoverImageUploader';
@@ -372,6 +372,30 @@ export function BlogPostEditor() {
       const urls = data.map(p => `https://truejobs.co.in/blog/${p.slug}`).join('\n');
       await navigator.clipboard.writeText(urls);
       toast({ title: '📋 Copied!', description: `${data.length} blog URLs copied.` });
+    }
+  };
+
+  const handleCopyArticleTitles = async () => {
+    const { data } = await supabase.from('blog_posts').select('title').order('created_at', { ascending: false });
+    if (data && data.length > 0) {
+      const titles = data.map(p => p.title).join('\n');
+      await navigator.clipboard.writeText(titles);
+      toast({ title: '📋 Copied!', description: `${data.length} article titles copied to clipboard.` });
+    }
+  };
+
+  const handleDownloadArticleTitles = async () => {
+    const { data } = await supabase.from('blog_posts').select('title').order('created_at', { ascending: false });
+    if (data && data.length > 0) {
+      const titles = data.map(p => p.title).join('\n');
+      const blob = new Blob([titles], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `blog-article-titles-${new Date().toISOString().slice(0, 10)}.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast({ title: '⬇️ Downloaded!', description: `${data.length} article titles saved.` });
     }
   };
 
@@ -1065,6 +1089,12 @@ export function BlogPostEditor() {
         </Button>
         <Button variant="outline" size="sm" onClick={handleCopyUrlsForGSC}>
           <ClipboardCopy className="h-4 w-4 mr-1" />Copy Blog URLs for GSC
+        </Button>
+        <Button variant="outline" size="sm" onClick={handleCopyArticleTitles}>
+          <FileText className="h-4 w-4 mr-1" />Copy Article Titles
+        </Button>
+        <Button variant="outline" size="sm" onClick={handleDownloadArticleTitles}>
+          <Download className="h-4 w-4 mr-1" />Download Titles (.txt)
         </Button>
         <Button variant="outline" size="sm" asChild>
           <a href="https://search.google.com/search-console/inspect?resource_id=https://truejobs.co.in" target="_blank" rel="noopener noreferrer">

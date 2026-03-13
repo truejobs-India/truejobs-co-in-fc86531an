@@ -351,6 +351,7 @@ export function analyzeAdsenseCompliance(metadata: ArticleMetadata): AdsenseComp
     detail: dangerousRisk ? 'High-risk policy violations detected' : 'No dangerous violations',
     recommendation: dangerousRisk ? 'Address all policy violations before publishing' : undefined,
   });
+  if (dangerousRisk) _logFail('dangerous-policy-risk', adultMatch?.[0] ?? illegalMatch?.[0] ?? null);
 
   // 11. YMYL certainty claims
   const ymylClaims = /\b(guaranteed (?:cure|results?|income)|100% (?:safe|effective|proven)|miracle (?:cure|drug|solution))\b/i.test(plainText);

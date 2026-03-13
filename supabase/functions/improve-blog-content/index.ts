@@ -208,41 +208,87 @@ No markdown code blocks.`;
     }
 
     if (action === 'enrich-article') {
-      // Strip leading/trailing markdown code fences only at start/end of response
       let cleaned = raw.trim();
-      if (cleaned.startsWith('```')) {
-        cleaned = cleaned.replace(/^```(?:json|html)?\s*\n/, '');
-      }
-      if (cleaned.endsWith('```')) {
-        cleaned = cleaned.replace(/\n?```\s*$/, '');
-      }
+      if (cleaned.startsWith('```')) cleaned = cleaned.replace(/^```(?:json|html)?\s*\n/, '');
+      if (cleaned.endsWith('```')) cleaned = cleaned.replace(/\n?```\s*$/, '');
       cleaned = cleaned.trim();
 
-      console.log('Enrich raw length:', raw.length, 'cleaned length:', cleaned.length, 'starts with {:', cleaned.startsWith('{'));
+      const extractResultFromPseudoJson = (input: string): string => {
+        const resultKeyIndex = input.indexOf('"result"');
+        if (resultKeyIndex === -1) return '';
 
-      let enrichParsed: { result: string; wordCount: number; changes: string[] };
+        const colonIndex = input.indexOf(':', resultKeyIndex);
+        if (colonIndex === -1) return '';
+
+        let i = colonIndex + 1;
+        while (i < input.length && /\s/.test(input[i])) i++;
+        if (input[i] !== '"') return '';
+        i++;
+
+        let out = '';
+        let escaped = false;
+
+        for (; i < input.length; i++) {
+          const ch = input[i];
+
+          if (escaped) {
+            out += ch === 'n' ? '\n' : ch;
+            escaped = false;
+            continue;
+          }
+
+          if (ch === '\\') {
+            escaped = true;
+            continue;
+          }
+
+          if (ch === '"') {
+            const rest = input.slice(i + 1);
+            if (/^\s*,\s*"(wordCount|changes)"/.test(rest) || /^\s*}\s*$/.test(rest)) {
+              return out.trim();
+            }
+            out += ch;
+            continue;
+          }
+
+          out += ch;
+        }
+
+        return out.trim();
+      };
+
+      let resultHtml = '';
+      let changes: string[] = [];
+
       try {
-        enrichParsed = JSON.parse(cleaned);
-        console.log('JSON parse succeeded, result length:', enrichParsed.result?.length || 0);
-      } catch (parseErr) {
-        console.warn('JSON parse failed:', (parseErr as Error).message?.substring(0, 200));
-        // Fallback: treat raw as HTML content if it looks like HTML
-        const htmlCandidate = cleaned.startsWith('{') ? '' : cleaned;
-        if (htmlCandidate && /<[a-z][\s\S]*>/i.test(htmlCandidate)) {
-          enrichParsed = { result: htmlCandidate, wordCount: 0, changes: ['Content enriched'] };
-          console.log('Fallback to HTML, length:', htmlCandidate.length);
+        const parsed = JSON.parse(cleaned);
+        resultHtml = typeof parsed?.result === 'string' ? parsed.result : '';
+        changes = Array.isArray(parsed?.changes) ? parsed.changes : [];
+      } catch {
+        // Common malformed payloads: `json { ... }` or invalid JSON with unescaped quotes
+        const withoutJsonPrefix = cleaned.replace(/^json\s*/i, '').trim();
+        const recovered = extractResultFromPseudoJson(withoutJsonPrefix);
+
+        if (recovered) {
+          resultHtml = recovered;
+          changes = ['Content enriched'];
         } else {
-          enrichParsed = { result: '', wordCount: 0, changes: [] };
-          console.error('Could not parse enrich response. First 500 chars:', cleaned.substring(0, 500));
+          // HTML-first fallback (new prompt asks for direct HTML)
+          resultHtml = withoutJsonPrefix;
+          changes = ['Content enriched'];
         }
       }
 
-      if (!enrichParsed.result) enrichParsed.result = '';
-      if (!Array.isArray(enrichParsed.changes)) enrichParsed.changes = [];
-      if (!enrichParsed.wordCount) {
-        enrichParsed.wordCount = enrichParsed.result.replace(/<[^>]+>/g, ' ').split(/\s+/).filter(w => w.length > 0).length;
+      if (!resultHtml || resultHtml === '{}' || /^\{[\s\S]*\}$/.test(resultHtml)) {
+        resultHtml = '';
       }
-      return new Response(JSON.stringify(enrichParsed), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+
+      const wordCountComputed = resultHtml.replace(/<[^>]+>/g, ' ').split(/\s+/).filter(w => w.length > 0).length;
+      return new Response(JSON.stringify({
+        result: resultHtml,
+        wordCount: wordCountComputed,
+        changes: Array.isArray(changes) ? changes : [],
+      }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     // structure action

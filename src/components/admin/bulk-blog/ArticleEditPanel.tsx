@@ -9,6 +9,8 @@ import { BlogPolicyWarnings } from '../blog/BlogPolicyWarnings';
 import { ComplianceReadinessBadge } from '../blog/ComplianceReadinessBadge';
 import { InternalLinkSuggester } from '../blog/InternalLinkSuggester';
 import { FeaturedImageGenerator } from '../blog/FeaturedImageGenerator';
+import { BlogScoreBreakdown } from '../blog/BlogScoreBreakdown';
+import { BlogAITools } from '../blog/BlogAITools';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';

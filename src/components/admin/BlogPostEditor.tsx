@@ -438,12 +438,15 @@ export function BlogPostEditor() {
 
             <div className="space-y-4">
               {/* Live stats bar */}
-              <div className="flex gap-4 text-xs text-muted-foreground bg-muted/50 rounded px-3 py-2">
+              <div className="flex flex-wrap gap-4 items-center text-xs text-muted-foreground bg-muted/50 rounded px-3 py-2">
                 <span>{liveWordCount.toLocaleString()} words</span>
                 <span>~{liveReadingTime} min read</span>
                 {currentQuality && <span>Quality: {currentQuality.totalScore}/100</span>}
                 {currentSEO && <span>SEO: {currentSEO.totalScore}/100</span>}
                 {currentCompliance && <span>Compliance: {currentCompliance.overallScore}/100</span>}
+                {currentMetadata && currentQuality && currentSEO && currentCompliance && (
+                  <BlogScoreBreakdown metadata={currentMetadata} quality={currentQuality} seo={currentSEO} compliance={currentCompliance} />
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">

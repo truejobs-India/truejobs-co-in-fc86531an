@@ -132,13 +132,13 @@ export function BulkPublishModal({ open, onOpenChange, articles, onPublished }: 
     if (needsFix.length > 0) {
       needsFix.forEach(a => setStatuses(prev => ({ ...prev, [a.id]: 'fixing-meta' })));
       try {
-        const { data, error } = await supabase.functions.invoke('generate-meta-description', {
+        const { data, error } = await supabase.functions.invoke('generate-blog-seo', {
           body: {
             articles: needsFix.map(a => ({
               id: a.id, title: a.title,
               content: a.content.substring(0, 2000),
-              existingMeta: a.metaDescription || '',
             })),
+            fields: ['metaDescription'],
           },
         });
         if (!error && data?.results) {

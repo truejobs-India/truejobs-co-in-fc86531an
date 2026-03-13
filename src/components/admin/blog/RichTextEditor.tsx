@@ -27,7 +27,7 @@ interface RichTextEditorProps {
   onEditorReady?: (editor: import('@tiptap/react').Editor | null) => void;
 }
 
-export function RichTextEditor({ content, onChange }: RichTextEditorProps) {
+export function RichTextEditor({ content, onChange, onEditorReady }: RichTextEditorProps) {
   const { toast } = useToast();
   const imageInputRef = useRef<HTMLInputElement>(null);
 

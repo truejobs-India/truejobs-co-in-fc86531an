@@ -101,6 +101,45 @@ Return ONLY the HTML, e.g.:
 No markdown code blocks.`;
       maxTokens = 500;
 
+    } else if (action === 'enrich-article') {
+      const targetWords = Math.min(Math.max(Number(req.json ? 0 : 0) || 1500, 800), 3000);
+      // Re-parse targetWordCount from the already-parsed body
+      const bodyTargetWordCount = (await Promise.resolve(targetWordCount)) || 1500;
+      const effectiveTarget = Math.min(Math.max(Number(bodyTargetWordCount) || 1500, 800), 3000);
+      const plainText = (content || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      const currentWords = plainText.split(/\s+/).filter((w: string) => w.length > 0).length;
+
+      prompt = `You are a professional content editor for TrueJobs.co.in, an Indian government job portal.
+Expand and improve the following article to approximately ${effectiveTarget} words (currently ~${currentWords} words).
+
+RULES:
+- Preserve the original structure, intent, headings, and factual content
+- Strengthen depth: add explanations, examples, practical tips, and context
+- Do NOT add fluff, repetition, or fabricated claims
+- Do NOT add keyword stuffing
+- Keep the same language (Hindi/English) as the original
+- Maintain an informational, non-official tone
+- Keep all existing HTML structure (H2, H3, lists, tables)
+- Add new subsections (H3) under existing H2s where appropriate
+- If the article has FAQs, you may add 1-2 more relevant FAQs
+- Do NOT remove any existing content
+
+Article title: ${title}
+Category: ${category || 'General'}
+Tags: ${(tags || []).join(', ') || 'none'}
+
+Current content:
+${content}
+
+Return a JSON object:
+- result: the full enriched article HTML
+- wordCount: approximate word count of the enriched version
+- changes: array of strings describing what was added/improved
+
+Format: {"result": "...", "wordCount": ..., "changes": [...]}
+No markdown code blocks.`;
+      maxTokens = 8000;
+
     } else if (action === 'structure') {
       const plainText = (content || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 3000);
       const headingsList = Array.isArray(headings) ? headings.map((h: any) => `${'  '.repeat((h.level || 2) - 1)}H${h.level}: ${h.text}`).join('\n') : '(no headings detected)';

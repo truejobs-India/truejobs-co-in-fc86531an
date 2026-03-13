@@ -117,6 +117,10 @@ export function BlogPostEditor() {
   const [bulkResults, setBulkResults] = useState<{ topic: string; status: 'queued' | 'generating' | 'success' | 'failed'; articleId?: string; error?: string }[]>([]);
   const [isBulkGenerating, setIsBulkGenerating] = useState(false);
 
+  // Bulk cover image generation state
+  const [isBulkCoverRunning, setIsBulkCoverRunning] = useState(false);
+  const [bulkCoverProgress, setBulkCoverProgress] = useState<{ total: number; done: number; failed: number; current: string } | null>(null);
+
   // Search, filter, pagination
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'published' | 'draft'>('all');

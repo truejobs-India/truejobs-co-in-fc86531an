@@ -1125,6 +1125,118 @@ export function BlogPostEditor() {
       posts={posts}
       onEditPost={(post) => openEditDialog(post as any)}
     />
+
+    {/* ── Fix All With AI Dialog ── */}
+    <Dialog open={!!fixAllDialogPost} onOpenChange={(open) => { if (!open) { setFixAllDialogPost(null); setFixAllResults(null); } }}>
+      <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2"><Sparkles className="h-4 w-4" /> Fix All With AI</DialogTitle>
+          <DialogDescription className="truncate">{fixAllDialogPost?.title}</DialogDescription>
+        </DialogHeader>
+        {fixAllRunning && (
+          <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" /> Analyzing and applying safe fixes…
+          </div>
+        )}
+        {fixAllResults && (
+          <div className="space-y-3">
+            {fixAllResults.autoFixed.length > 0 && (
+              <div className="space-y-1">
+                <h4 className="text-xs font-semibold flex items-center gap-1 text-green-700 dark:text-green-400">
+                  <Check className="h-3 w-3" /> Auto-Fixed ({fixAllResults.autoFixed.length})
+                </h4>
+                {fixAllResults.autoFixed.map((f, i) => (
+                  <div key={i} className="text-xs bg-green-500/10 rounded px-2 py-1">
+                    <span className="font-medium">{f.field}:</span> {f.value.substring(0, 80)}{f.value.length > 80 ? '…' : ''}
+                  </div>
+                ))}
+              </div>
+            )}
+            {fixAllResults.reviewRequired.length > 0 && (
+              <div className="space-y-1">
+                <h4 className="text-xs font-semibold flex items-center gap-1 text-yellow-700 dark:text-yellow-400">
+                  <AlertTriangle className="h-3 w-3" /> Review Required ({fixAllResults.reviewRequired.length})
+                </h4>
+                {fixAllResults.reviewRequired.map((f: any, i: number) => (
+                  <div key={i} className="text-xs bg-yellow-500/10 rounded px-2 py-1">
+                    <span className="font-medium">{f.issueLabel}:</span> {f.explanation || 'Open in editor to apply'}
+                    <Button variant="link" size="sm" className="h-5 text-[10px] p-0 ml-2" onClick={() => {
+                      setFixAllDialogPost(null);
+                      const post = posts.find(p => p.id === fixAllDialogPost?.id);
+                      if (post) openEditDialog(post);
+                    }}>Open in Editor</Button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {fixAllResults.unresolved.length > 0 && (
+              <div className="space-y-1">
+                <h4 className="text-xs font-semibold text-muted-foreground">Unresolved ({fixAllResults.unresolved.length})</h4>
+                {fixAllResults.unresolved.map((f: any, i: number) => (
+                  <div key={i} className="text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1">
+                    <span className="font-medium">{f.issueLabel}:</span> {f.explanation}
+                  </div>
+                ))}
+              </div>
+            )}
+            {fixAllResults.autoFixed.length === 0 && fixAllResults.reviewRequired.length === 0 && fixAllResults.unresolved.length === 0 && (
+              <p className="text-xs text-muted-foreground">No issues found — article looks good!</p>
+            )}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+
+    {/* ── Enrich Now Dialog ── */}
+    <Dialog open={!!enrichDialogPost} onOpenChange={(open) => { if (!open) { setEnrichDialogPost(null); setEnrichResult(null); } }}>
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2"><Zap className="h-4 w-4" /> Enrich Article</DialogTitle>
+          <DialogDescription className="truncate">
+            {enrichDialogPost?.title} — Currently {(enrichDialogPost?.word_count || 0).toLocaleString()} words
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="flex items-center gap-3">
+            <Label className="text-xs whitespace-nowrap">Target Words:</Label>
+            {[1200, 1500, 1800, 2200].map(n => (
+              <Button key={n} size="sm" variant={enrichWordLimit === n ? 'default' : 'outline'} className="h-7 text-xs" onClick={() => setEnrichWordLimit(n)}>
+                {n}
+              </Button>
+            ))}
+            <Input type="number" value={enrichWordLimit} onChange={(e) => setEnrichWordLimit(Number(e.target.value))} className="w-20 h-7 text-xs" min={800} max={3000} />
+          </div>
+          <Button onClick={handleEnrichPost} disabled={isEnriching}>
+            {isEnriching ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Zap className="h-4 w-4 mr-1" />}
+            Enrich to ~{enrichWordLimit} words
+          </Button>
+          {enrichResult && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                <span>Enriched: ~{enrichResult.wordCount} words</span>
+                <span>{enrichResult.changes.length} improvements</span>
+              </div>
+              {enrichResult.changes.length > 0 && (
+                <div className="text-xs space-y-0.5">
+                  {enrichResult.changes.map((c, i) => <p key={i} className="text-muted-foreground">• {c}</p>)}
+                </div>
+              )}
+              <ScrollArea className="h-[300px] border rounded-lg p-3">
+                <div className="prose prose-sm max-w-none text-xs" dangerouslySetInnerHTML={{ __html: enrichResult.content }} />
+              </ScrollArea>
+              <div className="flex gap-2">
+                <Button onClick={applyEnrichment}>
+                  <Check className="h-4 w-4 mr-1" /> Apply Enrichment
+                </Button>
+                <Button variant="outline" onClick={() => setEnrichResult(null)}>
+                  <X className="h-4 w-4 mr-1" /> Discard
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
     </>
   );
 }

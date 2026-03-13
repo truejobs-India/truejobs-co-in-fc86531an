@@ -212,6 +212,25 @@ No markdown code blocks.`;
       return new Response(JSON.stringify({ result: cleaned, applyMode: 'append_content' }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
+    if (action === 'enrich-article') {
+      const cleanedJson = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      let enrichParsed: { result: string; wordCount: number; changes: string[] };
+      try {
+        enrichParsed = JSON.parse(cleanedJson);
+      } catch {
+        // Fallback: treat raw as HTML content
+        const cleanedHtml = raw.replace(/```html\n?/g, '').replace(/```\n?/g, '').trim();
+        enrichParsed = { result: cleanedHtml, wordCount: 0, changes: ['Content enriched'] };
+      }
+      if (!enrichParsed.result) enrichParsed.result = '';
+      if (!Array.isArray(enrichParsed.changes)) enrichParsed.changes = [];
+      // Calculate word count if not provided
+      if (!enrichParsed.wordCount) {
+        enrichParsed.wordCount = enrichParsed.result.replace(/<[^>]+>/g, ' ').split(/\s+/).filter(w => w.length > 0).length;
+      }
+      return new Response(JSON.stringify(enrichParsed), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
     // structure action
     let parsed: { result: string; changes: string[]; proposedOutline?: string[]; missingSections?: string[]; suggestedInsertions?: any[] };
     try {

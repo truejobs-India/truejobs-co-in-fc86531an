@@ -27,6 +27,7 @@ import { RichTextEditor } from './blog/RichTextEditor';
 import { CoverImageUploader } from './blog/CoverImageUploader';
 import { WordFileImporter } from './blog/WordFileImporter';
 import { BlogAdminStats } from './blog/BlogAdminStats';
+import { BlogStatsDrilldown, type DrilldownFilter } from './blog/BlogStatsDrilldown';
 import { BlogArticleReport } from './blog/BlogArticleReport';
 import { BlogSEOChecklist } from './blog/BlogSEOChecklist';
 import { InternalLinkSuggester } from './blog/InternalLinkSuggester';

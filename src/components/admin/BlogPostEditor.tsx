@@ -470,8 +470,17 @@ export function BlogPostEditor() {
                   <Label>Content *</Label>
                   <WordFileImporter onImport={handleWordImport} onArticleParsed={handleArticleParsed} onCoverGenerated={handleCoverGenerated} />
                 </div>
-                <RichTextEditor content={formData.content} onChange={(html) => handleFormChange({ content: html })} />
+                <RichTextEditor content={formData.content} onChange={(html) => handleFormChange({ content: html })} onEditorReady={setEditorInstance} />
               </div>
+
+              {/* AI Tools */}
+              <BlogAITools
+                formData={formData}
+                onApplyField={(field, value) => handleFormChange({ [field]: value })}
+                editorInstance={editorInstance}
+                currentCompliance={currentCompliance}
+                existingFaqCount={currentMetadata?.faqCount || 0}
+              />
 
               {/* Cover Image with Upload + AI Generate */}
               <div className="space-y-2">

@@ -847,5 +847,14 @@ export function BlogPostEditor() {
         )}
       </CardContent>
     </Card>
+
+    <BlogStatsDrilldown
+      open={drilldownOpen}
+      onOpenChange={setDrilldownOpen}
+      filter={drilldownFilter}
+      posts={posts}
+      onEditPost={(post) => openEditDialog(post as any)}
+    />
+    </>
   );
 }

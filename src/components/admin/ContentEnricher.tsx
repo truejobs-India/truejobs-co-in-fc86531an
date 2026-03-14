@@ -548,21 +548,7 @@ export function ContentEnricher() {
               </SelectContent>
             </Select>
 
-            <Select value={aiModel} onValueChange={setAiModel}>
-              <SelectTrigger className="w-[280px]">
-                <SelectValue placeholder="AI Model" />
-              </SelectTrigger>
-              <SelectContent>
-                {AI_MODELS.map(m => (
-                  <SelectItem key={m.value} value={m.value}>
-                    <div className="flex flex-col">
-                      <span>{m.label}</span>
-                      <span className="text-xs text-muted-foreground">{m.desc}</span>
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <AiModelSelector value={aiModel} onValueChange={setAiModel} capability="text" triggerClassName="w-[280px] h-10 text-sm" size="default" />
 
             {!isEnriching ? (
               <>

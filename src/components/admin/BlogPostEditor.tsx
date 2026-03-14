@@ -1178,6 +1178,20 @@ export function BlogPostEditor() {
         </Dialog>
       </CardHeader>
 
+      {/* ── AI Model Selection Bar ── */}
+      <div className="px-6 py-3 border-b flex items-center gap-4 bg-muted/30">
+        <Sparkles className="h-4 w-4 text-primary shrink-0" />
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">AI Models</span>
+        <div className="flex items-center gap-2">
+          <Label className="text-xs text-muted-foreground">Text:</Label>
+          <AiModelSelector value={blogTextModel} onValueChange={handleTextModelChange} capability="text" triggerClassName="w-[220px] h-8 text-xs" size="sm" />
+        </div>
+        <div className="flex items-center gap-2">
+          <Label className="text-xs text-muted-foreground">Image:</Label>
+          <AiModelSelector value={blogImageModel} onValueChange={handleImageModelChange} capability="image" triggerClassName="w-[200px] h-8 text-xs" size="sm" />
+        </div>
+      </div>
+
       {/* ── SEO Utility Toolbar ── */}
       <div className="px-6 pb-4 flex flex-wrap gap-2 border-b">
         <Button variant="outline" size="sm" onClick={handleSyncCanonicalUrls}>

@@ -147,8 +147,15 @@ Article excerpt: ${plainText}
 
 Return ONLY the JSON array, no markdown formatting, no code blocks.`;
 
-    let raw = await callGemini(geminiApiKey, prompt);
-    raw = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    let raw: string;
+    const useModel = aiModel || 'gemini';
+    if (useModel === 'claude') {
+      raw = await callClaudeAI(prompt);
+    } else {
+      const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
+      if (!geminiApiKey) throw new Error('GEMINI_API_KEY not configured');
+      raw = await callGemini(geminiApiKey, prompt);
+    }
 
     let faqs: { question: string; answer: string }[];
     try {

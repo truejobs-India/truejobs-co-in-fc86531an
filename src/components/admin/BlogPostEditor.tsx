@@ -1268,21 +1268,8 @@ export function BlogPostEditor() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-1">
-                <Label className="text-xs">AI Model</Label>
-                <Select value={bulkAiModel} onValueChange={setBulkAiModel}>
-                  <SelectTrigger className="w-[220px] h-8 text-xs"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="gemini">Gemini 2.5 Flash</SelectItem>
-                    <SelectItem value="lovable-gemini">Lovable Gemini</SelectItem>
-                    <SelectItem value="groq">Groq (Llama 3.3)</SelectItem>
-                    <SelectItem value="openai">OpenAI GPT-4o</SelectItem>
-                    <SelectItem value="mistral">Mistral 7B</SelectItem>
-                    <SelectItem value="claude">Claude Sonnet 4.6</SelectItem>
-                    <SelectItem value="vertex-flash">Gemini 2.5 Flash (From API)</SelectItem>
-                    <SelectItem value="vertex-pro">Gemini 2.5 Pro (From API)</SelectItem>
-                  </SelectContent>
-                </Select>
+              <div className="flex items-center gap-1.5">
+                <Badge variant="outline" className="text-[10px] h-5 px-1.5">Using: {getModelDef(blogTextModel)?.label || blogTextModel}</Badge>
               </div>
               <Button size="sm" onClick={handleBulkGenerate} disabled={isBulkGenerating || !bulkTopics.trim()}>
                 {isBulkGenerating ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Sparkles className="h-4 w-4 mr-1" />}

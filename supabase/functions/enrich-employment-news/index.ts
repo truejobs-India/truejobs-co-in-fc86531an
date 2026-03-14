@@ -579,6 +579,16 @@ async function callAI(model: string, prompt: string): Promise<any> {
       rawText = await callLovableGeminiRaw(prompt);
       break;
     }
+    case 'vertex-flash': {
+      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      rawText = await callVertexGemini('gemini-2.5-flash', prompt, 60_000);
+      break;
+    }
+    case 'vertex-pro': {
+      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      rawText = await callVertexGemini('gemini-2.5-pro', prompt, 120_000);
+      break;
+    }
     case 'gemini':
     default: {
       // Gemini has its own retry + JSON parse logic
@@ -607,6 +617,13 @@ async function callAI(model: string, prompt: string): Promise<any> {
     let retryText: string;
     if (model === 'mistral') retryText = await callMistralRaw(prompt);
     else if (model === 'claude') retryText = await callClaudeRaw(prompt);
+    else if (model === 'vertex-flash') {
+      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      retryText = await callVertexGemini('gemini-2.5-flash', prompt, 60_000);
+    } else if (model === 'vertex-pro') {
+      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      retryText = await callVertexGemini('gemini-2.5-pro', prompt, 120_000);
+    }
     else retryText = await callLovableGeminiRaw(prompt);
     retryText = retryText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     return tryParseJSON(retryText);

@@ -705,6 +705,17 @@ async function callAI(
       rawText = await fetchGemini(prompt, 'gemini-2.5-pro', timeout);
       return { data: tryParseJSON(rawText) };
 
+    case 'vertex-flash': {
+      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      rawText = await callVertexGemini('gemini-2.5-flash', prompt, timeout);
+      return { data: tryParseJSON(rawText) };
+    }
+    case 'vertex-pro': {
+      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      rawText = await callVertexGemini('gemini-2.5-pro', prompt, timeout);
+      return { data: tryParseJSON(rawText) };
+    }
+
     case 'claude-sonnet':
     case 'claude': {
       // ── Claude only — no automatic fallback ──

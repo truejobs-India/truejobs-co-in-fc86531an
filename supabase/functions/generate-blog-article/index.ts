@@ -157,7 +157,7 @@ async function callClaude(prompt: string): Promise<string> {
   const inferenceProfileId = 'us.anthropic.claude-sonnet-4-6-v1:0';
   const region = 'ap-south-1';
   const host = `bedrock-runtime.${region}.amazonaws.com`;
-  const canonicalUri = `/model/${modelId}/invoke`;
+  const canonicalUri = `/model/${inferenceProfileId}/invoke`;
   const body = JSON.stringify({
     anthropic_version: 'bedrock-2023-05-31',
     messages: [{ role: 'user', content: prompt }],

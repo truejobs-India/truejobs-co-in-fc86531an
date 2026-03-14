@@ -98,12 +98,20 @@ async function callOpenAI(prompt: string): Promise<string> {
 
 async function callVertexFlash(prompt: string): Promise<string> {
   const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-  return callVertexGemini('gemini-2.5-flash', prompt, 60_000);
+  return callVertexGemini('gemini-2.5-flash', prompt, 60_000, {
+    maxOutputTokens: 8192,
+    responseMimeType: 'application/json',
+    temperature: 0.6,
+  });
 }
 
 async function callVertexPro(prompt: string): Promise<string> {
   const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-  return callVertexGemini('gemini-2.5-pro', prompt, 120_000);
+  return callVertexGemini('gemini-2.5-pro', prompt, 120_000, {
+    maxOutputTokens: 8192,
+    responseMimeType: 'application/json',
+    temperature: 0.6,
+  });
 }
 
 async function callAI(model: string, prompt: string): Promise<string> {

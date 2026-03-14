@@ -93,6 +93,8 @@ const CLAUDE_RETRY_MIN_REMAINING_MS = 55000;
 const TIMEOUTS: Record<string, number> = {
   'gemini-flash': 60_000,
   'gemini-pro': 60_000,
+  'vertex-flash': 90_000,
+  'vertex-pro': 120_000,
   'claude-sonnet': 140_000,
   'claude': 140_000,
   'mistral': 120_000,
@@ -707,12 +709,24 @@ async function callAI(
 
     case 'vertex-flash': {
       const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-      rawText = await callVertexGemini('gemini-2.5-flash', prompt, timeout);
+      console.log(`[enrich-vertex] slug=${slug} model=vertex-flash timeout=${timeout}ms`);
+      rawText = await callVertexGemini('gemini-2.5-flash', prompt, timeout, {
+        maxOutputTokens: 16384,
+        responseMimeType: 'application/json',
+        temperature: 0.5,
+        topP: 0.8,
+      });
       return { data: tryParseJSON(rawText) };
     }
     case 'vertex-pro': {
       const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-      rawText = await callVertexGemini('gemini-2.5-pro', prompt, timeout);
+      console.log(`[enrich-vertex] slug=${slug} model=vertex-pro timeout=${timeout}ms`);
+      rawText = await callVertexGemini('gemini-2.5-pro', prompt, timeout, {
+        maxOutputTokens: 16384,
+        responseMimeType: 'application/json',
+        temperature: 0.5,
+        topP: 0.8,
+      });
       return { data: tryParseJSON(rawText) };
     }
 

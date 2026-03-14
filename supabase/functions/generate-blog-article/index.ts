@@ -119,10 +119,13 @@ async function sha256Hex(data: string): Promise<string> {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(data));
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
-async function awsSigV4Fetch(host: string, canonicalUri: string, body: string, region: string, service: string): Promise<Response> {
+async function awsSigV4Fetch(host: string, rawPath: string, body: string, region: string, service: string): Promise<Response> {
   const ak = Deno.env.get('AWS_ACCESS_KEY_ID');
   const sk = Deno.env.get('AWS_SECRET_ACCESS_KEY');
   if (!ak || !sk) throw new Error('AWS credentials not configured (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY)');
+
+  // URI-encode each path segment per AWS SigV4 spec
+  const canonicalUri = '/' + rawPath.split('/').filter(Boolean).map(s => encodeURIComponent(s)).join('/');
 
   const now = new Date();
   const dateStamp = now.toISOString().replace(/[:-]|\.\d{3}/g, '').slice(0, 8);

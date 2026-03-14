@@ -966,14 +966,15 @@ serve(async (req) => {
       aiModel?: string;
     };
 
-    if (!slugs || slugs.length === 0 || slugs.length > 8) {
-      return new Response(JSON.stringify({ error: 'Batch size must be 1-8 slugs' }), {
+    if (!slugs || slugs.length === 0 || slugs.length > 10) {
+      return new Response(JSON.stringify({ error: 'Batch size must be 1-10 slugs' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
     const selectedModel = aiModel || 'gemini-flash';
-    console.log(`Enrichment started: ${slugs.length} slugs, type=${pageType}, model=${selectedModel}`);
+    const fnStart = Date.now();
+    console.log(`[enrich-authority-pages] Boot: ${slugs.length} slugs, model=${selectedModel}, type=${pageType}`);
 
     const svc = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 

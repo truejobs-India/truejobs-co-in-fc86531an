@@ -152,19 +152,19 @@ async function awsSigV4Fetch(host: string, canonicalUri: string, body: string, r
   });
 }
 
-// ── 5. Claude Sonnet 4.6 (AWS Bedrock via Global Inference Profile) ──
+// ── 5. Claude Sonnet 4.6 (AWS Bedrock) ──
 async function callClaude(prompt: string): Promise<string> {
-  const inferenceProfileId = 'global.anthropic.claude-sonnet-4-6';
+  const modelId = 'anthropic.claude-sonnet-4-6';
   const region = 'ap-south-1';
   const host = `bedrock-runtime.${region}.amazonaws.com`;
-  const canonicalUri = `/model/${inferenceProfileId}/invoke`;
+  const canonicalUri = `/model/${modelId}/invoke`;
   const body = JSON.stringify({
     anthropic_version: 'bedrock-2023-05-31',
     messages: [{ role: 'user', content: prompt }],
-    max_tokens: 8192,
-    temperature: 0.5,
+    max_tokens: 4096,
+    temperature: 0.7,
   });
-  const resp = await awsSigV4Fetch(host, canonicalUri, body, region, 'bedrock');
+  const resp = await awsSigV4Fetch(host, canonicalUri, body, region, 'bedrock-runtime');
   if (!resp.ok) throw new Error(`Claude Bedrock ${resp.status}: ${await resp.text()}`);
   const data = await resp.json();
   return data?.content?.[0]?.text || '';

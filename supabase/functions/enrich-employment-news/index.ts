@@ -682,6 +682,13 @@ serve(async (req) => {
             return { id: jobId, success: false, error: "Job not found" };
           }
 
+          // Increment enrichment_attempts
+          const currentAttempts = (job.enrichment_attempts || 0) + 1;
+          await serviceClient
+            .from("employment_news_jobs")
+            .update({ enrichment_attempts: currentAttempts })
+            .eq("id", jobId);
+
           let batchUploadedAt: string | null = null;
           if (job.upload_batch_id) {
             const { data: batchData } = await serviceClient
@@ -734,19 +741,24 @@ OUTPUT LANGUAGE: ${detectedLang}`;
 
           const enriched = await callAI(useModel, combinedPrompt);
 
-          // Strict field validation
-          const requiredStringFields = ['enriched_title', 'enriched_description', 'slug', 'meta_title', 'meta_description'] as const;
-          const missingFields: string[] = [];
-          for (const field of requiredStringFields) {
+          // Check required fields and try auto-fill for missing ones
+          const criticalFields = ['enriched_title', 'enriched_description'] as const;
+          const missingCritical: string[] = [];
+          for (const field of criticalFields) {
             if (!enriched[field] || typeof enriched[field] !== 'string' || enriched[field].trim() === '') {
-              missingFields.push(field);
+              missingCritical.push(field);
             }
           }
-          if (!Array.isArray(enriched.keywords) || enriched.keywords.length === 0) {
-            missingFields.push('keywords');
+
+          // If critical fields (title + description) are missing, fail hard
+          if (missingCritical.length > 0) {
+            throw new Error(`AI returned incomplete data — missing critical fields: ${missingCritical.join(', ')}`);
           }
-          if (missingFields.length > 0) {
-            throw new Error(`AI returned incomplete data — missing: ${missingFields.join(', ')}`);
+
+          // Auto-fill non-critical missing fields
+          const autoFilled = autoFillMissingFields(enriched, job);
+          if (autoFilled.length > 0) {
+            console.log(`[enrich] Auto-filled for ${jobId}: ${autoFilled.join(', ')}`);
           }
 
           // Post-processing: slug conflict check
@@ -789,6 +801,7 @@ OUTPUT LANGUAGE: ${detectedLang}`;
               keywords,
               job_category: enriched.job_category || job.job_category,
               status: "enriched",
+              enrichment_error: null, // Clear previous errors on success
             })
             .eq("id", jobId);
 
@@ -798,11 +811,41 @@ OUTPUT LANGUAGE: ${detectedLang}`;
 
           return { id: jobId, success: true };
         } catch (err) {
-          console.error(`Enrich error for ${jobId}:`, err);
+          const errorMsg = err instanceof Error ? err.message : "Unknown error";
+          console.error(`Enrich error for ${jobId}:`, errorMsg);
+
+          // Update failure status in database
+          try {
+            // Read current attempts count
+            const { data: currentJob } = await serviceClient
+              .from("employment_news_jobs")
+              .select("enrichment_attempts")
+              .eq("id", jobId)
+              .single();
+
+            const attempts = currentJob?.enrichment_attempts || 1;
+            const maxRetries = 3;
+
+            // If attempts >= max, mark as enrichment_failed; otherwise keep pending for retry
+            const newStatus = attempts >= maxRetries ? 'enrichment_failed' : 'pending';
+
+            await serviceClient
+              .from("employment_news_jobs")
+              .update({
+                enrichment_error: errorMsg,
+                status: newStatus,
+              })
+              .eq("id", jobId);
+
+            console.log(`[enrich] Job ${jobId}: attempt ${attempts}/${maxRetries}, status → ${newStatus}`);
+          } catch (dbErr) {
+            console.error(`Failed to update failure status for ${jobId}:`, dbErr);
+          }
+
           return {
             id: jobId,
             success: false,
-            error: err instanceof Error ? err.message : "Unknown error",
+            error: errorMsg,
           };
         }
       });

@@ -397,7 +397,7 @@ async function fetchGemini(apiKey: string, prompt: string): Promise<string> {
     console.log("Rate limited, retrying in 5s...");
     await delay(5000);
     const c2 = new AbortController();
-    const t2 = setTimeout(() => c2.abort(), 50000);
+    const t2 = setTimeout(() => c2.abort(), AI_TIMEOUT_MS);
     try {
       response = await fetch(url, {
         method: "POST",

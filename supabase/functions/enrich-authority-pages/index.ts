@@ -384,7 +384,7 @@ async function callLovableGeminiRaw(prompt: string): Promise<string> {
   if (!apiKey) throw new Error('LOVABLE_API_KEY not configured — please add it to secrets');
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), AI_TIMEOUT_MS_DEFAULT);
+  const timer = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
 
   try {
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {

@@ -87,20 +87,8 @@ function getStaticFaqCount(slug: string): number {
   return 0;
 }
 
-const AI_MODELS = [
-  { value: 'gemini-flash', label: 'Gemini 2.5 Flash', desc: 'Recommended · ~15s/page · Best for bulk', speed: 15 },
-  { value: 'groq', label: 'Groq (Llama 3.3 70B)', desc: 'Fastest · ~10s/page · Great for bulk', speed: 10 },
-  { value: 'claude-sonnet', label: 'Claude Sonnet 4.6', desc: 'Highest quality · ~90s/page · Best for important pages', speed: 90 },
-  { value: 'mistral', label: 'Mistral Large', desc: 'Good quality · ~30s/page', speed: 30 },
-  { value: 'gpt5', label: 'OpenAI GPT-5', desc: 'Good all-rounder · ~30s/page', speed: 30 },
-  { value: 'gpt5-mini', label: 'OpenAI GPT-5 Mini', desc: 'Fast · ~15s/page', speed: 15 },
-  { value: 'gemini-pro', label: 'Gemini 2.5 Pro', desc: 'High quality · ~30s/page', speed: 30 },
-  { value: 'lovable-gemini', label: 'Lovable Gemini (Gateway)', desc: 'Via Lovable Gateway · ~20s/page', speed: 20 },
-] as const;
-
-function getModelSpeed(model: string): number {
-  return AI_MODELS.find(m => m.value === model)?.speed || 30;
-}
+import { getTextModels, getModelSpeed, getModelDef } from '@/lib/aiModels';
+import { AiModelSelector } from '@/components/admin/AiModelSelector';
 
 function formatTime(seconds: number): string {
   if (seconds < 60) return `${seconds}s`;

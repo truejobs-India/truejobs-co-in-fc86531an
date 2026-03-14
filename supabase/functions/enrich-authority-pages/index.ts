@@ -196,7 +196,8 @@ If any check fails, fix it before returning.
 // MULTI-MODEL AI DISPATCHER
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const AI_TIMEOUT_MS = 90_000; // 90 seconds for authority pages
+const AI_TIMEOUT_MS = 60_000; // 60 seconds per AI call
+const FUNCTION_TIME_BUDGET_MS = 120_000; // bail before 150s platform limit
 
 // ── Gemini (Direct API) ──
 async function fetchGemini(prompt: string, model = 'gemini-2.5-flash'): Promise<string> {

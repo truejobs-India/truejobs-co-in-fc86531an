@@ -156,20 +156,22 @@ async function awsSigV4Fetch(host: string, rawPath: string, body: string, region
   });
 }
 
-// ── 5. Claude Sonnet 4.6 (AWS Bedrock Converse) ──
+// ── 5. Claude Sonnet 4.6 (AWS Bedrock via Cross-Region Inference Profile) ──
 async function callClaude(prompt: string): Promise<string> {
-  const modelId = 'anthropic.claude-sonnet-4-6';
-  const region = 'ap-south-1';
+  const inferenceProfileId = 'us.anthropic.claude-sonnet-4-6-v1:0';
+  const region = 'us-east-1';
   const host = `bedrock-runtime.${region}.amazonaws.com`;
-  const rawPath = `/model/${modelId}/converse`;
+  const rawPath = `/model/${inferenceProfileId}/invoke`;
   const body = JSON.stringify({
-    messages: [{ role: 'user', content: [{ text: prompt }] }],
-    inferenceConfig: { maxTokens: 4096, temperature: 0.7 },
+    anthropic_version: 'bedrock-2023-05-31',
+    messages: [{ role: 'user', content: prompt }],
+    max_tokens: 4096,
+    temperature: 0.7,
   });
   const resp = await awsSigV4Fetch(host, rawPath, body, region, 'bedrock');
   if (!resp.ok) throw new Error(`Claude Bedrock ${resp.status}: ${await resp.text()}`);
   const data = await resp.json();
-  return data?.output?.message?.content?.[0]?.text || '';
+  return data?.content?.[0]?.text || '';
 }
 
 // ── 6. Mistral (AWS Bedrock Converse) ──

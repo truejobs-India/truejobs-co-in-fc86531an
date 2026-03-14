@@ -119,10 +119,14 @@ async function sha256Hex(data: string): Promise<string> {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(data));
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
-async function awsSigV4Fetch(host: string, canonicalUri: string, body: string, region: string, service: string): Promise<Response> {
-  const ak = Deno.env.get('API_NAME');
-  const sk = Deno.env.get('API_KEY');
-  if (!ak || !sk) throw new Error('AWS credentials not configured (API_NAME / API_KEY)');
+async function awsSigV4Fetch(host: string, rawPath: string, body: string, region: string, service: string): Promise<Response> {
+  const ak = Deno.env.get('AWS_ACCESS_KEY_ID');
+  const sk = Deno.env.get('AWS_SECRET_ACCESS_KEY');
+  if (!ak || !sk) throw new Error('AWS credentials not configured (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY)');
+
+  // URI-encode each path segment; double-encode for canonical string per AWS SigV4 spec (non-S3)
+  const encodedUri = '/' + rawPath.split('/').filter(Boolean).map(s => encodeURIComponent(s)).join('/');
+  const canonicalUri = '/' + rawPath.split('/').filter(Boolean).map(s => encodeURIComponent(encodeURIComponent(s))).join('/');
 
   const now = new Date();
   const dateStamp = now.toISOString().replace(/[:-]|\.\d{3}/g, '').slice(0, 8);
@@ -141,7 +145,7 @@ async function awsSigV4Fetch(host: string, canonicalUri: string, body: string, r
   sigKey = await hmacSha256B(sigKey, 'aws4_request');
   const sig = Array.from(new Uint8Array(await hmacSha256B(sigKey, stringToSign))).map(b => b.toString(16).padStart(2, '0')).join('');
 
-  return fetch(`https://${host}${canonicalUri}`, {
+  return fetch(`https://${host}${encodedUri}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -152,19 +156,19 @@ async function awsSigV4Fetch(host: string, canonicalUri: string, body: string, r
   });
 }
 
-// ── 5. Claude Sonnet 4.6 (AWS Bedrock via Global Inference Profile) ──
+// ── 5. Claude (AWS Bedrock via Cross-Region Inference Profile) ──
 async function callClaude(prompt: string): Promise<string> {
-  const inferenceProfileId = 'global.anthropic.claude-sonnet-4-6';
-  const region = 'ap-south-1';
+  const inferenceProfileId = 'us.anthropic.claude-sonnet-4-20250514-v1:0';
+  const region = 'us-east-1';
   const host = `bedrock-runtime.${region}.amazonaws.com`;
-  const canonicalUri = `/model/${inferenceProfileId}/invoke`;
+  const rawPath = `/model/${inferenceProfileId}/invoke`;
   const body = JSON.stringify({
     anthropic_version: 'bedrock-2023-05-31',
     messages: [{ role: 'user', content: prompt }],
-    max_tokens: 8192,
-    temperature: 0.5,
+    max_tokens: 4096,
+    temperature: 0.7,
   });
-  const resp = await awsSigV4Fetch(host, canonicalUri, body, region, 'bedrock');
+  const resp = await awsSigV4Fetch(host, rawPath, body, region, 'bedrock');
   if (!resp.ok) throw new Error(`Claude Bedrock ${resp.status}: ${await resp.text()}`);
   const data = await resp.json();
   return data?.content?.[0]?.text || '';
@@ -175,12 +179,12 @@ async function callMistral(prompt: string): Promise<string> {
   const modelId = 'mistral.mistral-7b-instruct-v0:2';
   const region = Deno.env.get('AWS_REGION') || 'ap-south-1';
   const host = `bedrock-runtime.${region}.amazonaws.com`;
-  const canonicalUri = `/model/${modelId.replace(/:/g, '%3A')}/converse`;
+  const rawPath = `/model/${modelId}/converse`;
   const body = JSON.stringify({
     messages: [{ role: 'user', content: [{ text: prompt }] }],
     inferenceConfig: { maxTokens: 8192, temperature: 0.5 },
   });
-  const resp = await awsSigV4Fetch(host, canonicalUri, body, region, 'bedrock');
+  const resp = await awsSigV4Fetch(host, rawPath, body, region, 'bedrock');
   if (!resp.ok) throw new Error(`Mistral Bedrock ${resp.status}: ${await resp.text()}`);
   const data = await resp.json();
   return data?.output?.message?.content?.[0]?.text || '';

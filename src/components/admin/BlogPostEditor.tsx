@@ -1244,7 +1244,7 @@ export function BlogPostEditor() {
                     <SelectItem value="groq">Groq (Llama 3.3)</SelectItem>
                     <SelectItem value="openai">OpenAI GPT-4o</SelectItem>
                     <SelectItem value="mistral">Mistral 7B</SelectItem>
-                    <SelectItem value="claude">Claude Sonnet 4.6</SelectItem>
+                    <SelectItem value="claude">Claude Sonnet 4</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

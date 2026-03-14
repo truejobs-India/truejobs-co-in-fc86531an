@@ -40,8 +40,9 @@ async function callBedrockConverseRaw(
   accessKey: string, secretKey: string, region: string,
 ): Promise<string> {
   const host = `bedrock-runtime.${region}.amazonaws.com`;
-  const url = `https://${host}/model/${modelId}/converse`;
-  const canonicalUri = `/model/${modelId.replace(/:/g, "%3A").replace(/ /g, "%20")}/converse`;
+  const encodedUri = '/' + `model/${modelId}/converse`.split('/').map(s => encodeURIComponent(s)).join('/');
+  const canonicalUri = '/' + `model/${modelId}/converse`.split('/').map(s => encodeURIComponent(encodeURIComponent(s))).join('/');
+  const url = `https://${host}${encodedUri}`;
 
   const body = JSON.stringify({
     messages: [{ role: "user", content: [{ text: userPrompt }] }],
@@ -88,8 +89,8 @@ async function callBedrockConverseRaw(
 }
 
 async function callBedrockWithFallback(systemPrompt: string, userPrompt: string): Promise<string> {
-  const ak = Deno.env.get("API_NAME");
-  const sk = Deno.env.get("API_KEY");
+  const ak = Deno.env.get("AWS_ACCESS_KEY_ID");
+  const sk = Deno.env.get("AWS_SECRET_ACCESS_KEY");
   const region = Deno.env.get("AWS_REGION") || "us-east-1";
   if (!ak || !sk) throw new Error("AWS credentials not configured");
 

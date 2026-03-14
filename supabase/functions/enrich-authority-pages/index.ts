@@ -282,38 +282,30 @@ async function callClaudeSDK(
   }
 }
 
+function buildClaudeRecoveryPrompt(originalPrompt: string): string {
+  return `${originalPrompt}
+
+=== RETRY MODE: COMPLETE REQUIRED FIELDS FIRST ===
+You must prioritize required fields before any optional fields.
+1) Fill overview completely (with quick overview table)
+2) Fill faq with at least 6 items
+3) Fill meta_title and meta_description
+4) Then fill optional sections only if tokens remain
+Keep content compact and data-dense. Avoid long prose.`;
+}
+
 /**
- * Full Claude call: attempt → retry on truncation → fail with diagnostics.
+ * Full Claude call: attempt → targeted retry when needed.
  * Does NOT handle Gemini fallback (that's in callAI).
  */
 async function callClaudeWithRetry(prompt: string, slug: string): Promise<{ data: Record<string, unknown>; diagnostics: ClaudeDiagnostics }> {
-  // Attempt 1: default tokens
   try {
     const result = await callClaudeSDK(prompt, slug, ANTHROPIC_DEFAULT_MAX_TOKENS);
 
-    // If truncated, retry with more tokens
+    // If we already parsed valid structured output, do NOT retry even if stop_reason=max_tokens.
+    // This avoids unnecessary long second calls and client-side fetch timeouts.
     if (result.diagnostics.stopReason === 'max_tokens') {
-      console.warn(`[claude-retry] ${slug}: stop_reason=max_tokens at ${ANTHROPIC_DEFAULT_MAX_TOKENS}. Retrying with ${ANTHROPIC_RETRY_MAX_TOKENS}...`);
-      result.diagnostics.retried = true;
-      result.diagnostics.retryReason = 'max_tokens_truncation';
-      result.diagnostics.attempt = 2;
-      result.diagnostics.maxTokens = ANTHROPIC_RETRY_MAX_TOKENS;
-
-      try {
-        const retryResult = await callClaudeSDK(prompt, slug, ANTHROPIC_RETRY_MAX_TOKENS);
-        retryResult.diagnostics.attempt = 2;
-        retryResult.diagnostics.retried = true;
-        retryResult.diagnostics.retryReason = 'max_tokens_truncation';
-        return retryResult;
-      } catch (retryErr) {
-        console.warn(`[claude-retry] ${slug}: Retry also failed: ${retryErr instanceof Error ? retryErr.message : 'Unknown'}`);
-        // If first attempt had valid data despite truncation, use it
-        if (result.diagnostics.sdkParseSuccess) {
-          console.log(`[claude-retry] ${slug}: Using truncated-but-valid first attempt data`);
-          return result;
-        }
-        throw retryErr;
-      }
+      console.warn(`[claude-truncated-valid] ${slug}: stop_reason=max_tokens but required schema parsed successfully; using attempt 1 output.`);
     }
 
     return result;
@@ -325,6 +317,32 @@ async function callClaudeWithRetry(prompt: string, slug: string): Promise<{ data
     if (errMsg.includes('400') || errMsg.includes('401') || errMsg.includes('403') || errMsg.includes('404')) {
       console.error(`[claude-circuit-breaker] ${slug}: 4xx error, no retry. Error: ${errMsg}`);
       throw firstErr;
+    }
+
+    // If truncation caused missing required fields, retry once with compact recovery instructions.
+    const isTruncationMissingRequired =
+      diag?.stopReason === 'max_tokens' &&
+      (errMsg.includes('Missing required fields') || errMsg.includes('No tool_use block'));
+
+    if (isTruncationMissingRequired) {
+      console.warn(`[claude-retry] ${slug}: max_tokens truncation with incomplete required fields. Retrying once with compact recovery prompt at ${ANTHROPIC_RETRY_MAX_TOKENS} tokens...`);
+      const compactPrompt = buildClaudeRecoveryPrompt(prompt);
+
+      try {
+        const retryResult = await callClaudeSDK(compactPrompt, slug, ANTHROPIC_RETRY_MAX_TOKENS);
+        retryResult.diagnostics.attempt = 2;
+        retryResult.diagnostics.retried = true;
+        retryResult.diagnostics.retryReason = 'max_tokens_missing_required_compact_prompt';
+        return retryResult;
+      } catch (retryErr) {
+        const retryDiag = (retryErr as any)?.diagnostics as ClaudeDiagnostics | undefined;
+        if (retryDiag) {
+          retryDiag.attempt = 2;
+          retryDiag.retried = true;
+          retryDiag.retryReason = 'max_tokens_missing_required_compact_prompt';
+        }
+        throw retryErr;
+      }
     }
 
     // Single retry for transient errors (5xx, timeout, network)

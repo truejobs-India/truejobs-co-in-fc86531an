@@ -25,14 +25,91 @@ async function verifyAdmin(req: Request): Promise<{ userId: string } | Response>
   return { userId };
 }
 
-const GEMINI_MODEL = 'gemini-2.5-flash';
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+// ═══════════════════════════════════════════════════════════════
+// AI Model Providers
+// ═══════════════════════════════════════════════════════════════
 
-// ── AWS Bedrock Claude Support ──
-const CLAUDE_REGION = 'ap-south-1';
-const CLAUDE_MODEL_ID = 'anthropic.claude-sonnet-4-6';
-const CLAUDE_URL = `https://bedrock-runtime.${CLAUDE_REGION}.amazonaws.com/model/${CLAUDE_MODEL_ID}/invoke`;
+// ── 1. Gemini (direct API) ──
+async function callGemini(prompt: string, maxTokens = 32000): Promise<string> {
+  const apiKey = Deno.env.get('GEMINI_API_KEY');
+  if (!apiKey) throw new Error('GEMINI_API_KEY not configured');
+  const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { maxOutputTokens: maxTokens, temperature: 0.5 },
+    }),
+  });
+  if (!resp.ok) throw new Error(`Gemini API error ${resp.status}`);
+  const data = await resp.json();
+  const candidate = data?.candidates?.[0];
+  if (candidate?.finishReason === 'MAX_TOKENS') throw new Error('AI response truncated (MAX_TOKENS). Try shorter target word count.');
+  return candidate?.content?.parts?.[0]?.text || '';
+}
 
+// ── 2. Lovable Gemini (gateway) ──
+async function callLovableGemini(prompt: string): Promise<string> {
+  const apiKey = Deno.env.get('LOVABLE_API_KEY');
+  if (!apiKey) throw new Error('LOVABLE_API_KEY not configured');
+  const resp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'google/gemini-2.5-flash',
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 16000,
+      temperature: 0.5,
+    }),
+  });
+  if (!resp.ok) {
+    if (resp.status === 429) throw new Error('Rate limit exceeded on Lovable AI. Try again later.');
+    if (resp.status === 402) throw new Error('Lovable AI credits exhausted.');
+    throw new Error(`Lovable AI error ${resp.status}`);
+  }
+  const data = await resp.json();
+  return data?.choices?.[0]?.message?.content || '';
+}
+
+// ── 3. OpenAI ──
+async function callOpenAI(prompt: string): Promise<string> {
+  const apiKey = Deno.env.get('OPENAI_API_KEY');
+  if (!apiKey) throw new Error('OPENAI_API_KEY not configured');
+  const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 16000,
+      temperature: 0.5,
+    }),
+  });
+  if (!resp.ok) throw new Error(`OpenAI API error ${resp.status}`);
+  const data = await resp.json();
+  return data?.choices?.[0]?.message?.content || '';
+}
+
+// ── 4. Groq ──
+async function callGroq(prompt: string): Promise<string> {
+  const apiKey = Deno.env.get('GROQ_API_KEY');
+  if (!apiKey) throw new Error('GROQ_API_KEY not configured');
+  const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'llama-3.3-70b-versatile',
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 16000,
+      temperature: 0.5,
+    }),
+  });
+  if (!resp.ok) throw new Error(`Groq API error ${resp.status}`);
+  const data = await resp.json();
+  return data?.choices?.[0]?.message?.content || '';
+}
+
+// ── AWS Sig V4 helpers ──
 async function hmacSha256B(key: ArrayBuffer | Uint8Array, data: string): Promise<ArrayBuffer> {
   const enc = new TextEncoder();
   const ck = await crypto.subtle.importKey('raw', key instanceof Uint8Array ? key : new Uint8Array(key), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
@@ -42,25 +119,15 @@ async function sha256Hex(data: string): Promise<string> {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(data));
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
-
-async function callClaudeAI(prompt: string): Promise<string> {
+async function awsSigV4Fetch(host: string, canonicalUri: string, body: string, region: string, service: string): Promise<Response> {
   const ak = Deno.env.get('AWS_ACCESS_KEY_ID');
   const sk = Deno.env.get('AWS_SECRET_ACCESS_KEY');
   if (!ak || !sk) throw new Error('AWS credentials not configured');
 
-  const host = `bedrock-runtime.${CLAUDE_REGION}.amazonaws.com`;
-  const canonicalUri = `/model/${CLAUDE_MODEL_ID}/invoke`;
-  const body = JSON.stringify({
-    anthropic_version: 'bedrock-2023-05-31',
-    messages: [{ role: 'user', content: prompt }],
-    max_tokens: 8192,
-    temperature: 0.5,
-  });
-
   const now = new Date();
   const dateStamp = now.toISOString().replace(/[:-]|\.\d{3}/g, '').slice(0, 8);
   const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '').slice(0, 15) + 'Z';
-  const credentialScope = `${dateStamp}/${CLAUDE_REGION}/bedrock/aws4_request`;
+  const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`;
   const payloadHash = await sha256Hex(body);
   const canonicalHeaders = `content-type:application/json\nhost:${host}\nx-amz-date:${amzDate}\n`;
   const signedHeaders = 'content-type;host;x-amz-date';
@@ -69,12 +136,12 @@ async function callClaudeAI(prompt: string): Promise<string> {
 
   const enc = new TextEncoder();
   let sigKey = await hmacSha256B(enc.encode(`AWS4${sk}`), dateStamp);
-  sigKey = await hmacSha256B(sigKey, CLAUDE_REGION);
-  sigKey = await hmacSha256B(sigKey, 'bedrock');
+  sigKey = await hmacSha256B(sigKey, region);
+  sigKey = await hmacSha256B(sigKey, service);
   sigKey = await hmacSha256B(sigKey, 'aws4_request');
   const sig = Array.from(new Uint8Array(await hmacSha256B(sigKey, stringToSign))).map(b => b.toString(16).padStart(2, '0')).join('');
 
-  const resp = await fetch(`https://${host}${canonicalUri}`, {
+  return fetch(`https://${host}${canonicalUri}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -83,13 +150,58 @@ async function callClaudeAI(prompt: string): Promise<string> {
     },
     body,
   });
-  if (!resp.ok) {
-    const errText = await resp.text();
-    throw new Error(`Claude Bedrock ${resp.status}: ${errText}`);
-  }
+}
+
+// ── 5. Claude Sonnet 4.6 (AWS Bedrock) ──
+async function callClaude(prompt: string): Promise<string> {
+  const modelId = 'anthropic.claude-sonnet-4-6';
+  const region = 'ap-south-1';
+  const host = `bedrock-runtime.${region}.amazonaws.com`;
+  const canonicalUri = `/model/${modelId}/invoke`;
+  const body = JSON.stringify({
+    anthropic_version: 'bedrock-2023-05-31',
+    messages: [{ role: 'user', content: prompt }],
+    max_tokens: 8192,
+    temperature: 0.5,
+  });
+  const resp = await awsSigV4Fetch(host, canonicalUri, body, region, 'bedrock');
+  if (!resp.ok) throw new Error(`Claude Bedrock ${resp.status}: ${await resp.text()}`);
   const data = await resp.json();
   return data?.content?.[0]?.text || '';
 }
+
+// ── 6. Mistral (AWS Bedrock Converse) ──
+async function callMistral(prompt: string): Promise<string> {
+  const modelId = 'mistral.mistral-7b-instruct-v0:2';
+  const region = Deno.env.get('AWS_REGION') || 'ap-south-1';
+  const host = `bedrock-runtime.${region}.amazonaws.com`;
+  const canonicalUri = `/model/${modelId.replace(/:/g, '%3A')}/converse`;
+  const body = JSON.stringify({
+    messages: [{ role: 'user', content: [{ text: prompt }] }],
+    inferenceConfig: { maxTokens: 8192, temperature: 0.5 },
+  });
+  const resp = await awsSigV4Fetch(host, canonicalUri, body, region, 'bedrock');
+  if (!resp.ok) throw new Error(`Mistral Bedrock ${resp.status}: ${await resp.text()}`);
+  const data = await resp.json();
+  return data?.output?.message?.content?.[0]?.text || '';
+}
+
+// ── Model dispatcher ──
+async function callAI(model: string, prompt: string): Promise<string> {
+  switch (model) {
+    case 'gemini': return callGemini(prompt);
+    case 'lovable-gemini': return callLovableGemini(prompt);
+    case 'openai': return callOpenAI(prompt);
+    case 'groq': return callGroq(prompt);
+    case 'claude': return callClaude(prompt);
+    case 'mistral': return callMistral(prompt);
+    default: return callGemini(prompt);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Main handler
+// ═══════════════════════════════════════════════════════════════
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
@@ -97,7 +209,6 @@ Deno.serve(async (req) => {
   try {
     const authResult = await verifyAdmin(req);
     if (authResult instanceof Response) return authResult;
-
 
     const { topic, category, tags, targetWordCount, aiModel } = await req.json();
     if (!topic || typeof topic !== 'string') {
@@ -142,35 +253,9 @@ Return a JSON object with these fields:
 Format: {"title": "...", "slug": "...", "content": "...", "metaTitle": "...", "metaDescription": "...", "excerpt": "...", "category": "...", "tags": [...]}
 No markdown code blocks. Return ONLY the JSON object.`;
 
-    let raw: string;
     const useModel = aiModel || 'gemini';
-
-    if (useModel === 'claude') {
-      // Use Claude Sonnet 4.6 via AWS Bedrock
-      raw = await callClaudeAI(prompt);
-    } else {
-      // Use Gemini (default)
-      const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
-      if (!geminiApiKey) {
-        return new Response(JSON.stringify({ error: 'GEMINI_API_KEY not configured' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-      }
-      const resp = await fetch(`${GEMINI_URL}?key=${geminiApiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { maxOutputTokens: 32000, temperature: 0.5 },
-        }),
-      });
-      if (!resp.ok) throw new Error(`Gemini API error ${resp.status}`);
-      const data = await resp.json();
-      const candidate = data?.candidates?.[0];
-      const finishReason = candidate?.finishReason;
-      if (finishReason === 'MAX_TOKENS') {
-        return new Response(JSON.stringify({ error: 'AI response was truncated. Try a shorter target word count.' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-      }
-      raw = candidate?.content?.parts?.[0]?.text || '';
-    }
+    console.log(`[generate-blog-article] Using model: ${useModel}`);
+    const raw = await callAI(useModel, prompt);
     const cleaned = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
 
     let parsed: any;
@@ -180,12 +265,10 @@ No markdown code blocks. Return ONLY the JSON object.`;
       return new Response(JSON.stringify({ error: 'Failed to parse AI response', raw: cleaned.substring(0, 500) }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    // Validate required fields
     if (!parsed.title || !parsed.content) {
       return new Response(JSON.stringify({ error: 'AI response missing title or content' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    // Normalize slug
     const slug = (parsed.slug || parsed.title)
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')

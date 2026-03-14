@@ -875,9 +875,25 @@ export function EmploymentNewsManager() {
                     <TableCell className="text-xs">{job.location || '—'}</TableCell>
                     <TableCell className="text-xs">{job.last_date || '—'}</TableCell>
                     <TableCell>
-                      <Badge className={`text-xs ${STATUS_COLORS[job.status] || ''}`}>
-                        {job.status}
-                      </Badge>
+                      <div className="flex items-center gap-1">
+                        <Badge className={`text-xs ${STATUS_COLORS[job.status] || ''}`}>
+                          {job.status === 'enrichment_failed' ? 'failed' : job.status}
+                        </Badge>
+                        {job.status === 'enrichment_failed' && job.enrichment_error && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <AlertCircle className="h-3.5 w-3.5 text-orange-500 cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-xs">
+                              <p className="text-xs font-medium">Attempt {job.enrichment_attempts}/3</p>
+                              <p className="text-xs text-muted-foreground mt-1">{job.enrichment_error}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
+                        {job.status === 'pending' && job.enrichment_attempts > 0 && (
+                          <span className="text-[10px] text-muted-foreground">#{job.enrichment_attempts}</span>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>
                       {job.enriched_title && job.enriched_description && job.slug && job.meta_title && job.meta_description ? (

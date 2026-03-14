@@ -50,6 +50,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { BlogAITools } from './blog/BlogAITools';
 import { BlogScoreBreakdown } from './blog/BlogScoreBreakdown';
 import { VertexAITools } from './blog/VertexAITools';
+import { AiModelSelector } from '@/components/admin/AiModelSelector';
+import { getModelDef } from '@/lib/aiModels';
 
 interface BlogPost {
   id: string;

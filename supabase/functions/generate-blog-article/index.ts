@@ -164,7 +164,7 @@ async function callClaude(prompt: string): Promise<string> {
     max_tokens: 4096,
     temperature: 0.7,
   });
-  const resp = await awsSigV4Fetch(host, canonicalUri, body, region, 'bedrock-runtime');
+  const resp = await awsSigV4Fetch(host, canonicalUri, body, region, 'bedrock');
   if (!resp.ok) throw new Error(`Claude Bedrock ${resp.status}: ${await resp.text()}`);
   const data = await resp.json();
   return data?.content?.[0]?.text || '';

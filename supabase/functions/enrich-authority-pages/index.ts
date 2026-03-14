@@ -41,7 +41,7 @@ async function verifyAdmin(req: Request): Promise<{ userId: string } | Response>
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// MASTER AUTHORITY PROMPT
+// MASTER AUTHORITY PROMPT (used for ALL models — zero compression)
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const MASTER_AUTHORITY_PROMPT = `You are the Chief Content Strategist at TrueJobs.co.in — India's most trusted government job preparation portal. You create definitive, authoritative content pages that serve as the single best resource on the internet for each topic. Your content must satisfy three masters simultaneously: the job seeker who needs accurate, actionable information; Google's ranking algorithm that rewards depth, structure, and E-E-A-T; and Google AdSense policies that require original, high-value content.
@@ -193,73 +193,31 @@ If any check fails, fix it before returning.
 `;
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// COMPRESSED CLAUDE PROMPT (same rules, concise instructions — under 6000 chars)
+// MODEL-SPECIFIC TIMEOUTS
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const CLAUDE_AUTHORITY_PROMPT = `You are TrueJobs.co.in's Chief Content Strategist. Create definitive, authoritative government job content satisfying: job seekers needing accurate info, Google's E-E-A-T ranking signals, and AdSense content policies.
+const TIMEOUTS: Record<string, number> = {
+  'gemini-flash': 60_000,
+  'gemini-pro': 60_000,
+  'claude-sonnet': 130_000,
+  'claude': 130_000,
+  'mistral': 60_000,
+  'groq': 30_000,
+  'lovable-gemini': 60_000,
+  'gpt5': 60_000,
+  'gpt5-mini': 60_000,
+};
 
-=== E-E-A-T COMPLIANCE ===
-EXPERIENCE: Write as someone who navigated India's govt exam system. Use "Most candidates make the mistake of...", "Based on previous year trends..." — no generic advice.
-EXPERTISE: Include exact pay levels (7th CPC), category-wise age relaxation, detailed exam patterns with marks/time/sections, cut-off trends.
-AUTHORITATIVENESS: Reference official sources (ssc.gov.in, upsc.gov.in, ibps.in, rrbcdg.gov.in). Use exact terminology from official rules.
-TRUSTWORTHINESS: Never fabricate data. Use "As per the latest official notification" when uncertain. Add disclaimer at end.
-
-=== CONTENT RULES ===
-- Minimum words: Notification 2000, Syllabus 2500, Exam Pattern 2000, PYP 1800, State 2500
-- Zero filler. BANNED: "In today's competitive world", "golden opportunity", "As we all know", "Let's dive in", "Needless to say"
-- Specific data always: "Pay Level 6: ₹35,400-₹1,12,400 + DA (50%) + HRA ≈ ₹45,000-₹55,000 in-hand" NOT "attractive salary"
-- Use tables for: vacancy breakdowns, salary, exam patterns, dates, cut-offs, eligibility, weightage
-- Bold: dates, salary figures, age limits, vacancy numbers, deadlines, URLs
-- Max 3 sentences per paragraph. Use proper H2→H3→H4 hierarchy
-- Include Hindi transliterations for key terms: "Staff Selection Commission (कर्मचारी चयन आयोग)"
-- English content targeting English search terms
-- Reference TrueJobs pages for internal linking (3-5 related slugs)
-
-=== SEO ===
-- Primary keyword in: first 100 words, 3+ H2 headings, meta title, meta description
-- Featured snippet: clear 40-60 word answer within first 200 words
-- Question-based H2 headings where possible
-
-=== UNIVERSAL SECTIONS (always include) ===
-FIRST — Quick Overview Table:
-<div class="authority-overview-box" style="background:#f0f9ff;border-left:4px solid #0369a1;padding:20px;margin-bottom:24px;border-radius:8px;">
-<h2>📋 [Name] — Quick Overview</h2>
-<table style="width:100%;border-collapse:collapse;">
-Rows for: Conducting Body, Exam/Post Name, Vacancies, Eligibility, Age Limit, Salary, Application Mode, Official Website (each with padding:8px and border-bottom)
-</table></div>
-
-LAST — FAQ with schema markup:
-<div class="faq-section" itemscope itemtype="https://schema.org/FAQPage">
-FAQ items with itemscope/itemprop for Question and Answer schema.
-</div>
-FAQ counts: Notification 6-8, Syllabus 5-7, Exam Pattern 5-7, PYP 4-6, State 6-8.
-
-=== OUTPUT ===
-Return ONLY valid JSON. Include: overview, faq, meta_title (<60 chars), meta_description (<155 chars), internal_links, primary_keyword, secondary_keywords (5-8).
-
-End content with: "Note: All information is based on the latest available official notification. Candidates are advised to visit the official website for the most current details."
-`;
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// MULTI-MODEL AI DISPATCHER
-// ═══════════════════════════════════════════════════════════════════════════════
-
-const AI_TIMEOUT_MS = 120_000; // default timeout for fast/medium models
-const AI_TIMEOUT_MS_CLAUDE = 75_000; // Claude is slower but smarter — 75s per call
-const FUNCTION_TIME_BUDGET_MS = 140_000; // baseline guard before 150s platform limit
-
-function isAbortError(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
-  const msg = error.message.toLowerCase();
-  return msg.includes('signal has been aborted') || msg.includes('aborterror') || msg.includes('aborted');
+function getTimeout(model: string): number {
+  return TIMEOUTS[model] || 60_000;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// MODEL INTEGRATIONS
+// ═══════════════════════════════════════════════════════════════════════════════
+
 // ── Gemini (Direct API) ──
-async function fetchGemini(
-  prompt: string,
-  model = 'gemini-2.5-flash',
-  timeoutMs = AI_TIMEOUT_MS,
-): Promise<string> {
+async function fetchGemini(prompt: string, model = 'gemini-2.5-flash', timeoutMs = 60_000): Promise<string> {
   const apiKey = Deno.env.get('GEMINI_API_KEY');
   if (!apiKey) throw new Error('GEMINI_API_KEY not configured — please add it to secrets');
 
@@ -310,16 +268,10 @@ async function fetchGemini(
   }
 }
 
-// ── Claude (Direct Anthropic API) ──
-async function callClaudeRaw(
-  prompt: string,
-  options?: { timeoutMs?: number; maxTokens?: number },
-): Promise<string> {
+// ── Claude Sonnet 4.6 (Direct Anthropic API) ──
+async function callClaudeRaw(prompt: string, timeoutMs = 130_000): Promise<string> {
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured — please add it to secrets');
-
-  const timeoutMs = options?.timeoutMs ?? AI_TIMEOUT_MS_CLAUDE;
-  const maxTokens = options?.maxTokens ?? 12288;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -335,7 +287,7 @@ async function callClaudeRaw(
       signal: controller.signal,
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: maxTokens,
+        max_tokens: 16384,
         temperature: 0.6,
         messages: [{ role: 'user', content: prompt }],
       }),
@@ -347,6 +299,41 @@ async function callClaudeRaw(
     }
     const data = await response.json();
     return data.content?.[0]?.text || '';
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// ── Groq (NEW — Llama 3.3 70B) ──
+async function callGroqRaw(prompt: string, timeoutMs = 30_000): Promise<string> {
+  const apiKey = Deno.env.get('GROQ_API_KEY');
+  if (!apiKey) throw new Error('GROQ_API_KEY not configured — please add it to secrets');
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.5,
+        max_tokens: 16384,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Groq API error ${response.status}: ${errorText.substring(0, 500)}`);
+    }
+    const data = await response.json();
+    return data.choices?.[0]?.message?.content || '';
   } finally {
     clearTimeout(timer);
   }
@@ -364,12 +351,6 @@ async function sha256Hex(data: string): Promise<string> {
   return [...new Uint8Array(hash)].map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-function hexToBytes(hex: string): Uint8Array {
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < hex.length; i += 2) bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16);
-  return bytes;
-}
-
 async function getSigningKey(secretKey: string, dateStamp: string, region: string, service: string): Promise<Uint8Array> {
   let key = await hmacSha256(new TextEncoder().encode('AWS4' + secretKey), dateStamp);
   key = await hmacSha256(key, region);
@@ -378,7 +359,7 @@ async function getSigningKey(secretKey: string, dateStamp: string, region: strin
   return key;
 }
 
-async function awsSigV4Fetch(url: string, body: string, region: string, service: string): Promise<Response> {
+async function awsSigV4Fetch(url: string, body: string, region: string, service: string, timeoutMs: number): Promise<Response> {
   const accessKey = Deno.env.get('AWS_ACCESS_KEY_ID');
   const secretKey = Deno.env.get('AWS_SECRET_ACCESS_KEY');
   if (!accessKey || !secretKey) throw new Error('AWS credentials not configured — please add AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY secrets');
@@ -411,7 +392,7 @@ async function awsSigV4Fetch(url: string, body: string, region: string, service:
   headers['Authorization'] = `AWS4-HMAC-SHA256 Credential=${accessKey}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(url, { method: 'POST', headers, body, signal: controller.signal });
   } finally {
@@ -419,10 +400,10 @@ async function awsSigV4Fetch(url: string, body: string, region: string, service:
   }
 }
 
-// ── Mistral (AWS Bedrock) ──
-async function callMistralRaw(prompt: string): Promise<string> {
-  const region = Deno.env.get('AWS_REGION') || 'ap-south-1';
-  const modelId = 'mistral.mixtral-8x7b-instruct-v0:1';
+// ── Mistral Large (AWS Bedrock — us-east-1) ──
+async function callMistralRaw(prompt: string, timeoutMs = 60_000): Promise<string> {
+  const region = 'us-east-1';
+  const modelId = 'mistral.mistral-large-2407-v1:0';
   const url = `https://bedrock-runtime.${region}.amazonaws.com/model/${modelId}/invoke`;
 
   const body = JSON.stringify({
@@ -432,7 +413,7 @@ async function callMistralRaw(prompt: string): Promise<string> {
     top_p: 0.9,
   });
 
-  const response = await awsSigV4Fetch(url, body, region, 'bedrock');
+  const response = await awsSigV4Fetch(url, body, region, 'bedrock', timeoutMs);
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(`Mistral/Bedrock error ${response.status}: ${errorText.substring(0, 500)}`);
@@ -442,12 +423,12 @@ async function callMistralRaw(prompt: string): Promise<string> {
 }
 
 // ── Lovable Gemini (Gateway) ──
-async function callLovableGeminiRaw(prompt: string): Promise<string> {
+async function callLovableGeminiRaw(prompt: string, timeoutMs = 60_000): Promise<string> {
   const apiKey = Deno.env.get('LOVABLE_API_KEY');
   if (!apiKey) throw new Error('LOVABLE_API_KEY not configured — please add it to secrets');
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
@@ -476,16 +457,16 @@ async function callLovableGeminiRaw(prompt: string): Promise<string> {
   }
 }
 
-// ── OpenAI (Placeholder — graceful failure if key missing) ──
-async function callOpenAIRaw(prompt: string, model = 'gpt-5'): Promise<string> {
-  const apiKey = Deno.env.get('OPENAI_API_KEY');
-  if (!apiKey) throw new Error('OpenAI API key not configured — please add OPENAI_API_KEY secret');
+// ── OpenAI GPT-5 / GPT-5 Mini (via Lovable AI Gateway) ──
+async function callOpenAIRaw(prompt: string, model = 'openai/gpt-5', timeoutMs = 60_000): Promise<string> {
+  const apiKey = Deno.env.get('LOVABLE_API_KEY');
+  if (!apiKey) throw new Error('LOVABLE_API_KEY not configured — please add it to secrets');
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -496,13 +477,13 @@ async function callOpenAIRaw(prompt: string, model = 'gpt-5'): Promise<string> {
         model,
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.5,
-        max_tokens: 16384,
+        max_completion_tokens: 16384,
       }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`OpenAI API error ${response.status}: ${errorText.substring(0, 500)}`);
+      throw new Error(`OpenAI (${model}) error ${response.status}: ${errorText.substring(0, 500)}`);
     }
     const data = await response.json();
     return data.choices?.[0]?.message?.content || '';
@@ -534,7 +515,6 @@ function tryParseJSON(raw: string): Record<string, unknown> {
       const cutPoint = Math.max(lastComma, extracted.lastIndexOf('"}'));
       if (cutPoint > 0) {
         const truncated = extracted.substring(0, cutPoint + (extracted[cutPoint] === '"' ? 2 : 1));
-        // Try closing arrays/objects
         let balanced = truncated;
         const openBrackets = (balanced.match(/\[/g) || []).length - (balanced.match(/\]/g) || []).length;
         const openBraces = (balanced.match(/\{/g) || []).length - (balanced.match(/\}/g) || []).length;
@@ -548,37 +528,41 @@ function tryParseJSON(raw: string): Record<string, unknown> {
   throw new Error(`Failed to parse JSON from AI response (length=${raw.length})`);
 }
 
-// ── AI Dispatcher ──
+// ── AI Dispatcher (one slug, one model call) ──
 async function callAI(model: string, prompt: string): Promise<Record<string, unknown>> {
+  const timeout = getTimeout(model);
   let rawText: string;
 
   switch (model) {
     case 'gemini-flash':
     case 'gemini':
-      rawText = await fetchGemini(prompt, 'gemini-2.5-flash');
+      rawText = await fetchGemini(prompt, 'gemini-2.5-flash', timeout);
       break;
     case 'gemini-pro':
-      rawText = await fetchGemini(prompt, 'gemini-2.5-pro');
+      rawText = await fetchGemini(prompt, 'gemini-2.5-pro', timeout);
       break;
     case 'claude-sonnet':
     case 'claude':
-      rawText = await callClaudeRaw(prompt, { timeoutMs: AI_TIMEOUT_MS_CLAUDE, maxTokens: 8192 });
+      rawText = await callClaudeRaw(prompt, timeout);
+      break;
+    case 'groq':
+      rawText = await callGroqRaw(prompt, timeout);
       break;
     case 'mistral':
-      rawText = await callMistralRaw(prompt);
+      rawText = await callMistralRaw(prompt, timeout);
       break;
     case 'lovable-gemini':
-      rawText = await callLovableGeminiRaw(prompt);
+      rawText = await callLovableGeminiRaw(prompt, timeout);
       break;
     case 'gpt5':
-      rawText = await callOpenAIRaw(prompt, 'gpt-5');
+      rawText = await callOpenAIRaw(prompt, 'openai/gpt-5', timeout);
       break;
     case 'gpt5-mini':
-      rawText = await callOpenAIRaw(prompt, 'gpt-5-mini');
+      rawText = await callOpenAIRaw(prompt, 'openai/gpt-5-mini', timeout);
       break;
     default:
       console.warn(`Unknown model "${model}", defaulting to gemini-flash`);
-      rawText = await fetchGemini(prompt, 'gemini-2.5-flash');
+      rawText = await fetchGemini(prompt, 'gemini-2.5-flash', timeout);
   }
 
   return tryParseJSON(rawText);
@@ -809,7 +793,7 @@ OUTPUT FORMAT — Return valid JSON:
 Return ONLY the JSON object.`;
 }
 
-function getPromptForType(pageType: string, page: PageContent, model = ''): string {
+function getPromptForType(pageType: string, page: PageContent): string {
   let typePrompt: string;
   switch (pageType) {
     case 'notification': typePrompt = buildNotificationPrompt(page); break;
@@ -819,14 +803,12 @@ function getPromptForType(pageType: string, page: PageContent, model = ''): stri
     case 'state': typePrompt = buildStatePrompt(page); break;
     default: typePrompt = buildNotificationPrompt(page);
   }
-  // Use compressed prompt for Claude (smart enough to follow concise instructions)
-  const isClaude = model === 'claude-sonnet' || model === 'claude';
-  const masterPrompt = isClaude ? CLAUDE_AUTHORITY_PROMPT : MASTER_AUTHORITY_PROMPT;
-  return masterPrompt + '\n\n' + typePrompt;
+  // ALL models get the FULL MASTER_AUTHORITY_PROMPT — zero compression
+  return MASTER_AUTHORITY_PROMPT + '\n\n' + typePrompt;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// QUALITY CHECKS (type-aware thresholds)
+// QUALITY CHECKS
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function countWords(text: string): number {
@@ -946,7 +928,7 @@ async function checkDuplicates(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// INSERT HELPERS (using insert_enrichment_version RPC)
+// INSERT HELPERS
 // ═══════════════════════════════════════════════════════════════════════════════
 
 async function insertVersion(
@@ -1010,12 +992,8 @@ async function insertFailedRow(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// MAIN HANDLER
+// MAIN HANDLER — ONE SLUG PER INVOCATION
 // ═══════════════════════════════════════════════════════════════════════════════
-
-function delay(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -1026,171 +1004,145 @@ serve(async (req) => {
     const authResult = await verifyAdmin(req);
     if (authResult instanceof Response) return authResult;
 
-    const { slugs, pageType, currentContent, aiModel } = await req.json() as {
-      slugs: string[];
-      pageType: string;
-      currentContent: PageContent[];
-      aiModel?: string;
-    };
+    const body = await req.json();
 
-    if (!slugs || slugs.length === 0 || slugs.length > 10) {
-      return new Response(JSON.stringify({ error: 'Batch size must be 1-10 slugs' }), {
+    // ── Backward compat: accept both { slug } and { slugs: [...] } ──
+    let slug: string;
+    let pageType: string;
+    let currentContent: PageContent | undefined;
+    let selectedModel: string;
+
+    if (body.slug && typeof body.slug === 'string') {
+      // New format: single slug
+      slug = body.slug;
+      pageType = body.pageType || 'notification';
+      currentContent = body.currentContent || { slug };
+      selectedModel = body.aiModel || 'gemini-flash';
+    } else if (Array.isArray(body.slugs) && body.slugs.length > 0) {
+      // Legacy format: array — process only the first slug
+      slug = body.slugs[0];
+      pageType = body.pageType || 'notification';
+      const contentArr = body.currentContent as PageContent[] | undefined;
+      currentContent = contentArr?.find((c: PageContent) => c.slug === slug) || { slug };
+      selectedModel = body.aiModel || 'gemini-flash';
+    } else {
+      return new Response(JSON.stringify({ error: 'slug (string) is required' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    const selectedModel = aiModel || 'gemini-flash';
-    const fnStart = Date.now();
-    const modelTimeBudgetMs = (selectedModel === 'claude-sonnet' || selectedModel === 'claude' || selectedModel === 'gpt5')
-      ? 130_000
-      : FUNCTION_TIME_BUDGET_MS;
-    console.log(`[enrich-authority-pages] Boot: ${slugs.length} slugs, model=${selectedModel}, type=${pageType}`);
+    console.log(`[enrich] Processing single slug: ${slug}, model=${selectedModel}, type=${pageType}`);
 
     const svc = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+    const existingWordCount = (currentContent as { existingWordCount?: number })?.existingWordCount || 0;
 
-    const results = new Array<{
-      slug: string;
-      status: string;
-      sectionsAdded: string[];
-      qualityScore: Record<string, number>;
-      flags: string[];
-      totalWords: number;
-      failureReason?: string;
-      version?: number;
-    }>(slugs.length);
+    // ── Step 1: Call AI ──
+    let enrichmentData: Record<string, unknown>;
+    try {
+      const prompt = getPromptForType(pageType, currentContent!);
+      console.log(`[enrich] ${slug}: calling ${selectedModel}, prompt ${prompt.length} chars, timeout ${getTimeout(selectedModel)}ms`);
+      enrichmentData = await callAI(selectedModel, prompt);
+      console.log(`[enrich] ${slug}: AI returned successfully`);
+    } catch (aiErr) {
+      const isAbort = aiErr instanceof Error && (
+        aiErr.message.toLowerCase().includes('aborted') || aiErr.message.toLowerCase().includes('signal')
+      );
+      const reason = `AI_ERROR (${selectedModel}): ${isAbort ? `Timeout after ${getTimeout(selectedModel) / 1000}s` : (aiErr instanceof Error ? aiErr.message : 'Unknown')}`;
+      console.error(`[enrich] ${slug}: ${reason}`);
+      await insertFailedRow(svc, slug, pageType, reason, existingWordCount);
 
-    async function processSlug(index: number) {
-      const slug = slugs[index];
-      const pageInfo = currentContent?.find((c: { slug: string }) => c.slug === slug) || { slug };
-      const existingWordCount = (pageInfo as { existingWordCount?: number }).existingWordCount || 0;
-
-      // ── Step 1: Call AI via dispatcher ──
-      let enrichmentData: Record<string, unknown>;
-      try {
-        const prompt = getPromptForType(pageType, pageInfo, selectedModel);
-        console.log(`[enrich] ${slug}: calling ${selectedModel}, prompt ${prompt.length} chars`);
-        enrichmentData = await callAI(selectedModel, prompt);
-        console.log(`[enrich] ${slug}: AI returned successfully`);
-      } catch (aiErr) {
-        const reason = `AI_ERROR (${selectedModel}): ${aiErr instanceof Error ? aiErr.message : 'Unknown'}`;
-        console.error(`[enrich] ${slug}: ${reason}`);
-        await insertFailedRow(svc, slug, pageType, reason, existingWordCount);
-        results[index] = {
+      return new Response(JSON.stringify({
+        status: 'failed',
+        slug,
+        error: reason,
+        results: [{
           slug, status: 'failed', sectionsAdded: [], qualityScore: {},
           flags: [], totalWords: 0, failureReason: reason,
-        };
-        return;
-      }
-
-      // ── Step 2: Quality scoring ──
-      const quality = computeQualityScore(enrichmentData, pageType);
-      const internalLinks = generateInternalLinks(pageType, slug);
-      const dupFlags = await checkDuplicates(svc, enrichmentData, slug);
-      const allFlags: string[] = [...dupFlags];
-
-      const minWords = getMinWordCount(pageType);
-      if (quality.totalWords < minWords * 0.25) {
-        allFlags.push(`LOW_WORD_COUNT: Generated content below ${Math.round(minWords * 0.25)} words (minimum ${minWords})`);
-      } else if (quality.totalWords < minWords * 0.5) {
-        allFlags.push(`MODERATE_WORD_COUNT: Content at ${quality.totalWords} words, well below ${minWords} target`);
-      } else if (quality.totalWords < minWords) {
-        allFlags.push(`BELOW_TARGET: Content at ${quality.totalWords} words, target is ${minWords}`);
-      }
-
-      const sectionsAdded = Object.keys(enrichmentData).filter(k => {
-        if (k === 'faq') return Array.isArray(enrichmentData[k]) && (enrichmentData[k] as unknown[]).length > 0;
-        if (Array.isArray(enrichmentData[k])) return (enrichmentData[k] as unknown[]).length > 0;
-        return typeof enrichmentData[k] === 'string' && (enrichmentData[k] as string).length > 50;
+        }],
+      }), {
+        status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
-
-      const qualityScore = {
-        wordScore: quality.wordScore,
-        sectionScore: quality.sectionScore,
-        uniquenessScore: quality.uniquenessScore,
-        internalLinkScore: quality.internalLinkScore,
-      };
-
-      // ── Step 3: Insert via RPC ──
-      const { version, error: insertError } = await insertVersion(svc, {
-        slug,
-        pageType,
-        enrichmentData,
-        status: 'draft',
-        sectionsAdded,
-        internalLinks,
-        qualityScore,
-        flags: allFlags,
-        wordCount: quality.totalWords,
-        sectionCount: quality.sectionCount,
-      });
-
-      if (insertError) {
-        const reason = `DB_ERROR: ${insertError}`;
-        await insertFailedRow(svc, slug, pageType, reason, existingWordCount);
-        allFlags.push(reason);
-        results[index] = {
-          slug, status: 'failed', sectionsAdded, qualityScore,
-          flags: allFlags, totalWords: quality.totalWords, failureReason: reason,
-        };
-      } else {
-        results[index] = {
-          slug,
-          status: allFlags.length > 0 ? 'flagged' : 'success',
-          sectionsAdded,
-          qualityScore,
-          flags: allFlags,
-          totalWords: quality.totalWords,
-          version: version ?? undefined,
-        };
-      }
     }
 
-    // Claude is slower — limit concurrency to 2 so each call gets full 75s budget
-    const CONCURRENCY = (selectedModel === 'claude-sonnet' || selectedModel === 'claude') ? 2 : 3;
+    // ── Step 2: Quality scoring ──
+    const quality = computeQualityScore(enrichmentData, pageType);
+    const internalLinks = generateInternalLinks(pageType, slug);
+    const dupFlags = await checkDuplicates(svc, enrichmentData, slug);
+    const allFlags: string[] = [...dupFlags];
 
-    for (let i = 0; i < slugs.length; i += CONCURRENCY) {
-      // ── Time budget guard ──
-      const elapsed = Date.now() - fnStart;
-      if (elapsed > modelTimeBudgetMs) {
-        console.warn(`[enrich-authority-pages] Time budget exceeded (${elapsed}ms / ${modelTimeBudgetMs}ms) — skipping remaining ${slugs.length - i} slugs`);
-        for (let j = i; j < slugs.length; j++) {
-          results[j] = {
-            slug: slugs[j],
-            status: 'skipped',
-            sectionsAdded: [],
-            qualityScore: {},
-            flags: [],
-            totalWords: 0,
-            failureReason: 'Skipped — function time budget exceeded. Try fewer pages per batch or a faster model.',
-          };
-        }
-        break;
-      }
-
-      const indices = Array.from(
-        { length: Math.min(CONCURRENCY, slugs.length - i) },
-        (_, offset) => i + offset
-      );
-      await Promise.all(indices.map(processSlug));
-      if (i + CONCURRENCY < slugs.length) await delay(1000);
+    const minWords = getMinWordCount(pageType);
+    if (quality.totalWords < minWords * 0.25) {
+      allFlags.push(`LOW_WORD_COUNT: Generated content below ${Math.round(minWords * 0.25)} words (minimum ${minWords})`);
+    } else if (quality.totalWords < minWords * 0.5) {
+      allFlags.push(`MODERATE_WORD_COUNT: Content at ${quality.totalWords} words, well below ${minWords} target`);
+    } else if (quality.totalWords < minWords) {
+      allFlags.push(`BELOW_TARGET: Content at ${quality.totalWords} words, target is ${minWords}`);
     }
 
-    const completedResults = results.filter(Boolean);
-    const report = {
-      batchSize: slugs.length,
-      model: selectedModel,
-      pagesEnriched: completedResults.filter(r => r.status === 'success' || r.status === 'flagged').length,
-      pagesFailed: completedResults.filter(r => r.status === 'failed').length,
-      pagesSkipped: completedResults.filter(r => r.status === 'skipped').length,
-      totalSectionsAdded: completedResults.reduce((sum, r) => sum + r.sectionsAdded.length, 0),
-      averageWordCount: Math.round(completedResults.reduce((sum, r) => sum + r.totalWords, 0) / (completedResults.length || 1)),
-      flaggedPages: completedResults.filter(r => r.flags.length > 0).map(r => r.slug),
-      results: completedResults,
+    const sectionsAdded = Object.keys(enrichmentData).filter(k => {
+      if (k === 'faq') return Array.isArray(enrichmentData[k]) && (enrichmentData[k] as unknown[]).length > 0;
+      if (Array.isArray(enrichmentData[k])) return (enrichmentData[k] as unknown[]).length > 0;
+      return typeof enrichmentData[k] === 'string' && (enrichmentData[k] as string).length > 50;
+    });
+
+    const qualityScore = {
+      wordScore: quality.wordScore,
+      sectionScore: quality.sectionScore,
+      uniquenessScore: quality.uniquenessScore,
+      internalLinkScore: quality.internalLinkScore,
     };
 
-    return new Response(JSON.stringify(report), {
-      status: 200,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    // ── Step 3: Insert via RPC ──
+    const { version, error: insertError } = await insertVersion(svc, {
+      slug,
+      pageType,
+      enrichmentData,
+      status: 'draft',
+      sectionsAdded,
+      internalLinks,
+      qualityScore,
+      flags: allFlags,
+      wordCount: quality.totalWords,
+      sectionCount: quality.sectionCount,
+    });
+
+    if (insertError) {
+      const reason = `DB_ERROR: ${insertError}`;
+      await insertFailedRow(svc, slug, pageType, reason, existingWordCount);
+      return new Response(JSON.stringify({
+        status: 'failed',
+        slug,
+        error: reason,
+        results: [{
+          slug, status: 'failed', sectionsAdded, qualityScore,
+          flags: [...allFlags, reason], totalWords: quality.totalWords, failureReason: reason,
+        }],
+      }), {
+        status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const resultStatus = allFlags.length > 0 ? 'flagged' : 'success';
+    const result = {
+      slug,
+      status: resultStatus,
+      sectionsAdded,
+      qualityScore,
+      flags: allFlags,
+      totalWords: quality.totalWords,
+      version: version ?? undefined,
+    };
+
+    return new Response(JSON.stringify({
+      status: resultStatus,
+      slug,
+      model: selectedModel,
+      totalWords: quality.totalWords,
+      sectionCount: quality.sectionCount,
+      version,
+      results: [result],
+    }), {
+      status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
   } catch (error) {
@@ -1198,8 +1150,7 @@ serve(async (req) => {
     return new Response(JSON.stringify({
       error: error instanceof Error ? error.message : 'Unknown error',
     }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
 });

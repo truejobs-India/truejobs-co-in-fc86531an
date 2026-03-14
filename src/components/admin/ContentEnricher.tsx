@@ -1,17 +1,18 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
+import { Progress } from '@/components/ui/progress';
 import { useAdminToast as useToast, useAdminMessagesContext } from '@/contexts/AdminMessagesContext';
 import { AdminMessageLog } from '@/components/admin/AdminMessageLog';
 import { supabase } from '@/integrations/supabase/client';
 import { getAllExamAuthoritySlugs, getExamAuthorityConfig } from '@/data/examAuthority';
 import { getAllPYPSlugs, getPYPConfig } from '@/data/previousYearPapers/types';
 import { getAllStateGovtSlugs, getStateGovtJobConfig } from '@/pages/seo/stateGovtJobsData';
-import { Loader2, CheckCircle, AlertTriangle, XCircle, Sparkles, Eye, Upload, Undo2, History, Clock, X, Info } from 'lucide-react';
+import { Loader2, CheckCircle, AlertTriangle, XCircle, Sparkles, Eye, Upload, Undo2, History, Clock, X, Info, Square } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -67,8 +68,6 @@ interface EnrichmentDraft {
   failure_reason: string | null;
 }
 
-// PersistentMessage removed — using AdminMessagesContext
-
 function countWordsInHtml(html: string): number {
   return html.replace(/<[^>]+>/g, ' ').trim().split(/\s+/).filter(Boolean).length;
 }
@@ -77,7 +76,6 @@ function countSectionsInHtml(html: string): number {
   return (html.match(/<h[23][^>]*>/gi) || []).length;
 }
 
-/** Get the actual FAQ count from static config for a slug */
 function getStaticFaqCount(slug: string): number {
   const authConfig = getExamAuthorityConfig(slug);
   if (authConfig?.faqs?.length) return authConfig.faqs.length;
@@ -90,27 +88,25 @@ function getStaticFaqCount(slug: string): number {
 }
 
 const AI_MODELS = [
-  { value: 'gemini-flash', label: 'Gemini 2.5 Flash' },
-  { value: 'gemini-pro', label: 'Gemini 2.5 Pro' },
-  { value: 'claude-sonnet', label: 'Claude Sonnet 4.6' },
-  { value: 'mistral', label: 'Mistral (Bedrock)' },
-  { value: 'lovable-gemini', label: 'Lovable Gemini (Gateway)' },
-  { value: 'gpt5', label: 'GPT-5 (OpenAI)' },
-  { value: 'gpt5-mini', label: 'GPT-5 Mini' },
+  { value: 'gemini-flash', label: 'Gemini 2.5 Flash', desc: 'Recommended · ~15s/page · Best for bulk', speed: 15 },
+  { value: 'groq', label: 'Groq (Llama 3.3 70B)', desc: 'Fastest · ~10s/page · Great for bulk', speed: 10 },
+  { value: 'claude-sonnet', label: 'Claude Sonnet 4.6', desc: 'Highest quality · ~90s/page · Best for important pages', speed: 90 },
+  { value: 'mistral', label: 'Mistral Large', desc: 'Good quality · ~30s/page', speed: 30 },
+  { value: 'gpt5', label: 'OpenAI GPT-5', desc: 'Good all-rounder · ~30s/page', speed: 30 },
+  { value: 'gpt5-mini', label: 'OpenAI GPT-5 Mini', desc: 'Fast · ~15s/page', speed: 15 },
+  { value: 'gemini-pro', label: 'Gemini 2.5 Pro', desc: 'High quality · ~30s/page', speed: 30 },
+  { value: 'lovable-gemini', label: 'Lovable Gemini (Gateway)', desc: 'Via Lovable Gateway · ~20s/page', speed: 20 },
 ] as const;
 
-const MODEL_BATCH_LIMITS: Record<string, number> = {
-  'gemini-flash': 8,
-  'gemini-pro': 5,
-  'claude-sonnet': 2,
-  'mistral': 4,
-  'lovable-gemini': 5,
-  'gpt5': 3,
-  'gpt5-mini': 4,
-};
+function getModelSpeed(model: string): number {
+  return AI_MODELS.find(m => m.value === model)?.speed || 30;
+}
 
-function getModelBatchLimit(model: string): number {
-  return MODEL_BATCH_LIMITS[model] || 3;
+function formatTime(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return s > 0 ? `${m}m ${s}s` : `${m}m`;
 }
 
 export function ContentEnricher() {
@@ -123,11 +119,18 @@ export function ContentEnricher() {
   const [previewSlug, setPreviewSlug] = useState<string | null>(null);
   const [historySlug, setHistorySlug] = useState<string | null>(null);
   const [reviewNotes, setReviewNotes] = useState('');
-  const [bgEnriching, setBgEnriching] = useState(false);
-  const [bgProgress, setBgProgress] = useState<{ done: number; total: number; failed: number } | null>(null);
   const [aiModel, setAiModel] = useState<string>('gemini-flash');
   const { messages, addMessage, dismissMessage, clearAll, toggleExpand } = useAdminMessagesContext();
-  const [enrichProgress, setEnrichProgress] = useState<string | null>(null);
+
+  // Sequential processing state
+  const [currentSlug, setCurrentSlug] = useState<string | null>(null);
+  const [progressState, setProgressState] = useState<{
+    current: number;
+    total: number;
+    succeeded: number;
+    failed: number;
+  } | null>(null);
+  const cancelRef = useRef(false);
 
   useEffect(() => { loadDrafts(); }, []);
 
@@ -168,10 +171,7 @@ export function ContentEnricher() {
         const sc = countSectionsInHtml(config.introContent);
         const published = getPublished(slug);
         rows.push({
-          slug,
-          name: config.state,
-          wordCount: wc,
-          sectionCount: sc,
+          slug, name: config.state, wordCount: wc, sectionCount: sc,
           healthColor: computeHealth(wc, sc, slug),
           enrichmentStatus: getLatest(slug)?.status,
           publishedVersion: published?.version ?? null,
@@ -185,10 +185,7 @@ export function ContentEnricher() {
         const sc = countSectionsInHtml(config.overview || '');
         const published = getPublished(slug);
         rows.push({
-          slug,
-          name: config.examName,
-          wordCount: wc,
-          sectionCount: sc,
+          slug, name: config.examName, wordCount: wc, sectionCount: sc,
           healthColor: computeHealth(wc, sc, slug),
           enrichmentStatus: getLatest(slug)?.status,
           publishedVersion: published?.version ?? null,
@@ -221,10 +218,7 @@ export function ContentEnricher() {
         if (config.faqs?.length) sc++;
         const published = getPublished(slug);
         rows.push({
-          slug,
-          name: config.examName || slug,
-          wordCount: wc,
-          sectionCount: sc,
+          slug, name: config.examName || slug, wordCount: wc, sectionCount: sc,
           healthColor: computeHealth(wc, sc, slug),
           enrichmentStatus: getLatest(slug)?.status,
           publishedVersion: published?.version ?? null,
@@ -239,143 +233,118 @@ export function ContentEnricher() {
     setSelected(prev => {
       const next = new Set(prev);
       if (next.has(slug)) next.delete(slug);
-      else next.add(slug); // No upper limit — auto-batching handles it
+      else next.add(slug);
       return next;
     });
   };
 
-  const handleEnrichBatch = async () => {
-    if (selected.size === 0) return;
+  // ── Core sequential enrichment loop ──
+  const enrichSequentially = async (slugsToProcess: string[]) => {
+    if (slugsToProcess.length === 0) return;
+
     setIsEnriching(true);
+    cancelRef.current = false;
     setBatchReport(null);
 
-    const allSlugs = Array.from(selected);
-    const batchLimit = getModelBatchLimit(aiModel);
-    const totalBatches = Math.ceil(allSlugs.length / batchLimit);
+    const modelLabel = AI_MODELS.find(m => m.value === aiModel)?.label || aiModel;
+    const estimatedSeconds = slugsToProcess.length * getModelSpeed(aiModel);
+
+    addMessage('info', `Starting enrichment: ${slugsToProcess.length} pages`,
+      `Using ${modelLabel} · Estimated time: ${formatTime(estimatedSeconds)}`);
+
     const allResults: EnrichmentResult[] = [];
+    let succeeded = 0;
+    let failed = 0;
 
-    if (totalBatches > 1) {
-      addMessage('info', `Auto-batching ${allSlugs.length} pages`,
-        `${AI_MODELS.find(m => m.value === aiModel)?.label} processes ${batchLimit} pages per batch. Queued ${totalBatches} batches automatically.`);
-    }
+    setProgressState({ current: 0, total: slugsToProcess.length, succeeded: 0, failed: 0 });
 
-    for (let batchIdx = 0; batchIdx < totalBatches; batchIdx++) {
-      const batchSlugs = allSlugs.slice(batchIdx * batchLimit, (batchIdx + 1) * batchLimit);
-      const start = batchIdx * batchLimit + 1;
-      const end = start + batchSlugs.length - 1;
+    for (let i = 0; i < slugsToProcess.length; i++) {
+      // Check cancel
+      if (cancelRef.current) {
+        addMessage('warning', 'Enrichment stopped',
+          `${succeeded + failed} of ${slugsToProcess.length} pages completed. ${slugsToProcess.length - i} remaining — you can enrich them later.`);
+        break;
+      }
 
-      setEnrichProgress(`Processing batch ${batchIdx + 1} of ${totalBatches} (pages ${start}-${end})...`);
+      const slug = slugsToProcess[i];
+      const row = pageRows.find(r => r.slug === slug);
+      setCurrentSlug(slug);
+      setProgressState({ current: i + 1, total: slugsToProcess.length, succeeded, failed });
 
-      const currentContent = batchSlugs.map(slug => {
-        const row = pageRows.find(r => r.slug === slug);
-        return {
-          slug,
-          examName: row?.name || slug,
-          existingWordCount: row?.wordCount || 0,
-          existingSections: [],
-        };
-      });
+      const currentContent = {
+        slug,
+        examName: row?.name || slug,
+        existingWordCount: row?.wordCount || 0,
+        existingSections: [],
+      };
 
       try {
         const { data, error } = await supabase.functions.invoke('enrich-authority-pages', {
-          body: { slugs: batchSlugs, pageType: family, currentContent, aiModel },
+          body: { slug, pageType: family, currentContent, aiModel },
         });
 
         if (error) throw error;
 
-        const batchResults: EnrichmentResult[] = data.results || [];
-        allResults.push(...batchResults);
+        const result: EnrichmentResult = data?.results?.[0] || {
+          slug, status: 'failed', sectionsAdded: [], qualityScore: {},
+          flags: [], totalWords: 0, failureReason: 'No result returned',
+        };
 
-        const succeeded = batchResults.filter(r => r.status === 'success' || r.status === 'flagged').length;
-        const failed = batchResults.filter(r => r.status === 'failed').length;
-        const skipped = batchResults.filter(r => r.status === 'skipped').length;
+        allResults.push(result);
 
-        if (failed > 0 || skipped > 0) {
-          addMessage('warning', `Batch ${batchIdx + 1} of ${totalBatches} — partial`,
-            `${succeeded} enriched, ${failed} failed, ${skipped} skipped`);
+        if (result.status === 'success' || result.status === 'flagged') {
+          succeeded++;
+          addMessage('success', `✓ ${slug}`,
+            `${result.totalWords} words · ${result.sectionsAdded.length} sections · Score: W${result.qualityScore.wordScore}/S${result.qualityScore.sectionScore}`);
         } else {
-          addMessage('success', `Batch ${batchIdx + 1} of ${totalBatches} — complete`,
-            `${succeeded} pages enriched successfully`);
+          failed++;
+          addMessage('error', `✗ ${slug}`, result.failureReason || 'Unknown error');
         }
       } catch (err) {
-        addMessage('error', `Batch ${batchIdx + 1} of ${totalBatches} — failed`,
-          err instanceof Error ? err.message : 'Unknown error');
+        failed++;
+        const reason = err instanceof Error ? err.message : 'Unknown error';
+        allResults.push({
+          slug, status: 'failed', sectionsAdded: [], qualityScore: {},
+          flags: [], totalWords: 0, failureReason: reason,
+        });
+        addMessage('error', `✗ ${slug}`, reason);
       }
 
+      setProgressState({ current: i + 1, total: slugsToProcess.length, succeeded, failed });
+
+      // Refresh drafts after each slug
       await loadDrafts();
-      if (batchIdx + 1 < totalBatches) await new Promise(r => setTimeout(r, 3000));
+
+      // Breathing room between invocations (skip after last)
+      if (i + 1 < slugsToProcess.length && !cancelRef.current) {
+        await new Promise(r => setTimeout(r, 2000));
+      }
     }
 
     setBatchReport({ results: allResults });
-    const totalOk = allResults.filter(r => r.status === 'success' || r.status === 'flagged').length;
-    const totalFail = allResults.filter(r => r.status === 'failed').length;
-    const totalSkipped = allResults.filter(r => r.status === 'skipped').length;
-    addMessage(totalFail > 0 || totalSkipped > 0 ? 'warning' : 'success', 'Enrichment complete',
-      `${totalOk} enriched, ${totalFail} failed, ${totalSkipped} skipped out of ${allSlugs.length} pages`);
-    setEnrichProgress(null);
+    setCurrentSlug(null);
+    setProgressState(null);
     setIsEnriching(false);
+
+    if (!cancelRef.current) {
+      addMessage(failed > 0 ? 'warning' : 'success', 'Enrichment complete',
+        `${succeeded} enriched, ${failed} failed out of ${slugsToProcess.length} pages`);
+    }
+  };
+
+  const handleEnrichBatch = async () => {
+    if (selected.size === 0) return;
+    await enrichSequentially(Array.from(selected));
   };
 
   const handleEnrichAllPending = async () => {
     const pending = pageRows.filter(r => getLatest(r.slug) === undefined);
     if (pending.length === 0) return;
+    await enrichSequentially(pending.map(r => r.slug));
+  };
 
-    setBgEnriching(true);
-    setBgProgress({ done: 0, total: pending.length, failed: 0 });
-    let done = 0;
-    let failed = 0;
-
-    const batchLimit = getModelBatchLimit(aiModel);
-    const totalBatches = Math.ceil(pending.length / batchLimit);
-
-    addMessage('info', `Enriching all ${pending.length} pending pages`,
-      `Using ${AI_MODELS.find(m => m.value === aiModel)?.label} — ${totalBatches} batches of up to ${batchLimit} pages each`);
-
-    for (let i = 0; i < pending.length; i += batchLimit) {
-      const batch = pending.slice(i, i + batchLimit);
-      const slugs = batch.map(r => r.slug);
-      const batchIdx = Math.floor(i / batchLimit) + 1;
-      const currentContent = batch.map(r => ({
-        slug: r.slug,
-        examName: r.name || r.slug,
-        existingWordCount: r.wordCount || 0,
-        existingSections: [],
-      }));
-
-      setEnrichProgress(`Enriching all: batch ${batchIdx} of ${totalBatches}...`);
-
-      try {
-        const { data, error } = await supabase.functions.invoke('enrich-authority-pages', {
-          body: { slugs, pageType: family, currentContent, aiModel },
-        });
-        if (error) throw error;
-        const batchDone = (data?.pagesEnriched || 0);
-        const batchFail = (data?.pagesFailed || 0);
-        const batchSkip = (data?.pagesSkipped || 0);
-        done += batchDone;
-        failed += batchFail + batchSkip;
-
-        if (batchFail > 0 || batchSkip > 0) {
-          addMessage('warning', `Batch ${batchIdx} partial`,
-            `${batchDone} enriched, ${batchFail} failed, ${batchSkip} skipped`);
-        }
-      } catch {
-        failed += batch.length;
-        addMessage('error', `Batch ${batchIdx} failed`, `All ${batch.length} pages in this batch failed`);
-      }
-
-      setBgProgress({ done: done + failed, total: pending.length, failed });
-      await loadDrafts();
-
-      if (i + batchLimit < pending.length) {
-        await new Promise(r => setTimeout(r, 3000));
-      }
-    }
-
-    setBgEnriching(false);
-    setEnrichProgress(null);
-    addMessage(failed > 0 ? 'warning' : 'success', 'All pending enrichment complete',
-      `${done} enriched, ${failed} failed out of ${pending.length} pages`);
+  const handleStopEnrichment = () => {
+    cancelRef.current = true;
   };
 
   const handleApprove = async (slug: string) => {
@@ -419,7 +388,6 @@ export function ContentEnricher() {
     }
   };
 
-  // Publish validation: combined words ≥1200, sections ≥5, FAQ ≥3 (using actual static count), no critical flags
   const canPublish = (draft: EnrichmentDraft, row?: PageHealthRow): { ok: boolean; reason?: string } => {
     if (draft.status !== 'approved') return { ok: false, reason: 'Must be approved first' };
     const combinedWords = (row?.wordCount || 0) + (draft.current_word_count || 0);
@@ -487,11 +455,17 @@ export function ContentEnricher() {
     return <Badge variant="outline">{status}</Badge>;
   };
 
-  const batchLimit = getModelBatchLimit(aiModel);
-  const selectedModelLabel = AI_MODELS.find(m => m.value === aiModel)?.label || aiModel;
+  const selectedModelInfo = AI_MODELS.find(m => m.value === aiModel);
   const previewDrafts = previewSlug ? drafts.get(previewSlug) : null;
   const previewDraft = previewDrafts?.[0] ?? null;
   const historyVersions = historySlug ? drafts.get(historySlug) : null;
+
+  // Time estimate for selected pages
+  const estimatedTime = selected.size > 0
+    ? formatTime(selected.size * getModelSpeed(aiModel))
+    : null;
+
+  const pendingCount = pageRows.filter(r => getLatest(r.slug) === undefined).length;
 
   return (
     <div className="space-y-6">
@@ -518,51 +492,53 @@ export function ContentEnricher() {
             </Select>
 
             <Select value={aiModel} onValueChange={setAiModel}>
-              <SelectTrigger className="w-[220px]">
+              <SelectTrigger className="w-[280px]">
                 <SelectValue placeholder="AI Model" />
               </SelectTrigger>
               <SelectContent>
                 {AI_MODELS.map(m => (
-                  <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                  <SelectItem key={m.value} value={m.value}>
+                    <div className="flex flex-col">
+                      <span>{m.label}</span>
+                      <span className="text-xs text-muted-foreground">{m.desc}</span>
+                    </div>
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
 
-            <Button onClick={handleEnrichBatch} disabled={selected.size === 0 || isEnriching || bgEnriching}>
-              {isEnriching ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Sparkles className="h-4 w-4 mr-2" />}
-              Enrich {selected.size} page{selected.size !== 1 ? 's' : ''}
-            </Button>
+            {!isEnriching ? (
+              <>
+                <Button onClick={handleEnrichBatch} disabled={selected.size === 0}>
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  Enrich {selected.size} page{selected.size !== 1 ? 's' : ''}
+                  {estimatedTime && <span className="ml-1 text-xs opacity-75">(~{estimatedTime})</span>}
+                </Button>
 
-            <Button
-              variant="outline"
-              disabled={isEnriching || bgEnriching}
-              onClick={() => {
-                const pending = pageRows.filter(r => getLatest(r.slug) === undefined);
-                setSelected(new Set(pending.map(r => r.slug)));
-              }}
-            >
-              Select All Pending
-            </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    const pending = pageRows.filter(r => getLatest(r.slug) === undefined);
+                    setSelected(new Set(pending.map(r => r.slug)));
+                  }}
+                >
+                  Select All Pending
+                </Button>
 
-            <Button
-              variant="secondary"
-              disabled={(() => {
-                const pending = pageRows.filter(r => getLatest(r.slug) === undefined);
-                return pending.length === 0 || isEnriching || bgEnriching;
-              })()}
-              onClick={handleEnrichAllPending}
-            >
-              {bgEnriching ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Sparkles className="h-4 w-4 mr-2" />}
-              {bgEnriching
-                ? `Enriching ${bgProgress?.done || 0}/${bgProgress?.total || 0}...`
-                : `Enrich All Pending (${pageRows.filter(r => getLatest(r.slug) === undefined).length})`
-              }
-            </Button>
-
-            {bgProgress && bgProgress.failed > 0 && (
-              <Badge className="bg-red-500/20 text-red-700 border-red-300">
-                {bgProgress.failed} failed
-              </Badge>
+                <Button
+                  variant="secondary"
+                  disabled={pendingCount === 0}
+                  onClick={handleEnrichAllPending}
+                >
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  Enrich All Pending ({pendingCount})
+                </Button>
+              </>
+            ) : (
+              <Button variant="destructive" onClick={handleStopEnrichment}>
+                <Square className="h-4 w-4 mr-2" />
+                Stop Enrichment
+              </Button>
             )}
 
             <span className="text-sm text-muted-foreground">
@@ -570,30 +546,35 @@ export function ContentEnricher() {
             </span>
           </div>
 
-          {/* Model batch info */}
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Info className="h-3 w-3 shrink-0" />
-            <span>
-              {selectedModelLabel} processes {batchLimit} pages per batch.
-              {selected.size > batchLimit && (
-                <> Remaining pages auto-queued in {Math.ceil(selected.size / batchLimit)} batches.</>
-              )}
-            </span>
-          </div>
-
-          {/* Claude quality note */}
-          {(aiModel === 'claude-sonnet' || aiModel === 'claude') && (
-            <div className="flex items-center gap-2 text-xs p-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-700">
+          {/* Model info */}
+          {selectedModelInfo && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <Info className="h-3 w-3 shrink-0" />
-              <span>Claude Sonnet produces highest quality but processes 1–2 pages per minute. For bulk enrichment, Gemini 2.5 Flash is faster.</span>
+              <span>{selectedModelInfo.desc}. Each page gets its own dedicated processing time — no timeouts.</span>
             </div>
           )}
 
-          {/* Enrichment progress */}
-          {enrichProgress && (
-            <div className="flex items-center gap-2 p-2 rounded-lg bg-blue-50 border border-blue-200 text-sm text-blue-700">
-              <Loader2 className="h-4 w-4 animate-spin shrink-0" />
-              {enrichProgress}
+          {/* Progress bar during enrichment */}
+          {progressState && (
+            <div className="space-y-2 p-3 rounded-lg bg-blue-50 border border-blue-200">
+              <div className="flex items-center justify-between text-sm">
+                <div className="flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+                  <span className="text-blue-700 font-medium">
+                    Enriching page {progressState.current} of {progressState.total}
+                    {currentSlug && <span className="text-blue-500"> — {currentSlug}</span>}
+                  </span>
+                </div>
+                <div className="flex items-center gap-3 text-xs">
+                  <span className="text-emerald-600">{progressState.succeeded} succeeded</span>
+                  {progressState.failed > 0 && <span className="text-red-600">{progressState.failed} failed</span>}
+                  <span className="text-muted-foreground">{progressState.total - progressState.current} remaining</span>
+                </div>
+              </div>
+              <Progress value={(progressState.current / progressState.total) * 100} className="h-2" />
+              <div className="text-xs text-blue-500">
+                Est. remaining: ~{formatTime((progressState.total - progressState.current) * getModelSpeed(aiModel))}
+              </div>
             </div>
           )}
 
@@ -625,24 +606,20 @@ export function ContentEnricher() {
                 {pageRows.map(row => {
                   const latest = getLatest(row.slug);
                   const published = getPublished(row.slug);
+                  const isCurrentlyProcessing = currentSlug === row.slug;
                   return (
-                    <TableRow key={row.slug}>
+                    <TableRow key={row.slug} className={isCurrentlyProcessing ? 'bg-blue-50/50' : undefined}>
                       <TableCell>
-                        <Checkbox checked={selected.has(row.slug)} onCheckedChange={() => toggleSelection(row.slug)} />
+                        <Checkbox checked={selected.has(row.slug)} onCheckedChange={() => toggleSelection(row.slug)} disabled={isEnriching} />
                       </TableCell>
-                      <TableCell className="font-medium text-sm">{row.name}</TableCell>
-                      <TableCell className="text-right tabular-nums text-xs">
-                        {row.wordCount}
+                      <TableCell className="font-medium text-sm">
+                        {isCurrentlyProcessing && <Loader2 className="h-3 w-3 animate-spin inline mr-1 text-blue-600" />}
+                        {row.name}
                       </TableCell>
-                      <TableCell className="text-right tabular-nums text-xs">
-                        {row.sectionCount}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums text-xs">
-                        {latest?.current_word_count ?? '—'}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums text-xs">
-                        {latest?.current_section_count ?? '—'}
-                      </TableCell>
+                      <TableCell className="text-right tabular-nums text-xs">{row.wordCount}</TableCell>
+                      <TableCell className="text-right tabular-nums text-xs">{row.sectionCount}</TableCell>
+                      <TableCell className="text-right tabular-nums text-xs">{latest?.current_word_count ?? '—'}</TableCell>
+                      <TableCell className="text-right tabular-nums text-xs">{latest?.current_section_count ?? '—'}</TableCell>
                       <TableCell>{healthBadge(row.healthColor)}</TableCell>
                       <TableCell>{statusBadge(latest?.status)}</TableCell>
                       <TableCell>
@@ -709,16 +686,16 @@ export function ContentEnricher() {
       {batchReport && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Batch Report</CardTitle>
+            <CardTitle className="text-lg">Enrichment Report</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div className="p-3 rounded-lg bg-muted">
                 <p className="text-2xl font-bold">{batchReport.results.length}</p>
                 <p className="text-xs text-muted-foreground">Pages processed</p>
               </div>
               <div className="p-3 rounded-lg bg-muted">
-                <p className="text-2xl font-bold">
+                <p className="text-2xl font-bold text-emerald-600">
                   {batchReport.results.filter(r => r.status === 'success' || r.status === 'flagged').length}
                 </p>
                 <p className="text-xs text-muted-foreground">Enriched</p>
@@ -730,16 +707,10 @@ export function ContentEnricher() {
                 <p className="text-xs text-muted-foreground">Failed</p>
               </div>
               <div className="p-3 rounded-lg bg-muted">
-                <p className="text-2xl font-bold text-amber-600">
-                  {batchReport.results.filter(r => r.status === 'skipped').length}
-                </p>
-                <p className="text-xs text-muted-foreground">Skipped</p>
-              </div>
-              <div className="p-3 rounded-lg bg-muted">
                 <p className="text-2xl font-bold">
-                  {batchReport.results.reduce((s, r) => s + r.sectionsAdded.length, 0)}
+                  {Math.round(batchReport.results.reduce((s, r) => s + r.totalWords, 0) / (batchReport.results.filter(r => r.totalWords > 0).length || 1))}
                 </p>
-                <p className="text-xs text-muted-foreground">Sections added</p>
+                <p className="text-xs text-muted-foreground">Avg words</p>
               </div>
             </div>
 
@@ -747,8 +718,6 @@ export function ContentEnricher() {
               <div key={r.slug} className="flex items-start gap-3 p-3 rounded-lg border">
                 {r.status === 'failed' ? (
                   <XCircle className="h-5 w-5 text-red-500 mt-0.5 shrink-0" />
-                ) : r.status === 'skipped' ? (
-                  <Clock className="h-5 w-5 text-amber-500 mt-0.5 shrink-0" />
                 ) : r.flags.length > 0 ? (
                   <AlertTriangle className="h-5 w-5 text-amber-500 mt-0.5 shrink-0" />
                 ) : (
@@ -756,7 +725,7 @@ export function ContentEnricher() {
                 )}
                 <div className="min-w-0">
                   <p className="font-medium text-sm">{r.slug}</p>
-                  {r.status === 'failed' || r.status === 'skipped' ? (
+                  {r.status === 'failed' ? (
                     <p className="text-xs text-red-600">{r.failureReason || 'Unknown failure'}</p>
                   ) : (
                     <>
@@ -832,27 +801,19 @@ export function ContentEnricher() {
                   <Textarea
                     value={reviewNotes}
                     onChange={(e) => setReviewNotes(e.target.value)}
-                    placeholder="Add notes about this enrichment..."
+                    placeholder="Add review notes..."
                     rows={2}
                   />
-                </div>
-              )}
-
-              {previewDraft.review_notes && previewDraft.status !== 'draft' && (
-                <div className="p-3 rounded-lg bg-muted">
-                  <p className="text-xs font-medium text-muted-foreground mb-1">Review Notes</p>
-                  <p className="text-sm">{previewDraft.review_notes}</p>
-                </div>
-              )}
-
-              {previewDraft.status === 'draft' && (
-                <div className="flex gap-2 pt-2">
-                  <Button onClick={() => { handleApprove(previewSlug!); setPreviewSlug(null); }} className="bg-emerald-600 hover:bg-emerald-700">
-                    <CheckCircle className="h-4 w-4 mr-2" /> Approve
-                  </Button>
-                  <Button variant="destructive" onClick={() => { handleReject(previewSlug!); setPreviewSlug(null); }}>
-                    <XCircle className="h-4 w-4 mr-2" /> Reject
-                  </Button>
+                  <div className="flex gap-2 mt-3">
+                    <Button onClick={() => handleApprove(previewSlug!)} className="bg-emerald-600 hover:bg-emerald-700">
+                      <CheckCircle className="h-4 w-4 mr-2" />
+                      Approve
+                    </Button>
+                    <Button variant="destructive" onClick={() => handleReject(previewSlug!)}>
+                      <XCircle className="h-4 w-4 mr-2" />
+                      Reject
+                    </Button>
+                  </div>
                 </div>
               )}
             </div>
@@ -860,46 +821,41 @@ export function ContentEnricher() {
         </DialogContent>
       </Dialog>
 
-      {/* Version History Dialog */}
-      <Dialog open={!!historySlug} onOpenChange={(open) => !open && setHistorySlug(null)}>
-        <DialogContent className="max-w-2xl max-h-[70vh] overflow-y-auto">
+      {/* History Dialog */}
+      <Dialog open={!!historySlug} onOpenChange={(open) => { if (!open) setHistorySlug(null); }}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Version History: {historySlug}</DialogTitle>
           </DialogHeader>
-          {historyVersions && historyVersions.length > 0 ? (
-            <div className="space-y-2">
+          {historyVersions && (
+            <div className="space-y-3">
               {historyVersions.map(v => (
-                <div key={v.id} className="flex items-center justify-between p-3 rounded-lg border">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-medium text-sm">v{v.version}</span>
-                    {statusBadge(v.status)}
-                    {v.published_at && <Badge className="bg-blue-500/20 text-blue-700">Live</Badge>}
-                    {v.current_word_count > 0 && (
-                      <span className="text-xs text-muted-foreground">{v.current_word_count}w</span>
-                    )}
-                    {v.failure_reason && (
-                      <span className="text-xs text-red-600 truncate max-w-[200px]" title={v.failure_reason}>
-                        {v.failure_reason}
-                      </span>
-                    )}
+                <div key={v.id} className="flex items-start gap-3 p-3 rounded-lg border">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="font-medium text-sm">v{v.version}</span>
+                      {statusBadge(v.status)}
+                      {v.published_at && <Badge className="bg-blue-500/20 text-blue-700 border-blue-300">Live</Badge>}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {v.current_word_count} words · {v.current_section_count} sections
+                    </p>
+                    {v.failure_reason && <p className="text-xs text-red-600 mt-1">{v.failure_reason}</p>}
+                    {v.review_notes && <p className="text-xs text-muted-foreground mt-1">Notes: {v.review_notes}</p>}
                   </div>
-                  <div className="flex gap-1">
+                  <div className="flex gap-1 shrink-0">
+                    <Button size="sm" variant="ghost" onClick={() => { setHistorySlug(null); setPreviewSlug(historySlug); }}>
+                      <Eye className="h-3 w-3" />
+                    </Button>
                     {v.status === 'approved' && !v.published_at && (
-                      <Button size="sm" variant="outline" onClick={() => handlePublish(historySlug!, v.version)}>
-                        <Upload className="h-3 w-3 mr-1" /> Publish
-                      </Button>
-                    )}
-                    {v.published_at && (
-                      <Button size="sm" variant="outline" className="text-red-600" onClick={() => handleUnpublish(historySlug!)}>
-                        <Undo2 className="h-3 w-3 mr-1" /> Unpublish
+                      <Button size="sm" variant="ghost" className="text-blue-600" onClick={() => handlePublish(historySlug!, v.version)}>
+                        <Upload className="h-3 w-3" />
                       </Button>
                     )}
                   </div>
                 </div>
               ))}
             </div>
-          ) : (
-            <p className="text-sm text-muted-foreground py-4 text-center">No versions found</p>
           )}
         </DialogContent>
       </Dialog>

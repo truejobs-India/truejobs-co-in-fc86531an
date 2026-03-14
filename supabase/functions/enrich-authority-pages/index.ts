@@ -310,8 +310,7 @@ async function callClaudeStreaming(
   console.log(`[claude-stream] START timeout=${timeoutMs}ms`);
 
   try {
-    // deno-lint-ignore no-explicit-any
-    const requestBody: any = {
+    const requestBody = {
       model: ANTHROPIC_MODEL,
       max_tokens: maxTokens,
       temperature: 0.5,
@@ -319,15 +318,7 @@ async function callClaudeStreaming(
       messages: [{ role: 'user', content: prompt }],
     };
 
-    // Add structured output config
-    if (useStructuredOutput) {
-      requestBody.output_config = {
-        format: {
-          type: 'json_schema',
-          schema: ENRICHMENT_JSON_SCHEMA,
-        },
-      };
-    }
+    console.log(`[claude-stream] structured_output=${useStructuredOutput} (prompt-controlled, no output_config)`);
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',

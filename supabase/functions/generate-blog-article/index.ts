@@ -160,7 +160,7 @@ async function callClaude(prompt: string): Promise<string> {
   const modelId = 'anthropic.claude-sonnet-4-6-v1:0';
   const region = 'ap-south-1';
   const host = `bedrock-runtime.${region}.amazonaws.com`;
-  const canonicalUri = `/model/${modelId.replace(/:/g, '%3A')}/converse`;
+  const rawPath = `/model/${modelId}/converse`;
   const body = JSON.stringify({
     messages: [{ role: 'user', content: [{ text: prompt }] }],
     inferenceConfig: { maxTokens: 4096, temperature: 0.7 },

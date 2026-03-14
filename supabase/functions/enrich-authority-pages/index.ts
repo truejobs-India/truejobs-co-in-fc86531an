@@ -514,16 +514,9 @@ async function callAI(model: string, prompt: string): Promise<Record<string, unk
       rawText = await fetchGemini(prompt, 'gemini-2.5-pro');
       break;
     case 'claude-sonnet':
-    case 'claude': {
-      try {
-        rawText = await callClaudeRaw(prompt, { timeoutMs: AI_TIMEOUT_MS_SLOW, maxTokens: 8192 });
-      } catch (error) {
-        if (!isAbortError(error)) throw error;
-        console.warn('Claude request timed out — falling back to gemini-2.5-flash for completion');
-        rawText = await fetchGemini(prompt, 'gemini-2.5-flash', 45_000);
-      }
+    case 'claude':
+      rawText = await callClaudeRaw(prompt, { timeoutMs: AI_TIMEOUT_MS_SLOW, maxTokens: 8192 });
       break;
-    }
     case 'mistral':
       rawText = await callMistralRaw(prompt);
       break;

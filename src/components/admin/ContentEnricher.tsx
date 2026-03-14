@@ -642,6 +642,15 @@ export function ContentEnricher() {
 
                 <Button
                   variant="outline"
+                  disabled={approvableCount === 0 || isApprovingAll}
+                  onClick={handleApproveAllEnriched}
+                >
+                  {isApprovingAll ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <CheckCircle className="h-4 w-4 mr-2" />}
+                  Approve All Enriched ({approvableCount})
+                </Button>
+
+                <Button
+                  variant="outline"
                   disabled={publishableCount === 0 || isPublishingAll}
                   onClick={handlePublishAllEnriched}
                 >

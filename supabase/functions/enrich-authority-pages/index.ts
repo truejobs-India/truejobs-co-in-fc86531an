@@ -397,38 +397,10 @@ async function callClaudeWithRetry(
       }
     }
 
-    // Single retry for transient errors (5xx, timeout, network), only if budget allows.
-    if (remainingBudget < CLAUDE_RETRY_MIN_REMAINING_MS) {
-      console.warn(`[claude-circuit-breaker] ${slug}: skip transient retry due low remaining budget (${remainingBudget}ms). Failing over to Gemini.`);
-      throw firstErr;
-    }
-
-    console.warn(`[claude-retry] ${slug}: First attempt failed: ${errMsg}. Retrying once with ${ANTHROPIC_RETRY_MAX_TOKENS} tokens...`);
-    if (diag) {
-      diag.attempt = 2;
-      diag.retried = true;
-      diag.retryReason = 'transient_error';
-    }
-
-    const retryTimeout = Math.min(
-      CLAUDE_SDK_TIMEOUT_MS,
-      Math.max(15_000, getRemainingBudgetMs(startedAtMs) - GEMINI_FALLBACK_RESERVED_MS),
-    );
-
-    try {
-      const retryResult = await callClaudeSDK(prompt, slug, ANTHROPIC_RETRY_MAX_TOKENS, retryTimeout);
-      retryResult.diagnostics.attempt = 2;
-      retryResult.diagnostics.retried = true;
-      retryResult.diagnostics.retryReason = 'transient_error';
-      return retryResult;
-    } catch (retryErr) {
-      const retryDiag = (retryErr as any)?.diagnostics as ClaudeDiagnostics | undefined;
-      if (retryDiag) {
-        retryDiag.attempt = 2;
-        retryDiag.retried = true;
-      }
-      throw retryErr;
-    }
+    // No transient retry: only truncation-based retry is allowed.
+    // This preserves budget so Gemini fallback can complete in the same invocation.
+    console.warn(`[claude-circuit-breaker] ${slug}: no transient retry for error=${errMsg}. Failing over to Gemini immediately. remaining_budget_ms=${remainingBudget}`);
+    throw firstErr;
   }
 }
 

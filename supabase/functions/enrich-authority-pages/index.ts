@@ -93,6 +93,8 @@ const CLAUDE_RETRY_MIN_REMAINING_MS = 55000;
 const TIMEOUTS: Record<string, number> = {
   'gemini-flash': 60_000,
   'gemini-pro': 60_000,
+  'vertex-flash': 90_000,
+  'vertex-pro': 120_000,
   'claude-sonnet': 140_000,
   'claude': 140_000,
   'mistral': 120_000,

@@ -260,12 +260,18 @@ async function fetchGemini(prompt: string, model = 'gemini-2.5-flash'): Promise<
 }
 
 // ── Claude (Direct Anthropic API) ──
-async function callClaudeRaw(prompt: string): Promise<string> {
+async function callClaudeRaw(
+  prompt: string,
+  options?: { timeoutMs?: number; maxTokens?: number },
+): Promise<string> {
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured — please add it to secrets');
 
+  const timeoutMs = options?.timeoutMs ?? AI_TIMEOUT_MS_SLOW;
+  const maxTokens = options?.maxTokens ?? 12288;
+
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -278,7 +284,7 @@ async function callClaudeRaw(prompt: string): Promise<string> {
       signal: controller.signal,
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: 16384,
+        max_tokens: maxTokens,
         temperature: 0.6,
         messages: [{ role: 'user', content: prompt }],
       }),

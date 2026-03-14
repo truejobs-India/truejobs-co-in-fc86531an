@@ -557,6 +557,7 @@ export function BlogPostEditor() {
               const { data: fixData, error: fixError } = await supabase.functions.invoke('analyze-blog-compliance-fixes', {
                 body: {
                   title: post.title, content: post.content, slug: post.slug,
+                  aiModel: blogTextModel,
                   issues: failedChecks.map(c => ({ key: c.key, label: c.label, detail: c.detail, recommendation: c.recommendation })),
                   existingMeta: {
                     meta_title: post.meta_title, meta_description: post.meta_description, excerpt: post.excerpt,

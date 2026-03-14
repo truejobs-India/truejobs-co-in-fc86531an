@@ -50,6 +50,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { BlogAITools } from './blog/BlogAITools';
 import { BlogScoreBreakdown } from './blog/BlogScoreBreakdown';
 import { VertexAITools } from './blog/VertexAITools';
+import { AiModelSelector } from '@/components/admin/AiModelSelector';
+import { getModelDef } from '@/lib/aiModels';
 
 interface BlogPost {
   id: string;
@@ -117,8 +119,23 @@ export function BlogPostEditor() {
   const [bulkWordCount, setBulkWordCount] = useState(1500);
   const [bulkResults, setBulkResults] = useState<{ topic: string; status: 'queued' | 'generating' | 'success' | 'failed'; articleId?: string; error?: string }[]>([]);
   const [isBulkGenerating, setIsBulkGenerating] = useState(false);
-  const [bulkAiModel, setBulkAiModel] = useState<string>('gemini');
   const bulkGenerateAbortRef = useRef(false);
+
+  // ── Persistent AI Model selectors (localStorage-backed, no fallbacks) ──
+  const [blogTextModel, setBlogTextModel] = useState<string>(() => {
+    try { return localStorage.getItem('blog_text_ai_model') || 'gemini-flash'; } catch { return 'gemini-flash'; }
+  });
+  const [blogImageModel, setBlogImageModel] = useState<string>(() => {
+    try { return localStorage.getItem('blog_image_ai_model') || 'vertex-imagen'; } catch { return 'vertex-imagen'; }
+  });
+  const handleTextModelChange = useCallback((v: string) => {
+    setBlogTextModel(v);
+    try { localStorage.setItem('blog_text_ai_model', v); } catch {}
+  }, []);
+  const handleImageModelChange = useCallback((v: string) => {
+    setBlogImageModel(v);
+    try { localStorage.setItem('blog_image_ai_model', v); } catch {}
+  }, []);
 
   // Bulk cover image generation state
   const [isBulkCoverRunning, setIsBulkCoverRunning] = useState(false);
@@ -450,7 +467,7 @@ export function BlogPostEditor() {
         setBulkCoverProgress({ total, done, failed, current: post.title });
         try {
           const { data: imgData, error: imgError } = await supabase.functions.invoke('generate-blog-image', {
-            body: { slug: post.slug, title: post.title, category: post.category || 'General', keywords: post.tags || [] },
+            body: { slug: post.slug, title: post.title, category: post.category || 'General', keywords: post.tags || [], aiModel: blogImageModel },
           });
 
           if (imgError || !imgData?.imageUrl) {
@@ -540,6 +557,7 @@ export function BlogPostEditor() {
               const { data: fixData, error: fixError } = await supabase.functions.invoke('analyze-blog-compliance-fixes', {
                 body: {
                   title: post.title, content: post.content, slug: post.slug,
+                  aiModel: blogTextModel,
                   issues: failedChecks.map(c => ({ key: c.key, label: c.label, detail: c.detail, recommendation: c.recommendation })),
                   existingMeta: {
                     meta_title: post.meta_title, meta_description: post.meta_description, excerpt: post.excerpt,
@@ -592,6 +610,7 @@ export function BlogPostEditor() {
                 title: post.title, content: post.content,
                 action: 'enrich-article', targetWordCount: 1500,
                 category: post.category, tags: post.tags,
+                aiModel: blogTextModel,
               },
             });
             if (enrichError) throw new Error(enrichError.message);
@@ -725,6 +744,7 @@ export function BlogPostEditor() {
       const { data, error } = await supabase.functions.invoke('analyze-blog-compliance-fixes', {
         body: {
           title: post.title, content: post.content, slug: post.slug,
+          aiModel: blogTextModel,
           issues: failedChecks.map(c => ({ key: c.key, label: c.label, detail: c.detail, recommendation: c.recommendation })),
           existingMeta: {
             meta_title: post.meta_title, meta_description: post.meta_description, excerpt: post.excerpt,
@@ -802,6 +822,7 @@ export function BlogPostEditor() {
           title: enrichDialogPost.title, content: enrichDialogPost.content,
           action: 'enrich-article', targetWordCount: enrichWordLimit,
           category: enrichDialogPost.category, tags: enrichDialogPost.tags,
+          aiModel: blogTextModel,
         },
       });
       if (error) throw new Error(error.message);
@@ -850,7 +871,7 @@ export function BlogPostEditor() {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) throw new Error('Not authenticated');
         const { data, error } = await supabase.functions.invoke('generate-blog-article', {
-          body: { topic: topics[i], category: bulkCategory, targetWordCount: bulkWordCount, aiModel: bulkAiModel },
+          body: { topic: topics[i], category: bulkCategory, targetWordCount: bulkWordCount, aiModel: blogTextModel },
         });
         if (error) throw new Error(error.message);
         if (!data?.title || !data?.content) throw new Error('Invalid AI response');
@@ -901,7 +922,7 @@ export function BlogPostEditor() {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) throw new Error('Not authenticated');
         const { data, error } = await supabase.functions.invoke('generate-blog-article', {
-          body: { topic: item.topic, category: bulkCategory, targetWordCount: bulkWordCount, aiModel: bulkAiModel },
+          body: { topic: item.topic, category: bulkCategory, targetWordCount: bulkWordCount, aiModel: blogTextModel },
         });
         if (error) throw new Error(error.message);
         if (!data?.title || !data?.content) throw new Error('Invalid AI response');
@@ -1157,6 +1178,20 @@ export function BlogPostEditor() {
         </Dialog>
       </CardHeader>
 
+      {/* ── AI Model Selection Bar ── */}
+      <div className="px-6 py-3 border-b flex items-center gap-4 bg-muted/30">
+        <Sparkles className="h-4 w-4 text-primary shrink-0" />
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">AI Models</span>
+        <div className="flex items-center gap-2">
+          <Label className="text-xs text-muted-foreground">Text:</Label>
+          <AiModelSelector value={blogTextModel} onValueChange={handleTextModelChange} capability="text" triggerClassName="w-[220px] h-8 text-xs" size="sm" />
+        </div>
+        <div className="flex items-center gap-2">
+          <Label className="text-xs text-muted-foreground">Image:</Label>
+          <AiModelSelector value={blogImageModel} onValueChange={handleImageModelChange} capability="image" triggerClassName="w-[200px] h-8 text-xs" size="sm" />
+        </div>
+      </div>
+
       {/* ── SEO Utility Toolbar ── */}
       <div className="px-6 pb-4 flex flex-wrap gap-2 border-b">
         <Button variant="outline" size="sm" onClick={handleSyncCanonicalUrls}>
@@ -1247,21 +1282,8 @@ export function BlogPostEditor() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-1">
-                <Label className="text-xs">AI Model</Label>
-                <Select value={bulkAiModel} onValueChange={setBulkAiModel}>
-                  <SelectTrigger className="w-[220px] h-8 text-xs"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="gemini">Gemini 2.5 Flash</SelectItem>
-                    <SelectItem value="lovable-gemini">Lovable Gemini</SelectItem>
-                    <SelectItem value="groq">Groq (Llama 3.3)</SelectItem>
-                    <SelectItem value="openai">OpenAI GPT-4o</SelectItem>
-                    <SelectItem value="mistral">Mistral 7B</SelectItem>
-                    <SelectItem value="claude">Claude Sonnet 4.6</SelectItem>
-                    <SelectItem value="vertex-flash">Gemini 2.5 Flash (From API)</SelectItem>
-                    <SelectItem value="vertex-pro">Gemini 2.5 Pro (From API)</SelectItem>
-                  </SelectContent>
-                </Select>
+              <div className="flex items-center gap-1.5">
+                <Badge variant="outline" className="text-[10px] h-5 px-1.5">Using: {getModelDef(blogTextModel)?.label || blogTextModel}</Badge>
               </div>
               <Button size="sm" onClick={handleBulkGenerate} disabled={isBulkGenerating || !bulkTopics.trim()}>
                 {isBulkGenerating ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Sparkles className="h-4 w-4 mr-1" />}

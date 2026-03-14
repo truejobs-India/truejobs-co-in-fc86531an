@@ -120,9 +120,9 @@ async function sha256Hex(data: string): Promise<string> {
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 async function awsSigV4Fetch(host: string, canonicalUri: string, body: string, region: string, service: string): Promise<Response> {
-  const ak = Deno.env.get('AWS_ACCESS_KEY_ID');
-  const sk = Deno.env.get('AWS_SECRET_ACCESS_KEY');
-  if (!ak || !sk) throw new Error('AWS credentials not configured');
+  const ak = Deno.env.get('API_NAME');
+  const sk = Deno.env.get('API_KEY');
+  if (!ak || !sk) throw new Error('AWS credentials not configured (API_NAME / API_KEY)');
 
   const now = new Date();
   const dateStamp = now.toISOString().replace(/[:-]|\.\d{3}/g, '').slice(0, 8);

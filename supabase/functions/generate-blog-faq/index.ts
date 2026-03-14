@@ -182,6 +182,10 @@ function callAI(model: string, prompt: string): Promise<string> {
     case 'groq': return callGroq(prompt);
     case 'claude': return callClaude(prompt);
     case 'mistral': return callMistral(prompt);
+    case 'vertex-flash':
+      return import('../_shared/vertex-ai.ts').then(m => m.callVertexGemini('gemini-2.5-flash', prompt, 60_000));
+    case 'vertex-pro':
+      return import('../_shared/vertex-ai.ts').then(m => m.callVertexGemini('gemini-2.5-pro', prompt, 120_000));
     default: return callGemini(prompt);
   }
 }

@@ -1250,7 +1250,7 @@ export function BlogPostEditor() {
               <div className="space-y-1">
                 <Label className="text-xs">AI Model</Label>
                 <Select value={bulkAiModel} onValueChange={setBulkAiModel}>
-                  <SelectTrigger className="w-[180px] h-8 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="w-[220px] h-8 text-xs"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="gemini">Gemini 2.5 Flash</SelectItem>
                     <SelectItem value="lovable-gemini">Lovable Gemini</SelectItem>
@@ -1258,6 +1258,8 @@ export function BlogPostEditor() {
                     <SelectItem value="openai">OpenAI GPT-4o</SelectItem>
                     <SelectItem value="mistral">Mistral 7B</SelectItem>
                     <SelectItem value="claude">Claude Sonnet 4.6</SelectItem>
+                    <SelectItem value="vertex-flash">Gemini 2.5 Flash (From API)</SelectItem>
+                    <SelectItem value="vertex-pro">Gemini 2.5 Pro (From API)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

@@ -1186,7 +1186,7 @@ serve(async (req) => {
     // ── Step 1: Call AI ──
     let enrichmentData: Record<string, unknown>;
     try {
-      const prompt = getPromptForType(pageType, currentContent!);
+      const prompt = getPromptForType(pageType, currentContent!, selectedModel);
       console.log(`[enrich] ${slug}: calling ${selectedModel}, prompt ${prompt.length} chars, timeout ${getTimeout(selectedModel)}ms`);
       enrichmentData = await callAI(selectedModel, prompt);
       console.log(`[enrich] ${slug}: AI returned successfully`);

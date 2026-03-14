@@ -193,14 +193,19 @@ If any check fails, fix it before returning.
 `;
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// MODEL-SPECIFIC TIMEOUTS
+// MODEL-SPECIFIC TIMEOUTS & CLAUDE CONFIG
 // ═══════════════════════════════════════════════════════════════════════════════
+
+const ANTHROPIC_MODEL = Deno.env.get('ANTHROPIC_MODEL') || 'claude-sonnet-4-6';
+const ANTHROPIC_TIMEOUT_MS = parseInt(Deno.env.get('ANTHROPIC_TIMEOUT_MS') || '140000', 10);
+const ANTHROPIC_MAX_TOKENS = parseInt(Deno.env.get('ANTHROPIC_MAX_TOKENS') || '3072', 10);
+const ANTHROPIC_RETRY_MAX_TOKENS = Math.min(ANTHROPIC_MAX_TOKENS, 2200);
 
 const TIMEOUTS: Record<string, number> = {
   'gemini-flash': 60_000,
   'gemini-pro': 60_000,
-  'claude-sonnet': 145_000,
-  'claude': 145_000,
+  'claude-sonnet': ANTHROPIC_TIMEOUT_MS,
+  'claude': ANTHROPIC_TIMEOUT_MS,
   'mistral': 120_000,
   'groq': 30_000,
   'lovable-gemini': 60_000,

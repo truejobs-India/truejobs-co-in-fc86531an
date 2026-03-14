@@ -208,13 +208,17 @@ function isAbortError(error: unknown): boolean {
 }
 
 // ── Gemini (Direct API) ──
-async function fetchGemini(prompt: string, model = 'gemini-2.5-flash'): Promise<string> {
+async function fetchGemini(
+  prompt: string,
+  model = 'gemini-2.5-flash',
+  timeoutMs = AI_TIMEOUT_MS,
+): Promise<string> {
   const apiKey = Deno.env.get('GEMINI_API_KEY');
   if (!apiKey) throw new Error('GEMINI_API_KEY not configured — please add it to secrets');
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetch(url, {

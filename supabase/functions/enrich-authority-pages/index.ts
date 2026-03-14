@@ -707,7 +707,14 @@ async function callAI(
   let rawText: string;
 
   switch (model) {
-...
+    case 'gemini-flash':
+    case 'gemini':
+      rawText = await fetchGemini(prompt, 'gemini-2.5-flash', timeout);
+      return { data: tryParseJSON(rawText) };
+    case 'gemini-pro':
+      rawText = await fetchGemini(prompt, 'gemini-2.5-pro', timeout);
+      return { data: tryParseJSON(rawText) };
+
     case 'claude-sonnet':
     case 'claude': {
       // ── Claude with automatic Gemini fallback ──

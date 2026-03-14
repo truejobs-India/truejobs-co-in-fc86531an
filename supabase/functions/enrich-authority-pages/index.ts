@@ -83,6 +83,8 @@ FINAL SECTION — FAQ with schema.org markup (FAQPage, Question, Answer itemtype
 const ANTHROPIC_MODEL = Deno.env.get('ANTHROPIC_MODEL') || 'claude-sonnet-4-6';
 const ANTHROPIC_DEFAULT_MAX_TOKENS = 4096;
 const ANTHROPIC_RETRY_MAX_TOKENS = 6144;
+// Hard timeout per Claude SDK request to avoid long-hanging calls that break client fetches.
+const CLAUDE_SDK_TIMEOUT_MS = parseInt(Deno.env.get('CLAUDE_SDK_TIMEOUT_MS') || '65000', 10);
 
 const TIMEOUTS: Record<string, number> = {
   'gemini-flash': 60_000,

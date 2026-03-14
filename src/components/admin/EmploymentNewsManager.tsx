@@ -624,15 +624,16 @@ export function EmploymentNewsManager() {
       ) : (
         <>
           {/* Stats */}
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
             {[
               { label: 'Total', value: stats.total, color: 'text-foreground' },
               { label: 'Pending', value: stats.pending, color: 'text-muted-foreground' },
               { label: 'Enriched', value: stats.enriched, color: 'text-blue-600' },
               { label: 'Published', value: stats.published, color: 'text-green-600' },
               { label: 'Rejected', value: stats.rejected, color: 'text-red-600' },
+              { label: 'Failed', value: stats.failed, color: 'text-orange-600' },
             ].map(s => (
-              <Card key={s.label}>
+              <Card key={s.label} className={s.label === 'Failed' && stats.failed > 0 ? 'border-orange-300 dark:border-orange-700' : ''}>
                 <CardContent className="p-3 text-center">
                   <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
                   <p className="text-xs text-muted-foreground">{s.label}</p>

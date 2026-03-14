@@ -406,3 +406,11 @@ function AdminDashboardInner() {
     </Layout>
   );
 }
+
+export default function AdminDashboard() {
+  return (
+    <AdminMessagesProvider>
+      <AdminDashboardInner />
+    </AdminMessagesProvider>
+  );
+}

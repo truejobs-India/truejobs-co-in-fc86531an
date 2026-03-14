@@ -192,6 +192,14 @@ function AdminDashboardInner() {
   return (
     <Layout noAds>
       <div className="container mx-auto py-8 px-4">
+        {/* Persistent Admin Messages */}
+        <AdminMessageLog
+          messages={messages}
+          onDismiss={dismissMessage}
+          onClearAll={clearAll}
+          onToggleExpand={toggleExpand}
+        />
+
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
           <div>
             <h1 className="text-3xl font-bold">Admin Dashboard</h1>

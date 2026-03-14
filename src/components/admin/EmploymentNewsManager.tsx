@@ -491,6 +491,41 @@ export function EmploymentNewsManager() {
     }
   };
 
+  const retryFailedJobs = async () => {
+    setIsRetryingFailed(true);
+    try {
+      const { data: failedJobs, error: fetchErr } = await supabase
+        .from('employment_news_jobs')
+        .select('id')
+        .eq('status', 'enrichment_failed');
+
+      if (fetchErr) throw fetchErr;
+      if (!failedJobs || failedJobs.length === 0) {
+        toast({ title: 'No failed jobs', description: 'There are no failed jobs to retry.' });
+        setIsRetryingFailed(false);
+        return;
+      }
+
+      // Reset failed jobs to pending with cleared error and attempts
+      const ids = failedJobs.map(j => j.id);
+      const { error: updateErr } = await supabase
+        .from('employment_news_jobs')
+        .update({ status: 'pending', enrichment_error: null, enrichment_attempts: 0 } as any)
+        .in('id', ids);
+
+      if (updateErr) throw updateErr;
+
+      toast({ title: 'Reset', description: `${ids.length} failed job(s) reset to pending. Run enrichment again.` });
+      fetchJobs();
+      fetchStats();
+    } catch (err) {
+      console.error('Retry failed jobs error:', err);
+      toast({ title: 'Error', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
+    } finally {
+      setIsRetryingFailed(false);
+    }
+  };
+
   const saveEdit = async () => {
     if (!editJob) return;
     const errors: Record<string, string> = {};

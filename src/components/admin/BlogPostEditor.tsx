@@ -822,6 +822,7 @@ export function BlogPostEditor() {
           title: enrichDialogPost.title, content: enrichDialogPost.content,
           action: 'enrich-article', targetWordCount: enrichWordLimit,
           category: enrichDialogPost.category, tags: enrichDialogPost.tags,
+          aiModel: blogTextModel,
         },
       });
       if (error) throw new Error(error.message);

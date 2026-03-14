@@ -708,55 +708,9 @@ async function callAI(
 
     case 'claude-sonnet':
     case 'claude': {
-      // ── Claude with automatic Gemini fallback ──
-      let claudeError: string = '';
-      let claudeDiag: ClaudeDiagnostics | undefined;
-
-      try {
-        const result = await callClaudeWithRetry(prompt, slug, startedAtMs);
-        return { data: result.data, diagnostics: result.diagnostics as unknown as Record<string, unknown> };
-      } catch (err) {
-        claudeError = err instanceof Error ? err.message : String(err);
-        claudeDiag = (err as any)?.diagnostics;
-        console.error(`[claude-fallback] ${slug}: Claude FAILED — ${claudeError}. Falling back to Gemini 2.5 Flash...`);
-      }
-
-      // ── Gemini fallback ──
-      try {
-        // Re-build prompt without Claude-specific constraints (use base prompt)
-        const geminiPrompt = prompt.replace(/=== CRITICAL OUTPUT CONSTRAINTS ===[\s\S]*$/, '') +
-          '\n\nReturn ONLY the JSON object matching the schema. No commentary, no markdown fences.';
-
-        const fallbackTimeoutMs = computeFallbackTimeoutMs(startedAtMs);
-        console.log(`[gemini-fallback] ${slug}: Starting Gemini fallback, prompt ${geminiPrompt.length} chars, timeout=${fallbackTimeoutMs}ms`);
-        rawText = await fetchGemini(geminiPrompt, 'gemini-2.5-flash', fallbackTimeoutMs);
-        const data = tryParseJSON(rawText);
-
-        const fallbackDiag: Record<string, unknown> = {
-          ...(claudeDiag || {}),
-          fallbackTriggered: true,
-          fallbackModel: 'gemini-2.5-flash',
-          claudeFailureReason: claudeError,
-          fallbackSuccess: true,
-        };
-
-        console.log(`[gemini-fallback] ${slug}: Gemini fallback SUCCEEDED. Fields=${Object.keys(data).length}`);
-        return { data, diagnostics: fallbackDiag };
-      } catch (geminiErr) {
-        const geminiError = geminiErr instanceof Error ? geminiErr.message : String(geminiErr);
-        console.error(`[gemini-fallback] ${slug}: Gemini fallback also FAILED — ${geminiError}`);
-
-        // Both failed — throw with combined diagnostics
-        const combinedErr = new Error(`Claude failed: ${claudeError} | Gemini fallback failed: ${geminiError}`);
-        (combinedErr as any).diagnostics = {
-          ...(claudeDiag || {}),
-          fallbackTriggered: true,
-          fallbackModel: 'gemini-2.5-flash',
-          fallbackSuccess: false,
-          fallbackError: geminiError,
-        };
-        throw combinedErr;
-      }
+      // ── Claude only — no automatic fallback ──
+      const result = await callClaudeWithRetry(prompt, slug, startedAtMs);
+      return { data: result.data, diagnostics: result.diagnostics as unknown as Record<string, unknown> };
     }
 
     case 'groq':

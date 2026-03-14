@@ -130,7 +130,8 @@ export function EmploymentNewsManager() {
   const [totalCount, setTotalCount] = useState(0);
 
   // Stats
-  const [stats, setStats] = useState({ total: 0, pending: 0, enriched: 0, published: 0, rejected: 0 });
+  const [stats, setStats] = useState({ total: 0, pending: 0, enriched: 0, published: 0, rejected: 0, failed: 0 });
+  const [isRetryingFailed, setIsRetryingFailed] = useState(false);
 
   // Modals
   const [viewJob, setViewJob] = useState<EmpNewsJob | null>(null);

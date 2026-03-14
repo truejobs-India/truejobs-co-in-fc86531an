@@ -146,23 +146,35 @@ Return a JSON object with these fields:
 Format: {"title": "...", "slug": "...", "content": "...", "metaTitle": "...", "metaDescription": "...", "excerpt": "...", "category": "...", "tags": [...]}
 No markdown code blocks. Return ONLY the JSON object.`;
 
-    const resp = await fetch(`${GEMINI_URL}?key=${geminiApiKey}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { maxOutputTokens: 32000, temperature: 0.5 },
-      }),
-    });
-    if (!resp.ok) throw new Error(`Gemini API error ${resp.status}`);
-    const data = await resp.json();
-    const candidate = data?.candidates?.[0];
-    const finishReason = candidate?.finishReason;
-    if (finishReason === 'MAX_TOKENS') {
-      console.error('Gemini response truncated (MAX_TOKENS)');
-      return new Response(JSON.stringify({ error: 'AI response was truncated. Try a shorter target word count.' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    let raw: string;
+    const useModel = aiModel || 'gemini';
+
+    if (useModel === 'claude') {
+      // Use Claude Sonnet 4.6 via AWS Bedrock
+      raw = await callClaudeAI(prompt);
+    } else {
+      // Use Gemini (default)
+      const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
+      if (!geminiApiKey) {
+        return new Response(JSON.stringify({ error: 'GEMINI_API_KEY not configured' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+      const resp = await fetch(`${GEMINI_URL}?key=${geminiApiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { maxOutputTokens: 32000, temperature: 0.5 },
+        }),
+      });
+      if (!resp.ok) throw new Error(`Gemini API error ${resp.status}`);
+      const data = await resp.json();
+      const candidate = data?.candidates?.[0];
+      const finishReason = candidate?.finishReason;
+      if (finishReason === 'MAX_TOKENS') {
+        return new Response(JSON.stringify({ error: 'AI response was truncated. Try a shorter target word count.' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+      raw = candidate?.content?.parts?.[0]?.text || '';
     }
-    const raw = candidate?.content?.parts?.[0]?.text || '';
     const cleaned = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
 
     let parsed: any;

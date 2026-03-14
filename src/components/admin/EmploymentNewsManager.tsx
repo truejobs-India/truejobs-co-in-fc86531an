@@ -159,12 +159,13 @@ export function EmploymentNewsManager() {
 
   // Load data
   const fetchStats = useCallback(async () => {
-    const [total, pending, enriched, published, rejected] = await Promise.all([
+    const [total, pending, enriched, published, rejected, failed] = await Promise.all([
       supabase.from('employment_news_jobs').select('id', { count: 'exact', head: true }),
       supabase.from('employment_news_jobs').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
       supabase.from('employment_news_jobs').select('id', { count: 'exact', head: true }).eq('status', 'enriched'),
       supabase.from('employment_news_jobs').select('id', { count: 'exact', head: true }).eq('status', 'published'),
       supabase.from('employment_news_jobs').select('id', { count: 'exact', head: true }).eq('status', 'rejected'),
+      supabase.from('employment_news_jobs').select('id', { count: 'exact', head: true }).eq('status', 'enrichment_failed'),
     ]);
     setStats({
       total: total.count || 0,
@@ -172,6 +173,7 @@ export function EmploymentNewsManager() {
       enriched: enriched.count || 0,
       published: published.count || 0,
       rejected: rejected.count || 0,
+      failed: failed.count || 0,
     });
   }, []);
 

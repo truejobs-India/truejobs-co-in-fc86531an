@@ -102,7 +102,7 @@ const AI_MODELS = [
 const MODEL_BATCH_LIMITS: Record<string, number> = {
   'gemini-flash': 8,
   'gemini-pro': 5,
-  'claude-sonnet': 3,
+  'claude-sonnet': 2,
   'mistral': 4,
   'lovable-gemini': 5,
   'gpt5': 3,
@@ -580,6 +580,14 @@ export function ContentEnricher() {
               )}
             </span>
           </div>
+
+          {/* Claude quality note */}
+          {(aiModel === 'claude-sonnet' || aiModel === 'claude') && (
+            <div className="flex items-center gap-2 text-xs p-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-700">
+              <Info className="h-3 w-3 shrink-0" />
+              <span>Claude Sonnet produces highest quality but processes 1–2 pages per minute. For bulk enrichment, Gemini 2.5 Flash is faster.</span>
+            </div>
+          )}
 
           {/* Enrichment progress */}
           {enrichProgress && (

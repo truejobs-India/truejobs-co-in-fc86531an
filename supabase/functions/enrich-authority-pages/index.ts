@@ -193,12 +193,59 @@ If any check fails, fix it before returning.
 `;
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// COMPRESSED CLAUDE PROMPT (same rules, concise instructions — under 6000 chars)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const CLAUDE_AUTHORITY_PROMPT = `You are TrueJobs.co.in's Chief Content Strategist. Create definitive, authoritative government job content satisfying: job seekers needing accurate info, Google's E-E-A-T ranking signals, and AdSense content policies.
+
+=== E-E-A-T COMPLIANCE ===
+EXPERIENCE: Write as someone who navigated India's govt exam system. Use "Most candidates make the mistake of...", "Based on previous year trends..." — no generic advice.
+EXPERTISE: Include exact pay levels (7th CPC), category-wise age relaxation, detailed exam patterns with marks/time/sections, cut-off trends.
+AUTHORITATIVENESS: Reference official sources (ssc.gov.in, upsc.gov.in, ibps.in, rrbcdg.gov.in). Use exact terminology from official rules.
+TRUSTWORTHINESS: Never fabricate data. Use "As per the latest official notification" when uncertain. Add disclaimer at end.
+
+=== CONTENT RULES ===
+- Minimum words: Notification 2000, Syllabus 2500, Exam Pattern 2000, PYP 1800, State 2500
+- Zero filler. BANNED: "In today's competitive world", "golden opportunity", "As we all know", "Let's dive in", "Needless to say"
+- Specific data always: "Pay Level 6: ₹35,400-₹1,12,400 + DA (50%) + HRA ≈ ₹45,000-₹55,000 in-hand" NOT "attractive salary"
+- Use tables for: vacancy breakdowns, salary, exam patterns, dates, cut-offs, eligibility, weightage
+- Bold: dates, salary figures, age limits, vacancy numbers, deadlines, URLs
+- Max 3 sentences per paragraph. Use proper H2→H3→H4 hierarchy
+- Include Hindi transliterations for key terms: "Staff Selection Commission (कर्मचारी चयन आयोग)"
+- English content targeting English search terms
+- Reference TrueJobs pages for internal linking (3-5 related slugs)
+
+=== SEO ===
+- Primary keyword in: first 100 words, 3+ H2 headings, meta title, meta description
+- Featured snippet: clear 40-60 word answer within first 200 words
+- Question-based H2 headings where possible
+
+=== UNIVERSAL SECTIONS (always include) ===
+FIRST — Quick Overview Table:
+<div class="authority-overview-box" style="background:#f0f9ff;border-left:4px solid #0369a1;padding:20px;margin-bottom:24px;border-radius:8px;">
+<h2>📋 [Name] — Quick Overview</h2>
+<table style="width:100%;border-collapse:collapse;">
+Rows for: Conducting Body, Exam/Post Name, Vacancies, Eligibility, Age Limit, Salary, Application Mode, Official Website (each with padding:8px and border-bottom)
+</table></div>
+
+LAST — FAQ with schema markup:
+<div class="faq-section" itemscope itemtype="https://schema.org/FAQPage">
+FAQ items with itemscope/itemprop for Question and Answer schema.
+</div>
+FAQ counts: Notification 6-8, Syllabus 5-7, Exam Pattern 5-7, PYP 4-6, State 6-8.
+
+=== OUTPUT ===
+Return ONLY valid JSON. Include: overview, faq, meta_title (<60 chars), meta_description (<155 chars), internal_links, primary_keyword, secondary_keywords (5-8).
+
+End content with: "Note: All information is based on the latest available official notification. Candidates are advised to visit the official website for the most current details."
+`;
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // MULTI-MODEL AI DISPATCHER
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const AI_TIMEOUT_MS = 120_000; // default timeout for fast/medium models
-const AI_TIMEOUT_MS_SLOW = 90_000; // cap slower models early so fallback can still complete within runtime budget
-
+const AI_TIMEOUT_MS_CLAUDE = 75_000; // Claude is slower but smarter — 75s per call
 const FUNCTION_TIME_BUDGET_MS = 140_000; // baseline guard before 150s platform limit
 
 function isAbortError(error: unknown): boolean {
@@ -271,7 +318,7 @@ async function callClaudeRaw(
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured — please add it to secrets');
 
-  const timeoutMs = options?.timeoutMs ?? AI_TIMEOUT_MS_SLOW;
+  const timeoutMs = options?.timeoutMs ?? AI_TIMEOUT_MS_CLAUDE;
   const maxTokens = options?.maxTokens ?? 12288;
 
   const controller = new AbortController();
@@ -515,7 +562,7 @@ async function callAI(model: string, prompt: string): Promise<Record<string, unk
       break;
     case 'claude-sonnet':
     case 'claude':
-      rawText = await callClaudeRaw(prompt, { timeoutMs: AI_TIMEOUT_MS_SLOW, maxTokens: 8192 });
+      rawText = await callClaudeRaw(prompt, { timeoutMs: AI_TIMEOUT_MS_CLAUDE, maxTokens: 8192 });
       break;
     case 'mistral':
       rawText = await callMistralRaw(prompt);
@@ -762,7 +809,7 @@ OUTPUT FORMAT — Return valid JSON:
 Return ONLY the JSON object.`;
 }
 
-function getPromptForType(pageType: string, page: PageContent): string {
+function getPromptForType(pageType: string, page: PageContent, model = ''): string {
   let typePrompt: string;
   switch (pageType) {
     case 'notification': typePrompt = buildNotificationPrompt(page); break;
@@ -772,8 +819,10 @@ function getPromptForType(pageType: string, page: PageContent): string {
     case 'state': typePrompt = buildStatePrompt(page); break;
     default: typePrompt = buildNotificationPrompt(page);
   }
-  // Prepend master prompt before type-specific instructions
-  return MASTER_AUTHORITY_PROMPT + '\n\n' + typePrompt;
+  // Use compressed prompt for Claude (smart enough to follow concise instructions)
+  const isClaude = model === 'claude-sonnet' || model === 'claude';
+  const masterPrompt = isClaude ? CLAUDE_AUTHORITY_PROMPT : MASTER_AUTHORITY_PROMPT;
+  return masterPrompt + '\n\n' + typePrompt;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1018,7 +1067,7 @@ serve(async (req) => {
       // ── Step 1: Call AI via dispatcher ──
       let enrichmentData: Record<string, unknown>;
       try {
-        const prompt = getPromptForType(pageType, pageInfo);
+        const prompt = getPromptForType(pageType, pageInfo, selectedModel);
         console.log(`[enrich] ${slug}: calling ${selectedModel}, prompt ${prompt.length} chars`);
         enrichmentData = await callAI(selectedModel, prompt);
         console.log(`[enrich] ${slug}: AI returned successfully`);
@@ -1096,7 +1145,8 @@ serve(async (req) => {
       }
     }
 
-    const CONCURRENCY = 3;
+    // Claude is slower — limit concurrency to 2 so each call gets full 75s budget
+    const CONCURRENCY = (selectedModel === 'claude-sonnet' || selectedModel === 'claude') ? 2 : 3;
 
     for (let i = 0; i < slugs.length; i += CONCURRENCY) {
       // ── Time budget guard ──

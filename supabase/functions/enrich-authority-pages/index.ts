@@ -1075,6 +1075,24 @@ serve(async (req) => {
     const CONCURRENCY = 3;
 
     for (let i = 0; i < slugs.length; i += CONCURRENCY) {
+      // ── Time budget guard ──
+      const elapsed = Date.now() - fnStart;
+      if (elapsed > FUNCTION_TIME_BUDGET_MS) {
+        console.warn(`[enrich-authority-pages] Time budget exceeded (${elapsed}ms) — skipping remaining ${slugs.length - i} slugs`);
+        for (let j = i; j < slugs.length; j++) {
+          results[j] = {
+            slug: slugs[j],
+            status: 'skipped',
+            sectionsAdded: [],
+            qualityScore: {},
+            flags: [],
+            totalWords: 0,
+            failureReason: 'Skipped — function time budget exceeded. Try fewer pages per batch or a faster model.',
+          };
+        }
+        break;
+      }
+
       const indices = Array.from(
         { length: Math.min(CONCURRENCY, slugs.length - i) },
         (_, offset) => i + offset
@@ -1083,15 +1101,17 @@ serve(async (req) => {
       if (i + CONCURRENCY < slugs.length) await delay(1000);
     }
 
+    const completedResults = results.filter(Boolean);
     const report = {
       batchSize: slugs.length,
       model: selectedModel,
-      pagesEnriched: results.filter(r => r.status === 'success' || r.status === 'flagged').length,
-      pagesFailed: results.filter(r => r.status === 'failed').length,
-      totalSectionsAdded: results.reduce((sum, r) => sum + r.sectionsAdded.length, 0),
-      averageWordCount: Math.round(results.reduce((sum, r) => sum + r.totalWords, 0) / results.length),
-      flaggedPages: results.filter(r => r.flags.length > 0).map(r => r.slug),
-      results,
+      pagesEnriched: completedResults.filter(r => r.status === 'success' || r.status === 'flagged').length,
+      pagesFailed: completedResults.filter(r => r.status === 'failed').length,
+      pagesSkipped: completedResults.filter(r => r.status === 'skipped').length,
+      totalSectionsAdded: completedResults.reduce((sum, r) => sum + r.sectionsAdded.length, 0),
+      averageWordCount: Math.round(completedResults.reduce((sum, r) => sum + r.totalWords, 0) / (completedResults.length || 1)),
+      flaggedPages: completedResults.filter(r => r.flags.length > 0).map(r => r.slug),
+      results: completedResults,
     };
 
     return new Response(JSON.stringify(report), {

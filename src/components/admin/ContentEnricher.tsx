@@ -602,6 +602,15 @@ export function ContentEnricher() {
                   <Sparkles className="h-4 w-4 mr-2" />
                   Enrich All Pending ({pendingCount})
                 </Button>
+
+                <Button
+                  variant="outline"
+                  disabled={publishableCount === 0 || isPublishingAll}
+                  onClick={handlePublishAllEnriched}
+                >
+                  {isPublishingAll ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
+                  Publish All Enriched ({publishableCount})
+                </Button>
               </>
             ) : (
               <Button variant="destructive" onClick={handleStopEnrichment}>

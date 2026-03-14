@@ -28,6 +28,69 @@ async function verifyAdmin(req: Request): Promise<{ userId: string } | Response>
 const GEMINI_MODEL = 'gemini-2.5-flash';
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
+// ── AWS Bedrock Claude Support ──
+const CLAUDE_REGION = 'ap-south-1';
+const CLAUDE_MODEL_ID = 'anthropic.claude-sonnet-4-6';
+const CLAUDE_URL = `https://bedrock-runtime.${CLAUDE_REGION}.amazonaws.com/model/${CLAUDE_MODEL_ID}/invoke`;
+
+async function hmacSha256B(key: ArrayBuffer | Uint8Array, data: string): Promise<ArrayBuffer> {
+  const enc = new TextEncoder();
+  const ck = await crypto.subtle.importKey('raw', key instanceof Uint8Array ? key : new Uint8Array(key), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  return crypto.subtle.sign('HMAC', ck, enc.encode(data));
+}
+async function sha256Hex(data: string): Promise<string> {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(data));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function callClaudeAI(prompt: string): Promise<string> {
+  const ak = Deno.env.get('AWS_ACCESS_KEY_ID');
+  const sk = Deno.env.get('AWS_SECRET_ACCESS_KEY');
+  if (!ak || !sk) throw new Error('AWS credentials not configured');
+
+  const host = `bedrock-runtime.${CLAUDE_REGION}.amazonaws.com`;
+  const canonicalUri = `/model/${CLAUDE_MODEL_ID}/invoke`;
+  const body = JSON.stringify({
+    anthropic_version: 'bedrock-2023-05-31',
+    messages: [{ role: 'user', content: prompt }],
+    max_tokens: 8192,
+    temperature: 0.5,
+  });
+
+  const now = new Date();
+  const dateStamp = now.toISOString().replace(/[:-]|\.\d{3}/g, '').slice(0, 8);
+  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '').slice(0, 15) + 'Z';
+  const credentialScope = `${dateStamp}/${CLAUDE_REGION}/bedrock/aws4_request`;
+  const payloadHash = await sha256Hex(body);
+  const canonicalHeaders = `content-type:application/json\nhost:${host}\nx-amz-date:${amzDate}\n`;
+  const signedHeaders = 'content-type;host;x-amz-date';
+  const canonicalRequest = `POST\n${canonicalUri}\n\n${canonicalHeaders}\n${signedHeaders}\n${payloadHash}`;
+  const stringToSign = `AWS4-HMAC-SHA256\n${amzDate}\n${credentialScope}\n${await sha256Hex(canonicalRequest)}`;
+
+  const enc = new TextEncoder();
+  let sigKey = await hmacSha256B(enc.encode(`AWS4${sk}`), dateStamp);
+  sigKey = await hmacSha256B(sigKey, CLAUDE_REGION);
+  sigKey = await hmacSha256B(sigKey, 'bedrock');
+  sigKey = await hmacSha256B(sigKey, 'aws4_request');
+  const sig = Array.from(new Uint8Array(await hmacSha256B(sigKey, stringToSign))).map(b => b.toString(16).padStart(2, '0')).join('');
+
+  const resp = await fetch(`https://${host}${canonicalUri}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Amz-Date': amzDate,
+      Authorization: `AWS4-HMAC-SHA256 Credential=${ak}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${sig}`,
+    },
+    body,
+  });
+  if (!resp.ok) {
+    const errText = await resp.text();
+    throw new Error(`Claude Bedrock ${resp.status}: ${errText}`);
+  }
+  const data = await resp.json();
+  return data?.content?.[0]?.text || '';
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 

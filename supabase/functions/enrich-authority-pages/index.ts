@@ -208,7 +208,7 @@ async function fetchGemini(prompt: string, model = 'gemini-2.5-flash'): Promise<
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), AI_TIMEOUT_MS_DEFAULT);
+  const timer = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
 
   try {
     const response = await fetch(url, {

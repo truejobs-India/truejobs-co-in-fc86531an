@@ -142,7 +142,7 @@ async function awsSigV4Fetch(host: string, rawPath: string, body: string, region
 }
 
 async function callClaude(prompt: string): Promise<string> {
-  const inferenceProfileId = 'anthropic.claude-sonnet-4-6';
+  const inferenceProfileId = 'apac.anthropic.claude-sonnet-4-6';
   const region = 'ap-south-1';
   const host = `bedrock-runtime.${region}.amazonaws.com`;
   const body = JSON.stringify({

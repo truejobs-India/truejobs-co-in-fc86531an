@@ -86,6 +86,19 @@ const ANTHROPIC_MODEL = Deno.env.get('ANTHROPIC_MODEL') || 'claude-sonnet-4-6';
 const ANTHROPIC_TIMEOUT_MS = parseInt(Deno.env.get('ANTHROPIC_TIMEOUT_MS') || '140000', 10);
 const ANTHROPIC_MAX_TOKENS = parseInt(Deno.env.get('ANTHROPIC_MAX_TOKENS') || '4096', 10);
 const ANTHROPIC_RETRY_MAX_TOKENS = 6144;
+const ANTHROPIC_API_VERSION = '2023-06-01';
+
+function getClaudeHeaders(apiKey: string) {
+  return {
+    'Content-Type': 'application/json',
+    'x-api-key': apiKey,
+    'anthropic-version': ANTHROPIC_API_VERSION,
+  };
+}
+
+function logClaudePreRequest(label: string, opts: { model: string; maxTokens: number; structured: boolean; promptChars?: number }) {
+  console.log(`[claude-${label}] PRE-REQUEST: anthropic-version=${ANTHROPIC_API_VERSION} model=${opts.model} max_tokens=${opts.maxTokens} structured=${opts.structured}${opts.promptChars ? ` prompt_chars=${opts.promptChars}` : ''}`);
+}
 
 const TIMEOUTS: Record<string, number> = {
   'gemini-flash': 60_000,
@@ -240,15 +253,12 @@ async function claudeProbe(): Promise<void> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 12_000);
   const probeStart = Date.now();
+  logClaudePreRequest('probe', { model: ANTHROPIC_MODEL, maxTokens: 8, structured: false });
 
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
+      headers: getClaudeHeaders(apiKey),
       signal: controller.signal,
       body: JSON.stringify({
         model: ANTHROPIC_MODEL,
@@ -296,7 +306,8 @@ async function callClaudeStreaming(
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   const reqStart = Date.now();
 
-  console.log(`[claude-stream] START model=${ANTHROPIC_MODEL} max_tokens=${maxTokens} timeout=${timeoutMs}ms prompt_chars=${prompt.length} structured=${useStructuredOutput}`);
+  logClaudePreRequest('stream', { model: ANTHROPIC_MODEL, maxTokens, structured: useStructuredOutput, promptChars: prompt.length });
+  console.log(`[claude-stream] START timeout=${timeoutMs}ms`);
 
   try {
     // deno-lint-ignore no-explicit-any
@@ -320,11 +331,7 @@ async function callClaudeStreaming(
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2025-01-01',
-      },
+      headers: getClaudeHeaders(apiKey),
       signal: controller.signal,
       body: JSON.stringify(requestBody),
     });

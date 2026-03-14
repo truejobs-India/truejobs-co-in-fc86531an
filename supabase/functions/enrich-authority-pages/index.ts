@@ -1000,9 +1000,12 @@ serve(async (req) => {
       let enrichmentData: Record<string, unknown>;
       try {
         const prompt = getPromptForType(pageType, pageInfo);
+        console.log(`[enrich] ${slug}: calling ${selectedModel}, prompt ${prompt.length} chars`);
         enrichmentData = await callAI(selectedModel, prompt);
+        console.log(`[enrich] ${slug}: AI returned successfully`);
       } catch (aiErr) {
         const reason = `AI_ERROR (${selectedModel}): ${aiErr instanceof Error ? aiErr.message : 'Unknown'}`;
+        console.error(`[enrich] ${slug}: ${reason}`);
         await insertFailedRow(svc, slug, pageType, reason, existingWordCount);
         results[index] = {
           slug, status: 'failed', sectionsAdded: [], qualityScore: {},

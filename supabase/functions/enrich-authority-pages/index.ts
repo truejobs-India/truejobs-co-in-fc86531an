@@ -203,7 +203,7 @@ function getAiTimeout(model: string): number {
   if (model.includes('claude') || model.includes('gpt')) return AI_TIMEOUT_MS_SLOW;
   return AI_TIMEOUT_MS_DEFAULT;
 }
-const FUNCTION_TIME_BUDGET_MS = 120_000; // bail before 150s platform limit
+const FUNCTION_TIME_BUDGET_MS = 140_000; // bail before 150s platform limit
 
 // ── Gemini (Direct API) ──
 async function fetchGemini(prompt: string, model = 'gemini-2.5-flash'): Promise<string> {

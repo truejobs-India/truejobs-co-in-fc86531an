@@ -236,7 +236,7 @@ async function callClaudeSDK(
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured — please add it to secrets');
 
-  const client = new Anthropic({ apiKey, timeout: requestTimeoutMs });
+  const client = new Anthropic({ apiKey, timeout: requestTimeoutMs, maxRetries: 0 });
   const diag = createDiagnostics(slug, prompt.length);
   diag.maxTokens = maxTokens;
 

@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Download, FileSpreadsheet, Loader2, CheckCircle, Globe } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
+import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
 import { INSURANCE_CITIES, INSURANCE_STATES } from '@/pages/jobs/cityData';
 import { NEAR_ME_PAGES } from '@/pages/jobs/nearMeData';
 import { CITY_JOBS_DATA } from '@/pages/seo/cityJobsData';

@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Loader2, Globe, CheckCircle, AlertCircle, RefreshCw, RotateCcw, Clock, XCircle } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
+import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
 import { supabase } from '@/integrations/supabase/client';
 
 export interface PageData {

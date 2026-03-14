@@ -11,7 +11,7 @@ import { Progress } from '@/components/ui/progress';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { CheckCircle, XCircle, Loader2, AlertTriangle, Copy, Sparkles } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
+import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
 
 interface BulkPublishModalProps {
   open: boolean;

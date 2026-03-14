@@ -3,7 +3,7 @@ import { UploadCloud, Loader2, CheckCircle, XCircle } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { parseArticleFile, ParsedArticle } from '@/lib/blogParser';
 import { supabase } from '@/integrations/supabase/client';
-import { useToast } from '@/hooks/use-toast';
+import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
 
 interface UploadZoneProps {
   onArticlesParsed: (articles: ParsedArticle[]) => void;

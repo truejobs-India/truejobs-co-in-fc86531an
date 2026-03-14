@@ -23,7 +23,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { supabase } from '@/integrations/supabase/client';
-import { useToast } from '@/hooks/use-toast';
+import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
 import { Image, Upload, X, CalendarIcon, RefreshCw, CheckCircle, Loader2, ExternalLink, Plus, ChevronDown } from 'lucide-react';
 import { format } from 'date-fns';
 

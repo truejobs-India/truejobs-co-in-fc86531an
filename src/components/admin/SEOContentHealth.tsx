@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertTriangle, ChevronDown, ChevronRight, Activity, XCircle } from 'lucide-react';
-import { toast } from '@/hooks/use-toast';
+import { useAdminToast } from '@/contexts/AdminMessagesContext';
 
 interface HealthIssue {
   slug: string;
@@ -14,6 +14,7 @@ interface HealthIssue {
 }
 
 export function SEOContentHealth() {
+  const { toast } = useAdminToast();
   const [issues, setIssues] = useState<HealthIssue[]>([]);
   const [isScanning, setIsScanning] = useState(false);
   const [hasScanned, setHasScanned] = useState(false);

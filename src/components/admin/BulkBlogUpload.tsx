@@ -7,7 +7,7 @@ import { BulkPublishModal } from './bulk-blog/BulkPublishModal';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
-import { useToast } from '@/hooks/use-toast';
+import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { CheckSquare, Rocket, Save, Download, Trash2, FileText, Loader2, ShieldAlert, ShieldCheck, AlertTriangle } from 'lucide-react';

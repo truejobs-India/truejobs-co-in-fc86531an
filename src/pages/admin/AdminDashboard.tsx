@@ -4,7 +4,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { useToast } from '@/hooks/use-toast';
+import { AdminMessagesProvider, useAdminToast, useAdminMessagesContext } from '@/contexts/AdminMessagesContext';
+import { AdminMessageLog } from '@/components/admin/AdminMessageLog';
 import { supabase } from '@/integrations/supabase/client';
 import { 
   Users, 
@@ -67,8 +68,9 @@ interface DashboardStats {
   totalApplications: number;
 }
 
-export default function AdminDashboard() {
-  const { toast } = useToast();
+function AdminDashboardInner() {
+  const { toast } = useAdminToast();
+  const { messages, dismissMessage, clearAll, toggleExpand } = useAdminMessagesContext();
   const navigate = useNavigate();
   const [stats, setStats] = useState<DashboardStats>({
     totalUsers: 0,
@@ -190,6 +192,14 @@ export default function AdminDashboard() {
   return (
     <Layout noAds>
       <div className="container mx-auto py-8 px-4">
+        {/* Persistent Admin Messages */}
+        <AdminMessageLog
+          messages={messages}
+          onDismiss={dismissMessage}
+          onClearAll={clearAll}
+          onToggleExpand={toggleExpand}
+        />
+
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
           <div>
             <h1 className="text-3xl font-bold">Admin Dashboard</h1>
@@ -394,5 +404,13 @@ export default function AdminDashboard() {
         ) : null}
       </div>
     </Layout>
+  );
+}
+
+export default function AdminDashboard() {
+  return (
+    <AdminMessagesProvider>
+      <AdminDashboardInner />
+    </AdminMessagesProvider>
   );
 }

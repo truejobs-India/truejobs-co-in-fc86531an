@@ -132,16 +132,8 @@ export function ContentEnricher() {
   const [bgEnriching, setBgEnriching] = useState(false);
   const [bgProgress, setBgProgress] = useState<{ done: number; total: number; failed: number } | null>(null);
   const [aiModel, setAiModel] = useState<string>('gemini-flash');
-  const [messages, setMessages] = useState<PersistentMessage[]>([]);
+  const { messages, addMessage, dismissMessage, clearAll, toggleExpand } = useAdminMessagesContext();
   const [enrichProgress, setEnrichProgress] = useState<string | null>(null);
-
-  const addMessage = (type: PersistentMessage['type'], title: string, description: string) => {
-    setMessages(prev => [{ id: crypto.randomUUID(), type, title, description, timestamp: new Date() }, ...prev]);
-  };
-
-  const dismissMessage = (id: string) => {
-    setMessages(prev => prev.filter(m => m.id !== id));
-  };
 
   useEffect(() => { loadDrafts(); }, []);
 

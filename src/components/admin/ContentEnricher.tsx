@@ -102,7 +102,7 @@ const AI_MODELS = [
 const MODEL_BATCH_LIMITS: Record<string, number> = {
   'gemini-flash': 8,
   'gemini-pro': 5,
-  'claude-sonnet': 3,
+  'claude-sonnet': 2,
   'mistral': 4,
   'lovable-gemini': 5,
   'gpt5': 3,

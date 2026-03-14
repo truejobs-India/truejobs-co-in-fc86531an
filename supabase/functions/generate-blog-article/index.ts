@@ -88,7 +88,7 @@ No markdown code blocks. Return ONLY the JSON object.`;
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { maxOutputTokens: 8000, temperature: 0.5 },
+        generationConfig: { maxOutputTokens: 16000, temperature: 0.5 },
       }),
     });
     if (!resp.ok) throw new Error(`Gemini API error ${resp.status}`);

@@ -573,6 +573,13 @@ export function ContentEnricher() {
     : null;
 
   const pendingCount = pageRows.filter(r => getLatest(r.slug) === undefined).length;
+  const approvableCount = pageRows.reduce((count, row) => {
+    const latest = getLatest(row.slug);
+    if (!latest || latest.status !== 'draft') return count;
+    if (latest.flags?.includes('PARSE_ERROR')) return count;
+    if ((latest.current_word_count || 0) < 500) return count;
+    return count + 1;
+  }, 0);
   const publishableCount = pageRows.reduce((count, row) => {
     const latest = getLatest(row.slug);
     const published = getPublished(row.slug);

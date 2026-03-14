@@ -516,11 +516,11 @@ async function callAI(model: string, prompt: string): Promise<Record<string, unk
     case 'claude-sonnet':
     case 'claude': {
       try {
-        rawText = await callClaudeRaw(prompt, { timeoutMs: AI_TIMEOUT_MS_SLOW, maxTokens: 12288 });
+        rawText = await callClaudeRaw(prompt, { timeoutMs: AI_TIMEOUT_MS_SLOW, maxTokens: 8192 });
       } catch (error) {
         if (!isAbortError(error)) throw error;
-        console.warn('Claude request timed out — retrying with lower token budget');
-        rawText = await callClaudeRaw(prompt, { timeoutMs: AI_TIMEOUT_MS_SLOW, maxTokens: 8192 });
+        console.warn('Claude request timed out — falling back to gemini-2.5-flash for completion');
+        rawText = await fetchGemini(prompt, 'gemini-2.5-flash', 45_000);
       }
       break;
     }

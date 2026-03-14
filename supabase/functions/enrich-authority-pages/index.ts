@@ -196,7 +196,8 @@ If any check fails, fix it before returning.
 // MULTI-MODEL AI DISPATCHER
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const AI_TIMEOUT_MS = 90_000; // 90 seconds for authority pages
+const AI_TIMEOUT_MS = 60_000; // 60 seconds per AI call
+const FUNCTION_TIME_BUDGET_MS = 120_000; // bail before 150s platform limit
 
 // ── Gemini (Direct API) ──
 async function fetchGemini(prompt: string, model = 'gemini-2.5-flash'): Promise<string> {
@@ -268,7 +269,7 @@ async function callClaudeRaw(prompt: string): Promise<string> {
       },
       signal: controller.signal,
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-4-6',
         max_tokens: 16384,
         temperature: 0.6,
         messages: [{ role: 'user', content: prompt }],
@@ -965,14 +966,15 @@ serve(async (req) => {
       aiModel?: string;
     };
 
-    if (!slugs || slugs.length === 0 || slugs.length > 8) {
-      return new Response(JSON.stringify({ error: 'Batch size must be 1-8 slugs' }), {
+    if (!slugs || slugs.length === 0 || slugs.length > 10) {
+      return new Response(JSON.stringify({ error: 'Batch size must be 1-10 slugs' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
     const selectedModel = aiModel || 'gemini-flash';
-    console.log(`Enrichment started: ${slugs.length} slugs, type=${pageType}, model=${selectedModel}`);
+    const fnStart = Date.now();
+    console.log(`[enrich-authority-pages] Boot: ${slugs.length} slugs, model=${selectedModel}, type=${pageType}`);
 
     const svc = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 
@@ -1073,6 +1075,24 @@ serve(async (req) => {
     const CONCURRENCY = 3;
 
     for (let i = 0; i < slugs.length; i += CONCURRENCY) {
+      // ── Time budget guard ──
+      const elapsed = Date.now() - fnStart;
+      if (elapsed > FUNCTION_TIME_BUDGET_MS) {
+        console.warn(`[enrich-authority-pages] Time budget exceeded (${elapsed}ms) — skipping remaining ${slugs.length - i} slugs`);
+        for (let j = i; j < slugs.length; j++) {
+          results[j] = {
+            slug: slugs[j],
+            status: 'skipped',
+            sectionsAdded: [],
+            qualityScore: {},
+            flags: [],
+            totalWords: 0,
+            failureReason: 'Skipped — function time budget exceeded. Try fewer pages per batch or a faster model.',
+          };
+        }
+        break;
+      }
+
       const indices = Array.from(
         { length: Math.min(CONCURRENCY, slugs.length - i) },
         (_, offset) => i + offset
@@ -1081,15 +1101,17 @@ serve(async (req) => {
       if (i + CONCURRENCY < slugs.length) await delay(1000);
     }
 
+    const completedResults = results.filter(Boolean);
     const report = {
       batchSize: slugs.length,
       model: selectedModel,
-      pagesEnriched: results.filter(r => r.status === 'success' || r.status === 'flagged').length,
-      pagesFailed: results.filter(r => r.status === 'failed').length,
-      totalSectionsAdded: results.reduce((sum, r) => sum + r.sectionsAdded.length, 0),
-      averageWordCount: Math.round(results.reduce((sum, r) => sum + r.totalWords, 0) / results.length),
-      flaggedPages: results.filter(r => r.flags.length > 0).map(r => r.slug),
-      results,
+      pagesEnriched: completedResults.filter(r => r.status === 'success' || r.status === 'flagged').length,
+      pagesFailed: completedResults.filter(r => r.status === 'failed').length,
+      pagesSkipped: completedResults.filter(r => r.status === 'skipped').length,
+      totalSectionsAdded: completedResults.reduce((sum, r) => sum + r.sectionsAdded.length, 0),
+      averageWordCount: Math.round(completedResults.reduce((sum, r) => sum + r.totalWords, 0) / (completedResults.length || 1)),
+      flaggedPages: completedResults.filter(r => r.flags.length > 0).map(r => r.slug),
+      results: completedResults,
     };
 
     return new Response(JSON.stringify(report), {

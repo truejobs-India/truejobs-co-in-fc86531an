@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { useToast } from '@/hooks/use-toast';
+import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
 import { FileText, Loader2 } from 'lucide-react';
 import mammoth from 'mammoth';
 import { supabase } from '@/integrations/supabase/client';

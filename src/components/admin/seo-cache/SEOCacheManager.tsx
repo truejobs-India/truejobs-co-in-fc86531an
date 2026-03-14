@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Globe, RefreshCw, Loader2, Download, Trash2 } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
+import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
 import { supabase } from '@/integrations/supabase/client';
 import { CacheFiltersState, CachePage } from './cacheTypes';
 import { useCacheData } from './useCacheData';

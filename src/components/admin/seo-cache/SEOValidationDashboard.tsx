@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import {
   CheckCircle2, AlertTriangle, XCircle, Play, Download, Eye, Wrench, Clock,
 } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
+import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
 import {
   CachePage, PageData, PageValidationReport, ValidationCategory, ValidationSeverity,
 } from './cacheTypes';

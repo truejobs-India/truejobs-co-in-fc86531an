@@ -201,7 +201,7 @@ const TIMEOUTS: Record<string, number> = {
   'gemini-pro': 60_000,
   'claude-sonnet': 130_000,
   'claude': 130_000,
-  'mistral': 60_000,
+  'mistral': 120_000,
   'groq': 30_000,
   'lovable-gemini': 60_000,
   'gpt5': 60_000,

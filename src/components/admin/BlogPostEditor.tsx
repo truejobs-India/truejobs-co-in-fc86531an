@@ -922,7 +922,7 @@ export function BlogPostEditor() {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) throw new Error('Not authenticated');
         const { data, error } = await supabase.functions.invoke('generate-blog-article', {
-          body: { topic: item.topic, category: bulkCategory, targetWordCount: bulkWordCount, aiModel: bulkAiModel },
+          body: { topic: item.topic, category: bulkCategory, targetWordCount: bulkWordCount, aiModel: blogTextModel },
         });
         if (error) throw new Error(error.message);
         if (!data?.title || !data?.content) throw new Error('Invalid AI response');

@@ -418,10 +418,10 @@ export function BlogPostEditor() {
 
   // ── Bulk Generate Missing Cover Images ──────────────
   const handleBulkGenerateCoverImages = async () => {
+    bulkCoverAbortRef.current = false;
     setIsBulkCoverRunning(true);
     setBulkCoverProgress(null);
     try {
-      // Fetch all articles without cover images
       const { data: noCoverPosts, error } = await supabase
         .from('blog_posts')
         .select('id, title, slug, category, tags, cover_image_url')
@@ -441,6 +441,10 @@ export function BlogPostEditor() {
       setBulkCoverProgress({ total, done, failed, current: noCoverPosts[0].title });
 
       for (const post of noCoverPosts) {
+        if (bulkCoverAbortRef.current) {
+          toast({ title: '⏹️ Cover image generation stopped', description: `${done} generated, ${failed} failed, ${total - done - failed} skipped.` });
+          break;
+        }
         setBulkCoverProgress({ total, done, failed, current: post.title });
         try {
           const { data: imgData, error: imgError } = await supabase.functions.invoke('generate-blog-image', {
@@ -451,7 +455,6 @@ export function BlogPostEditor() {
             console.warn(`Cover image failed for "${post.title}":`, imgError?.message || 'No image returned');
             failed++;
           } else {
-            // Update the article with the generated image
             await supabase.from('blog_posts').update({
               cover_image_url: imgData.imageUrl,
               featured_image_alt: imgData.altText || post.title,
@@ -464,17 +467,18 @@ export function BlogPostEditor() {
         }
         setBulkCoverProgress({ total, done: done + failed, failed, current: post.title });
 
-        // Rate limit: wait 3s between requests
         if (done + failed < total) {
           await new Promise(r => setTimeout(r, 3000));
         }
       }
 
-      toast({
-        title: '🖼️ Cover image generation complete',
-        description: `${done} generated, ${failed} failed out of ${total} articles.`,
-      });
-      fetchPosts(); // Refresh the list
+      if (!bulkCoverAbortRef.current) {
+        toast({
+          title: '🖼️ Cover image generation complete',
+          description: `${done} generated, ${failed} failed out of ${total} articles.`,
+        });
+      }
+      fetchPosts();
     } catch (err: any) {
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
     } finally {

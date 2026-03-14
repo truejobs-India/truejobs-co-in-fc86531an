@@ -216,11 +216,12 @@ async function callClaudeSDK(
   prompt: string,
   slug: string,
   maxTokens: number,
+  requestTimeoutMs = CLAUDE_SDK_TIMEOUT_MS,
 ): Promise<{ data: Record<string, unknown>; diagnostics: ClaudeDiagnostics }> {
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured — please add it to secrets');
 
-  const client = new Anthropic({ apiKey, timeout: CLAUDE_SDK_TIMEOUT_MS });
+  const client = new Anthropic({ apiKey, timeout: requestTimeoutMs });
   const diag = createDiagnostics(slug, prompt.length);
   diag.maxTokens = maxTokens;
 

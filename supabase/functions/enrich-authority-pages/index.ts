@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import Anthropic from 'npm:@anthropic-ai/sdk@0.39.0';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -41,7 +42,7 @@ async function verifyAdmin(req: Request): Promise<{ userId: string } | Response>
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// MASTER AUTHORITY PROMPT — compact version for all models
+// MASTER AUTHORITY PROMPT
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const MASTER_AUTHORITY_PROMPT = `You are the Chief Content Strategist at TrueJobs.co.in — India's most trusted government job preparation portal.
@@ -73,38 +74,21 @@ FINAL SECTION — FAQ with schema.org markup (FAQPage, Question, Answer itemtype
 - Primary keyword in first 100 words and 3+ H2 headings naturally.
 - H2 headings should be question-based where possible (featured snippet optimization).
 - Include a clear 40-60 word featured snippet paragraph answering "What is [exam]?" within the first 200 words.
-- Suggest 3-5 related page slugs for internal linking.
-
-=== OUTPUT ===
-Return ONLY the JSON object matching the schema. No commentary, no markdown fences, no text outside the JSON.`;
+- Suggest 3-5 related page slugs for internal linking.`;
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// MODEL-SPECIFIC TIMEOUTS & CLAUDE CONFIG
+// MODEL CONFIG & CONSTANTS
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const ANTHROPIC_MODEL = Deno.env.get('ANTHROPIC_MODEL') || 'claude-sonnet-4-6';
-const ANTHROPIC_TIMEOUT_MS = parseInt(Deno.env.get('ANTHROPIC_TIMEOUT_MS') || '140000', 10);
-const ANTHROPIC_MAX_TOKENS = parseInt(Deno.env.get('ANTHROPIC_MAX_TOKENS') || '8192', 10);
+const ANTHROPIC_DEFAULT_MAX_TOKENS = 4096;
 const ANTHROPIC_RETRY_MAX_TOKENS = 6144;
-const ANTHROPIC_API_VERSION = '2023-06-01';
-
-function getClaudeHeaders(apiKey: string) {
-  return {
-    'Content-Type': 'application/json',
-    'x-api-key': apiKey,
-    'anthropic-version': ANTHROPIC_API_VERSION,
-  };
-}
-
-function logClaudePreRequest(label: string, opts: { model: string; maxTokens: number; structured: boolean; promptChars?: number }) {
-  console.log(`[claude-${label}] PRE-REQUEST: anthropic-version=${ANTHROPIC_API_VERSION} model=${opts.model} max_tokens=${opts.maxTokens} structured=${opts.structured}${opts.promptChars ? ` prompt_chars=${opts.promptChars}` : ''}`);
-}
 
 const TIMEOUTS: Record<string, number> = {
   'gemini-flash': 60_000,
   'gemini-pro': 60_000,
-  'claude-sonnet': ANTHROPIC_TIMEOUT_MS,
-  'claude': ANTHROPIC_TIMEOUT_MS,
+  'claude-sonnet': 140_000,
+  'claude': 140_000,
   'mistral': 120_000,
   'groq': 30_000,
   'lovable-gemini': 60_000,
@@ -117,80 +101,255 @@ function getTimeout(model: string): number {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// CLAUDE STRUCTURED OUTPUT SCHEMA
+// CLAUDE: SIMPLIFIED TOOL SCHEMA FOR STRUCTURED OUTPUT
 // ═══════════════════════════════════════════════════════════════════════════════
+// Minimal schema — only fields the DB save pipeline and page renderer need.
+// All HTML content fields are optional strings. The tool_use pattern guarantees
+// Claude returns valid JSON matching this schema.
 
-const ENRICHMENT_JSON_SCHEMA = {
-  type: 'object' as const,
-  properties: {
-    overview: { type: 'string', description: 'HTML overview with Quick Overview Table, 200-400 words' },
-    eligibility: { type: 'string', description: 'HTML eligibility section with category-wise table' },
-    vacancyDetails: { type: 'string', description: 'HTML vacancy breakdown with table' },
-    examPattern: { type: 'string', description: 'HTML exam pattern with table' },
-    salary: { type: 'string', description: 'HTML salary structure with Pay Levels' },
-    applicationProcess: { type: 'string', description: 'HTML step-by-step how to apply' },
-    importantDates: { type: 'string', description: 'HTML table of important dates' },
-    preparationTips: { type: 'string', description: 'HTML exam-specific preparation strategy' },
-    cutoffTrends: { type: 'string', description: 'HTML previous year cutoff table and analysis' },
-    importantLinks: { type: 'string', description: 'HTML list of important official links' },
-    tierWiseSyllabus: { type: 'string', description: 'HTML stage-wise syllabus breakdown' },
-    subjectWiseBreakdown: { type: 'string', description: 'HTML detailed topic lists per subject' },
-    topicWeightage: { type: 'string', description: 'HTML topic weightage analysis table' },
-    importantTopics: { type: 'string', description: 'HTML high-yield topics list' },
-    recommendedBooks: { type: 'string', description: 'HTML book recommendations table' },
-    preparationStrategy: { type: 'string', description: 'HTML subject-wise preparation approach' },
-    commonMistakes: { type: 'string', description: 'HTML common preparation errors' },
-    stageWisePattern: { type: 'string', description: 'HTML detailed exam pattern tables per stage' },
-    markingScheme: { type: 'string', description: 'HTML marking and negative marking details' },
-    timeDistribution: { type: 'string', description: 'HTML section-wise time allocation' },
-    difficultyInsights: { type: 'string', description: 'HTML difficulty trends analysis' },
-    normalization: { type: 'string', description: 'HTML normalization/scoring methodology' },
-    timeManagement: { type: 'string', description: 'HTML time management strategy' },
-    patternChanges: { type: 'string', description: 'HTML changes from previous year' },
-    topicTrends: { type: 'string', description: 'HTML year-wise topic distribution table' },
-    subjectTrends: { type: 'string', description: 'HTML subject-wise trend analysis' },
-    difficultyAnalysis: { type: 'string', description: 'HTML difficulty comparison across years' },
-    repeatedTopics: { type: 'string', description: 'HTML ranked list of most repeated topics' },
-    subjectWeightage: { type: 'string', description: 'HTML subject weightage table' },
-    expectedPattern: { type: 'string', description: 'HTML predictions for next exam' },
-    majorRecruitingBodies: { type: 'string', description: 'HTML recruiting organizations' },
-    popularStateExams: { type: 'string', description: 'HTML popular state-level exams' },
-    importantDepartments: { type: 'string', description: 'HTML major departments recruiting' },
-    eligibilityPatterns: { type: 'string', description: 'HTML common eligibility across state exams' },
-    applicationGuidance: { type: 'string', description: 'HTML state-specific application process' },
-    salaryStructure: { type: 'string', description: 'HTML state pay matrix and comparison' },
-    preparationInsights: { type: 'string', description: 'HTML insights from previous year papers' },
-    faq: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          question: { type: 'string' },
-          answer: { type: 'string' },
+const ENRICHMENT_TOOL_SCHEMA: Anthropic.Tool = {
+  name: 'save_enrichment',
+  description: 'Save the generated enrichment content for this government exam/job page.',
+  input_schema: {
+    type: 'object' as const,
+    properties: {
+      overview: { type: 'string', description: 'HTML overview with Quick Overview Table, 200-400 words' },
+      eligibility: { type: 'string', description: 'HTML eligibility section' },
+      vacancyDetails: { type: 'string', description: 'HTML vacancy breakdown with table' },
+      examPattern: { type: 'string', description: 'HTML exam pattern with table' },
+      salary: { type: 'string', description: 'HTML salary structure' },
+      applicationProcess: { type: 'string', description: 'HTML step-by-step how to apply' },
+      importantDates: { type: 'string', description: 'HTML table of important dates' },
+      preparationTips: { type: 'string', description: 'HTML preparation strategy' },
+      cutoffTrends: { type: 'string', description: 'HTML previous year cutoff analysis' },
+      importantLinks: { type: 'string', description: 'HTML list of important links' },
+      faq: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            question: { type: 'string' },
+            answer: { type: 'string' },
+          },
+          required: ['question', 'answer'],
         },
-        required: ['question', 'answer'],
+        description: '5-8 FAQ items',
       },
-      description: 'FAQ items with schema.org markup',
+      meta_title: { type: 'string', description: 'Under 60 chars, primary keyword included' },
+      meta_description: { type: 'string', description: 'Under 155 chars' },
+      internal_links: {
+        type: 'array',
+        items: { type: 'string' },
+        description: '3-5 related page slugs',
+      },
     },
-    meta_title: { type: 'string', description: 'Under 60 chars, primary keyword included' },
-    meta_description: { type: 'string', description: 'Under 155 chars' },
-    internal_links: {
-      type: 'array',
-      items: { type: 'string' },
-      description: '3-5 related page slugs for cross-linking',
-    },
-    primary_keyword: { type: 'string' },
-    secondary_keywords: {
-      type: 'array',
-      items: { type: 'string' },
-      description: '5-8 LSI keywords',
-    },
+    required: ['overview', 'faq', 'meta_title', 'meta_description'],
   },
-  required: ['overview', 'faq', 'meta_title', 'meta_description'],
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// MODEL INTEGRATIONS
+// CLAUDE: SDK-BASED STRUCTURED OUTPUT WITH TOOL_USE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+interface ClaudeDiagnostics {
+  slug: string;
+  model: string;
+  anthropicVersion: string;
+  maxTokens: number;
+  structuredOutput: boolean;
+  promptChars: number;
+  elapsedMs: number;
+  requestId: string;
+  stopReason: string;
+  sdkParseSuccess: boolean;
+  validationError: string | null;
+  fallbackTriggered: boolean;
+  fallbackModel: string | null;
+  attempt: number;
+  retried: boolean;
+  retryReason: string | null;
+}
+
+function createDiagnostics(slug: string, promptChars: number): ClaudeDiagnostics {
+  return {
+    slug,
+    model: ANTHROPIC_MODEL,
+    anthropicVersion: '2023-06-01',
+    maxTokens: ANTHROPIC_DEFAULT_MAX_TOKENS,
+    structuredOutput: true,
+    promptChars,
+    elapsedMs: 0,
+    requestId: 'n/a',
+    stopReason: 'unknown',
+    sdkParseSuccess: false,
+    validationError: null,
+    fallbackTriggered: false,
+    fallbackModel: null,
+    attempt: 1,
+    retried: false,
+    retryReason: null,
+  };
+}
+
+function logClaudeRequest(diag: ClaudeDiagnostics, phase: string) {
+  console.log(`[claude-${phase}] slug=${diag.slug} model=${diag.model} anthropic-version=${diag.anthropicVersion} max_tokens=${diag.maxTokens} structured=${diag.structuredOutput} prompt_chars=${diag.promptChars} attempt=${diag.attempt}`);
+}
+
+async function callClaudeSDK(
+  prompt: string,
+  slug: string,
+  maxTokens: number,
+): Promise<{ data: Record<string, unknown>; diagnostics: ClaudeDiagnostics }> {
+  const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
+  if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured — please add it to secrets');
+
+  const client = new Anthropic({ apiKey });
+  const diag = createDiagnostics(slug, prompt.length);
+  diag.maxTokens = maxTokens;
+
+  logClaudeRequest(diag, 'pre-request');
+  const startMs = Date.now();
+
+  try {
+    const response = await client.messages.create({
+      model: ANTHROPIC_MODEL,
+      max_tokens: maxTokens,
+      temperature: 0.5,
+      tools: [ENRICHMENT_TOOL_SCHEMA],
+      tool_choice: { type: 'tool' as const, name: 'save_enrichment' },
+      messages: [{ role: 'user', content: prompt }],
+    });
+
+    diag.elapsedMs = Date.now() - startMs;
+    diag.requestId = (response as any).id || 'n/a';
+    diag.stopReason = response.stop_reason || 'unknown';
+
+    console.log(`[claude-response] slug=${slug} elapsed=${diag.elapsedMs}ms stop_reason=${diag.stopReason} request_id=${diag.requestId} content_blocks=${response.content.length}`);
+
+    // Extract tool_use block
+    const toolBlock = response.content.find((block) => block.type === 'tool_use' && block.name === 'save_enrichment');
+
+    if (!toolBlock || toolBlock.type !== 'tool_use') {
+      diag.sdkParseSuccess = false;
+      diag.validationError = `No tool_use block found. Content types: ${response.content.map(b => b.type).join(',')}`;
+      console.error(`[claude-parse] ${slug}: ${diag.validationError}`);
+      throw new Error(diag.validationError);
+    }
+
+    const data = toolBlock.input as Record<string, unknown>;
+
+    // Validate required fields
+    if (!data.overview || !data.faq || !data.meta_title || !data.meta_description) {
+      diag.sdkParseSuccess = false;
+      diag.validationError = `Missing required fields: ${['overview', 'faq', 'meta_title', 'meta_description'].filter(f => !data[f]).join(', ')}`;
+      console.error(`[claude-validate] ${slug}: ${diag.validationError}`);
+      throw new Error(diag.validationError);
+    }
+
+    diag.sdkParseSuccess = true;
+    console.log(`[claude-parse] ${slug}: SDK tool_use parse OK, fields=${Object.keys(data).length}, faq_count=${Array.isArray(data.faq) ? data.faq.length : 0}`);
+    return { data, diagnostics: diag };
+
+  } catch (err) {
+    diag.elapsedMs = Date.now() - startMs;
+
+    // If it's already our validation error, re-throw with diagnostics
+    if (err instanceof Error && (err.message.includes('Missing required fields') || err.message.includes('No tool_use block'))) {
+      (err as any).diagnostics = diag;
+      throw err;
+    }
+
+    // SDK/API errors
+    const errMsg = err instanceof Error ? err.message : String(err);
+    diag.validationError = errMsg;
+    diag.sdkParseSuccess = false;
+
+    // Log full error for API errors
+    if (err instanceof Anthropic.APIError) {
+      console.error(`[claude-api-error] ${slug}: status=${err.status} message=${err.message} request_id=${(err as any).request_id || 'n/a'}`);
+      diag.requestId = (err as any).request_id || 'n/a';
+    } else {
+      console.error(`[claude-error] ${slug}: ${errMsg}`);
+    }
+
+    const wrappedErr = new Error(`Claude SDK error: ${errMsg}`);
+    (wrappedErr as any).diagnostics = diag;
+    throw wrappedErr;
+  }
+}
+
+/**
+ * Full Claude call: attempt → retry on truncation → fail with diagnostics.
+ * Does NOT handle Gemini fallback (that's in callAI).
+ */
+async function callClaudeWithRetry(prompt: string, slug: string): Promise<{ data: Record<string, unknown>; diagnostics: ClaudeDiagnostics }> {
+  // Attempt 1: default tokens
+  try {
+    const result = await callClaudeSDK(prompt, slug, ANTHROPIC_DEFAULT_MAX_TOKENS);
+
+    // If truncated, retry with more tokens
+    if (result.diagnostics.stopReason === 'max_tokens') {
+      console.warn(`[claude-retry] ${slug}: stop_reason=max_tokens at ${ANTHROPIC_DEFAULT_MAX_TOKENS}. Retrying with ${ANTHROPIC_RETRY_MAX_TOKENS}...`);
+      result.diagnostics.retried = true;
+      result.diagnostics.retryReason = 'max_tokens_truncation';
+      result.diagnostics.attempt = 2;
+      result.diagnostics.maxTokens = ANTHROPIC_RETRY_MAX_TOKENS;
+
+      try {
+        const retryResult = await callClaudeSDK(prompt, slug, ANTHROPIC_RETRY_MAX_TOKENS);
+        retryResult.diagnostics.attempt = 2;
+        retryResult.diagnostics.retried = true;
+        retryResult.diagnostics.retryReason = 'max_tokens_truncation';
+        return retryResult;
+      } catch (retryErr) {
+        console.warn(`[claude-retry] ${slug}: Retry also failed: ${retryErr instanceof Error ? retryErr.message : 'Unknown'}`);
+        // If first attempt had valid data despite truncation, use it
+        if (result.diagnostics.sdkParseSuccess) {
+          console.log(`[claude-retry] ${slug}: Using truncated-but-valid first attempt data`);
+          return result;
+        }
+        throw retryErr;
+      }
+    }
+
+    return result;
+  } catch (firstErr) {
+    const errMsg = firstErr instanceof Error ? firstErr.message : String(firstErr);
+    const diag = (firstErr as any)?.diagnostics as ClaudeDiagnostics | undefined;
+
+    // Circuit breaker: don't retry on 4xx errors (bad request, auth, etc.)
+    if (errMsg.includes('400') || errMsg.includes('401') || errMsg.includes('403') || errMsg.includes('404')) {
+      console.error(`[claude-circuit-breaker] ${slug}: 4xx error, no retry. Error: ${errMsg}`);
+      throw firstErr;
+    }
+
+    // Single retry for transient errors (5xx, timeout, network)
+    console.warn(`[claude-retry] ${slug}: First attempt failed: ${errMsg}. Retrying once with ${ANTHROPIC_RETRY_MAX_TOKENS} tokens...`);
+    if (diag) {
+      diag.attempt = 2;
+      diag.retried = true;
+      diag.retryReason = 'transient_error';
+    }
+
+    try {
+      const retryResult = await callClaudeSDK(prompt, slug, ANTHROPIC_RETRY_MAX_TOKENS);
+      retryResult.diagnostics.attempt = 2;
+      retryResult.diagnostics.retried = true;
+      retryResult.diagnostics.retryReason = 'transient_error';
+      return retryResult;
+    } catch (retryErr) {
+      const retryDiag = (retryErr as any)?.diagnostics as ClaudeDiagnostics | undefined;
+      if (retryDiag) {
+        retryDiag.attempt = 2;
+        retryDiag.retried = true;
+      }
+      throw retryErr;
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MODEL INTEGRATIONS (non-Claude)
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // ── Gemini (Direct API) ──
@@ -242,298 +401,6 @@ async function fetchGemini(prompt: string, model = 'gemini-2.5-flash', timeoutMs
     return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
   } finally {
     clearTimeout(timer);
-  }
-}
-
-// ── Claude: Connectivity Probe ──
-async function claudeProbe(): Promise<void> {
-  const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
-  if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured — please add it to secrets');
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 12_000);
-  const probeStart = Date.now();
-  logClaudePreRequest('probe', { model: ANTHROPIC_MODEL, maxTokens: 8, structured: false });
-
-  try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: getClaudeHeaders(apiKey),
-      signal: controller.signal,
-      body: JSON.stringify({
-        model: ANTHROPIC_MODEL,
-        max_tokens: 8,
-        messages: [{ role: 'user', content: 'Reply with OK' }],
-      }),
-    });
-
-    const elapsed = Date.now() - probeStart;
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`Claude probe failed HTTP ${response.status} in ${elapsed}ms: ${errText.substring(0, 300)}`);
-    }
-    console.log(`[claude-probe] OK in ${elapsed}ms, model=${ANTHROPIC_MODEL}, request-id=${response.headers.get('request-id') || 'n/a'}`);
-  } catch (err) {
-    const elapsed = Date.now() - probeStart;
-    const isAbort = err instanceof Error && (err.message.includes('aborted') || err.message.includes('signal'));
-    if (isAbort) {
-      throw new Error(`Claude probe TIMEOUT after ${elapsed}ms — API unreachable or model "${ANTHROPIC_MODEL}" invalid`);
-    }
-    throw err;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-// ── Claude: Streaming SSE call with structured output ──
-interface ClaudeStreamResult {
-  text: string;
-  stopReason: string;
-  chunksReceived: number;
-  elapsedMs: number;
-  requestId: string;
-  httpStatus: number;
-}
-
-async function callClaudeStreaming(
-  prompt: string,
-  maxTokens: number,
-  timeoutMs: number,
-  useStructuredOutput: boolean,
-): Promise<ClaudeStreamResult> {
-  const apiKey = Deno.env.get('ANTHROPIC_API_KEY')!;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  const reqStart = Date.now();
-
-  logClaudePreRequest('stream', { model: ANTHROPIC_MODEL, maxTokens, structured: useStructuredOutput, promptChars: prompt.length });
-  console.log(`[claude-stream] START timeout=${timeoutMs}ms`);
-
-  try {
-    const requestBody = {
-      model: ANTHROPIC_MODEL,
-      max_tokens: maxTokens,
-      temperature: 0.5,
-      stream: true,
-      messages: [{ role: 'user', content: prompt }],
-    };
-
-    console.log(`[claude-stream] structured_output=${useStructuredOutput} (prompt-controlled, no output_config)`);
-
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: getClaudeHeaders(apiKey),
-      signal: controller.signal,
-      body: JSON.stringify(requestBody),
-    });
-
-    const connectMs = Date.now() - reqStart;
-    const requestId = response.headers.get('request-id') || 'n/a';
-    const httpStatus = response.status;
-    console.log(`[claude-stream] CONNECTED in ${connectMs}ms, HTTP ${httpStatus}, request-id=${requestId}`);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Claude API error ${httpStatus}: ${errorText.substring(0, 500)}`);
-    }
-
-    if (!response.body) throw new Error('Claude response has no body (streaming expected)');
-
-    // Parse SSE stream
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let accumulated = '';
-    let buffer = '';
-    let chunksReceived = 0;
-    let stopReason = 'unknown';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
-
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue;
-        const jsonStr = line.slice(6).trim();
-        if (jsonStr === '[DONE]') continue;
-
-        try {
-          const event = JSON.parse(jsonStr);
-          chunksReceived++;
-
-          if (event.type === 'content_block_delta' && event.delta?.text) {
-            accumulated += event.delta.text;
-          } else if (event.type === 'message_delta' && event.delta?.stop_reason) {
-            stopReason = event.delta.stop_reason;
-          } else if (event.type === 'message_stop') {
-            if (stopReason === 'unknown') stopReason = 'end_turn';
-          } else if (event.type === 'error') {
-            throw new Error(`Claude stream error event: ${JSON.stringify(event.error)}`);
-          }
-        } catch (parseErr) {
-          if (parseErr instanceof Error && parseErr.message.startsWith('Claude stream error')) throw parseErr;
-          // skip unparseable SSE lines
-        }
-      }
-    }
-
-    const totalMs = Date.now() - reqStart;
-    console.log(`[claude-stream] DONE in ${totalMs}ms, chunks=${chunksReceived}, output_chars=${accumulated.length}, stop_reason=${stopReason}`);
-
-    return { text: accumulated, stopReason, chunksReceived, elapsedMs: totalMs, requestId, httpStatus };
-  } catch (err) {
-    const elapsed = Date.now() - reqStart;
-    const isAbort = err instanceof Error && (err.message.includes('aborted') || err.message.includes('signal'));
-    const phase = elapsed < 5000 ? 'initial_connection' : 'stream_read';
-    if (isAbort) {
-      throw new Error(`Claude streaming TIMEOUT after ${elapsed}ms (phase: ${phase})`);
-    }
-    throw new Error(`Claude streaming FAILED after ${elapsed}ms (phase: ${phase}): ${err instanceof Error ? err.message : 'Unknown'}`);
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-// ── JSON cleanup fallback ──
-function cleanupJsonText(raw: string): string {
-  let text = raw.trim();
-
-  // Strip markdown code fences
-  text = text.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
-
-  // Remove leading text before first {
-  const firstBrace = text.indexOf('{');
-  if (firstBrace > 0) {
-    text = text.substring(firstBrace);
-  }
-
-  // Remove trailing text after last }
-  const lastBrace = text.lastIndexOf('}');
-  if (lastBrace !== -1 && lastBrace < text.length - 1) {
-    text = text.substring(0, lastBrace + 1);
-  }
-
-  return text;
-}
-
-// ── Claude: Full call with probe + structured output + retry ──
-async function callClaudeRaw(prompt: string, slug: string, timeoutMs = ANTHROPIC_TIMEOUT_MS): Promise<{ data: Record<string, unknown>; diagnostics: Record<string, unknown> }> {
-  // Step 1: Connectivity probe
-  await claudeProbe();
-
-  const diagnostics: Record<string, unknown> = {
-    slug,
-    model: ANTHROPIC_MODEL,
-    promptChars: prompt.length,
-    attempt: 1,
-  };
-
-  // Step 2: Main streaming call with structured output
-  let result: ClaudeStreamResult;
-  try {
-    result = await callClaudeStreaming(prompt, ANTHROPIC_MAX_TOKENS, timeoutMs, true);
-  } catch (firstErr) {
-    const errMsg = firstErr instanceof Error ? firstErr.message : String(firstErr);
-    diagnostics.attempt1Error = errMsg;
-
-    // Don't retry on clear 4xx errors
-    if (errMsg.includes('API error 4')) {
-      diagnostics.retried = false;
-      diagnostics.failureType = 'api_4xx';
-      throw Object.assign(firstErr as Error, { diagnostics });
-    }
-
-    // Retry once with higher tokens
-    console.warn(`[claude-retry] First attempt failed: ${errMsg}. Retrying with max_tokens=${ANTHROPIC_RETRY_MAX_TOKENS}...`);
-    diagnostics.attempt = 2;
-    diagnostics.retryMaxTokens = ANTHROPIC_RETRY_MAX_TOKENS;
-    diagnostics.retried = true;
-
-    try {
-      result = await callClaudeStreaming(prompt, ANTHROPIC_RETRY_MAX_TOKENS, timeoutMs, true);
-    } catch (retryErr) {
-      const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
-      diagnostics.attempt2Error = retryMsg;
-      diagnostics.failureType = 'retry_failed';
-      const err = new Error(`Claude failed after retry: ${retryMsg} (original: ${errMsg})`);
-      (err as any).diagnostics = diagnostics;
-      throw err;
-    }
-  }
-
-  diagnostics.maxTokens = result.stopReason === 'max_tokens' && diagnostics.attempt === 1 ? ANTHROPIC_MAX_TOKENS : (diagnostics.retryMaxTokens || ANTHROPIC_MAX_TOKENS);
-  diagnostics.outputChars = result.text.length;
-  diagnostics.chunks = result.chunksReceived;
-  diagnostics.elapsedMs = result.elapsedMs;
-  diagnostics.httpStatus = result.httpStatus;
-  diagnostics.requestId = result.requestId;
-  diagnostics.stopReason = result.stopReason;
-
-  // Check for max_tokens truncation — retry with higher budget
-  if (result.stopReason === 'max_tokens' && diagnostics.attempt === 1) {
-    console.warn(`[claude-retry] stop_reason=max_tokens with ${ANTHROPIC_MAX_TOKENS} tokens. Retrying with ${ANTHROPIC_RETRY_MAX_TOKENS}...`);
-    diagnostics.attempt = 2;
-    diagnostics.retried = true;
-    diagnostics.retryReason = 'max_tokens_truncation';
-    diagnostics.retryMaxTokens = ANTHROPIC_RETRY_MAX_TOKENS;
-
-    try {
-      result = await callClaudeStreaming(prompt, ANTHROPIC_RETRY_MAX_TOKENS, timeoutMs, true);
-      diagnostics.outputChars = result.text.length;
-      diagnostics.chunks = result.chunksReceived;
-      diagnostics.elapsedMs = result.elapsedMs;
-      diagnostics.stopReason = result.stopReason;
-    } catch (retryErr) {
-      const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
-      diagnostics.attempt2Error = retryMsg;
-      // Fall through and try to parse truncated output from first attempt
-      console.warn(`[claude-retry] Retry also failed: ${retryMsg}. Attempting to parse truncated output.`);
-    }
-  }
-
-  // Step 3: Parse JSON — structured output should give us clean JSON, but apply cleanup as fallback
-  const rawText = result!.text;
-  let parsePhase = 'direct';
-
-  // Try direct parse first (structured output should produce valid JSON)
-  try {
-    const parsed = JSON.parse(rawText);
-    diagnostics.parsePhase = 'direct';
-    diagnostics.failureType = null;
-    console.log(`[claude-parse] ${slug}: Direct JSON parse OK (${rawText.length} chars)`);
-    return { data: parsed, diagnostics };
-  } catch { /* continue to cleanup */ }
-
-  // Cleanup fallback
-  parsePhase = 'cleanup';
-  const cleaned = cleanupJsonText(rawText);
-  try {
-    const parsed = JSON.parse(cleaned);
-    diagnostics.parsePhase = 'cleanup';
-    diagnostics.failureType = 'wrapper_text';
-    console.log(`[claude-parse] ${slug}: Cleanup parse OK (cleaned ${rawText.length} → ${cleaned.length} chars)`);
-    return { data: parsed, diagnostics };
-  } catch { /* continue */ }
-
-  // tryParseJSON recovery stages
-  parsePhase = 'recovery';
-  try {
-    const parsed = tryParseJSON(rawText);
-    diagnostics.parsePhase = 'recovery';
-    diagnostics.failureType = 'needed_recovery';
-    console.log(`[claude-parse] ${slug}: Recovery parse OK`);
-    return { data: parsed, diagnostics };
-  } catch {
-    // Final failure
-    diagnostics.parsePhase = parsePhase;
-    diagnostics.failureType = result.stopReason === 'max_tokens' ? 'max_tokens_truncation' : rawText.length === 0 ? 'empty_output' : 'invalid_json';
-    console.error(`[claude-parse] ${slug}: ALL parse attempts failed. stop_reason=${result.stopReason}, output_chars=${rawText.length}, first100=${rawText.substring(0, 100)}, last100=${rawText.substring(rawText.length - 100)}`);
-    const err = new Error(`Failed to parse Claude JSON (stop_reason=${result.stopReason}, output_chars=${rawText.length}, failureType=${diagnostics.failureType})`);
-    (err as any).diagnostics = diagnostics;
-    throw err;
   }
 }
 
@@ -725,7 +592,7 @@ async function callOpenAIRaw(prompt: string, model = 'openai/gpt-5', timeoutMs =
   }
 }
 
-// ── Smart JSON Recovery (4-stage) ──
+// ── Smart JSON Recovery (4-stage) — backup for non-Claude models ──
 function tryParseJSON(raw: string): Record<string, unknown> {
   // Stage 1: direct parse
   try { return JSON.parse(raw); } catch { /* continue */ }
@@ -761,7 +628,10 @@ function tryParseJSON(raw: string): Record<string, unknown> {
   throw new Error(`Failed to parse JSON from AI response (length=${raw.length})`);
 }
 
-// ── AI Dispatcher (one slug, one model call) ──
+// ═══════════════════════════════════════════════════════════════════════════════
+// AI DISPATCHER — with Claude→Gemini fallback
+// ═══════════════════════════════════════════════════════════════════════════════
+
 async function callAI(model: string, prompt: string, slug: string): Promise<{ data: Record<string, unknown>; diagnostics?: Record<string, unknown> }> {
   const timeout = getTimeout(model);
   let rawText: string;
@@ -774,10 +644,59 @@ async function callAI(model: string, prompt: string, slug: string): Promise<{ da
     case 'gemini-pro':
       rawText = await fetchGemini(prompt, 'gemini-2.5-pro', timeout);
       return { data: tryParseJSON(rawText) };
+
     case 'claude-sonnet':
-    case 'claude':
-      // Claude returns pre-parsed data with diagnostics
-      return await callClaudeRaw(prompt, slug, timeout);
+    case 'claude': {
+      // ── Claude with automatic Gemini fallback ──
+      let claudeError: string = '';
+      let claudeDiag: ClaudeDiagnostics | undefined;
+
+      try {
+        const result = await callClaudeWithRetry(prompt, slug);
+        return { data: result.data, diagnostics: result.diagnostics as unknown as Record<string, unknown> };
+      } catch (err) {
+        claudeError = err instanceof Error ? err.message : String(err);
+        claudeDiag = (err as any)?.diagnostics;
+        console.error(`[claude-fallback] ${slug}: Claude FAILED — ${claudeError}. Falling back to Gemini 2.5 Flash...`);
+      }
+
+      // ── Gemini fallback ──
+      try {
+        // Re-build prompt without Claude-specific constraints (use base prompt)
+        const geminiPrompt = prompt.replace(/=== CRITICAL OUTPUT CONSTRAINTS ===[\s\S]*$/, '') +
+          '\n\nReturn ONLY the JSON object matching the schema. No commentary, no markdown fences.';
+
+        console.log(`[gemini-fallback] ${slug}: Starting Gemini fallback, prompt ${geminiPrompt.length} chars`);
+        rawText = await fetchGemini(geminiPrompt, 'gemini-2.5-flash', 60_000);
+        const data = tryParseJSON(rawText);
+
+        const fallbackDiag: Record<string, unknown> = {
+          ...(claudeDiag || {}),
+          fallbackTriggered: true,
+          fallbackModel: 'gemini-2.5-flash',
+          claudeFailureReason: claudeError,
+          fallbackSuccess: true,
+        };
+
+        console.log(`[gemini-fallback] ${slug}: Gemini fallback SUCCEEDED. Fields=${Object.keys(data).length}`);
+        return { data, diagnostics: fallbackDiag };
+      } catch (geminiErr) {
+        const geminiError = geminiErr instanceof Error ? geminiErr.message : String(geminiErr);
+        console.error(`[gemini-fallback] ${slug}: Gemini fallback also FAILED — ${geminiError}`);
+
+        // Both failed — throw with combined diagnostics
+        const combinedErr = new Error(`Claude failed: ${claudeError} | Gemini fallback failed: ${geminiError}`);
+        (combinedErr as any).diagnostics = {
+          ...(claudeDiag || {}),
+          fallbackTriggered: true,
+          fallbackModel: 'gemini-2.5-flash',
+          fallbackSuccess: false,
+          fallbackError: geminiError,
+        };
+        throw combinedErr;
+      }
+    }
+
     case 'groq':
       rawText = await callGroqRaw(prompt, timeout);
       return { data: tryParseJSON(rawText) };
@@ -801,7 +720,7 @@ async function callAI(model: string, prompt: string, slug: string): Promise<{ da
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// PROMPT BUILDERS (page-type-specific JSON field definitions)
+// PROMPT BUILDERS
 // ═══════════════════════════════════════════════════════════════════════════════
 
 interface PageContent {
@@ -939,19 +858,19 @@ function getPromptForType(pageType: string, page: PageContent, model?: string): 
 
   const fullPrompt = MASTER_AUTHORITY_PROMPT + '\n\n' + typePrompt;
 
-  // For Claude with structured outputs: add concise output constraint
+  // For Claude: add concise output constraint (tool_use handles schema)
   if (model === 'claude-sonnet' || model === 'claude') {
     return fullPrompt + `
 
 === CRITICAL OUTPUT CONSTRAINTS ===
-- Output ONLY the JSON object. No commentary, no markdown fences, no text before or after the JSON.
 - Be concise inside each field. Prioritize data density over prose length.
 - Avoid repetition across sections. Each section must contain unique information.
 - Every word must add value. Remove filler.
-- Include HTML tables where specified. Use semantic HTML (h2, h3, table, ul, ol, strong).`;
+- Include HTML tables where specified. Use semantic HTML (h2, h3, table, ul, ol, strong).
+- Use the save_enrichment tool to return your response.`;
   }
 
-  return fullPrompt;
+  return fullPrompt + '\n\nReturn ONLY the JSON object matching the schema. No commentary, no markdown fences, no text outside the JSON.';
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1183,20 +1102,19 @@ serve(async (req) => {
 
     // ── Step 1: Call AI ──
     let enrichmentData: Record<string, unknown>;
-    let claudeDiagnostics: Record<string, unknown> | undefined;
+    let aiDiagnostics: Record<string, unknown> | undefined;
     try {
       const prompt = getPromptForType(pageType, currentContent!, selectedModel);
       console.log(`[enrich] ${slug}: calling ${selectedModel}, prompt ${prompt.length} chars, timeout ${getTimeout(selectedModel)}ms`);
       const result = await callAI(selectedModel, prompt, slug);
       enrichmentData = result.data;
-      claudeDiagnostics = result.diagnostics;
-      console.log(`[enrich] ${slug}: AI returned successfully${claudeDiagnostics ? ` (stop_reason=${claudeDiagnostics.stopReason}, parsePhase=${claudeDiagnostics.parsePhase})` : ''}`);
+      aiDiagnostics = result.diagnostics;
+
+      const fallbackInfo = aiDiagnostics?.fallbackTriggered ? ` (FALLBACK: Claude→Gemini)` : '';
+      console.log(`[enrich] ${slug}: AI returned successfully${fallbackInfo}${aiDiagnostics?.stopReason ? ` stop_reason=${aiDiagnostics.stopReason}` : ''}`);
     } catch (aiErr) {
-      const isAbort = aiErr instanceof Error && (
-        aiErr.message.toLowerCase().includes('aborted') || aiErr.message.toLowerCase().includes('signal')
-      );
       const errDiagnostics = (aiErr as any)?.diagnostics;
-      const reason = `AI_ERROR (${selectedModel}): ${isAbort ? `Timeout after ${getTimeout(selectedModel) / 1000}s` : (aiErr instanceof Error ? aiErr.message : 'Unknown')}`;
+      const reason = `AI_ERROR (${selectedModel}): ${aiErr instanceof Error ? aiErr.message : 'Unknown'}`;
       console.error(`[enrich] ${slug}: ${reason}`);
       if (errDiagnostics) {
         console.error(`[enrich] ${slug}: diagnostics=${JSON.stringify(errDiagnostics)}`);
@@ -1230,6 +1148,10 @@ serve(async (req) => {
       allFlags.push(`MODERATE_WORD_COUNT: Content at ${quality.totalWords} words, well below ${minWords} target`);
     } else if (quality.totalWords < minWords) {
       allFlags.push(`BELOW_TARGET: Content at ${quality.totalWords} words, target is ${minWords}`);
+    }
+
+    if (aiDiagnostics?.fallbackTriggered) {
+      allFlags.push(`CLAUDE_FALLBACK: Claude failed, content generated by Gemini 2.5 Flash`);
     }
 
     const sectionsAdded = Object.keys(enrichmentData).filter(k => {
@@ -1289,11 +1211,11 @@ serve(async (req) => {
     return new Response(JSON.stringify({
       status: resultStatus,
       slug,
-      model: selectedModel,
+      model: aiDiagnostics?.fallbackTriggered ? `${selectedModel}→gemini-fallback` : selectedModel,
       totalWords: quality.totalWords,
       sectionCount: quality.sectionCount,
       version,
-      diagnostics: claudeDiagnostics || null,
+      diagnostics: aiDiagnostics || null,
       results: [result],
     }), {
       status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },

@@ -116,7 +116,7 @@ export function BlogPostEditor() {
   const [bulkWordCount, setBulkWordCount] = useState(1500);
   const [bulkResults, setBulkResults] = useState<{ topic: string; status: 'queued' | 'generating' | 'success' | 'failed'; articleId?: string; error?: string }[]>([]);
   const [isBulkGenerating, setIsBulkGenerating] = useState(false);
-  const [bulkAiModel, setBulkAiModel] = useState<'gemini' | 'claude'>('gemini');
+  const [bulkAiModel, setBulkAiModel] = useState<string>('gemini');
   const bulkGenerateAbortRef = useRef(false);
 
   // Bulk cover image generation state

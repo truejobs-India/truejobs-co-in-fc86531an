@@ -223,8 +223,8 @@ function createDiagnostics(slug: string, promptChars: number): ClaudeDiagnostics
   };
 }
 
-function logClaudeRequest(diag: ClaudeDiagnostics, phase: string) {
-  console.log(`[claude-${phase}] slug=${diag.slug} model=${diag.model} anthropic-version=${diag.anthropicVersion} max_tokens=${diag.maxTokens} structured=${diag.structuredOutput} prompt_chars=${diag.promptChars} attempt=${diag.attempt}`);
+function logClaudeRequest(diag: ClaudeDiagnostics, phase: string, requestTimeoutMs: number) {
+  console.log(`[claude-${phase}] slug=${diag.slug} model=${diag.model} anthropic-version=${diag.anthropicVersion} max_tokens=${diag.maxTokens} structured=${diag.structuredOutput} prompt_chars=${diag.promptChars} attempt=${diag.attempt} sdk_timeout_ms=${requestTimeoutMs}`);
 }
 
 async function callClaudeSDK(

@@ -68,8 +68,9 @@ interface DashboardStats {
   totalApplications: number;
 }
 
-export default function AdminDashboard() {
-  const { toast } = useToast();
+function AdminDashboardInner() {
+  const { toast } = useAdminToast();
+  const { messages, dismissMessage, clearAll, toggleExpand } = useAdminMessagesContext();
   const navigate = useNavigate();
   const [stats, setStats] = useState<DashboardStats>({
     totalUsers: 0,

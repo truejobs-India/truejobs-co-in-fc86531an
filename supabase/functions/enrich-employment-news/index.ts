@@ -34,18 +34,21 @@ function tryParseJSON(text: string): any {
   try {
     return JSON.parse(text);
   } catch {
-    // Gate repair: only attempt if response looks like a substantial JSON object
     if (!text.trimStart().startsWith("{") || text.length < 500) {
       throw new Error(`JSON repair skipped — response too short (${text.length} chars) or not a JSON object`);
     }
     const lastBrace = text.lastIndexOf("}");
     if (lastBrace > 0) {
       const trimmed = text.substring(0, lastBrace + 1);
-      return JSON.parse(trimmed); // may still throw
+      return JSON.parse(trimmed);
     }
     throw new Error("JSON repair failed");
   }
 }
+
+// ═══════════════════════════════════════════════════════════════
+// AI Model Providers
+// ═══════════════════════════════════════════════════════════════
 
 async function fetchGemini(apiKey: string, prompt: string): Promise<string> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
@@ -109,17 +112,156 @@ async function fetchGemini(apiKey: string, prompt: string): Promise<string> {
   return text;
 }
 
-async function callGemini(apiKey: string, prompt: string) {
-  const text = await fetchGemini(apiKey, prompt);
+// ── AWS Sig V4 helpers (for Bedrock models) ──
+async function hmacSha256B(key: ArrayBuffer | Uint8Array, data: string): Promise<ArrayBuffer> {
+  const enc = new TextEncoder();
+  const ck = await crypto.subtle.importKey('raw', key instanceof Uint8Array ? key : new Uint8Array(key), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  return crypto.subtle.sign('HMAC', ck, enc.encode(data));
+}
+
+async function sha256Hex(data: string): Promise<string> {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(data));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function awsSigV4Fetch(host: string, rawPath: string, body: string, region: string, service: string): Promise<Response> {
+  const ak = Deno.env.get('AWS_ACCESS_KEY_ID');
+  const sk = Deno.env.get('AWS_SECRET_ACCESS_KEY');
+  if (!ak || !sk) throw new Error('AWS credentials not configured');
+
+  const encodedUri = '/' + rawPath.split('/').filter(Boolean).map(s => encodeURIComponent(s)).join('/');
+  const canonicalUri = '/' + rawPath.split('/').filter(Boolean).map(s => encodeURIComponent(encodeURIComponent(s))).join('/');
+  const now = new Date();
+  const dateStamp = now.toISOString().replace(/[:-]|\.\d{3}/g, '').slice(0, 8);
+  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '').slice(0, 15) + 'Z';
+  const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`;
+  const payloadHash = await sha256Hex(body);
+  const canonicalHeaders = `content-type:application/json\nhost:${host}\nx-amz-date:${amzDate}\n`;
+  const signedHeaders = 'content-type;host;x-amz-date';
+  const canonicalRequest = `POST\n${canonicalUri}\n\n${canonicalHeaders}\n${signedHeaders}\n${payloadHash}`;
+  const stringToSign = `AWS4-HMAC-SHA256\n${amzDate}\n${credentialScope}\n${await sha256Hex(canonicalRequest)}`;
+  const enc = new TextEncoder();
+  let sigKey = await hmacSha256B(enc.encode(`AWS4${sk}`), dateStamp);
+  sigKey = await hmacSha256B(sigKey, region);
+  sigKey = await hmacSha256B(sigKey, service);
+  sigKey = await hmacSha256B(sigKey, 'aws4_request');
+  const sig = Array.from(new Uint8Array(await hmacSha256B(sigKey, stringToSign))).map(b => b.toString(16).padStart(2, '0')).join('');
+
+  return fetch(`https://${host}${encodedUri}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Amz-Date': amzDate,
+      Authorization: `AWS4-HMAC-SHA256 Credential=${ak}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${sig}`,
+    },
+    body,
+  });
+}
+
+async function callMistralRaw(prompt: string): Promise<string> {
+  const modelId = 'mistral.mistral-7b-instruct-v0:2';
+  const region = Deno.env.get('AWS_REGION') || 'ap-south-1';
+  const host = `bedrock-runtime.${region}.amazonaws.com`;
+  const body = JSON.stringify({
+    messages: [{ role: 'user', content: [{ text: prompt }] }],
+    inferenceConfig: { maxTokens: 8192, temperature: 0.1 },
+  });
+  const resp = await awsSigV4Fetch(host, `/model/${modelId}/converse`, body, region, 'bedrock');
+  if (!resp.ok) throw new Error(`Mistral Bedrock ${resp.status}: ${await resp.text()}`);
+  const data = await resp.json();
+  return data?.output?.message?.content?.[0]?.text || '';
+}
+
+async function callClaudeRaw(prompt: string): Promise<string> {
+  const inferenceProfileId = 'us.anthropic.claude-sonnet-4-6';
+  const region = 'us-east-1';
+  const host = `bedrock-runtime.${region}.amazonaws.com`;
+  const body = JSON.stringify({
+    anthropic_version: 'bedrock-2023-05-31',
+    messages: [{ role: 'user', content: prompt }],
+    max_tokens: 8192,
+    temperature: 0.1,
+  });
+  const resp = await awsSigV4Fetch(host, `/model/${inferenceProfileId}/invoke`, body, region, 'bedrock');
+  if (!resp.ok) throw new Error(`Claude Bedrock ${resp.status}: ${await resp.text()}`);
+  const data = await resp.json();
+  return data?.content?.[0]?.text || '';
+}
+
+async function callLovableGeminiRaw(prompt: string): Promise<string> {
+  const apiKey = Deno.env.get('LOVABLE_API_KEY');
+  if (!apiKey) throw new Error('LOVABLE_API_KEY not configured');
+  const resp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'google/gemini-2.5-flash',
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 8192,
+      temperature: 0.1,
+    }),
+  });
+  if (!resp.ok) {
+    if (resp.status === 429) throw new Error('Rate limit exceeded on Lovable AI.');
+    if (resp.status === 402) throw new Error('Lovable AI credits exhausted.');
+    throw new Error(`Lovable AI error ${resp.status}`);
+  }
+  const data = await resp.json();
+  return data?.choices?.[0]?.message?.content || '';
+}
+
+// Unified AI call: returns parsed JSON
+async function callAI(model: string, prompt: string): Promise<any> {
+  let rawText: string;
+
+  switch (model) {
+    case 'mistral': {
+      rawText = await callMistralRaw(prompt);
+      break;
+    }
+    case 'claude': {
+      rawText = await callClaudeRaw(prompt);
+      break;
+    }
+    case 'lovable-gemini': {
+      rawText = await callLovableGeminiRaw(prompt);
+      break;
+    }
+    case 'gemini':
+    default: {
+      // Gemini has its own retry + JSON parse logic
+      const apiKey = Deno.env.get("GEMINI_API_KEY");
+      if (!apiKey) throw new Error("GEMINI_API_KEY not configured");
+      const text = await fetchGemini(apiKey, prompt);
+      try {
+        return tryParseJSON(text);
+      } catch (e1) {
+        console.warn("Gemini JSON parse failed, retrying...", (e1 as Error).message);
+        await delay(2000);
+        const text2 = await fetchGemini(apiKey, prompt);
+        return tryParseJSON(text2);
+      }
+    }
+  }
+
+  // For non-Gemini models, strip markdown fences and parse
+  rawText = rawText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
   try {
-    return tryParseJSON(text);
+    return tryParseJSON(rawText);
   } catch (e1) {
-    console.warn("Gemini JSON parse failed, retrying call...", (e1 as Error).message);
+    console.warn(`${model} JSON parse failed, retrying...`, (e1 as Error).message);
     await delay(2000);
-    const text2 = await fetchGemini(apiKey, prompt);
-    return tryParseJSON(text2);
+    // Retry the call
+    let retryText: string;
+    if (model === 'mistral') retryText = await callMistralRaw(prompt);
+    else if (model === 'claude') retryText = await callClaudeRaw(prompt);
+    else retryText = await callLovableGeminiRaw(prompt);
+    retryText = retryText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    return tryParseJSON(retryText);
   }
 }
+
+// ═══════════════════════════════════════════════════════════════
 
 serve(async (req) => {
   if (req.method === "OPTIONS")
@@ -132,7 +274,7 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Auth: verify JWT via service client
+    // Auth: verify JWT
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer "))
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
@@ -148,7 +290,7 @@ serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
 
-    // Admin check via service client (bypasses RLS)
+    // Admin check
     const { data: roleData } = await serviceClient
       .from("user_roles")
       .select("role")
@@ -161,25 +303,23 @@ serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
 
-    const { jobIds } = await req.json();
+    const { jobIds, aiModel } = await req.json();
     if (!jobIds || !Array.isArray(jobIds) || jobIds.length === 0)
       return new Response(
         JSON.stringify({ error: "jobIds array required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
 
-    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-    if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY not configured");
+    const useModel = aiModel || 'gemini';
+    console.log(`[enrich-employment-news] Using model: ${useModel}, jobs: ${jobIds.length}`);
 
     const results: Array<{ id: string; success: boolean; error?: string }> = [];
 
-    // Process sequentially (one at a time) to avoid timeouts
     for (let i = 0; i < jobIds.length; i += 1) {
       const batch = jobIds.slice(i, i + 1);
 
       const batchPromises = batch.map(async (jobId: string) => {
         try {
-          // Fetch job + batch uploaded_at
           const { data: job, error: fetchErr } = await serviceClient
             .from("employment_news_jobs")
             .select("*")
@@ -190,7 +330,6 @@ serve(async (req) => {
             return { id: jobId, success: false, error: "Job not found" };
           }
 
-          // Fetch batch uploaded_at for schema date override
           let batchUploadedAt: string | null = null;
           if (job.upload_batch_id) {
             const { data: batchData } = await serviceClient
@@ -229,6 +368,8 @@ Given this raw job notification data, create fully optimized SEO content. Return
   "job_category": "One of: Central Government, State Government, Defence, Railway, Banking, SSC, PSU, University/Research, Teaching, Police, Medical/Health, Engineering, Other"
 }
 
+IMPORTANT: Return ONLY the JSON object. No markdown formatting, no code blocks.
+
 Input data:
 Organisation: ${job.org_name || "N/A"}
 Post: ${job.post || "N/A"}
@@ -244,9 +385,9 @@ Experience: ${job.experience_required || "N/A"}
 Advertisement No: ${job.advertisement_number || "N/A"}
 Description: ${job.description || "N/A"}`;
 
-          const enriched = await callGemini(GEMINI_API_KEY, enrichPrompt);
+          const enriched = await callAI(useModel, enrichPrompt);
 
-          // --- Strict field validation ---
+          // Strict field validation
           const requiredStringFields = ['enriched_title', 'enriched_description', 'slug', 'meta_title', 'meta_description'] as const;
           const missingFields: string[] = [];
           for (const field of requiredStringFields) {
@@ -258,12 +399,10 @@ Description: ${job.description || "N/A"}`;
             missingFields.push('keywords');
           }
           if (missingFields.length > 0) {
-            throw new Error(`Gemini returned incomplete data — missing: ${missingFields.join(', ')}`);
+            throw new Error(`AI returned incomplete data — missing: ${missingFields.join(', ')}`);
           }
 
-          // --- Post-processing ---
-
-          // 1. Slug conflict check
+          // Post-processing: slug conflict check
           let slug = enriched.slug || `${(job.post || "job").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")}-${Date.now()}`;
           const { data: existingSlug } = await serviceClient
             .from("employment_news_jobs")
@@ -276,7 +415,7 @@ Description: ${job.description || "N/A"}`;
             slug = `${slug}-${suffix}`;
           }
 
-          // 2. Schema date overrides
+          // Schema date overrides
           let schemaMarkup = enriched.schema_markup || {};
           if (batchUploadedAt) {
             schemaMarkup.datePosted = batchUploadedAt;
@@ -286,14 +425,10 @@ Description: ${job.description || "N/A"}`;
           } else {
             delete schemaMarkup.validThrough;
           }
-
-          // 3. Recursive null cleanup
           schemaMarkup = deepCleanNulls(schemaMarkup) || {};
 
-          // 4. Keywords as native array
           const keywords = Array.isArray(enriched.keywords) ? enriched.keywords : [];
 
-          // Update the job with all SEO fields
           const { error: updateErr } = await serviceClient
             .from("employment_news_jobs")
             .update({
@@ -328,7 +463,6 @@ Description: ${job.description || "N/A"}`;
       const batchResults = await Promise.all(batchPromises);
       results.push(...batchResults);
 
-      // 500ms delay between jobs to avoid rate limits
       if (i + 1 < jobIds.length) {
         await delay(500);
       }

@@ -83,8 +83,12 @@ FINAL SECTION — FAQ with schema.org markup (FAQPage, Question, Answer itemtype
 const ANTHROPIC_MODEL = Deno.env.get('ANTHROPIC_MODEL') || 'claude-sonnet-4-6';
 const ANTHROPIC_DEFAULT_MAX_TOKENS = 4096;
 const ANTHROPIC_RETRY_MAX_TOKENS = 6144;
-// Hard timeout per Claude SDK request to avoid long-hanging calls that break client fetches.
-const CLAUDE_SDK_TIMEOUT_MS = parseInt(Deno.env.get('CLAUDE_SDK_TIMEOUT_MS') || '65000', 10);
+// Hard timeout per Claude SDK request.
+const CLAUDE_SDK_TIMEOUT_MS = parseInt(Deno.env.get('CLAUDE_SDK_TIMEOUT_MS') || '50000', 10);
+// Total budget for one invocation AI path so edge requests do not die before response.
+const AI_TOTAL_BUDGET_MS = parseInt(Deno.env.get('ENRICH_AI_TOTAL_BUDGET_MS') || '110000', 10);
+const GEMINI_FALLBACK_RESERVED_MS = 30000;
+const CLAUDE_RETRY_MIN_REMAINING_MS = 55000;
 
 const TIMEOUTS: Record<string, number> = {
   'gemini-flash': 60_000,
@@ -100,6 +104,30 @@ const TIMEOUTS: Record<string, number> = {
 
 function getTimeout(model: string): number {
   return TIMEOUTS[model] || 60_000;
+}
+
+function getRemainingBudgetMs(startedAtMs: number): number {
+  return AI_TOTAL_BUDGET_MS - (Date.now() - startedAtMs);
+}
+
+function computeFallbackTimeoutMs(startedAtMs: number): number {
+  const remaining = getRemainingBudgetMs(startedAtMs) - 2000;
+  return Math.max(12_000, Math.min(60_000, remaining));
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  return await new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label} timeout after ${timeoutMs}ms`)), timeoutMs);
+    promise
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -195,34 +223,39 @@ function createDiagnostics(slug: string, promptChars: number): ClaudeDiagnostics
   };
 }
 
-function logClaudeRequest(diag: ClaudeDiagnostics, phase: string) {
-  console.log(`[claude-${phase}] slug=${diag.slug} model=${diag.model} anthropic-version=${diag.anthropicVersion} max_tokens=${diag.maxTokens} structured=${diag.structuredOutput} prompt_chars=${diag.promptChars} attempt=${diag.attempt}`);
+function logClaudeRequest(diag: ClaudeDiagnostics, phase: string, requestTimeoutMs: number) {
+  console.log(`[claude-${phase}] slug=${diag.slug} model=${diag.model} anthropic-version=${diag.anthropicVersion} max_tokens=${diag.maxTokens} structured=${diag.structuredOutput} prompt_chars=${diag.promptChars} attempt=${diag.attempt} sdk_timeout_ms=${requestTimeoutMs}`);
 }
 
 async function callClaudeSDK(
   prompt: string,
   slug: string,
   maxTokens: number,
+  requestTimeoutMs = CLAUDE_SDK_TIMEOUT_MS,
 ): Promise<{ data: Record<string, unknown>; diagnostics: ClaudeDiagnostics }> {
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured — please add it to secrets');
 
-  const client = new Anthropic({ apiKey, timeout: CLAUDE_SDK_TIMEOUT_MS });
+  const client = new Anthropic({ apiKey, timeout: requestTimeoutMs, maxRetries: 0 });
   const diag = createDiagnostics(slug, prompt.length);
   diag.maxTokens = maxTokens;
 
-  logClaudeRequest(diag, 'pre-request');
+  logClaudeRequest(diag, 'pre-request', requestTimeoutMs);
   const startMs = Date.now();
 
   try {
-    const response = await client.messages.create({
-      model: ANTHROPIC_MODEL,
-      max_tokens: maxTokens,
-      temperature: 0.5,
-      tools: [ENRICHMENT_TOOL_SCHEMA],
-      tool_choice: { type: 'tool' as const, name: 'save_enrichment' },
-      messages: [{ role: 'user', content: prompt }],
-    });
+    const response = await withTimeout(
+      client.messages.create({
+        model: ANTHROPIC_MODEL,
+        max_tokens: maxTokens,
+        temperature: 0.5,
+        tools: [ENRICHMENT_TOOL_SCHEMA],
+        tool_choice: { type: 'tool' as const, name: 'save_enrichment' },
+        messages: [{ role: 'user', content: prompt }],
+      }),
+      requestTimeoutMs,
+      'Claude SDK request',
+    );
 
     diag.elapsedMs = Date.now() - startMs;
     diag.requestId = (response as any).id || 'n/a';
@@ -298,12 +331,20 @@ Keep content compact and data-dense. Avoid long prose.`;
  * Full Claude call: attempt → targeted retry when needed.
  * Does NOT handle Gemini fallback (that's in callAI).
  */
-async function callClaudeWithRetry(prompt: string, slug: string): Promise<{ data: Record<string, unknown>; diagnostics: ClaudeDiagnostics }> {
+async function callClaudeWithRetry(
+  prompt: string,
+  slug: string,
+  startedAtMs: number,
+): Promise<{ data: Record<string, unknown>; diagnostics: ClaudeDiagnostics }> {
+  const firstAttemptTimeout = Math.min(
+    CLAUDE_SDK_TIMEOUT_MS,
+    Math.max(15_000, getRemainingBudgetMs(startedAtMs) - GEMINI_FALLBACK_RESERVED_MS),
+  );
+
   try {
-    const result = await callClaudeSDK(prompt, slug, ANTHROPIC_DEFAULT_MAX_TOKENS);
+    const result = await callClaudeSDK(prompt, slug, ANTHROPIC_DEFAULT_MAX_TOKENS, firstAttemptTimeout);
 
     // If we already parsed valid structured output, do NOT retry even if stop_reason=max_tokens.
-    // This avoids unnecessary long second calls and client-side fetch timeouts.
     if (result.diagnostics.stopReason === 'max_tokens') {
       console.warn(`[claude-truncated-valid] ${slug}: stop_reason=max_tokens but required schema parsed successfully; using attempt 1 output.`);
     }
@@ -319,17 +360,28 @@ async function callClaudeWithRetry(prompt: string, slug: string): Promise<{ data
       throw firstErr;
     }
 
+    const remainingBudget = getRemainingBudgetMs(startedAtMs);
+
     // If truncation caused missing required fields, retry once with compact recovery instructions.
     const isTruncationMissingRequired =
       diag?.stopReason === 'max_tokens' &&
       (errMsg.includes('Missing required fields') || errMsg.includes('No tool_use block'));
 
     if (isTruncationMissingRequired) {
+      if (remainingBudget < CLAUDE_RETRY_MIN_REMAINING_MS) {
+        console.warn(`[claude-circuit-breaker] ${slug}: skip retry due low remaining budget (${remainingBudget}ms). Failing over to Gemini.`);
+        throw firstErr;
+      }
+
       console.warn(`[claude-retry] ${slug}: max_tokens truncation with incomplete required fields. Retrying once with compact recovery prompt at ${ANTHROPIC_RETRY_MAX_TOKENS} tokens...`);
       const compactPrompt = buildClaudeRecoveryPrompt(prompt);
+      const retryTimeout = Math.min(
+        CLAUDE_SDK_TIMEOUT_MS,
+        Math.max(15_000, getRemainingBudgetMs(startedAtMs) - GEMINI_FALLBACK_RESERVED_MS),
+      );
 
       try {
-        const retryResult = await callClaudeSDK(compactPrompt, slug, ANTHROPIC_RETRY_MAX_TOKENS);
+        const retryResult = await callClaudeSDK(compactPrompt, slug, ANTHROPIC_RETRY_MAX_TOKENS, retryTimeout);
         retryResult.diagnostics.attempt = 2;
         retryResult.diagnostics.retried = true;
         retryResult.diagnostics.retryReason = 'max_tokens_missing_required_compact_prompt';
@@ -345,28 +397,10 @@ async function callClaudeWithRetry(prompt: string, slug: string): Promise<{ data
       }
     }
 
-    // Single retry for transient errors (5xx, timeout, network)
-    console.warn(`[claude-retry] ${slug}: First attempt failed: ${errMsg}. Retrying once with ${ANTHROPIC_RETRY_MAX_TOKENS} tokens...`);
-    if (diag) {
-      diag.attempt = 2;
-      diag.retried = true;
-      diag.retryReason = 'transient_error';
-    }
-
-    try {
-      const retryResult = await callClaudeSDK(prompt, slug, ANTHROPIC_RETRY_MAX_TOKENS);
-      retryResult.diagnostics.attempt = 2;
-      retryResult.diagnostics.retried = true;
-      retryResult.diagnostics.retryReason = 'transient_error';
-      return retryResult;
-    } catch (retryErr) {
-      const retryDiag = (retryErr as any)?.diagnostics as ClaudeDiagnostics | undefined;
-      if (retryDiag) {
-        retryDiag.attempt = 2;
-        retryDiag.retried = true;
-      }
-      throw retryErr;
-    }
+    // No transient retry: only truncation-based retry is allowed.
+    // This preserves budget so Gemini fallback can complete in the same invocation.
+    console.warn(`[claude-circuit-breaker] ${slug}: no transient retry for error=${errMsg}. Failing over to Gemini immediately. remaining_budget_ms=${remainingBudget}`);
+    throw firstErr;
   }
 }
 
@@ -654,7 +688,12 @@ function tryParseJSON(raw: string): Record<string, unknown> {
 // AI DISPATCHER — with Claude→Gemini fallback
 // ═══════════════════════════════════════════════════════════════════════════════
 
-async function callAI(model: string, prompt: string, slug: string): Promise<{ data: Record<string, unknown>; diagnostics?: Record<string, unknown> }> {
+async function callAI(
+  model: string,
+  prompt: string,
+  slug: string,
+  startedAtMs: number,
+): Promise<{ data: Record<string, unknown>; diagnostics?: Record<string, unknown> }> {
   const timeout = getTimeout(model);
   let rawText: string;
 
@@ -674,7 +713,7 @@ async function callAI(model: string, prompt: string, slug: string): Promise<{ da
       let claudeDiag: ClaudeDiagnostics | undefined;
 
       try {
-        const result = await callClaudeWithRetry(prompt, slug);
+        const result = await callClaudeWithRetry(prompt, slug, startedAtMs);
         return { data: result.data, diagnostics: result.diagnostics as unknown as Record<string, unknown> };
       } catch (err) {
         claudeError = err instanceof Error ? err.message : String(err);
@@ -688,8 +727,9 @@ async function callAI(model: string, prompt: string, slug: string): Promise<{ da
         const geminiPrompt = prompt.replace(/=== CRITICAL OUTPUT CONSTRAINTS ===[\s\S]*$/, '') +
           '\n\nReturn ONLY the JSON object matching the schema. No commentary, no markdown fences.';
 
-        console.log(`[gemini-fallback] ${slug}: Starting Gemini fallback, prompt ${geminiPrompt.length} chars`);
-        rawText = await fetchGemini(geminiPrompt, 'gemini-2.5-flash', 60_000);
+        const fallbackTimeoutMs = computeFallbackTimeoutMs(startedAtMs);
+        console.log(`[gemini-fallback] ${slug}: Starting Gemini fallback, prompt ${geminiPrompt.length} chars, timeout=${fallbackTimeoutMs}ms`);
+        rawText = await fetchGemini(geminiPrompt, 'gemini-2.5-flash', fallbackTimeoutMs);
         const data = tryParseJSON(rawText);
 
         const fallbackDiag: Record<string, unknown> = {
@@ -1165,8 +1205,9 @@ serve(async (req) => {
     try {
       const prompt = getPromptForType(pageType, currentContent!, selectedModel);
       const hasSchema = prompt.includes('JSON Schema:');
-      console.log(`[enrich] ${slug}: calling ${selectedModel}, prompt ${prompt.length} chars, timeout ${getTimeout(selectedModel)}ms, schema_in_prompt=${hasSchema}`);
-      const result = await callAI(selectedModel, prompt, slug);
+      const aiStartedAtMs = Date.now();
+      console.log(`[enrich] ${slug}: calling ${selectedModel}, prompt ${prompt.length} chars, timeout ${getTimeout(selectedModel)}ms, schema_in_prompt=${hasSchema}, ai_budget_ms=${AI_TOTAL_BUDGET_MS}`);
+      const result = await callAI(selectedModel, prompt, slug, aiStartedAtMs);
       enrichmentData = result.data;
       aiDiagnostics = result.diagnostics;
 

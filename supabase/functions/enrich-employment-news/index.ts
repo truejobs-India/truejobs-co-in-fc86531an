@@ -408,7 +408,7 @@ async function fetchGemini(apiKey: string, prompt: string): Promise<string> {
     } catch (err) {
       clearTimeout(t2);
       if (err instanceof DOMException && err.name === "AbortError") {
-        throw new Error("Gemini API timed out after 50s (retry)");
+        throw new Error("AI model timeout after 60 seconds (retry)");
       }
       throw err;
     }

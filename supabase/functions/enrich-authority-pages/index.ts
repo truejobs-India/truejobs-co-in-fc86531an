@@ -925,7 +925,7 @@ OUTPUT FORMAT — Return valid JSON:
 Return ONLY the JSON object.`;
 }
 
-function getPromptForType(pageType: string, page: PageContent): string {
+function getPromptForType(pageType: string, page: PageContent, model?: string): string {
   let typePrompt: string;
   switch (pageType) {
     case 'notification': typePrompt = buildNotificationPrompt(page); break;
@@ -935,8 +935,23 @@ function getPromptForType(pageType: string, page: PageContent): string {
     case 'state': typePrompt = buildStatePrompt(page); break;
     default: typePrompt = buildNotificationPrompt(page);
   }
-  // ALL models get the FULL MASTER_AUTHORITY_PROMPT — zero compression
-  return MASTER_AUTHORITY_PROMPT + '\n\n' + typePrompt;
+
+  const fullPrompt = MASTER_AUTHORITY_PROMPT + '\n\n' + typePrompt;
+
+  // For Claude: add concise output constraint to reduce verbosity
+  if (model === 'claude-sonnet' || model === 'claude') {
+    return fullPrompt + `
+
+=== CRITICAL OUTPUT CONSTRAINTS ===
+- Return ONLY the JSON object. No commentary, no markdown fences, no explanation outside JSON.
+- Be concise in each section. Prioritize data density over prose length.
+- Avoid repetition across sections. Each section should contain unique information.
+- Target 1200-1800 total words across all JSON values combined.
+- Every word must add value. Remove filler sentences.
+- Do NOT repeat the exam name unnecessarily in every paragraph.`;
+  }
+
+  return fullPrompt;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

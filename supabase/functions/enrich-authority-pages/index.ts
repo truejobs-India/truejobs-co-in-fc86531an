@@ -755,8 +755,7 @@ Generate content for these sections (concise, data-dense, no filler):
 
 Existing overview for reference (enrich, don't duplicate): ${(page.existingOverview || '').substring(0, 300)}
 
-FAQs: 6-8 questions real aspirants search for.
-Return the JSON matching the schema provided. Be concise — each section 100-300 words.`;
+FAQs: 6-8 questions real aspirants search for.`;
 }
 
 function buildSyllabusPrompt(page: PageContent): string {

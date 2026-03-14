@@ -725,6 +725,7 @@ export function ContentEnricher() {
                               variant="ghost"
                               className="text-blue-600"
                               title="Publish"
+                              disabled={isPublishingAll}
                               onClick={() => {
                                 const check = canPublish(latest, row);
                                 if (!check.ok) {

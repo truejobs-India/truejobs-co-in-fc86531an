@@ -40,8 +40,9 @@ async function callBedrockConverseRaw(
   accessKey: string, secretKey: string, region: string,
 ): Promise<string> {
   const host = `bedrock-runtime.${region}.amazonaws.com`;
-  const canonicalUri = '/' + `model/${modelId}/converse`.split('/').map(s => encodeURIComponent(s)).join('/');
-  const url = `https://${host}${canonicalUri}`;
+  const encodedUri = '/' + `model/${modelId}/converse`.split('/').map(s => encodeURIComponent(s)).join('/');
+  const canonicalUri = '/' + `model/${modelId}/converse`.split('/').map(s => encodeURIComponent(encodeURIComponent(s))).join('/');
+  const url = `https://${host}${encodedUri}`;
 
   const body = JSON.stringify({
     messages: [{ role: "user", content: [{ text: userPrompt }] }],

@@ -147,6 +147,12 @@ export function EmploymentNewsManager() {
   // Track schema_markup as pretty-printed string during editing
   const [editSchemaStr, setEditSchemaStr] = useState('');
 
+  // Persist AI model selection
+  const handleEnrichModelChange = useCallback((model: string) => {
+    setEnrichAiModel(model);
+    try { localStorage.setItem('empnews_enrich_ai_model', model); } catch {}
+  }, []);
+
   // Load data
   const fetchStats = useCallback(async () => {
     const [total, pending, enriched, published, rejected] = await Promise.all([

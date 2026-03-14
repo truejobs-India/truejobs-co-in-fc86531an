@@ -88,12 +88,18 @@ No markdown code blocks. Return ONLY the JSON object.`;
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { maxOutputTokens: 16000, temperature: 0.5 },
+        generationConfig: { maxOutputTokens: 32000, temperature: 0.5 },
       }),
     });
     if (!resp.ok) throw new Error(`Gemini API error ${resp.status}`);
     const data = await resp.json();
-    const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const candidate = data?.candidates?.[0];
+    const finishReason = candidate?.finishReason;
+    if (finishReason === 'MAX_TOKENS') {
+      console.error('Gemini response truncated (MAX_TOKENS)');
+      return new Response(JSON.stringify({ error: 'AI response was truncated. Try a shorter target word count.' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+    const raw = candidate?.content?.parts?.[0]?.text || '';
     const cleaned = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
 
     let parsed: any;

@@ -49,6 +49,7 @@ import { BlogPolicyWarnings } from './blog/BlogPolicyWarnings';
 import { Checkbox } from '@/components/ui/checkbox';
 import { BlogAITools } from './blog/BlogAITools';
 import { BlogScoreBreakdown } from './blog/BlogScoreBreakdown';
+import { VertexAITools } from './blog/VertexAITools';
 
 interface BlogPost {
   id: string;
@@ -1004,7 +1005,19 @@ export function BlogPostEditor() {
                 currentSEO={currentSEO}
               />
 
-              {/* Cover Image with Upload + AI Generate */}
+              {/* Vertex AI Tools (Flash · Pro · Imagen) */}
+              <VertexAITools
+                formData={formData}
+                onApplyField={(field, value) => handleFormChange({ [field]: value })}
+                onApplyContent={(html) => {
+                  if (editorInstance) {
+                    editorInstance.commands.setContent(html);
+                    handleFormChange({ content: html });
+                  }
+                }}
+                onImageGenerated={(url, alt) => handleFormChange({ cover_image_url: url, featured_image_alt: alt })}
+              />
+
               <div className="space-y-2">
                 <CoverImageUploader value={formData.cover_image_url} onChange={(url) => handleFormChange({ cover_image_url: url })} />
                 <FeaturedImageGenerator

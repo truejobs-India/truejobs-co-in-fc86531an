@@ -199,8 +199,8 @@ If any check fails, fix it before returning.
 const TIMEOUTS: Record<string, number> = {
   'gemini-flash': 60_000,
   'gemini-pro': 60_000,
-  'claude-sonnet': 130_000,
-  'claude': 130_000,
+  'claude-sonnet': 145_000,
+  'claude': 145_000,
   'mistral': 120_000,
   'groq': 30_000,
   'lovable-gemini': 60_000,
@@ -269,7 +269,7 @@ async function fetchGemini(prompt: string, model = 'gemini-2.5-flash', timeoutMs
 }
 
 // ── Claude Sonnet 4.6 (Direct Anthropic API) ──
-async function callClaudeRaw(prompt: string, timeoutMs = 130_000): Promise<string> {
+async function callClaudeRaw(prompt: string, timeoutMs = 145_000): Promise<string> {
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured — please add it to secrets');
 
@@ -287,7 +287,7 @@ async function callClaudeRaw(prompt: string, timeoutMs = 130_000): Promise<strin
       signal: controller.signal,
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: 16384,
+        max_tokens: 12288,
         temperature: 0.6,
         messages: [{ role: 'user', content: prompt }],
       }),

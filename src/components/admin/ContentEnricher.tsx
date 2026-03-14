@@ -114,6 +114,7 @@ export function ContentEnricher() {
   const [family, setFamily] = useState<PageFamily>('notification');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [isEnriching, setIsEnriching] = useState(false);
+  const [isPublishingAll, setIsPublishingAll] = useState(false);
   const [batchReport, setBatchReport] = useState<{ results: EnrichmentResult[] } | null>(null);
   const [drafts, setDrafts] = useState<Map<string, EnrichmentDraft[]>>(new Map());
   const [previewSlug, setPreviewSlug] = useState<string | null>(null);
@@ -440,6 +441,68 @@ export function ContentEnricher() {
     }
   };
 
+  const handlePublishAllEnriched = async () => {
+    if (isPublishingAll) return;
+
+    const publishable = pageRows.reduce<Array<{ row: PageHealthRow; latest: EnrichmentDraft }>>((acc, row) => {
+      const latest = getLatest(row.slug);
+      const published = getPublished(row.slug);
+      if (!latest || published) return acc;
+      if (!canPublish(latest, row).ok) return acc;
+      acc.push({ row, latest });
+      return acc;
+    }, []);
+
+    if (publishable.length === 0) {
+      toast({ title: 'No publishable pages', description: 'No approved enriched pages are ready to publish yet.' });
+      return;
+    }
+
+    setIsPublishingAll(true);
+    addMessage('info', 'Publishing enriched pages', `Publishing ${publishable.length} page${publishable.length === 1 ? '' : 's'}...`);
+
+    let success = 0;
+    let failed = 0;
+
+    try {
+      for (const item of publishable) {
+        const { row, latest } = item;
+        const { data, error } = await supabase.rpc('publish_enrichment_version', {
+          p_page_slug: row.slug,
+          p_version: latest.version,
+        });
+
+        if (error) {
+          failed++;
+          addMessage('error', `✗ Publish ${row.slug}`, error.message);
+          continue;
+        }
+
+        const result = data as unknown as { success: boolean; error?: string };
+        if (!result.success) {
+          failed++;
+          addMessage('error', `✗ Publish ${row.slug}`, result.error || 'Unknown publish error');
+          continue;
+        }
+
+        success++;
+        addMessage('success', `✓ Published ${row.slug}`, `Version ${latest.version} is now live`);
+      }
+
+      await loadDrafts();
+
+      if (failed > 0) {
+        toast({ title: 'Publish completed with issues', description: `${success} published, ${failed} failed`, variant: 'destructive' });
+      } else {
+        toast({ title: 'Published all enriched pages', description: `${success} page${success === 1 ? '' : 's'} are now live` });
+      }
+
+      addMessage(failed > 0 ? 'warning' : 'success', 'Publish all complete', `${success} published, ${failed} failed`);
+    } finally {
+      setIsPublishingAll(false);
+    }
+  };
+
   const healthBadge = (color: 'green' | 'yellow' | 'red') => {
     if (color === 'green') return <Badge className="bg-emerald-500/20 text-emerald-700 border-emerald-300">Healthy</Badge>;
     if (color === 'yellow') return <Badge className="bg-amber-500/20 text-amber-700 border-amber-300">Moderate</Badge>;
@@ -466,6 +529,12 @@ export function ContentEnricher() {
     : null;
 
   const pendingCount = pageRows.filter(r => getLatest(r.slug) === undefined).length;
+  const publishableCount = pageRows.reduce((count, row) => {
+    const latest = getLatest(row.slug);
+    const published = getPublished(row.slug);
+    if (!latest || published) return count;
+    return canPublish(latest, row).ok ? count + 1 : count;
+  }, 0);
 
   return (
     <div className="space-y-6">
@@ -532,6 +601,15 @@ export function ContentEnricher() {
                 >
                   <Sparkles className="h-4 w-4 mr-2" />
                   Enrich All Pending ({pendingCount})
+                </Button>
+
+                <Button
+                  variant="outline"
+                  disabled={publishableCount === 0 || isPublishingAll}
+                  onClick={handlePublishAllEnriched}
+                >
+                  {isPublishingAll ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
+                  Publish All Enriched ({publishableCount})
                 </Button>
               </>
             ) : (
@@ -647,6 +725,7 @@ export function ContentEnricher() {
                               variant="ghost"
                               className="text-blue-600"
                               title="Publish"
+                              disabled={isPublishingAll}
                               onClick={() => {
                                 const check = canPublish(latest, row);
                                 if (!check.ok) {

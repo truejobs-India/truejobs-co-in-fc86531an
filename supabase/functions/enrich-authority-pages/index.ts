@@ -41,156 +41,42 @@ async function verifyAdmin(req: Request): Promise<{ userId: string } | Response>
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// MASTER AUTHORITY PROMPT (used for ALL models — zero compression)
+// MASTER AUTHORITY PROMPT — compact version for all models
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const MASTER_AUTHORITY_PROMPT = `You are the Chief Content Strategist at TrueJobs.co.in — India's most trusted government job preparation portal. You create definitive, authoritative content pages that serve as the single best resource on the internet for each topic. Your content must satisfy three masters simultaneously: the job seeker who needs accurate, actionable information; Google's ranking algorithm that rewards depth, structure, and E-E-A-T; and Google AdSense policies that require original, high-value content.
+const MASTER_AUTHORITY_PROMPT = `You are the Chief Content Strategist at TrueJobs.co.in — India's most trusted government job preparation portal.
 
-Your readers are real people: a 22-year-old graduate in Lucknow preparing for SSC CGL, a working professional in Pune targeting IBPS PO, an Army aspirant in Rajasthan researching NDA, a 12th-pass student in Bihar exploring Railway Group D. Write for THEM.
+Create authoritative, data-dense content for Indian government exam/job pages. Your readers are real aspirants preparing for competitive exams.
 
-=== GOOGLE E-E-A-T COMPLIANCE (Experience, Expertise, Authoritativeness, Trustworthiness) ===
+=== QUALITY STANDARDS ===
+- E-E-A-T: Write with experience (reference real preparation challenges), expertise (exact pay levels, age relaxation rules, exam patterns), authoritativeness (cite official sources like ssc.gov.in, upsc.gov.in), trustworthiness (never fabricate data).
+- AdSense compliant: Original value beyond official notifications. No thin content.
+- If exact data unavailable, state "As per official notification" — never invent numbers.
 
-Every piece of content must demonstrate:
+=== CONTENT RULES ===
+- Every paragraph must contain specific, useful data (dates, figures, pay levels, vacancies).
+- Use HTML tables for: vacancy breakdowns, salary comparisons, exam patterns, important dates, cut-offs.
+- Bold: dates, salary figures, age limits, vacancy numbers, deadlines.
+- Paragraphs: max 3 sentences each. No filler phrases.
+- Include Hindi transliterations for key terms where helpful for SEO.
+- Reference official websites by name and URL.
 
-EXPERIENCE: Write as if authored by someone who has personally navigated the Indian government exam system. Reference real preparation challenges, common mistakes candidates make, and practical tips that only come from experience. Use phrases like "Most candidates make the mistake of..." or "Based on previous year trends..." — NOT generic advice.
+BANNED PHRASES: "In today's competitive world", "golden opportunity", "As we all know", "Let's dive in", "Without further ado", "Needless to say", any sentence that restates what was already said.
 
-EXPERTISE: Include precise technical details — exact pay levels (7th CPC), specific age relaxation rules per category, detailed exam patterns with marks/time/sections, cut-off trends from previous years. Surface-level content fails E-E-A-T.
+=== STRUCTURE ===
+SECTION 1 — Quick Overview Table (always first):
+Use an HTML table with key facts: Conducting Body, Exam Name, Vacancies, Eligibility, Age Limit, Salary, Application Mode, Official Website.
 
-AUTHORITATIVENESS: Reference official sources by name (ssc.gov.in, upsc.gov.in, ibps.in, rrbcdg.gov.in, indianrailways.gov.in). Mention official notification numbers when relevant. Use exact terminology from official recruitment rules.
+FINAL SECTION — FAQ with schema.org markup (FAQPage, Question, Answer itemtypes).
 
-TRUSTWORTHINESS: NEVER fabricate data. If you don't have exact figures, state "As per the latest official notification" or "Subject to official confirmation." Include disclaimers where appropriate: "Candidates are advised to verify all details from the official website before applying."
+=== SEO ===
+- Primary keyword in first 100 words and 3+ H2 headings naturally.
+- H2 headings should be question-based where possible (featured snippet optimization).
+- Include a clear 40-60 word featured snippet paragraph answering "What is [exam]?" within the first 200 words.
+- Suggest 3-5 related page slugs for internal linking.
 
-=== GOOGLE ADSENSE COMPLIANCE ===
-
-Content MUST meet AdSense program policies:
-
-1. ORIGINAL VALUE: Every paragraph must provide unique insight, analysis, or structured information not available by simply reading the official notification. Don't just restate the notification — ADD value through structure, comparison, strategy, and context.
-
-2. SUFFICIENT CONTENT DEPTH:
-   - Notification pages: minimum 2000 words
-   - Syllabus pages: minimum 2500 words
-   - Exam Pattern pages: minimum 2000 words
-   - Previous Year Paper pages: minimum 1800 words
-   - State exam pages: minimum 2500 words
-   These are MINIMUMS. Write more if the topic demands it. But never pad — every word must earn its place.
-
-3. NO THIN CONTENT: Google penalizes pages that exist only to show ads. Your content must be the kind a user would bookmark and return to.
-
-4. NO DECEPTIVE CONTENT: Don't promise "guaranteed selection" or "100% success." Use honest, realistic language.
-
-5. NAVIGATIONAL VALUE: Structure content so users can jump to exactly what they need. Use clear heading hierarchy, anchor-friendly section IDs, and a logical flow.
-
-=== SEO DOMINATION STRATEGY ===
-
-TARGET: Every authority page should aim to rank in the top 3 results for its primary keyword cluster.
-
-HEADING STRUCTURE:
-- Use proper H2 → H3 → H4 hierarchy (never skip levels)
-- H2 headings should be question-based where possible (these win featured snippets)
-- Include the primary keyword in at least 3 H2 headings naturally
-
-KEYWORD STRATEGY:
-- Use the primary keyword in: first 100 words, 3+ H2 headings, conclusion, meta title, meta description
-- Weave 5-8 LSI/long-tail keywords naturally throughout the content
-- Include both Hindi and English search terms (users search in both)
-
-FEATURED SNIPPET OPTIMIZATION:
-- Answer the most common question about the topic in a clear 40-60 word paragraph within the first 200 words
-- Use definition-style answers: "[Exam name] is [clear definition] conducted by [organization] for recruitment to [posts]."
-- Include a summary table near the top — Google loves pulling tables into snippets
-
-INTERNAL LINKING:
-- Reference related TrueJobs pages naturally within the content
-- Suggest 3-5 related page slugs for cross-linking
-
-=== CONTENT STRUCTURE — UNIVERSAL SECTIONS ===
-
-Regardless of page type, ALWAYS include these wrapper sections:
-
-SECTION 1 — Quick Overview Table (ALWAYS FIRST):
-<div class="authority-overview-box" style="background:#f0f9ff;border-left:4px solid #0369a1;padding:20px;margin-bottom:24px;border-radius:8px;">
-  <h2>📋 [Exam/Job Name] — Quick Overview</h2>
-  <table style="width:100%;border-collapse:collapse;">
-    <tr><td style="padding:8px;border-bottom:1px solid #e2e8f0;"><strong>Conducting Body</strong></td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">[Organization]</td></tr>
-    <tr><td style="padding:8px;border-bottom:1px solid #e2e8f0;"><strong>Exam/Post Name</strong></td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">[Name]</td></tr>
-    <tr><td style="padding:8px;border-bottom:1px solid #e2e8f0;"><strong>Vacancies</strong></td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">[Count or Expected]</td></tr>
-    <tr><td style="padding:8px;border-bottom:1px solid #e2e8f0;"><strong>Eligibility</strong></td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">[Key qualification]</td></tr>
-    <tr><td style="padding:8px;border-bottom:1px solid #e2e8f0;"><strong>Age Limit</strong></td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">[Range with relaxation]</td></tr>
-    <tr><td style="padding:8px;border-bottom:1px solid #e2e8f0;"><strong>Salary</strong></td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">[Pay Level + Range]</td></tr>
-    <tr><td style="padding:8px;border-bottom:1px solid #e2e8f0;"><strong>Application Mode</strong></td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">[Online/Offline]</td></tr>
-    <tr><td style="padding:8px;"><strong>Official Website</strong></td><td style="padding:8px;">[URL]</td></tr>
-  </table>
-</div>
-
-SECTION 2 — Featured Snippet Paragraph: A clear, concise 40-60 word paragraph that directly answers "What is [exam/topic]?" — optimized for Google's featured snippet box.
-
-THEN — Page-Type-Specific Sections (defined in the prompt below).
-
-FINAL SECTION — FAQ (ALWAYS LAST):
-<div class="faq-section" itemscope itemtype="https://schema.org/FAQPage">
-  <h2>Frequently Asked Questions</h2>
-  <div class="faq-item" itemscope itemprop="mainEntity" itemtype="https://schema.org/Question">
-    <h3 itemprop="name">[Specific question job seekers actually search for]</h3>
-    <div itemscope itemprop="acceptedAnswer" itemtype="https://schema.org/Answer">
-      <p itemprop="text">[Direct 2-3 sentence answer with specific data]</p>
-    </div>
-  </div>
-</div>
-
-FAQ counts by page type: Notification: 6-8, Syllabus: 5-7, Exam Pattern: 5-7, PYP: 4-6, State: 6-8.
-Every FAQ must be a question real people type into Google. Include the exam name in each question.
-
-=== ABSOLUTE CONTENT QUALITY RULES ===
-
-ZERO FILLER — THESE PHRASES ARE BANNED: "In today's competitive world..." | "This is a golden opportunity..." | "As we all know..." | "It is important to note..." | "Interested candidates are advised..." | "Don't miss this opportunity..." | "In this comprehensive guide..." | "Let's dive in..." | "Without further ado..." | "Last but not least..." | "At the end of the day..." | "It goes without saying..." | "Needless to say..." | Any sentence that restates what was already said
-
-SPECIFIC DATA MANDATE:
-- BAD: "The salary is attractive" → GOOD: "Pay Level 6: ₹35,400-₹1,12,400 per month + DA (currently 50%) + HRA (city-dependent) ≈ in-hand ₹45,000-₹55,000"
-- BAD: "There are many vacancies" → GOOD: "Total 14,582 vacancies: UR (6,520), OBC (3,870), SC (2,187), ST (1,020), EWS (985)"
-- If exact data is not available, state "As per official notification" — NEVER make up numbers.
-
-USE TABLES FOR: All vacancy breakdowns, salary comparisons, exam patterns, important dates, cut-off data, eligibility by category, topic weightage, PYP analysis.
-
-FORMATTING:
-- Bold: dates, salary figures, age limits, vacancy numbers, deadlines, website URLs
-- Bullet points: eligibility criteria, document lists, benefits, step-by-step processes
-- Numbered lists: application steps, preparation phases, selection stages
-- Paragraphs: maximum 3 sentences each
-- Use proper semantic HTML: h2, h3, h4, p, table, ul, ol, strong, em
-
-LANGUAGE:
-- Write in English (authority pages targeting English search terms)
-- Include Hindi transliterations for key terms in parentheses where it helps SEO: "Staff Selection Commission (कर्मचारी चयन आयोग)"
-
-TRUSTWORTHINESS SIGNALS:
-- Reference official websites with full URLs
-- Use phrases: "According to the official notification...", "As published on [official website]...", "Based on previous year data..."
-- Include disclaimer at the end: "Note: All information is based on the latest available official notification. Candidates are advised to visit the official website for the most current details."
-
-=== OUTPUT JSON FORMAT ===
-
-Return ONLY a valid JSON object matching the existing schema expected by the page type. Additionally, ALWAYS include these fields regardless of page type:
-
-"overview": "string (HTML — featured snippet optimized, 60-80 words)"
-"faq": [{"question": "string", "answer": "string"}, ...]
-"meta_title": "string (under 60 characters, primary keyword included)"
-"meta_description": "string (under 155 characters, with urgency/hook)"
-"internal_links": ["slug-1", "slug-2", "slug-3"]
-"primary_keyword": "string"
-"secondary_keywords": ["array of 5-8 LSI keywords"]
-
-=== FINAL QUALITY CHECKLIST (mental review before submitting) ===
-✓ Is every paragraph providing specific, useful data?
-✓ Are there zero banned filler phrases?
-✓ Would this page be the BEST result on Google for its topic?
-✓ Does it have enough depth to justify AdSense ads? (not thin content)
-✓ Are all tables properly formatted with real data?
-✓ Does the FAQ section contain questions people actually Google?
-✓ Are official sources referenced by name and URL?
-✓ Is there a trust disclaimer at the end?
-✓ Would a student in a small town find this genuinely helpful?
-If any check fails, fix it before returning.
-`;
+=== OUTPUT ===
+Return ONLY the JSON object matching the schema. No commentary, no markdown fences, no text outside the JSON.`;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // MODEL-SPECIFIC TIMEOUTS & CLAUDE CONFIG
@@ -198,8 +84,8 @@ If any check fails, fix it before returning.
 
 const ANTHROPIC_MODEL = Deno.env.get('ANTHROPIC_MODEL') || 'claude-sonnet-4-6';
 const ANTHROPIC_TIMEOUT_MS = parseInt(Deno.env.get('ANTHROPIC_TIMEOUT_MS') || '140000', 10);
-const ANTHROPIC_MAX_TOKENS = parseInt(Deno.env.get('ANTHROPIC_MAX_TOKENS') || '3072', 10);
-const ANTHROPIC_RETRY_MAX_TOKENS = Math.min(ANTHROPIC_MAX_TOKENS, 2200);
+const ANTHROPIC_MAX_TOKENS = parseInt(Deno.env.get('ANTHROPIC_MAX_TOKENS') || '4096', 10);
+const ANTHROPIC_RETRY_MAX_TOKENS = 6144;
 
 const TIMEOUTS: Record<string, number> = {
   'gemini-flash': 60_000,
@@ -216,6 +102,79 @@ const TIMEOUTS: Record<string, number> = {
 function getTimeout(model: string): number {
   return TIMEOUTS[model] || 60_000;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CLAUDE STRUCTURED OUTPUT SCHEMA
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const ENRICHMENT_JSON_SCHEMA = {
+  type: 'object' as const,
+  properties: {
+    overview: { type: 'string', description: 'HTML overview with Quick Overview Table, 200-400 words' },
+    eligibility: { type: 'string', description: 'HTML eligibility section with category-wise table' },
+    vacancyDetails: { type: 'string', description: 'HTML vacancy breakdown with table' },
+    examPattern: { type: 'string', description: 'HTML exam pattern with table' },
+    salary: { type: 'string', description: 'HTML salary structure with Pay Levels' },
+    applicationProcess: { type: 'string', description: 'HTML step-by-step how to apply' },
+    importantDates: { type: 'string', description: 'HTML table of important dates' },
+    preparationTips: { type: 'string', description: 'HTML exam-specific preparation strategy' },
+    cutoffTrends: { type: 'string', description: 'HTML previous year cutoff table and analysis' },
+    importantLinks: { type: 'string', description: 'HTML list of important official links' },
+    tierWiseSyllabus: { type: 'string', description: 'HTML stage-wise syllabus breakdown' },
+    subjectWiseBreakdown: { type: 'string', description: 'HTML detailed topic lists per subject' },
+    topicWeightage: { type: 'string', description: 'HTML topic weightage analysis table' },
+    importantTopics: { type: 'string', description: 'HTML high-yield topics list' },
+    recommendedBooks: { type: 'string', description: 'HTML book recommendations table' },
+    preparationStrategy: { type: 'string', description: 'HTML subject-wise preparation approach' },
+    commonMistakes: { type: 'string', description: 'HTML common preparation errors' },
+    stageWisePattern: { type: 'string', description: 'HTML detailed exam pattern tables per stage' },
+    markingScheme: { type: 'string', description: 'HTML marking and negative marking details' },
+    timeDistribution: { type: 'string', description: 'HTML section-wise time allocation' },
+    difficultyInsights: { type: 'string', description: 'HTML difficulty trends analysis' },
+    normalization: { type: 'string', description: 'HTML normalization/scoring methodology' },
+    timeManagement: { type: 'string', description: 'HTML time management strategy' },
+    patternChanges: { type: 'string', description: 'HTML changes from previous year' },
+    topicTrends: { type: 'string', description: 'HTML year-wise topic distribution table' },
+    subjectTrends: { type: 'string', description: 'HTML subject-wise trend analysis' },
+    difficultyAnalysis: { type: 'string', description: 'HTML difficulty comparison across years' },
+    repeatedTopics: { type: 'string', description: 'HTML ranked list of most repeated topics' },
+    subjectWeightage: { type: 'string', description: 'HTML subject weightage table' },
+    expectedPattern: { type: 'string', description: 'HTML predictions for next exam' },
+    majorRecruitingBodies: { type: 'string', description: 'HTML recruiting organizations' },
+    popularStateExams: { type: 'string', description: 'HTML popular state-level exams' },
+    importantDepartments: { type: 'string', description: 'HTML major departments recruiting' },
+    eligibilityPatterns: { type: 'string', description: 'HTML common eligibility across state exams' },
+    applicationGuidance: { type: 'string', description: 'HTML state-specific application process' },
+    salaryStructure: { type: 'string', description: 'HTML state pay matrix and comparison' },
+    preparationInsights: { type: 'string', description: 'HTML insights from previous year papers' },
+    faq: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          question: { type: 'string' },
+          answer: { type: 'string' },
+        },
+        required: ['question', 'answer'],
+      },
+      description: 'FAQ items with schema.org markup',
+    },
+    meta_title: { type: 'string', description: 'Under 60 chars, primary keyword included' },
+    meta_description: { type: 'string', description: 'Under 155 chars' },
+    internal_links: {
+      type: 'array',
+      items: { type: 'string' },
+      description: '3-5 related page slugs for cross-linking',
+    },
+    primary_keyword: { type: 'string' },
+    secondary_keywords: {
+      type: 'array',
+      items: { type: 'string' },
+      description: '5-8 LSI keywords',
+    },
+  },
+  required: ['overview', 'faq', 'meta_title', 'meta_description'],
+};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // MODEL INTEGRATIONS
@@ -316,40 +275,68 @@ async function claudeProbe(): Promise<void> {
   }
 }
 
-// ── Claude: Streaming SSE call ──
-async function callClaudeStreaming(prompt: string, maxTokens: number, timeoutMs: number): Promise<string> {
+// ── Claude: Streaming SSE call with structured output ──
+interface ClaudeStreamResult {
+  text: string;
+  stopReason: string;
+  chunksReceived: number;
+  elapsedMs: number;
+  requestId: string;
+  httpStatus: number;
+}
+
+async function callClaudeStreaming(
+  prompt: string,
+  maxTokens: number,
+  timeoutMs: number,
+  useStructuredOutput: boolean,
+): Promise<ClaudeStreamResult> {
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY')!;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   const reqStart = Date.now();
 
-  console.log(`[claude-stream] START model=${ANTHROPIC_MODEL} max_tokens=${maxTokens} timeout=${timeoutMs}ms prompt_chars=${prompt.length}`);
+  console.log(`[claude-stream] START model=${ANTHROPIC_MODEL} max_tokens=${maxTokens} timeout=${timeoutMs}ms prompt_chars=${prompt.length} structured=${useStructuredOutput}`);
 
   try {
+    // deno-lint-ignore no-explicit-any
+    const requestBody: any = {
+      model: ANTHROPIC_MODEL,
+      max_tokens: maxTokens,
+      temperature: 0.5,
+      stream: true,
+      messages: [{ role: 'user', content: prompt }],
+    };
+
+    // Add structured output config
+    if (useStructuredOutput) {
+      requestBody.output_config = {
+        format: {
+          type: 'json_schema',
+          schema: ENRICHMENT_JSON_SCHEMA,
+        },
+      };
+    }
+
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
+        'anthropic-version': '2025-01-01',
       },
       signal: controller.signal,
-      body: JSON.stringify({
-        model: ANTHROPIC_MODEL,
-        max_tokens: maxTokens,
-        temperature: 0.5,
-        stream: true,
-        messages: [{ role: 'user', content: prompt }],
-      }),
+      body: JSON.stringify(requestBody),
     });
 
     const connectMs = Date.now() - reqStart;
     const requestId = response.headers.get('request-id') || 'n/a';
-    console.log(`[claude-stream] CONNECTED in ${connectMs}ms, HTTP ${response.status}, request-id=${requestId}`);
+    const httpStatus = response.status;
+    console.log(`[claude-stream] CONNECTED in ${connectMs}ms, HTTP ${httpStatus}, request-id=${requestId}`);
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`Claude API error ${response.status}: ${errorText.substring(0, 500)}`);
+      throw new Error(`Claude API error ${httpStatus}: ${errorText.substring(0, 500)}`);
     }
 
     if (!response.body) throw new Error('Claude response has no body (streaming expected)');
@@ -360,6 +347,7 @@ async function callClaudeStreaming(prompt: string, maxTokens: number, timeoutMs:
     let accumulated = '';
     let buffer = '';
     let chunksReceived = 0;
+    let stopReason = 'unknown';
 
     while (true) {
       const { done, value } = await reader.read();
@@ -367,7 +355,7 @@ async function callClaudeStreaming(prompt: string, maxTokens: number, timeoutMs:
 
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split('\n');
-      buffer = lines.pop() || ''; // keep incomplete line in buffer
+      buffer = lines.pop() || '';
 
       for (const line of lines) {
         if (!line.startsWith('data: ')) continue;
@@ -380,8 +368,10 @@ async function callClaudeStreaming(prompt: string, maxTokens: number, timeoutMs:
 
           if (event.type === 'content_block_delta' && event.delta?.text) {
             accumulated += event.delta.text;
+          } else if (event.type === 'message_delta' && event.delta?.stop_reason) {
+            stopReason = event.delta.stop_reason;
           } else if (event.type === 'message_stop') {
-            // done
+            if (stopReason === 'unknown') stopReason = 'end_turn';
           } else if (event.type === 'error') {
             throw new Error(`Claude stream error event: ${JSON.stringify(event.error)}`);
           }
@@ -393,9 +383,9 @@ async function callClaudeStreaming(prompt: string, maxTokens: number, timeoutMs:
     }
 
     const totalMs = Date.now() - reqStart;
-    console.log(`[claude-stream] DONE in ${totalMs}ms, chunks=${chunksReceived}, output_chars=${accumulated.length}`);
-    return accumulated;
+    console.log(`[claude-stream] DONE in ${totalMs}ms, chunks=${chunksReceived}, output_chars=${accumulated.length}, stop_reason=${stopReason}`);
 
+    return { text: accumulated, stopReason, chunksReceived, elapsedMs: totalMs, requestId, httpStatus };
   } catch (err) {
     const elapsed = Date.now() - reqStart;
     const isAbort = err instanceof Error && (err.message.includes('aborted') || err.message.includes('signal'));
@@ -409,34 +399,147 @@ async function callClaudeStreaming(prompt: string, maxTokens: number, timeoutMs:
   }
 }
 
-// ── Claude: Full call with probe + retry ──
-async function callClaudeRaw(prompt: string, timeoutMs = ANTHROPIC_TIMEOUT_MS): Promise<string> {
+// ── JSON cleanup fallback ──
+function cleanupJsonText(raw: string): string {
+  let text = raw.trim();
+
+  // Strip markdown code fences
+  text = text.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+
+  // Remove leading text before first {
+  const firstBrace = text.indexOf('{');
+  if (firstBrace > 0) {
+    text = text.substring(firstBrace);
+  }
+
+  // Remove trailing text after last }
+  const lastBrace = text.lastIndexOf('}');
+  if (lastBrace !== -1 && lastBrace < text.length - 1) {
+    text = text.substring(0, lastBrace + 1);
+  }
+
+  return text;
+}
+
+// ── Claude: Full call with probe + structured output + retry ──
+async function callClaudeRaw(prompt: string, slug: string, timeoutMs = ANTHROPIC_TIMEOUT_MS): Promise<{ data: Record<string, unknown>; diagnostics: Record<string, unknown> }> {
   // Step 1: Connectivity probe
   await claudeProbe();
 
-  // Step 2: Main streaming call
+  const diagnostics: Record<string, unknown> = {
+    slug,
+    model: ANTHROPIC_MODEL,
+    promptChars: prompt.length,
+    attempt: 1,
+  };
+
+  // Step 2: Main streaming call with structured output
+  let result: ClaudeStreamResult;
   try {
-    return await callClaudeStreaming(prompt, ANTHROPIC_MAX_TOKENS, timeoutMs);
+    result = await callClaudeStreaming(prompt, ANTHROPIC_MAX_TOKENS, timeoutMs, true);
   } catch (firstErr) {
     const errMsg = firstErr instanceof Error ? firstErr.message : String(firstErr);
+    diagnostics.attempt1Error = errMsg;
 
     // Don't retry on clear 4xx errors
     if (errMsg.includes('API error 4')) {
-      throw firstErr;
+      diagnostics.retried = false;
+      diagnostics.failureType = 'api_4xx';
+      throw Object.assign(firstErr as Error, { diagnostics });
     }
 
-    // Retry once with reduced tokens on transient failures
+    // Retry once with higher tokens
     console.warn(`[claude-retry] First attempt failed: ${errMsg}. Retrying with max_tokens=${ANTHROPIC_RETRY_MAX_TOKENS}...`);
+    diagnostics.attempt = 2;
+    diagnostics.retryMaxTokens = ANTHROPIC_RETRY_MAX_TOKENS;
+    diagnostics.retried = true;
+
     try {
-      return await callClaudeStreaming(prompt, ANTHROPIC_RETRY_MAX_TOKENS, timeoutMs);
+      result = await callClaudeStreaming(prompt, ANTHROPIC_RETRY_MAX_TOKENS, timeoutMs, true);
     } catch (retryErr) {
       const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
-      throw new Error(`Claude failed after retry: ${retryMsg} (original: ${errMsg})`);
+      diagnostics.attempt2Error = retryMsg;
+      diagnostics.failureType = 'retry_failed';
+      const err = new Error(`Claude failed after retry: ${retryMsg} (original: ${errMsg})`);
+      (err as any).diagnostics = diagnostics;
+      throw err;
     }
+  }
+
+  diagnostics.maxTokens = result.stopReason === 'max_tokens' && diagnostics.attempt === 1 ? ANTHROPIC_MAX_TOKENS : (diagnostics.retryMaxTokens || ANTHROPIC_MAX_TOKENS);
+  diagnostics.outputChars = result.text.length;
+  diagnostics.chunks = result.chunksReceived;
+  diagnostics.elapsedMs = result.elapsedMs;
+  diagnostics.httpStatus = result.httpStatus;
+  diagnostics.requestId = result.requestId;
+  diagnostics.stopReason = result.stopReason;
+
+  // Check for max_tokens truncation — retry with higher budget
+  if (result.stopReason === 'max_tokens' && diagnostics.attempt === 1) {
+    console.warn(`[claude-retry] stop_reason=max_tokens with ${ANTHROPIC_MAX_TOKENS} tokens. Retrying with ${ANTHROPIC_RETRY_MAX_TOKENS}...`);
+    diagnostics.attempt = 2;
+    diagnostics.retried = true;
+    diagnostics.retryReason = 'max_tokens_truncation';
+    diagnostics.retryMaxTokens = ANTHROPIC_RETRY_MAX_TOKENS;
+
+    try {
+      result = await callClaudeStreaming(prompt, ANTHROPIC_RETRY_MAX_TOKENS, timeoutMs, true);
+      diagnostics.outputChars = result.text.length;
+      diagnostics.chunks = result.chunksReceived;
+      diagnostics.elapsedMs = result.elapsedMs;
+      diagnostics.stopReason = result.stopReason;
+    } catch (retryErr) {
+      const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
+      diagnostics.attempt2Error = retryMsg;
+      // Fall through and try to parse truncated output from first attempt
+      console.warn(`[claude-retry] Retry also failed: ${retryMsg}. Attempting to parse truncated output.`);
+    }
+  }
+
+  // Step 3: Parse JSON — structured output should give us clean JSON, but apply cleanup as fallback
+  const rawText = result!.text;
+  let parsePhase = 'direct';
+
+  // Try direct parse first (structured output should produce valid JSON)
+  try {
+    const parsed = JSON.parse(rawText);
+    diagnostics.parsePhase = 'direct';
+    diagnostics.failureType = null;
+    console.log(`[claude-parse] ${slug}: Direct JSON parse OK (${rawText.length} chars)`);
+    return { data: parsed, diagnostics };
+  } catch { /* continue to cleanup */ }
+
+  // Cleanup fallback
+  parsePhase = 'cleanup';
+  const cleaned = cleanupJsonText(rawText);
+  try {
+    const parsed = JSON.parse(cleaned);
+    diagnostics.parsePhase = 'cleanup';
+    diagnostics.failureType = 'wrapper_text';
+    console.log(`[claude-parse] ${slug}: Cleanup parse OK (cleaned ${rawText.length} → ${cleaned.length} chars)`);
+    return { data: parsed, diagnostics };
+  } catch { /* continue */ }
+
+  // tryParseJSON recovery stages
+  parsePhase = 'recovery';
+  try {
+    const parsed = tryParseJSON(rawText);
+    diagnostics.parsePhase = 'recovery';
+    diagnostics.failureType = 'needed_recovery';
+    console.log(`[claude-parse] ${slug}: Recovery parse OK`);
+    return { data: parsed, diagnostics };
+  } catch {
+    // Final failure
+    diagnostics.parsePhase = parsePhase;
+    diagnostics.failureType = result.stopReason === 'max_tokens' ? 'max_tokens_truncation' : rawText.length === 0 ? 'empty_output' : 'invalid_json';
+    console.error(`[claude-parse] ${slug}: ALL parse attempts failed. stop_reason=${result.stopReason}, output_chars=${rawText.length}, first100=${rawText.substring(0, 100)}, last100=${rawText.substring(rawText.length - 100)}`);
+    const err = new Error(`Failed to parse Claude JSON (stop_reason=${result.stopReason}, output_chars=${rawText.length}, failureType=${diagnostics.failureType})`);
+    (err as any).diagnostics = diagnostics;
+    throw err;
   }
 }
 
-// ── Groq (NEW — Llama 3.3 70B) ──
+// ── Groq (Llama 3.3 70B) ──
 async function callGroqRaw(prompt: string, timeoutMs = 30_000): Promise<string> {
   const apiKey = Deno.env.get('GROQ_API_KEY');
   if (!apiKey) throw new Error('GROQ_API_KEY not configured — please add it to secrets');
@@ -532,7 +635,7 @@ async function awsSigV4Fetch(url: string, body: string, region: string, service:
   }
 }
 
-// ── Mistral Large (AWS Bedrock — us-east-1) ──
+// ── Mistral Large (AWS Bedrock — us-west-2) ──
 async function callMistralRaw(prompt: string, timeoutMs = 60_000): Promise<string> {
   const region = 'us-west-2';
   const modelId = 'mistral.mistral-large-2407-v1:0';
@@ -661,7 +764,7 @@ function tryParseJSON(raw: string): Record<string, unknown> {
 }
 
 // ── AI Dispatcher (one slug, one model call) ──
-async function callAI(model: string, prompt: string): Promise<Record<string, unknown>> {
+async function callAI(model: string, prompt: string, slug: string): Promise<{ data: Record<string, unknown>; diagnostics?: Record<string, unknown> }> {
   const timeout = getTimeout(model);
   let rawText: string;
 
@@ -669,35 +772,34 @@ async function callAI(model: string, prompt: string): Promise<Record<string, unk
     case 'gemini-flash':
     case 'gemini':
       rawText = await fetchGemini(prompt, 'gemini-2.5-flash', timeout);
-      break;
+      return { data: tryParseJSON(rawText) };
     case 'gemini-pro':
       rawText = await fetchGemini(prompt, 'gemini-2.5-pro', timeout);
-      break;
+      return { data: tryParseJSON(rawText) };
     case 'claude-sonnet':
     case 'claude':
-      rawText = await callClaudeRaw(prompt, timeout);
-      break;
+      // Claude returns pre-parsed data with diagnostics
+      return await callClaudeRaw(prompt, slug, timeout);
     case 'groq':
       rawText = await callGroqRaw(prompt, timeout);
-      break;
+      return { data: tryParseJSON(rawText) };
     case 'mistral':
       rawText = await callMistralRaw(prompt, timeout);
-      break;
+      return { data: tryParseJSON(rawText) };
     case 'lovable-gemini':
       rawText = await callLovableGeminiRaw(prompt, timeout);
-      break;
+      return { data: tryParseJSON(rawText) };
     case 'gpt5':
       rawText = await callOpenAIRaw(prompt, 'openai/gpt-5', timeout);
-      break;
+      return { data: tryParseJSON(rawText) };
     case 'gpt5-mini':
       rawText = await callOpenAIRaw(prompt, 'openai/gpt-5-mini', timeout);
-      break;
+      return { data: tryParseJSON(rawText) };
     default:
       console.warn(`Unknown model "${model}", defaulting to gemini-flash`);
       rawText = await fetchGemini(prompt, 'gemini-2.5-flash', timeout);
+      return { data: tryParseJSON(rawText) };
   }
-
-  return tryParseJSON(rawText);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -722,43 +824,22 @@ Exam: "${page.examName || page.slug}"
 Conducting Body: ${page.conductingBody || 'the official recruitment authority'}
 Year: ${page.year || 2026}
 
-PAGE-SPECIFIC SECTIONS to include (in addition to universal sections from master prompt):
-1. Overview & Latest Update (what's new, when notification was released)
-2. Complete Eligibility Criteria (education, age with full category-wise relaxation table, nationality, physical standards if applicable)
+Generate content for these sections (concise, data-dense, no filler):
+1. Overview & Latest Update
+2. Eligibility Criteria (education, age with category-wise relaxation table)
 3. Vacancy Details (category-wise breakdown table: UR/OBC/SC/ST/EWS/PwD)
-4. Exam Pattern & Selection Process (stages, marks, duration, negative marking — use tables)
-5. Salary Structure & Benefits (Pay Level, Grade Pay, in-hand estimate, DA/HRA/TA, pension, perks)
-6. How to Apply — Step by Step (numbered steps, documents needed, fee breakup by category)
-7. Important Dates Table (notification, start, last date, exam, admit card, result)
-8. Preparation Tips (subject-wise strategy, time allocation, recommended approach)
-9. Previous Year Cut-off Trends (table showing last 2-3 years if available)
-10. Important Links (official site, notification PDF, apply link)
+4. Exam Pattern & Selection Process (stages, marks, duration, negative marking — tables)
+5. Salary Structure (Pay Level, Grade Pay, in-hand estimate)
+6. How to Apply — Step by Step (numbered steps, documents, fee breakup)
+7. Important Dates Table
+8. Preparation Tips (subject-wise strategy)
+9. Previous Year Cut-off Trends (table if available)
+10. Important Links
 
-MINIMUM: 2000 words. FAQs: 6-8.
+Existing overview for reference (enrich, don't duplicate): ${(page.existingOverview || '').substring(0, 300)}
 
-Existing overview for reference (enrich, don't duplicate): ${(page.existingOverview || '').substring(0, 500)}
-
-OUTPUT FORMAT — Return valid JSON with these keys:
-{
-  "overview": "300-450 word HTML overview with Quick Overview Table",
-  "eligibility": "250-350 words on eligibility with category-wise table",
-  "vacancyDetails": "150-250 words with vacancy breakdown table",
-  "examPattern": "200-300 words on exam pattern with table",
-  "salary": "200-300 words on salary structure with Pay Levels",
-  "applicationProcess": "150-200 words step-by-step how to apply",
-  "importantDates": "HTML table of all important dates",
-  "preparationTips": "250-350 words with exam-specific strategy",
-  "cutoffTrends": "150-250 words with previous year cutoff table",
-  "importantLinks": "HTML list of important links",
-  "faq": [{"question": "...", "answer": "..."}, ...],
-  "meta_title": "under 60 chars",
-  "meta_description": "under 155 chars",
-  "internal_links": ["slug-1", "slug-2", "slug-3"],
-  "primary_keyword": "string",
-  "secondary_keywords": ["keyword1", "keyword2", ...]
-}
-
-Return ONLY the JSON object.`;
+FAQs: 6-8 questions real aspirants search for.
+Return the JSON matching the schema provided. Be concise — each section 100-300 words.`;
 }
 
 function buildSyllabusPrompt(page: PageContent): string {
@@ -769,37 +850,18 @@ Exam: "${page.examName || page.slug}"
 Conducting Body: ${page.conductingBody || 'official authority'}
 Year: ${page.year || 2026}
 
-PAGE-SPECIFIC SECTIONS:
-1. Syllabus Overview (what the exam tests, total subjects, overall structure)
-2. Tier/Stage-wise Detailed Syllabus (every subject, every topic, organized by exam stage — use nested lists)
-3. Subject-wise Detailed Breakdown (each subject gets its own H3 with complete topic list)
-4. Topic-wise Weightage Analysis (table showing which topics get most questions based on previous years)
-5. Important Topics to Focus On (high-yield topics ranked by frequency)
-6. Recommended Books & Resources (specific book names with author — for each subject)
-7. Subject-wise Preparation Strategy (how to approach each subject, time allocation)
-8. Common Mistakes in Preparation (what candidates do wrong, how to avoid it)
+Generate content for these sections:
+1. Syllabus Overview
+2. Tier/Stage-wise Detailed Syllabus (nested lists per stage)
+3. Subject-wise Detailed Breakdown (each subject with complete topics)
+4. Topic-wise Weightage Analysis (table)
+5. Important Topics to Focus On (ranked by frequency)
+6. Recommended Books & Resources (specific names with authors)
+7. Subject-wise Preparation Strategy
+8. Common Mistakes in Preparation
 
-MINIMUM: 2500 words. FAQs: 5-7.
-
-OUTPUT FORMAT — Return valid JSON:
-{
-  "overview": "250-350 word HTML overview with Quick Overview Table",
-  "tierWiseSyllabus": "400-500 words with stage-wise breakdown",
-  "subjectWiseBreakdown": "400-500 words with detailed topic lists",
-  "topicWeightage": "200-300 words with weightage table",
-  "importantTopics": "200-300 words on high-yield topics",
-  "recommendedBooks": "200-250 words with book recommendations table",
-  "preparationStrategy": "250-300 words on subject-wise approach",
-  "commonMistakes": "150-200 words on common preparation errors",
-  "faq": [{"question": "...", "answer": "..."}, ...],
-  "meta_title": "under 60 chars",
-  "meta_description": "under 155 chars",
-  "internal_links": ["slug-1", "slug-2", "slug-3"],
-  "primary_keyword": "string",
-  "secondary_keywords": ["keyword1", "keyword2", ...]
-}
-
-Return ONLY the JSON object.`;
+FAQs: 5-7 questions.
+Return the JSON matching the schema provided. Be concise — each section 150-350 words.`;
 }
 
 function buildExamPatternPrompt(page: PageContent): string {
@@ -810,37 +872,18 @@ Exam: "${page.examName || page.slug}"
 Conducting Body: ${page.conductingBody || 'official authority'}
 Year: ${page.year || 2026}
 
-PAGE-SPECIFIC SECTIONS:
-1. Exam Pattern Overview (total stages, mode — online/offline, languages)
-2. Stage-wise Detailed Pattern (table: sections, questions, marks, time, negative marking for EACH stage)
-3. Marking Scheme Explained (positive marks, negative marks, normalization if applicable)
-4. Section-wise Time Distribution (recommended time per section)
-5. Difficulty Level Analysis (based on previous years — easy/moderate/hard distribution)
-6. Normalization Process (if applicable — how raw scores are normalized, with examples)
-7. Smart Time Management Strategy (section-wise approach, which to attempt first)
-8. Changes from Previous Year (if the pattern changed, highlight what's different)
+Generate content for these sections:
+1. Exam Pattern Overview
+2. Stage-wise Detailed Pattern (table: sections, questions, marks, time, negative marking)
+3. Marking Scheme Explained
+4. Section-wise Time Distribution
+5. Difficulty Level Analysis (based on previous years)
+6. Normalization Process (if applicable)
+7. Smart Time Management Strategy
+8. Changes from Previous Year
 
-MINIMUM: 2000 words. FAQs: 5-7.
-
-OUTPUT FORMAT — Return valid JSON:
-{
-  "overview": "250-350 word HTML overview with Quick Overview Table",
-  "stageWisePattern": "350-450 words with detailed pattern tables",
-  "markingScheme": "200-300 words on marks and negative marking",
-  "timeDistribution": "150-250 words on section-wise time allocation",
-  "difficultyInsights": "200-300 words on difficulty trends",
-  "normalization": "150-250 words on normalization/scoring methodology",
-  "timeManagement": "200-300 words on time management strategy",
-  "patternChanges": "100-200 words on changes from previous year",
-  "faq": [{"question": "...", "answer": "..."}, ...],
-  "meta_title": "under 60 chars",
-  "meta_description": "under 155 chars",
-  "internal_links": ["slug-1", "slug-2", "slug-3"],
-  "primary_keyword": "string",
-  "secondary_keywords": ["keyword1", "keyword2", ...]
-}
-
-Return ONLY the JSON object.`;
+FAQs: 5-7 questions.
+Return the JSON matching the schema provided. Be concise — each section 100-300 words.`;
 }
 
 function buildPYPPrompt(page: PageContent): string {
@@ -850,37 +893,18 @@ function buildPYPPrompt(page: PageContent): string {
 Exam: "${page.examName || page.slug}"
 Year: ${page.year || 2026}
 
-PAGE-SPECIFIC SECTIONS:
-1. PYP Overview (how many years analyzed, what insights are covered)
-2. Year-wise Topic Distribution (table showing topics asked each year)
-3. Subject-wise Trend Analysis (which subjects are getting more questions over time)
-4. Difficulty Trend (is the exam getting harder? data-backed analysis)
-5. Most Repeated Topics (top 15-20 topics that appear most frequently — ranked list)
-6. Subject-wise Weightage Table (percentage of questions from each subject/topic)
-7. Preparation Insights from PYP (what the trends tell us about how to prepare)
-8. Expected Pattern for Next Exam (prediction based on trends)
+Generate content for these sections:
+1. PYP Overview
+2. Year-wise Topic Distribution (table)
+3. Subject-wise Trend Analysis
+4. Difficulty Trend
+5. Most Repeated Topics (ranked list)
+6. Subject-wise Weightage Table
+7. Preparation Insights from PYP
+8. Expected Pattern for Next Exam
 
-MINIMUM: 1800 words. FAQs: 4-6.
-
-OUTPUT FORMAT — Return valid JSON:
-{
-  "overview": "250-300 word HTML overview",
-  "topicTrends": "300-400 words with year-wise topic distribution table",
-  "subjectTrends": "200-300 words on subject-wise trends",
-  "difficultyAnalysis": "200-300 words comparing difficulty year-wise",
-  "repeatedTopics": "200-300 words with ranked list of most repeated topics",
-  "subjectWeightage": "200-300 words with weightage table",
-  "preparationInsights": "200-300 words on using PYPs effectively",
-  "expectedPattern": "150-200 words on predictions for next exam",
-  "faq": [{"question": "...", "answer": "..."}, ...],
-  "meta_title": "under 60 chars",
-  "meta_description": "under 155 chars",
-  "internal_links": ["slug-1", "slug-2", "slug-3"],
-  "primary_keyword": "string",
-  "secondary_keywords": ["keyword1", "keyword2", ...]
-}
-
-Return ONLY the JSON object.`;
+FAQs: 4-6 questions.
+Return the JSON matching the schema provided. Be concise — each section 100-250 words.`;
 }
 
 function buildStatePrompt(page: PageContent): string {
@@ -890,39 +914,18 @@ function buildStatePrompt(page: PageContent): string {
 
 State: "${stateName}"
 
-PAGE-SPECIFIC SECTIONS:
-1. State Overview (which state, major recruiting bodies, exam ecosystem)
-2. Major Recruiting Organizations (each body gets its own section — PSC, SSB, Police board, etc. Use ACTUAL names for ${stateName})
-3. Popular State Exams (list of top 10-15 exams with brief description, eligibility, frequency)
-4. Important Government Departments Hiring (department-wise breakdown with typical posts)
-5. Eligibility Patterns (common eligibility criteria across state exams)
-6. State-specific Application Process (any unique state portal, registration process)
-7. Salary Structure in State Government (pay matrix, comparison with central government)
-8. Preparation Strategy for State Exams (how it differs from central exams, state-specific topics)
+Generate content for these sections (MUST be specific to ${stateName}, reference actual PSC name and recruiting bodies):
+1. State Overview (major recruiting bodies, exam ecosystem)
+2. Major Recruiting Organizations (actual names for ${stateName})
+3. Popular State Exams (top 10-15 with brief description)
+4. Important Government Departments Hiring
+5. Eligibility Patterns
+6. State-specific Application Process
+7. Salary Structure in State Government
+8. Preparation Strategy for State Exams
 
-CRITICAL: Content MUST be unique to ${stateName}. Reference the ACTUAL State Public Service Commission name, real state-level recruiting bodies, departments, and boards. Do NOT use generic text that could apply to any state.
-
-MINIMUM: 2500 words. FAQs: 6-8.
-
-OUTPUT FORMAT — Return valid JSON:
-{
-  "overview": "350-500 word HTML overview unique to ${stateName} with actual PSC name and major bodies",
-  "majorRecruitingBodies": "250-350 words with actual names of recruiting organizations",
-  "popularStateExams": "300-400 words on popular state-level competitive exams",
-  "importantDepartments": "200-300 words on major departments actively recruiting",
-  "eligibilityPatterns": "150-250 words on common eligibility across state exams",
-  "applicationGuidance": "150-200 words on state-specific application process",
-  "salaryStructure": "200-300 words on state pay matrix and comparison",
-  "preparationStrategy": "200-300 words on state-specific preparation approach",
-  "faq": [{"question": "...", "answer": "..."}, ...],
-  "meta_title": "under 60 chars",
-  "meta_description": "under 155 chars",
-  "internal_links": ["slug-1", "slug-2", "slug-3"],
-  "primary_keyword": "string",
-  "secondary_keywords": ["keyword1", "keyword2", ...]
-}
-
-Return ONLY the JSON object.`;
+FAQs: 6-8 questions.
+Return the JSON matching the schema provided. Be concise — each section 150-350 words.`;
 }
 
 function getPromptForType(pageType: string, page: PageContent, model?: string): string {
@@ -938,17 +941,16 @@ function getPromptForType(pageType: string, page: PageContent, model?: string): 
 
   const fullPrompt = MASTER_AUTHORITY_PROMPT + '\n\n' + typePrompt;
 
-  // For Claude: add concise output constraint to reduce verbosity
+  // For Claude with structured outputs: add concise output constraint
   if (model === 'claude-sonnet' || model === 'claude') {
     return fullPrompt + `
 
 === CRITICAL OUTPUT CONSTRAINTS ===
-- Return ONLY the JSON object. No commentary, no markdown fences, no explanation outside JSON.
-- Be concise in each section. Prioritize data density over prose length.
-- Avoid repetition across sections. Each section should contain unique information.
-- Target 1200-1800 total words across all JSON values combined.
-- Every word must add value. Remove filler sentences.
-- Do NOT repeat the exam name unnecessarily in every paragraph.`;
+- Output ONLY the JSON object. No commentary, no markdown fences, no text before or after the JSON.
+- Be concise inside each field. Prioritize data density over prose length.
+- Avoid repetition across sections. Each section must contain unique information.
+- Every word must add value. Remove filler.
+- Include HTML tables where specified. Use semantic HTML (h2, h3, table, ul, ol, strong).`;
   }
 
   return fullPrompt;
@@ -1160,13 +1162,11 @@ serve(async (req) => {
     let selectedModel: string;
 
     if (body.slug && typeof body.slug === 'string') {
-      // New format: single slug
       slug = body.slug;
       pageType = body.pageType || 'notification';
       currentContent = body.currentContent || { slug };
       selectedModel = body.aiModel || 'gemini-flash';
     } else if (Array.isArray(body.slugs) && body.slugs.length > 0) {
-      // Legacy format: array — process only the first slug
       slug = body.slugs[0];
       pageType = body.pageType || 'notification';
       const contentArr = body.currentContent as PageContent[] | undefined;
@@ -1185,23 +1185,31 @@ serve(async (req) => {
 
     // ── Step 1: Call AI ──
     let enrichmentData: Record<string, unknown>;
+    let claudeDiagnostics: Record<string, unknown> | undefined;
     try {
       const prompt = getPromptForType(pageType, currentContent!, selectedModel);
       console.log(`[enrich] ${slug}: calling ${selectedModel}, prompt ${prompt.length} chars, timeout ${getTimeout(selectedModel)}ms`);
-      enrichmentData = await callAI(selectedModel, prompt);
-      console.log(`[enrich] ${slug}: AI returned successfully`);
+      const result = await callAI(selectedModel, prompt, slug);
+      enrichmentData = result.data;
+      claudeDiagnostics = result.diagnostics;
+      console.log(`[enrich] ${slug}: AI returned successfully${claudeDiagnostics ? ` (stop_reason=${claudeDiagnostics.stopReason}, parsePhase=${claudeDiagnostics.parsePhase})` : ''}`);
     } catch (aiErr) {
       const isAbort = aiErr instanceof Error && (
         aiErr.message.toLowerCase().includes('aborted') || aiErr.message.toLowerCase().includes('signal')
       );
+      const errDiagnostics = (aiErr as any)?.diagnostics;
       const reason = `AI_ERROR (${selectedModel}): ${isAbort ? `Timeout after ${getTimeout(selectedModel) / 1000}s` : (aiErr instanceof Error ? aiErr.message : 'Unknown')}`;
       console.error(`[enrich] ${slug}: ${reason}`);
+      if (errDiagnostics) {
+        console.error(`[enrich] ${slug}: diagnostics=${JSON.stringify(errDiagnostics)}`);
+      }
       await insertFailedRow(svc, slug, pageType, reason, existingWordCount);
 
       return new Response(JSON.stringify({
         status: 'failed',
         slug,
         error: reason,
+        diagnostics: errDiagnostics || null,
         results: [{
           slug, status: 'failed', sectionsAdded: [], qualityScore: {},
           flags: [], totalWords: 0, failureReason: reason,
@@ -1287,6 +1295,7 @@ serve(async (req) => {
       totalWords: quality.totalWords,
       sectionCount: quality.sectionCount,
       version,
+      diagnostics: claudeDiagnostics || null,
       results: [result],
     }), {
       status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },

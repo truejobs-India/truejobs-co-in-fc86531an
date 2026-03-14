@@ -685,7 +685,7 @@ function tryParseJSON(raw: string): Record<string, unknown> {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// AI DISPATCHER — with Claude→Gemini fallback
+// AI DISPATCHER — no automatic fallback between models
 // ═══════════════════════════════════════════════════════════════════════════════
 
 async function callAI(

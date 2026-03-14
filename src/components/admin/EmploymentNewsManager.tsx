@@ -370,7 +370,7 @@ export function EmploymentNewsManager() {
       setEnrichProgress({ current: i, total: ids.length });
 
       const { data, error } = await supabase.functions.invoke('enrich-employment-news', {
-        body: { jobIds: batch },
+        body: { jobIds: batch, aiModel: enrichAiModel },
       });
 
       if (error) {

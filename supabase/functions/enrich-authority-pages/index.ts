@@ -837,8 +837,7 @@ Generate content for these sections (MUST be specific to ${stateName}, reference
 7. Salary Structure in State Government
 8. Preparation Strategy for State Exams
 
-FAQs: 6-8 questions.
-Return the JSON matching the schema provided. Be concise — each section 150-350 words.`;
+FAQs: 6-8 questions.`;
 }
 
 // The JSON schema that non-Claude models must follow.

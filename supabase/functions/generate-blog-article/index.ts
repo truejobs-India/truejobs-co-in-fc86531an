@@ -98,10 +98,6 @@ Deno.serve(async (req) => {
     const authResult = await verifyAdmin(req);
     if (authResult instanceof Response) return authResult;
 
-    const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
-    if (!geminiApiKey) {
-      return new Response(JSON.stringify({ error: 'GEMINI_API_KEY not configured' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-    }
 
     const { topic, category, tags, targetWordCount, aiModel } = await req.json();
     if (!topic || typeof topic !== 'string') {

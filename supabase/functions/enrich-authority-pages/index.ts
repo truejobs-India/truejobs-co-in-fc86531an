@@ -196,13 +196,9 @@ If any check fails, fix it before returning.
 // MULTI-MODEL AI DISPATCHER
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const AI_TIMEOUT_MS_DEFAULT = 60_000; // 60s for fast models
-const AI_TIMEOUT_MS_SLOW = 120_000;   // 120s for Claude / GPT (large output)
+const AI_TIMEOUT_MS = 120_000; // 120s — large structured content needs time
 
-function getAiTimeout(model: string): number {
-  if (model.includes('claude') || model.includes('gpt')) return AI_TIMEOUT_MS_SLOW;
-  return AI_TIMEOUT_MS_DEFAULT;
-}
+
 const FUNCTION_TIME_BUDGET_MS = 140_000; // bail before 150s platform limit
 
 // ── Gemini (Direct API) ──
@@ -212,7 +208,7 @@ async function fetchGemini(prompt: string, model = 'gemini-2.5-flash'): Promise<
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), AI_TIMEOUT_MS_DEFAULT);
+  const timer = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
 
   try {
     const response = await fetch(url, {
@@ -263,7 +259,7 @@ async function callClaudeRaw(prompt: string): Promise<string> {
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured — please add it to secrets');
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), AI_TIMEOUT_MS_SLOW);
+  const timer = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
 
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -352,7 +348,7 @@ async function awsSigV4Fetch(url: string, body: string, region: string, service:
   headers['Authorization'] = `AWS4-HMAC-SHA256 Credential=${accessKey}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), AI_TIMEOUT_MS_DEFAULT);
+  const timer = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
   try {
     return await fetch(url, { method: 'POST', headers, body, signal: controller.signal });
   } finally {
@@ -388,7 +384,7 @@ async function callLovableGeminiRaw(prompt: string): Promise<string> {
   if (!apiKey) throw new Error('LOVABLE_API_KEY not configured — please add it to secrets');
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), AI_TIMEOUT_MS_DEFAULT);
+  const timer = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
 
   try {
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
@@ -423,7 +419,7 @@ async function callOpenAIRaw(prompt: string, model = 'gpt-5'): Promise<string> {
   if (!apiKey) throw new Error('OpenAI API key not configured — please add OPENAI_API_KEY secret');
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), AI_TIMEOUT_MS_SLOW);
+  const timer = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
 
   try {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -1004,9 +1000,12 @@ serve(async (req) => {
       let enrichmentData: Record<string, unknown>;
       try {
         const prompt = getPromptForType(pageType, pageInfo);
+        console.log(`[enrich] ${slug}: calling ${selectedModel}, prompt ${prompt.length} chars`);
         enrichmentData = await callAI(selectedModel, prompt);
+        console.log(`[enrich] ${slug}: AI returned successfully`);
       } catch (aiErr) {
         const reason = `AI_ERROR (${selectedModel}): ${aiErr instanceof Error ? aiErr.message : 'Unknown'}`;
+        console.error(`[enrich] ${slug}: ${reason}`);
         await insertFailedRow(svc, slug, pageType, reason, existingWordCount);
         results[index] = {
           slug, status: 'failed', sectionsAdded: [], qualityScore: {},

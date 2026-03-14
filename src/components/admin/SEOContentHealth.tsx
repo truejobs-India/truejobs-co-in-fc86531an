@@ -5,8 +5,6 @@ import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertTriangle, ChevronDown, ChevronRight, Activity, XCircle } from 'lucide-react';
 import { useAdminToast } from '@/contexts/AdminMessagesContext';
-const useToastCompat = () => { const { toast } = useAdminToast(); return toast; };
-const toast = (() => { /* will be called at component level */ }) as any;
 
 interface HealthIssue {
   slug: string;

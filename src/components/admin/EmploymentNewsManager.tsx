@@ -138,6 +138,10 @@ export function EmploymentNewsManager() {
   const [unenrichedCount, setUnenrichedCount] = useState<number | null>(null);
   const [isPublishingAll, setIsPublishingAll] = useState(false);
   const [editErrors, setEditErrors] = useState<Record<string, string>>({});
+  // AI Model selection for enrichment (persisted in localStorage)
+  const [enrichAiModel, setEnrichAiModel] = useState<string>(() => {
+    try { return localStorage.getItem('empnews_enrich_ai_model') || 'gemini'; } catch { return 'gemini'; }
+  });
   // Track keywords as comma-separated string during editing
   const [editKeywordsStr, setEditKeywordsStr] = useState('');
   // Track schema_markup as pretty-printed string during editing

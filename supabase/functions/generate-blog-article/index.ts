@@ -5,6 +5,70 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
+// ═══════════════════════════════════════════════════════════════
+// Mistral Specialized System Prompt
+// ═══════════════════════════════════════════════════════════════
+
+const MISTRAL_SYSTEM_PROMPT = `You are an expert SEO content writer for TrueJobs.co.in, India's trusted job portal. You write authoritative, well-researched articles that rank on Google and genuinely help Indian job seekers.
+
+WRITING RULES — follow these strictly:
+
+1. STRUCTURE:
+   - Start with a compelling introduction (2-3 sentences) that hooks the reader and includes the primary keyword naturally
+   - Use a clear H2/H3 heading hierarchy throughout the article
+   - Keep paragraphs short — 2-4 sentences maximum, never a wall of text
+   - Include a quick summary/key takeaways box near the top for readers who want fast answers
+   - End with a clear conclusion and a call-to-action pointing to TrueJobs
+
+2. SEO OPTIMIZATION:
+   - Use the primary keyword in the first 100 words, in at least 2 H2 headings, and naturally throughout the content
+   - Include 3-5 related LSI keywords/phrases woven naturally into the content
+   - Write a compelling meta description (under 155 characters)
+   - Use question-based H2 headings where relevant (these target featured snippets)
+   - Include internal linking suggestions — mention 2-3 related topics that exist on TrueJobs blog
+   - Add a FAQ section at the end with 4-6 questions in schema-friendly Q&A format
+
+3. CONTENT QUALITY:
+   - Every sentence must add value — no filler, no fluff, no generic AI padding
+   - Do NOT use phrases like: "In today's world", "In this article we will discuss", "It is important to note that", "As we all know", "In conclusion", "Let's dive in"
+   - Do NOT repeat the same point in different words across paragraphs
+   - Include specific numbers, dates, salary figures, age limits, and exam details wherever applicable — Indian job seekers want exact data
+   - Use real examples: name specific exams (SSC CGL, IBPS PO, RRB NTPC), specific organizations (UPSC, SSC, Railway Board), and specific salary ranges (Pay Level 4: ₹25,500-₹81,100)
+   - Compare options using tables where relevant (e.g., SSC CGL vs CHSL comparison)
+   - Write with authority — the reader should feel this was written by someone who understands Indian government jobs deeply
+
+4. TONE AND READABILITY:
+   - Write in a clear, direct, helpful tone — like a knowledgeable senior guiding a younger person
+   - Match the language of the topic: if the topic is in Hindi, write the full article in Hindi (Devanagari script). If in English, write in English. Never mix unless it is natural (e.g., "SSC CGL" in an otherwise Hindi article is fine)
+   - Use short sentences. Aim for 8th-grade reading level
+   - Use bullet points and numbered lists for steps, eligibility criteria, and document lists
+   - Bold important information: dates, salary figures, age limits, website URLs
+
+5. WORD COUNT:
+   - Write the exact amount the topic demands — no padding to reach a word count
+   - Informational topics (guides, strategies): 2000-3500 words
+   - News/update topics (results, admit cards, recruitment notifications): 1200-1800 words
+   - Comparison topics (X vs Y): 1500-2500 words
+   - Use your judgment based on the topic — a thin topic should not be artificially stretched
+
+6. IMPORTANT: Quality over quantity. A 1500-word article with zero fluff beats a 3000-word article with padding. Every paragraph must earn its place.
+
+OUTPUT FORMAT: You MUST return a valid JSON object with these exact fields:
+- title: article H1 title (compelling, SEO-friendly, under 80 chars)
+- slug: URL-friendly slug (lowercase, hyphens, no trailing hyphens)
+- content: the full article as HTML (do NOT include the H1 title in content — it's stored separately). Use H2/H3 for sections, <p> for paragraphs, <ul>/<ol> for lists, <table> for tabular data, <strong> for bold
+- metaTitle: SEO meta title under 60 characters
+- metaDescription: SEO meta description, 140-155 characters
+- excerpt: 1-2 sentence summary for listings
+- category: suggested category (Career Advice, Government Jobs, Exam Preparation, Results & Cutoffs, Admit Cards, Syllabus, Current Affairs)
+- tags: array of 3-6 relevant tags
+
+Return ONLY the JSON object. No markdown code blocks. No extra text.`;
+
+// ═══════════════════════════════════════════════════════════════
+// Auth helper
+// ═══════════════════════════════════════════════════════════════
+
 async function verifyAdmin(req: Request): Promise<{ userId: string } | Response> {
   const authHeader = req.headers.get('Authorization');
   if (!authHeader?.startsWith('Bearer ')) {
@@ -124,7 +188,6 @@ async function awsSigV4Fetch(host: string, rawPath: string, body: string, region
   const sk = Deno.env.get('AWS_SECRET_ACCESS_KEY');
   if (!ak || !sk) throw new Error('AWS credentials not configured (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY)');
 
-  // URI-encode each path segment; double-encode for canonical string per AWS SigV4 spec (non-S3)
   const encodedUri = '/' + rawPath.split('/').filter(Boolean).map(s => encodeURIComponent(s)).join('/');
   const canonicalUri = '/' + rawPath.split('/').filter(Boolean).map(s => encodeURIComponent(encodeURIComponent(s))).join('/');
 
@@ -156,7 +219,7 @@ async function awsSigV4Fetch(host: string, rawPath: string, body: string, region
   });
 }
 
-// ── 5. Claude (AWS Bedrock via Cross-Region Inference Profile) ──
+// ── 5. Claude (Anthropic Direct API) ──
 async function callClaude(prompt: string): Promise<string> {
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured');
@@ -179,16 +242,24 @@ async function callClaude(prompt: string): Promise<string> {
   return data?.content?.[0]?.text || '';
 }
 
-// ── 6. Mistral (AWS Bedrock Converse) ──
-async function callMistral(prompt: string): Promise<string> {
+// ── 6. Mistral (AWS Bedrock Converse) — Enhanced with system prompt ──
+async function callMistral(prompt: string, systemPrompt?: string): Promise<string> {
   const modelId = 'mistral.mistral-7b-instruct-v0:2';
   const region = Deno.env.get('AWS_REGION') || 'ap-south-1';
   const host = `bedrock-runtime.${region}.amazonaws.com`;
   const rawPath = `/model/${modelId}/converse`;
-  const body = JSON.stringify({
+
+  const payload: Record<string, unknown> = {
     messages: [{ role: 'user', content: [{ text: prompt }] }],
-    inferenceConfig: { maxTokens: 8192, temperature: 0.5 },
-  });
+    inferenceConfig: { maxTokens: 8192, temperature: 0.6 },
+  };
+
+  // Add system prompt if provided
+  if (systemPrompt) {
+    payload.system = [{ text: systemPrompt }];
+  }
+
+  const body = JSON.stringify(payload);
   const resp = await awsSigV4Fetch(host, rawPath, body, region, 'bedrock');
   if (!resp.ok) throw new Error(`Mistral Bedrock ${resp.status}: ${await resp.text()}`);
   const data = await resp.json();
@@ -203,7 +274,7 @@ async function callAI(model: string, prompt: string): Promise<string> {
     case 'openai': return callOpenAI(prompt);
     case 'groq': return callGroq(prompt);
     case 'claude': return callClaude(prompt);
-    case 'mistral': return callMistral(prompt);
+    case 'mistral': return callMistral(prompt, MISTRAL_SYSTEM_PROMPT);
     default: return callGemini(prompt);
   }
 }
@@ -224,10 +295,25 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'topic is required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    const wordTarget = Math.min(Math.max(Number(targetWordCount) || 1500, 800), 3000);
-    const tagsList = Array.isArray(tags) && tags.length > 0 ? tags.join(', ') : '';
+    const useModel = aiModel || 'gemini';
+    console.log(`[generate-blog-article] Using model: ${useModel}`);
 
-    const prompt = `You are a professional content writer for TrueJobs.co.in, an Indian government job portal and career advice website.
+    let prompt: string;
+
+    if (useModel === 'mistral') {
+      // Mistral uses a simplified user prompt — the system prompt handles all writing rules
+      const tagsList = Array.isArray(tags) && tags.length > 0 ? `\nTags: ${tags.join(', ')}` : '';
+      prompt = `Write a complete, SEO-optimized blog article on the following topic:
+
+Topic: ${topic}${category ? `\nCategory: ${category}` : ''}${tagsList}
+
+Follow all the writing rules and output format specified in your instructions. Return ONLY the JSON object.`;
+    } else {
+      // Default prompt for all other models
+      const wordTarget = Math.min(Math.max(Number(targetWordCount) || 1500, 800), 3000);
+      const tagsList = Array.isArray(tags) && tags.length > 0 ? tags.join(', ') : '';
+
+      prompt = `You are a professional content writer for TrueJobs.co.in, an Indian government job portal and career advice website.
 
 Write a complete, SEO-optimized blog article on the following topic:
 Topic: ${topic}
@@ -261,9 +347,8 @@ Return a JSON object with these fields:
 
 Format: {"title": "...", "slug": "...", "content": "...", "metaTitle": "...", "metaDescription": "...", "excerpt": "...", "category": "...", "tags": [...]}
 No markdown code blocks. Return ONLY the JSON object.`;
+    }
 
-    const useModel = aiModel || 'gemini';
-    console.log(`[generate-blog-article] Using model: ${useModel}`);
     const raw = await callAI(useModel, prompt);
     const cleaned = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
 

@@ -83,8 +83,12 @@ FINAL SECTION — FAQ with schema.org markup (FAQPage, Question, Answer itemtype
 const ANTHROPIC_MODEL = Deno.env.get('ANTHROPIC_MODEL') || 'claude-sonnet-4-6';
 const ANTHROPIC_DEFAULT_MAX_TOKENS = 4096;
 const ANTHROPIC_RETRY_MAX_TOKENS = 6144;
-// Hard timeout per Claude SDK request to avoid long-hanging calls that break client fetches.
-const CLAUDE_SDK_TIMEOUT_MS = parseInt(Deno.env.get('CLAUDE_SDK_TIMEOUT_MS') || '65000', 10);
+// Hard timeout per Claude SDK request.
+const CLAUDE_SDK_TIMEOUT_MS = parseInt(Deno.env.get('CLAUDE_SDK_TIMEOUT_MS') || '50000', 10);
+// Total budget for one invocation AI path so edge requests do not die before response.
+const AI_TOTAL_BUDGET_MS = parseInt(Deno.env.get('ENRICH_AI_TOTAL_BUDGET_MS') || '110000', 10);
+const GEMINI_FALLBACK_RESERVED_MS = 30000;
+const CLAUDE_RETRY_MIN_REMAINING_MS = 55000;
 
 const TIMEOUTS: Record<string, number> = {
   'gemini-flash': 60_000,
@@ -100,6 +104,15 @@ const TIMEOUTS: Record<string, number> = {
 
 function getTimeout(model: string): number {
   return TIMEOUTS[model] || 60_000;
+}
+
+function getRemainingBudgetMs(startedAtMs: number): number {
+  return AI_TOTAL_BUDGET_MS - (Date.now() - startedAtMs);
+}
+
+function computeFallbackTimeoutMs(startedAtMs: number): number {
+  const remaining = getRemainingBudgetMs(startedAtMs) - 2000;
+  return Math.max(12_000, Math.min(60_000, remaining));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

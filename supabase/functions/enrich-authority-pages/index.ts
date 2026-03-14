@@ -398,8 +398,7 @@ async function callClaudeWithRetry(
     }
 
     // No transient retry: only truncation-based retry is allowed.
-    // This preserves budget so Gemini fallback can complete in the same invocation.
-    console.warn(`[claude-circuit-breaker] ${slug}: no transient retry for error=${errMsg}. Failing over to Gemini immediately. remaining_budget_ms=${remainingBudget}`);
+    console.warn(`[claude-no-retry] ${slug}: error=${errMsg}. No fallback. remaining_budget_ms=${remainingBudget}`);
     throw firstErr;
   }
 }

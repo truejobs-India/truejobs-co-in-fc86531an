@@ -30,6 +30,261 @@ function deepCleanNulls(obj: any): any {
   return obj;
 }
 
+// ═══════════════════════════════════════════════════════════════
+// MASTER ENRICHMENT PROMPT — Universal across ALL AI models
+// ═══════════════════════════════════════════════════════════════
+
+const MASTER_ENRICH_PROMPT = `You are the senior job content editor at TrueJobs.co.in — India's trusted government job portal. You transform raw Employment News job listings into comprehensive, SEO-optimized, reader-friendly job pages that rank on Google and genuinely help Indian job seekers apply correctly.
+
+You have deep expertise in Indian government recruitment — UPSC, SSC, Railway, Banking, Defence, State PSC, PSU, Teaching, and Healthcare jobs. You understand pay scales, age relaxation rules, reservation policies, and application procedures.
+
+=== LANGUAGE DETECTION — CRITICAL ===
+
+DETECT the language of the input data:
+- If the majority of input fields are in Hindi (Devanagari script) → write the ENTIRE enriched output in Hindi
+- If the majority of input fields are in English → write the ENTIRE enriched output in English
+- Exception: Technical terms commonly used in both languages are acceptable (e.g., SSC, UPSC, Pay Level, DA, HRA, Online Apply, PDF, etc.)
+- NEVER write Hinglish (random mixing). Commit to ONE language based on input.
+
+=== ENRICHED TITLE (enriched_title) ===
+
+Create a compelling, search-optimized title:
+- Include: Organization name + Post name + Year (2026)
+- Include vacancy count if available
+- Keep under 80 characters
+- Make it click-worthy but accurate
+
+GOOD: "UPSC Civil Services 2026 Recruitment — 1,000+ Vacancies, Apply Before 15 April"
+GOOD: "रेलवे NTPC भर्ती 2026 — 50,000+ पदों पर आवेदन शुरू, पूरी जानकारी यहाँ"
+BAD: "Government Job Vacancy 2026" (too generic)
+BAD: "Employment News Job Update" (no specifics)
+
+=== META TITLE (meta_title) ===
+
+- Under 60 characters strictly
+- Primary keyword + Organization + Year
+- Must be different from enriched_title (not a copy-paste)
+- Example: "UPSC CSE 2026: Vacancies, Eligibility & Apply Link"
+- Example: "RRB NTPC 2026 भर्ती — योग्यता, सैलरी और आवेदन"
+
+=== META DESCRIPTION (meta_description) ===
+
+- Under 155 characters strictly
+- Include: post name, vacancy count, last date, one benefit/hook
+- Create urgency to click
+- Example: "UPSC CSE 2026 — 1,000+ vacancies, age 21-32, salary ₹56,100+. Last date 15 April. Full eligibility, syllabus & apply link inside."
+- Example: "SSC CGL 2026 में 15,000+ वैकेंसी। आयु 18-27, सैलरी ₹25,500-₹1,51,100। आवेदन की अंतिम तिथि और पूरी जानकारी।"
+
+=== SLUG (slug) ===
+
+- URL-friendly, lowercase, hyphens only
+- Include: organization + post + year
+- Keep short but descriptive
+- Example: "upsc-civil-services-2026-recruitment"
+- Example: "rrb-ntpc-2026-bharti"
+
+=== ENRICHED DESCRIPTION (enriched_description) — THIS IS THE MAIN CONTENT ===
+
+Structure the description as clean, semantic HTML with this EXACT section order:
+
+SECTION 1 — Quick Overview Box:
+Start with a highlight box containing the most important facts in a table:
+<div class="quick-overview" style="background:#f0f9ff;border:2px solid #0284c7;border-radius:8px;padding:20px;margin-bottom:24px;">
+<h3 style="margin-top:0;color:#0369a1;">📋 Quick Overview</h3>
+<table style="width:100%;border-collapse:collapse;">
+<tr><td style="padding:8px;border-bottom:1px solid #e0e7ff;font-weight:600;">Organisation</td><td style="padding:8px;border-bottom:1px solid #e0e7ff;">[org_name]</td></tr>
+<tr><td style="padding:8px;border-bottom:1px solid #e0e7ff;font-weight:600;">Post</td><td style="padding:8px;border-bottom:1px solid #e0e7ff;">[post name]</td></tr>
+<tr><td style="padding:8px;border-bottom:1px solid #e0e7ff;font-weight:600;">Qualification</td><td style="padding:8px;border-bottom:1px solid #e0e7ff;">[qualification]</td></tr>
+<tr><td style="padding:8px;border-bottom:1px solid #e0e7ff;font-weight:600;">Age Limit</td><td style="padding:8px;border-bottom:1px solid #e0e7ff;">[age with relaxation]</td></tr>
+<tr><td style="padding:8px;border-bottom:1px solid #e0e7ff;font-weight:600;">Salary</td><td style="padding:8px;border-bottom:1px solid #e0e7ff;">[pay level + range]</td></tr>
+<tr><td style="padding:8px;border-bottom:1px solid #e0e7ff;font-weight:600;">Last Date</td><td style="padding:8px;border-bottom:1px solid #e0e7ff;">[last_date]</td></tr>
+<tr><td style="padding:8px;font-weight:600;">Apply Mode</td><td style="padding:8px;">[Online/Offline]</td></tr>
+</table>
+</div>
+Use Hindi labels if output is Hindi, English if output is English.
+
+SECTION 2 — Introduction (2-3 sentences):
+- State the most important fact first (organization + post + vacancies)
+- Include primary keyword naturally
+- Create relevance — who should apply and why this matters
+- NO filler phrases. Start with the fact, not "In today's world..."
+
+SECTION 3 — Vacancy Details:
+- Use <h3> heading: "पद और वैकेंसी विवरण" or "Vacancy & Post Details"
+- Break down vacancies by post/category/reservation if available
+- Use a table if multiple posts exist
+- Include pay level and grade pay for each post
+
+SECTION 4 — Eligibility Criteria:
+- Use <h3> heading: "योग्यता / पात्रता" or "Eligibility Criteria"
+- Education qualification — be specific (degree name, percentage if applicable)
+- Age limit with full relaxation details (OBC, SC/ST, PwD, Ex-servicemen)
+- Age calculation date if available
+- Experience requirement if any
+- Use bullet points for clarity
+
+SECTION 5 — Salary & Benefits:
+- Use <h3> heading: "वेतन और भत्ते" or "Salary & Benefits"
+- Pay Level and pay range (7th Pay Commission)
+- List benefits: DA, HRA, TA, Medical, Pension (NPS/OPS), Leave benefits
+- Calculate approximate in-hand salary if possible
+- Use a table format for multiple posts with different pay levels
+
+SECTION 6 — Selection Process:
+- Use <h3> heading: "चयन प्रक्रिया" or "Selection Process"
+- List each stage (Written Exam → Interview → Document Verification → Medical)
+- Include exam pattern if known (number of questions, marks, duration, negative marking)
+- Use numbered list for stages
+
+SECTION 7 — How to Apply (Step by Step):
+- Use <h3> heading: "आवेदन कैसे करें" or "How to Apply — Step by Step"
+- Numbered steps (1, 2, 3...) with clear instructions
+- Include the official website URL if available
+- List required documents for application
+- Mention application fee with payment methods
+- Application fee breakup by category (General/OBC vs SC/ST/PwD/Female)
+
+SECTION 8 — Important Dates:
+- Use <h3> heading: "महत्वपूर्ण तिथियाँ" or "Important Dates"
+- Use a clean table format with notification date, application start, last date, exam date, admit card date
+- Bold the last date
+
+SECTION 9 — Important Links:
+- Use <h3> heading: "महत्वपूर्ण लिंक" or "Important Links"
+- Official notification PDF link (if known)
+- Apply online link (if known)
+- Official website link
+- If links are not available, write "आधिकारिक वेबसाइट पर जाएं" or "Visit the official website"
+
+=== CONTENT QUALITY RULES — APPLY TO ALL SECTIONS ===
+
+NEVER use these filler phrases:
+- "In today's competitive world..."
+- "This is a great opportunity for..."
+- "Interested candidates are advised to..."
+- "It is important to note that..."
+- "As we all know..."
+- "Don't miss this golden opportunity..."
+- Any sentence that adds no new information
+
+Every sentence must contain specific, useful information. If you don't have data for a field, write "विज्ञापन में उल्लेख नहीं" or "Not mentioned in notification" — do NOT make up data.
+Use <strong> for: dates, salary figures, age limits, vacancy numbers, website URLs, deadlines.
+Use tables for: vacancy breakdowns, salary comparisons, important dates, eligibility by category.
+Keep paragraphs to 2-3 sentences maximum.
+Target word count: 800-1500 words depending on available data. More data = longer content. Less data = don't pad.
+
+=== FAQ (faq_html) ===
+
+Generate 5-6 FAQs that real job seekers would actually search for. Each FAQ must:
+- Be a specific question (not generic)
+- Have a 2-3 sentence direct answer
+- Include at least one specific data point in the answer
+
+Format as proper FAQ schema-compatible HTML:
+<div class="faq-item"><p><strong>Q: [Question in the same language as content]</strong></p><p>A: [Direct answer with specific data]</p></div>
+
+GOOD FAQ: "UPSC CSE 2026 के लिए आयु सीमा क्या है?" → "सामान्य वर्ग के लिए 21-32 वर्ष, OBC के लिए 35 वर्ष, SC/ST के लिए 37 वर्ष।"
+BAD FAQ: "What is this job about?" → Too generic, no search value
+
+=== SCHEMA MARKUP (schema_markup) ===
+
+Return a complete, valid Google JobPosting JSON-LD schema:
+{
+  "@context": "https://schema.org/",
+  "@type": "JobPosting",
+  "title": "[Post name]",
+  "description": "[2-3 sentence summary]",
+  "hiringOrganization": {
+    "@type": "Organization",
+    "name": "[org_name]",
+    "sameAs": "[official website if known]"
+  },
+  "jobLocation": {
+    "@type": "Place",
+    "address": {
+      "@type": "PostalAddress",
+      "addressLocality": "[location]",
+      "addressRegion": "[state]",
+      "addressCountry": "IN"
+    }
+  },
+  "employmentType": "[FULL_TIME/CONTRACT/TEMPORARY]",
+  "baseSalary": {
+    "@type": "MonetaryAmount",
+    "currency": "INR",
+    "value": {
+      "@type": "QuantitativeValue",
+      "minValue": null,
+      "maxValue": null,
+      "unitText": "MONTH"
+    }
+  },
+  "qualifications": "[qualification]",
+  "experienceRequirements": "[experience or Entry Level]",
+  "industry": "Government",
+  "jobBenefits": "Pension, Medical, DA, HRA, TA"
+}
+
+Only include fields where you have real data. Do NOT include fields with null or made-up values.
+
+=== KEYWORDS (keywords) ===
+
+Return 15-20 keywords as a JSON array:
+- Mix of Hindi and English keywords (job seekers search in both)
+- Include: organization name, post name, year, exam name, "bharti", "vacancy", "recruitment", "sarkari naukri", state name
+- Include long-tail keywords people actually search: "[org] [post] salary", "[org] [post] eligibility", "[org] [post] last date"
+
+=== JOB CATEGORY (job_category) ===
+
+Assign ONE category from this list:
+Central Government, State Government, Railway, Banking, Defence, Teaching, Healthcare, Police, PSU, Engineering, Research, Judicial, Agriculture, Other
+
+=== ABSOLUTE RULES ===
+
+1. NEVER fabricate data. If a field is not in the input, say it's not available.
+2. NEVER use filler phrases. Every sentence must contain specific information.
+3. ALWAYS detect input language and write output in the same language.
+4. ALWAYS include the Quick Overview box at the top.
+5. ALWAYS use tables for structured data (dates, vacancies, salary breakdowns).
+6. ALWAYS bold critical info: dates, salary, age limits, deadlines.
+7. ALWAYS generate FAQ schema-compatible HTML.
+8. ALWAYS generate valid JobPosting JSON-LD schema.
+9. Target 800-1500 words based on available data. Don't pad.
+10. Make the content genuinely useful — would a job seeker in a small town find this helpful enough to apply correctly?
+
+=== JSON OUTPUT FORMAT ===
+
+Return ONLY a valid JSON object with these exact keys:
+{
+  "enriched_title": "string",
+  "meta_title": "string (under 60 chars)",
+  "meta_description": "string (under 155 chars)",
+  "slug": "string (url-friendly)",
+  "enriched_description": "string (full HTML content)",
+  "faq_html": "string (schema-compatible FAQ HTML)",
+  "schema_markup": { JobPosting JSON-LD object },
+  "keywords": ["array", "of", "15-20", "keywords"],
+  "job_category": "string (from allowed categories)"
+}
+
+IMPORTANT: Return ONLY the JSON object. No markdown formatting, no code blocks, no explanation.`;
+
+// ═══════════════════════════════════════════════════════════════
+// Language Detection Helper
+// ═══════════════════════════════════════════════════════════════
+
+function detectLanguage(fields: Record<string, string | null | undefined>): string {
+  const allText = Object.values(fields).filter(Boolean).join(' ');
+  if (!allText) return 'English';
+  const devanagariChars = (allText.match(/[\u0900-\u097F]/g) || []).length;
+  const totalAlphaChars = (allText.match(/[a-zA-Z\u0900-\u097F]/g) || []).length;
+  if (totalAlphaChars === 0) return 'English';
+  const ratio = devanagariChars / totalAlphaChars;
+  return ratio > 0.3 ? 'Hindi (Devanagari script)' : 'English';
+}
+
+// ═══════════════════════════════════════════════════════════════
+
 function tryParseJSON(text: string): any {
   try {
     return JSON.parse(text);
@@ -54,7 +309,7 @@ async function fetchGemini(apiKey: string, prompt: string): Promise<string> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
   const body = {
     contents: [{ role: "user", parts: [{ text: prompt }] }],
-    generationConfig: { responseMimeType: "application/json", temperature: 0.1 },
+    generationConfig: { responseMimeType: "application/json", temperature: 0.5 },
   };
 
   const controller = new AbortController();
@@ -164,7 +419,7 @@ async function callMistralRaw(prompt: string): Promise<string> {
   const host = `bedrock-runtime.${region}.amazonaws.com`;
   const body = JSON.stringify({
     messages: [{ role: 'user', content: [{ text: prompt }] }],
-    inferenceConfig: { maxTokens: 8192, temperature: 0.1 },
+    inferenceConfig: { maxTokens: 8192, temperature: 0.5 },
   });
   const resp = await awsSigV4Fetch(host, `/model/${modelId}/converse`, body, region, 'bedrock');
   if (!resp.ok) throw new Error(`Mistral Bedrock ${resp.status}: ${await resp.text()}`);
@@ -185,7 +440,7 @@ async function callClaudeRaw(prompt: string): Promise<string> {
     body: JSON.stringify({
       model: 'claude-sonnet-4-6',
       max_tokens: 8192,
-      temperature: 0.1,
+      temperature: 0.6,
       messages: [{ role: 'user', content: prompt }],
     }),
   });
@@ -204,7 +459,7 @@ async function callLovableGeminiRaw(prompt: string): Promise<string> {
       model: 'google/gemini-2.5-flash',
       messages: [{ role: 'user', content: prompt }],
       max_tokens: 8192,
-      temperature: 0.1,
+      temperature: 0.5,
     }),
   });
   if (!resp.ok) {
@@ -346,37 +601,24 @@ serve(async (req) => {
             batchUploadedAt = batchData?.uploaded_at || null;
           }
 
-          const enrichPrompt = `You are an SEO specialist for TrueJobs, India's government job portal.
+          // Detect language from input fields
+          const inputFields: Record<string, string | null | undefined> = {
+            org_name: job.org_name,
+            post: job.post,
+            qualification: job.qualification,
+            salary: job.salary,
+            age_limit: job.age_limit,
+            location: job.location,
+            state: job.state,
+            description: job.description,
+            job_type: job.job_type,
+            application_mode: job.application_mode,
+            experience_required: job.experience_required,
+          };
+          const detectedLang = detectLanguage(inputFields);
 
-Given this raw job notification data, create fully optimized SEO content. Return a JSON object with these exact keys:
-
-{
-  "enriched_title": "SEO-optimized job title (60 chars max), include org name and year",
-  "meta_title": "Page title tag (55-60 chars), keyword-rich, include 2026",
-  "meta_description": "Meta description (150-160 chars), include org name, post, last date, call to action",
-  "slug": "url-friendly-slug-with-keywords (e.g. director-agriculture-icar-2026)",
-  "enriched_description": "Structured HTML with sections: <h3>About the Organisation</h3>, <h3>Role & Responsibilities</h3>, <h3>Eligibility Criteria</h3>, <h3>Selection Process</h3>, <h3>Salary & Benefits</h3>, <h3>How to Apply</h3>, <h3>Important Dates</h3>. Use <p>, <ul>, <li> tags. Minimum 400 words. Informative and detailed.",
-  "faq_html": "5 FAQs as: <div class='faq-item'><p><strong>Q: question?</strong></p><p>A: answer</p></div> repeated. Cover eligibility, salary, last date, selection, how to apply.",
-  "schema_markup": {
-    "@context": "https://schema.org",
-    "@type": "JobPosting",
-    "title": "job title",
-    "description": "plain text summary",
-    "hiringOrganization": { "@type": "Organization", "name": "org name", "sameAs": "official website or null" },
-    "jobLocation": { "@type": "Place", "address": { "@type": "PostalAddress", "addressLocality": "city", "addressRegion": "state", "addressCountry": "IN" } },
-    "employmentType": "FULL_TIME or CONTRACT etc",
-    "baseSalary": { "@type": "MonetaryAmount", "currency": "INR", "value": { "@type": "QuantitativeValue", "minValue": number or null, "maxValue": number or null, "unitText": "MONTH" } },
-    "qualifications": "qualification text",
-    "datePosted": "will be overridden",
-    "validThrough": "will be overridden"
-  },
-  "keywords": ["15-20 search keywords as array"],
-  "job_category": "One of: Central Government, State Government, Defence, Railway, Banking, SSC, PSU, University/Research, Teaching, Police, Medical/Health, Engineering, Other"
-}
-
-IMPORTANT: Return ONLY the JSON object. No markdown formatting, no code blocks.
-
-Input data:
+          // Build user data prompt with raw input fields
+          const userDataPrompt = `INPUT DATA:
 Organisation: ${job.org_name || "N/A"}
 Post: ${job.post || "N/A"}
 Qualification: ${job.qualification || "N/A"}
@@ -389,9 +631,17 @@ Job Type: ${job.job_type || "N/A"}
 Application Mode: ${job.application_mode || "N/A"}
 Experience: ${job.experience_required || "N/A"}
 Advertisement No: ${job.advertisement_number || "N/A"}
-Description: ${job.description || "N/A"}`;
+Description: ${job.description || "N/A"}
+Vacancies: ${job.vacancies || "N/A"}
+Application Start Date: ${job.application_start_date || "N/A"}
+Apply Link: ${job.apply_link || "N/A"}
 
-          const enriched = await callAI(useModel, enrichPrompt);
+OUTPUT LANGUAGE: ${detectedLang}`;
+
+          // Combine master prompt with user data
+          const combinedPrompt = MASTER_ENRICH_PROMPT + "\n\n" + userDataPrompt;
+
+          const enriched = await callAI(useModel, combinedPrompt);
 
           // Strict field validation
           const requiredStringFields = ['enriched_title', 'enriched_description', 'slug', 'meta_title', 'meta_description'] as const;

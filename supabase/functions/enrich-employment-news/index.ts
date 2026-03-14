@@ -365,6 +365,8 @@ function autoFillMissingFields(enriched: any, job: any): string[] {
 // AI Model Providers
 // ═══════════════════════════════════════════════════════════════
 
+const AI_TIMEOUT_MS = 60000; // 60 seconds timeout for all AI calls
+
 async function fetchGemini(apiKey: string, prompt: string): Promise<string> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
   const body = {
@@ -373,7 +375,7 @@ async function fetchGemini(apiKey: string, prompt: string): Promise<string> {
   };
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 50000);
+  const timeoutId = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
 
   let response: Response;
   try {

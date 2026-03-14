@@ -158,7 +158,7 @@ async function awsSigV4Fetch(host: string, rawPath: string, body: string, region
 
 // ── 5. Claude Sonnet 4.6 (AWS Bedrock Converse) ──
 async function callClaude(prompt: string): Promise<string> {
-  const modelId = 'anthropic.claude-sonnet-4-6-v1:0';
+  const modelId = 'anthropic.claude-sonnet-4-6';
   const region = 'ap-south-1';
   const host = `bedrock-runtime.${region}.amazonaws.com`;
   const rawPath = `/model/${modelId}/converse`;

@@ -305,7 +305,8 @@ async function callClaudeStreaming(
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   const reqStart = Date.now();
 
-  console.log(`[claude-stream] START model=${ANTHROPIC_MODEL} max_tokens=${maxTokens} timeout=${timeoutMs}ms prompt_chars=${prompt.length} structured=${useStructuredOutput}`);
+  logClaudePreRequest('stream', { model: ANTHROPIC_MODEL, maxTokens, structured: useStructuredOutput, promptChars: prompt.length });
+  console.log(`[claude-stream] START timeout=${timeoutMs}ms`);
 
   try {
     // deno-lint-ignore no-explicit-any

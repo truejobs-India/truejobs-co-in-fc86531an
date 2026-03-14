@@ -390,6 +390,10 @@ function AdminDashboardInner() {
               <TabsContent value="seo-policy">
                 <SEORoutePolicyDashboard />
               </TabsContent>
+
+              <TabsContent value="ai-test">
+                <VertexAITestPanel />
+              </TabsContent>
             </Tabs>
           </>
         ) : currentView.type === 'users' ? (

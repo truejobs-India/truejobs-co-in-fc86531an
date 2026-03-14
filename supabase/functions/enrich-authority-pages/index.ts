@@ -697,19 +697,17 @@ function tryParseJSON(raw: string): Record<string, unknown> {
 // AI DISPATCHER — with Claude→Gemini fallback
 // ═══════════════════════════════════════════════════════════════════════════════
 
-async function callAI(model: string, prompt: string, slug: string): Promise<{ data: Record<string, unknown>; diagnostics?: Record<string, unknown> }> {
+async function callAI(
+  model: string,
+  prompt: string,
+  slug: string,
+  startedAtMs: number,
+): Promise<{ data: Record<string, unknown>; diagnostics?: Record<string, unknown> }> {
   const timeout = getTimeout(model);
   let rawText: string;
 
   switch (model) {
-    case 'gemini-flash':
-    case 'gemini':
-      rawText = await fetchGemini(prompt, 'gemini-2.5-flash', timeout);
-      return { data: tryParseJSON(rawText) };
-    case 'gemini-pro':
-      rawText = await fetchGemini(prompt, 'gemini-2.5-pro', timeout);
-      return { data: tryParseJSON(rawText) };
-
+...
     case 'claude-sonnet':
     case 'claude': {
       // ── Claude with automatic Gemini fallback ──
@@ -717,7 +715,7 @@ async function callAI(model: string, prompt: string, slug: string): Promise<{ da
       let claudeDiag: ClaudeDiagnostics | undefined;
 
       try {
-        const result = await callClaudeWithRetry(prompt, slug);
+        const result = await callClaudeWithRetry(prompt, slug, startedAtMs);
         return { data: result.data, diagnostics: result.diagnostics as unknown as Record<string, unknown> };
       } catch (err) {
         claudeError = err instanceof Error ? err.message : String(err);
@@ -731,8 +729,9 @@ async function callAI(model: string, prompt: string, slug: string): Promise<{ da
         const geminiPrompt = prompt.replace(/=== CRITICAL OUTPUT CONSTRAINTS ===[\s\S]*$/, '') +
           '\n\nReturn ONLY the JSON object matching the schema. No commentary, no markdown fences.';
 
-        console.log(`[gemini-fallback] ${slug}: Starting Gemini fallback, prompt ${geminiPrompt.length} chars`);
-        rawText = await fetchGemini(geminiPrompt, 'gemini-2.5-flash', 60_000);
+        const fallbackTimeoutMs = computeFallbackTimeoutMs(startedAtMs);
+        console.log(`[gemini-fallback] ${slug}: Starting Gemini fallback, prompt ${geminiPrompt.length} chars, timeout=${fallbackTimeoutMs}ms`);
+        rawText = await fetchGemini(geminiPrompt, 'gemini-2.5-flash', fallbackTimeoutMs);
         const data = tryParseJSON(rawText);
 
         const fallbackDiag: Record<string, unknown> = {

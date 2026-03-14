@@ -257,11 +257,7 @@ async function claudeProbe(): Promise<void> {
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
+      headers: getClaudeHeaders(apiKey),
       signal: controller.signal,
       body: JSON.stringify({
         model: ANTHROPIC_MODEL,

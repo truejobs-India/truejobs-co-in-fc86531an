@@ -114,7 +114,7 @@ export function VertexAITools({ formData, onApplyField, onApplyContent, onImageG
       <CollapsibleTrigger asChild>
         <Button variant="outline" className="w-full justify-between text-xs h-9">
           <span className="flex items-center gap-2">
-            <Globe className="h-3.5 w-3.5 text-blue-500" />
+            <Globe className="h-3.5 w-3.5 text-primary" />
             Vertex AI Tools (Flash · Pro · Imagen)
           </span>
           <ChevronDown className={`h-3.5 w-3.5 transition-transform ${isOpen ? 'rotate-180' : ''}`} />

@@ -240,7 +240,7 @@ async function callClaudeSDK(
   const diag = createDiagnostics(slug, prompt.length);
   diag.maxTokens = maxTokens;
 
-  logClaudeRequest(diag, 'pre-request');
+  logClaudeRequest(diag, 'pre-request', requestTimeoutMs);
   const startMs = Date.now();
 
   try {

@@ -776,8 +776,7 @@ Generate content for these sections:
 7. Subject-wise Preparation Strategy
 8. Common Mistakes in Preparation
 
-FAQs: 5-7 questions.
-Return the JSON matching the schema provided. Be concise — each section 150-350 words.`;
+FAQs: 5-7 questions.`;
 }
 
 function buildExamPatternPrompt(page: PageContent): string {

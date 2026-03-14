@@ -483,7 +483,10 @@ async function callMistralRaw(prompt: string): Promise<string> {
     messages: [{ role: 'user', content: [{ text: prompt }] }],
     inferenceConfig: { maxTokens: 8192, temperature: 0.5 },
   });
-  const resp = await awsSigV4Fetch(host, `/model/${modelId}/converse`, body, region, 'bedrock');
+  const resp = await Promise.race([
+    awsSigV4Fetch(host, `/model/${modelId}/converse`, body, region, 'bedrock'),
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error('AI model timeout after 60 seconds')), AI_TIMEOUT_MS)),
+  ]);
   if (!resp.ok) throw new Error(`Mistral Bedrock ${resp.status}: ${await resp.text()}`);
   const data = await resp.json();
   return data?.output?.message?.content?.[0]?.text || '';
@@ -492,20 +495,33 @@ async function callMistralRaw(prompt: string): Promise<string> {
 async function callClaudeRaw(prompt: string): Promise<string> {
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured');
-  const resp = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 8192,
-      temperature: 0.6,
-      messages: [{ role: 'user', content: prompt }],
-    }),
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
+  let resp: Response;
+  try {
+    resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 8192,
+        temperature: 0.6,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new Error('AI model timeout after 60 seconds');
+    }
+    throw err;
+  }
+  clearTimeout(timeoutId);
   if (!resp.ok) throw new Error(`Anthropic API error ${resp.status}: ${await resp.text()}`);
   const data = await resp.json();
   return data?.content?.[0]?.text || '';
@@ -514,16 +530,29 @@ async function callClaudeRaw(prompt: string): Promise<string> {
 async function callLovableGeminiRaw(prompt: string): Promise<string> {
   const apiKey = Deno.env.get('LOVABLE_API_KEY');
   if (!apiKey) throw new Error('LOVABLE_API_KEY not configured');
-  const resp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'google/gemini-2.5-flash',
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: 8192,
-      temperature: 0.5,
-    }),
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
+  let resp: Response;
+  try {
+    resp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 8192,
+        temperature: 0.5,
+      }),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new Error('AI model timeout after 60 seconds');
+    }
+    throw err;
+  }
+  clearTimeout(timeoutId);
   if (!resp.ok) {
     if (resp.status === 429) throw new Error('Rate limit exceeded on Lovable AI.');
     if (resp.status === 402) throw new Error('Lovable AI credits exhausted.');

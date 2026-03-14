@@ -20,6 +20,7 @@ const CustomLongTailPage = lazy(() => import('./CustomLongTailPage'));
 const GovtComboPage = lazy(() => import('./GovtComboPage'));
 const DeadlineJobsPage = lazy(() => import('./DeadlineJobsPage'));
 const AllSarkariJobsHub = lazy(() => import('./AllSarkariJobsHub'));
+const CustomPageRenderer = lazy(() => import('./CustomPageRenderer'));
 
 const Loading = () => (
   <div className="container mx-auto p-8"><Skeleton className="h-96 w-full" /></div>

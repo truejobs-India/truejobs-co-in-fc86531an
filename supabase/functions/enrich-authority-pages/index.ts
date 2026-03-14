@@ -1104,8 +1104,8 @@ serve(async (req) => {
     for (let i = 0; i < slugs.length; i += CONCURRENCY) {
       // ── Time budget guard ──
       const elapsed = Date.now() - fnStart;
-      if (elapsed > FUNCTION_TIME_BUDGET_MS) {
-        console.warn(`[enrich-authority-pages] Time budget exceeded (${elapsed}ms) — skipping remaining ${slugs.length - i} slugs`);
+      if (elapsed > modelTimeBudgetMs) {
+        console.warn(`[enrich-authority-pages] Time budget exceeded (${elapsed}ms / ${modelTimeBudgetMs}ms) — skipping remaining ${slugs.length - i} slugs`);
         for (let j = i; j < slugs.length; j++) {
           results[j] = {
             slug: slugs[j],

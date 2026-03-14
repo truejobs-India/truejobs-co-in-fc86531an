@@ -1237,6 +1237,16 @@ export function BlogPostEditor() {
                 {isBulkGenerating ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Sparkles className="h-4 w-4 mr-1" />}
                 Generate Articles
               </Button>
+              {isBulkGenerating && (
+                <Button size="sm" variant="destructive" onClick={() => { bulkGenerateAbortRef.current = true; }}>
+                  <Square className="h-4 w-4 mr-1" />Stop
+                </Button>
+              )}
+              {!isBulkGenerating && bulkResults.some(r => r.status === 'failed') && (
+                <Button size="sm" variant="outline" onClick={handleRetryFailedArticles}>
+                  <RotateCcw className="h-4 w-4 mr-1" />Retry Failed ({bulkResults.filter(r => r.status === 'failed').length})
+                </Button>
+              )}
             </div>
             {bulkResults.length > 0 && (
               <div className="space-y-1 mt-2">

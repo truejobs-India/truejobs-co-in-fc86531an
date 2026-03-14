@@ -377,7 +377,7 @@ async function callClaudeWithRetry(
       const compactPrompt = buildClaudeRecoveryPrompt(prompt);
       const retryTimeout = Math.min(
         CLAUDE_SDK_TIMEOUT_MS,
-        Math.max(15_000, getRemainingBudgetMs(startedAtMs) - GEMINI_FALLBACK_RESERVED_MS),
+        Math.max(15_000, getRemainingBudgetMs(startedAtMs) - 5000),
       );
 
       try {

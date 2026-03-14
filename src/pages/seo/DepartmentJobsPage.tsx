@@ -74,7 +74,7 @@ export default function DepartmentJobsPage() {
         <script type="application/ld+json">{JSON.stringify(faqSchema)}</script>
       </Helmet>
 
-      <main className="container mx-auto px-4 py-8 md:py-12 max-w-4xl">
+      <main className="container mx-auto px-4 py-8 md:py-12 max-w-4xl content-area my-8">
         <nav aria-label="Breadcrumb" className="mb-6 text-sm text-muted-foreground">
           <ol className="flex items-center gap-1.5 flex-wrap">
             <li><Link to="/" className="hover:text-foreground transition-colors">Home</Link></li>

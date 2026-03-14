@@ -83,7 +83,7 @@ export default function EmploymentNewsJobDetail() {
         canonical={`https://truejobs.co.in${canonicalPath}`}
         structuredData={job.schema_markup ? (job.schema_markup as unknown as object) : undefined}
       />
-      <div className="container mx-auto py-8 px-4 max-w-4xl">
+      <div className="container mx-auto py-8 px-4 max-w-4xl content-area my-8">
         {/* Breadcrumb */}
         <Link to="/jobs/employment-news" className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-4">
           <ChevronLeft className="h-4 w-4 mr-1" /> Back to Employment News Jobs

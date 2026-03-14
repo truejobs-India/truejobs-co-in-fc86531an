@@ -400,7 +400,7 @@ export default function BlogPostPage() {
 
         {/* Main Content with Sidebar */}
         <div className="grid lg:grid-cols-[1fr_300px] gap-8 max-w-6xl mx-auto">
-          <div className="max-w-4xl">
+          <div className="max-w-4xl content-area">
             {/* Article Content */}
             <div 
               className="prose prose-lg max-w-none dark:prose-invert"

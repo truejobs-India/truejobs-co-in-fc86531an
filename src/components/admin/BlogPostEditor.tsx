@@ -610,6 +610,7 @@ export function BlogPostEditor() {
                 title: post.title, content: post.content,
                 action: 'enrich-article', targetWordCount: 1500,
                 category: post.category, tags: post.tags,
+                aiModel: blogTextModel,
               },
             });
             if (enrichError) throw new Error(enrichError.message);

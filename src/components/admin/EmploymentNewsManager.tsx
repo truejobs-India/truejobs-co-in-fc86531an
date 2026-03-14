@@ -54,6 +54,8 @@ type EmpNewsJob = {
   published_at: string | null;
   job_category: string | null;
   state: string | null;
+  enrichment_error: string | null;
+  enrichment_attempts: number;
 };
 
 type UploadBatch = {
@@ -73,6 +75,7 @@ const STATUS_COLORS: Record<string, string> = {
   enriched: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
   published: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
   rejected: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
+  enrichment_failed: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200',
 };
 
 const JOB_TYPE_COLORS: Record<string, string> = {
@@ -127,7 +130,8 @@ export function EmploymentNewsManager() {
   const [totalCount, setTotalCount] = useState(0);
 
   // Stats
-  const [stats, setStats] = useState({ total: 0, pending: 0, enriched: 0, published: 0, rejected: 0 });
+  const [stats, setStats] = useState({ total: 0, pending: 0, enriched: 0, published: 0, rejected: 0, failed: 0 });
+  const [isRetryingFailed, setIsRetryingFailed] = useState(false);
 
   // Modals
   const [viewJob, setViewJob] = useState<EmpNewsJob | null>(null);
@@ -155,12 +159,13 @@ export function EmploymentNewsManager() {
 
   // Load data
   const fetchStats = useCallback(async () => {
-    const [total, pending, enriched, published, rejected] = await Promise.all([
+    const [total, pending, enriched, published, rejected, failed] = await Promise.all([
       supabase.from('employment_news_jobs').select('id', { count: 'exact', head: true }),
       supabase.from('employment_news_jobs').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
       supabase.from('employment_news_jobs').select('id', { count: 'exact', head: true }).eq('status', 'enriched'),
       supabase.from('employment_news_jobs').select('id', { count: 'exact', head: true }).eq('status', 'published'),
       supabase.from('employment_news_jobs').select('id', { count: 'exact', head: true }).eq('status', 'rejected'),
+      supabase.from('employment_news_jobs').select('id', { count: 'exact', head: true }).eq('status', 'enrichment_failed'),
     ]);
     setStats({
       total: total.count || 0,
@@ -168,6 +173,7 @@ export function EmploymentNewsManager() {
       enriched: enriched.count || 0,
       published: published.count || 0,
       rejected: rejected.count || 0,
+      failed: failed.count || 0,
     });
   }, []);
 
@@ -485,6 +491,41 @@ export function EmploymentNewsManager() {
     }
   };
 
+  const retryFailedJobs = async () => {
+    setIsRetryingFailed(true);
+    try {
+      const { data: failedJobs, error: fetchErr } = await supabase
+        .from('employment_news_jobs')
+        .select('id')
+        .eq('status', 'enrichment_failed');
+
+      if (fetchErr) throw fetchErr;
+      if (!failedJobs || failedJobs.length === 0) {
+        toast({ title: 'No failed jobs', description: 'There are no failed jobs to retry.' });
+        setIsRetryingFailed(false);
+        return;
+      }
+
+      // Reset failed jobs to pending with cleared error and attempts
+      const ids = failedJobs.map(j => j.id);
+      const { error: updateErr } = await supabase
+        .from('employment_news_jobs')
+        .update({ status: 'pending', enrichment_error: null, enrichment_attempts: 0 } as any)
+        .in('id', ids);
+
+      if (updateErr) throw updateErr;
+
+      toast({ title: 'Reset', description: `${ids.length} failed job(s) reset to pending. Run enrichment again.` });
+      fetchJobs();
+      fetchStats();
+    } catch (err) {
+      console.error('Retry failed jobs error:', err);
+      toast({ title: 'Error', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
+    } finally {
+      setIsRetryingFailed(false);
+    }
+  };
+
   const saveEdit = async () => {
     if (!editJob) return;
     const errors: Record<string, string> = {};
@@ -583,15 +624,16 @@ export function EmploymentNewsManager() {
       ) : (
         <>
           {/* Stats */}
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
             {[
               { label: 'Total', value: stats.total, color: 'text-foreground' },
               { label: 'Pending', value: stats.pending, color: 'text-muted-foreground' },
               { label: 'Enriched', value: stats.enriched, color: 'text-blue-600' },
               { label: 'Published', value: stats.published, color: 'text-green-600' },
               { label: 'Rejected', value: stats.rejected, color: 'text-red-600' },
+              { label: 'Failed', value: stats.failed, color: 'text-orange-600' },
             ].map(s => (
-              <Card key={s.label}>
+              <Card key={s.label} className={s.label === 'Failed' && stats.failed > 0 ? 'border-orange-300 dark:border-orange-700' : ''}>
                 <CardContent className="p-3 text-center">
                   <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
                   <p className="text-xs text-muted-foreground">{s.label}</p>
@@ -648,6 +690,7 @@ export function EmploymentNewsManager() {
                 <SelectItem value="enriched">Enriched</SelectItem>
                 <SelectItem value="published">Published</SelectItem>
                 <SelectItem value="rejected">Rejected</SelectItem>
+                <SelectItem value="enrichment_failed">Failed</SelectItem>
               </SelectContent>
             </Select>
             <Select value={jobTypeFilter} onValueChange={v => { setJobTypeFilter(v); setCurrentPage(1); }}>
@@ -757,6 +800,12 @@ export function EmploymentNewsManager() {
                 ? `Enriching${unenrichedCount ? ` ${unenrichedCount}` : ''}...`
                 : 'Find & Enrich Unenriched'}
             </Button>
+            {stats.failed > 0 && (
+              <Button size="sm" variant="outline" className="border-orange-300 text-orange-700 hover:bg-orange-50 dark:border-orange-700 dark:text-orange-400 dark:hover:bg-orange-950" onClick={retryFailedJobs} disabled={isRetryingFailed}>
+                {isRetryingFailed ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <AlertCircle className="h-3 w-3 mr-1" />}
+                Retry Failed ({stats.failed})
+              </Button>
+            )}
           </div>
 
           {/* Table */}
@@ -826,9 +875,25 @@ export function EmploymentNewsManager() {
                     <TableCell className="text-xs">{job.location || '—'}</TableCell>
                     <TableCell className="text-xs">{job.last_date || '—'}</TableCell>
                     <TableCell>
-                      <Badge className={`text-xs ${STATUS_COLORS[job.status] || ''}`}>
-                        {job.status}
-                      </Badge>
+                      <div className="flex items-center gap-1">
+                        <Badge className={`text-xs ${STATUS_COLORS[job.status] || ''}`}>
+                          {job.status === 'enrichment_failed' ? 'failed' : job.status}
+                        </Badge>
+                        {job.status === 'enrichment_failed' && job.enrichment_error && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <AlertCircle className="h-3.5 w-3.5 text-orange-500 cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-xs">
+                              <p className="text-xs font-medium">Attempt {job.enrichment_attempts}/3</p>
+                              <p className="text-xs text-muted-foreground mt-1">{job.enrichment_error}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
+                        {job.status === 'pending' && job.enrichment_attempts > 0 && (
+                          <span className="text-[10px] text-muted-foreground">#{job.enrichment_attempts}</span>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>
                       {job.enriched_title && job.enriched_description && job.slug && job.meta_title && job.meta_description ? (

@@ -286,24 +286,86 @@ function detectLanguage(fields: Record<string, string | null | undefined>): stri
 // ═══════════════════════════════════════════════════════════════
 
 function tryParseJSON(text: string): any {
+  // Attempt 1: direct parse
   try {
     return JSON.parse(text);
-  } catch {
-    if (!text.trimStart().startsWith("{") || text.length < 500) {
-      throw new Error(`JSON repair skipped — response too short (${text.length} chars) or not a JSON object`);
-    }
-    const lastBrace = text.lastIndexOf("}");
-    if (lastBrace > 0) {
-      const trimmed = text.substring(0, lastBrace + 1);
-      return JSON.parse(trimmed);
-    }
-    throw new Error("JSON repair failed");
+  } catch { /* fall through */ }
+
+  // Attempt 2: strip markdown fences
+  let cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+  try {
+    return JSON.parse(cleaned);
+  } catch { /* fall through */ }
+
+  // Attempt 3: extract JSON between first { and last }
+  const firstBrace = cleaned.indexOf('{');
+  const lastBrace = cleaned.lastIndexOf('}');
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    const extracted = cleaned.substring(firstBrace, lastBrace + 1);
+    try {
+      return JSON.parse(extracted);
+    } catch { /* fall through */ }
   }
+
+  // Attempt 4: truncate at last valid }
+  if (cleaned.trimStart().startsWith("{") && cleaned.length >= 200) {
+    const lb = cleaned.lastIndexOf("}");
+    if (lb > 0) {
+      try {
+        return JSON.parse(cleaned.substring(0, lb + 1));
+      } catch { /* fall through */ }
+    }
+  }
+
+  throw new Error(`JSON parse failed after all recovery attempts (response length: ${text.length} chars)`);
+}
+
+// Smart field auto-generation for missing non-critical fields
+function autoFillMissingFields(enriched: any, job: any): string[] {
+  const autoFilled: string[] = [];
+
+  if (!enriched.slug && enriched.enriched_title) {
+    enriched.slug = enriched.enriched_title
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/(^-|-$)/g, '')
+      .substring(0, 80);
+    if (!enriched.slug) enriched.slug = `job-${Date.now()}`;
+    autoFilled.push('slug (auto-generated from title)');
+  }
+
+  if (!enriched.meta_title && enriched.enriched_title) {
+    enriched.meta_title = enriched.enriched_title.substring(0, 60);
+    autoFilled.push('meta_title (first 60 chars of title)');
+  }
+
+  if (!enriched.meta_description && enriched.enriched_description) {
+    const stripped = enriched.enriched_description.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+    enriched.meta_description = stripped.substring(0, 155);
+    autoFilled.push('meta_description (first 155 chars of description)');
+  }
+
+  if (!enriched.job_category) {
+    enriched.job_category = 'Other';
+    autoFilled.push('job_category (defaulted to Other)');
+  }
+
+  if (!Array.isArray(enriched.keywords) || enriched.keywords.length === 0) {
+    const parts = [job.org_name, job.post, 'sarkari naukri', 'govt job', '2026', job.state].filter(Boolean);
+    enriched.keywords = parts;
+    autoFilled.push('keywords (auto-generated from job fields)');
+  }
+
+  return autoFilled;
 }
 
 // ═══════════════════════════════════════════════════════════════
 // AI Model Providers
 // ═══════════════════════════════════════════════════════════════
+
+const AI_TIMEOUT_MS = 60000; // 60 seconds timeout for all AI calls
 
 async function fetchGemini(apiKey: string, prompt: string): Promise<string> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
@@ -313,7 +375,7 @@ async function fetchGemini(apiKey: string, prompt: string): Promise<string> {
   };
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 50000);
+  const timeoutId = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
 
   let response: Response;
   try {
@@ -326,7 +388,7 @@ async function fetchGemini(apiKey: string, prompt: string): Promise<string> {
   } catch (err) {
     clearTimeout(timeoutId);
     if (err instanceof DOMException && err.name === "AbortError") {
-      throw new Error("Gemini API timed out after 50s");
+      throw new Error("AI model timeout after 60 seconds");
     }
     throw err;
   }
@@ -335,7 +397,7 @@ async function fetchGemini(apiKey: string, prompt: string): Promise<string> {
     console.log("Rate limited, retrying in 5s...");
     await delay(5000);
     const c2 = new AbortController();
-    const t2 = setTimeout(() => c2.abort(), 50000);
+    const t2 = setTimeout(() => c2.abort(), AI_TIMEOUT_MS);
     try {
       response = await fetch(url, {
         method: "POST",
@@ -346,7 +408,7 @@ async function fetchGemini(apiKey: string, prompt: string): Promise<string> {
     } catch (err) {
       clearTimeout(t2);
       if (err instanceof DOMException && err.name === "AbortError") {
-        throw new Error("Gemini API timed out after 50s (retry)");
+        throw new Error("AI model timeout after 60 seconds (retry)");
       }
       throw err;
     }
@@ -421,7 +483,10 @@ async function callMistralRaw(prompt: string): Promise<string> {
     messages: [{ role: 'user', content: [{ text: prompt }] }],
     inferenceConfig: { maxTokens: 8192, temperature: 0.5 },
   });
-  const resp = await awsSigV4Fetch(host, `/model/${modelId}/converse`, body, region, 'bedrock');
+  const resp = await Promise.race([
+    awsSigV4Fetch(host, `/model/${modelId}/converse`, body, region, 'bedrock'),
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error('AI model timeout after 60 seconds')), AI_TIMEOUT_MS)),
+  ]);
   if (!resp.ok) throw new Error(`Mistral Bedrock ${resp.status}: ${await resp.text()}`);
   const data = await resp.json();
   return data?.output?.message?.content?.[0]?.text || '';
@@ -430,20 +495,33 @@ async function callMistralRaw(prompt: string): Promise<string> {
 async function callClaudeRaw(prompt: string): Promise<string> {
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured');
-  const resp = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 8192,
-      temperature: 0.6,
-      messages: [{ role: 'user', content: prompt }],
-    }),
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
+  let resp: Response;
+  try {
+    resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 8192,
+        temperature: 0.6,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new Error('AI model timeout after 60 seconds');
+    }
+    throw err;
+  }
+  clearTimeout(timeoutId);
   if (!resp.ok) throw new Error(`Anthropic API error ${resp.status}: ${await resp.text()}`);
   const data = await resp.json();
   return data?.content?.[0]?.text || '';
@@ -452,16 +530,29 @@ async function callClaudeRaw(prompt: string): Promise<string> {
 async function callLovableGeminiRaw(prompt: string): Promise<string> {
   const apiKey = Deno.env.get('LOVABLE_API_KEY');
   if (!apiKey) throw new Error('LOVABLE_API_KEY not configured');
-  const resp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'google/gemini-2.5-flash',
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: 8192,
-      temperature: 0.5,
-    }),
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
+  let resp: Response;
+  try {
+    resp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 8192,
+        temperature: 0.5,
+      }),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new Error('AI model timeout after 60 seconds');
+    }
+    throw err;
+  }
+  clearTimeout(timeoutId);
   if (!resp.ok) {
     if (resp.status === 429) throw new Error('Rate limit exceeded on Lovable AI.');
     if (resp.status === 402) throw new Error('Lovable AI credits exhausted.');
@@ -591,6 +682,13 @@ serve(async (req) => {
             return { id: jobId, success: false, error: "Job not found" };
           }
 
+          // Increment enrichment_attempts
+          const currentAttempts = (job.enrichment_attempts || 0) + 1;
+          await serviceClient
+            .from("employment_news_jobs")
+            .update({ enrichment_attempts: currentAttempts })
+            .eq("id", jobId);
+
           let batchUploadedAt: string | null = null;
           if (job.upload_batch_id) {
             const { data: batchData } = await serviceClient
@@ -643,19 +741,24 @@ OUTPUT LANGUAGE: ${detectedLang}`;
 
           const enriched = await callAI(useModel, combinedPrompt);
 
-          // Strict field validation
-          const requiredStringFields = ['enriched_title', 'enriched_description', 'slug', 'meta_title', 'meta_description'] as const;
-          const missingFields: string[] = [];
-          for (const field of requiredStringFields) {
+          // Check required fields and try auto-fill for missing ones
+          const criticalFields = ['enriched_title', 'enriched_description'] as const;
+          const missingCritical: string[] = [];
+          for (const field of criticalFields) {
             if (!enriched[field] || typeof enriched[field] !== 'string' || enriched[field].trim() === '') {
-              missingFields.push(field);
+              missingCritical.push(field);
             }
           }
-          if (!Array.isArray(enriched.keywords) || enriched.keywords.length === 0) {
-            missingFields.push('keywords');
+
+          // If critical fields (title + description) are missing, fail hard
+          if (missingCritical.length > 0) {
+            throw new Error(`AI returned incomplete data — missing critical fields: ${missingCritical.join(', ')}`);
           }
-          if (missingFields.length > 0) {
-            throw new Error(`AI returned incomplete data — missing: ${missingFields.join(', ')}`);
+
+          // Auto-fill non-critical missing fields
+          const autoFilled = autoFillMissingFields(enriched, job);
+          if (autoFilled.length > 0) {
+            console.log(`[enrich] Auto-filled for ${jobId}: ${autoFilled.join(', ')}`);
           }
 
           // Post-processing: slug conflict check
@@ -698,6 +801,7 @@ OUTPUT LANGUAGE: ${detectedLang}`;
               keywords,
               job_category: enriched.job_category || job.job_category,
               status: "enriched",
+              enrichment_error: null, // Clear previous errors on success
             })
             .eq("id", jobId);
 
@@ -707,11 +811,41 @@ OUTPUT LANGUAGE: ${detectedLang}`;
 
           return { id: jobId, success: true };
         } catch (err) {
-          console.error(`Enrich error for ${jobId}:`, err);
+          const errorMsg = err instanceof Error ? err.message : "Unknown error";
+          console.error(`Enrich error for ${jobId}:`, errorMsg);
+
+          // Update failure status in database
+          try {
+            // Read current attempts count
+            const { data: currentJob } = await serviceClient
+              .from("employment_news_jobs")
+              .select("enrichment_attempts")
+              .eq("id", jobId)
+              .single();
+
+            const attempts = currentJob?.enrichment_attempts || 1;
+            const maxRetries = 3;
+
+            // If attempts >= max, mark as enrichment_failed; otherwise keep pending for retry
+            const newStatus = attempts >= maxRetries ? 'enrichment_failed' : 'pending';
+
+            await serviceClient
+              .from("employment_news_jobs")
+              .update({
+                enrichment_error: errorMsg,
+                status: newStatus,
+              })
+              .eq("id", jobId);
+
+            console.log(`[enrich] Job ${jobId}: attempt ${attempts}/${maxRetries}, status → ${newStatus}`);
+          } catch (dbErr) {
+            console.error(`Failed to update failure status for ${jobId}:`, dbErr);
+          }
+
           return {
             id: jobId,
             success: false,
-            error: err instanceof Error ? err.message : "Unknown error",
+            error: errorMsg,
           };
         }
       });

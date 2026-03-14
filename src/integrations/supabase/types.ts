@@ -711,6 +711,8 @@ export type Database = {
           description: string | null
           enriched_description: string | null
           enriched_title: string | null
+          enrichment_attempts: number
+          enrichment_error: string | null
           experience_required: string | null
           faq_html: string | null
           id: string
@@ -747,6 +749,8 @@ export type Database = {
           description?: string | null
           enriched_description?: string | null
           enriched_title?: string | null
+          enrichment_attempts?: number
+          enrichment_error?: string | null
           experience_required?: string | null
           faq_html?: string | null
           id?: string
@@ -783,6 +787,8 @@ export type Database = {
           description?: string | null
           enriched_description?: string | null
           enriched_title?: string | null
+          enrichment_attempts?: number
+          enrichment_error?: string | null
           experience_required?: string | null
           faq_html?: string | null
           id?: string

@@ -121,6 +121,7 @@ export function BlogPostEditor() {
   // Bulk cover image generation state
   const [isBulkCoverRunning, setIsBulkCoverRunning] = useState(false);
   const [bulkCoverProgress, setBulkCoverProgress] = useState<{ total: number; done: number; failed: number; current: string } | null>(null);
+  const bulkCoverAbortRef = useRef(false);
 
   // Bulk auto-fix & enrich state
   const [isBulkFixEnrichRunning, setIsBulkFixEnrichRunning] = useState(false);

@@ -492,6 +492,61 @@ export function ContentEnricher() {
     }
   };
 
+  const handleApproveAllEnriched = async () => {
+    if (isApprovingAll) return;
+
+    const approvable = pageRows.reduce<Array<{ slug: string; version: number }>>((acc, row) => {
+      const latest = getLatest(row.slug);
+      if (!latest || latest.status !== 'draft') return acc;
+      if (latest.flags?.includes('PARSE_ERROR')) return acc;
+      if ((latest.current_word_count || 0) < 500) return acc;
+      acc.push({ slug: row.slug, version: latest.version });
+      return acc;
+    }, []);
+
+    if (approvable.length === 0) {
+      toast({ title: 'Nothing to approve', description: 'No draft enrichments are eligible for approval.' });
+      return;
+    }
+
+    setIsApprovingAll(true);
+    addMessage('info', 'Approving enriched pages', `Approving ${approvable.length} draft${approvable.length === 1 ? '' : 's'}...`);
+
+    let success = 0;
+    let failed = 0;
+    const now = new Date().toISOString();
+
+    for (const item of approvable) {
+      const { error } = await supabase
+        .from('content_enrichments')
+        .update({
+          status: 'approved',
+          approved_at: now,
+          updated_at: now,
+        })
+        .eq('page_slug', item.slug)
+        .eq('version', item.version);
+
+      if (error) {
+        failed++;
+        addMessage('error', `✗ Approve ${item.slug}`, error.message);
+      } else {
+        success++;
+      }
+    }
+
+    await loadDrafts();
+
+    if (failed > 0) {
+      toast({ title: 'Approval completed with issues', description: `${success} approved, ${failed} failed`, variant: 'destructive' });
+    } else {
+      toast({ title: 'All drafts approved', description: `${success} enrichment${success === 1 ? '' : 's'} approved` });
+    }
+
+    addMessage(failed > 0 ? 'warning' : 'success', 'Approve all complete', `${success} approved, ${failed} failed`);
+    setIsApprovingAll(false);
+  };
+
   const healthBadge = (color: 'green' | 'yellow' | 'red') => {
     if (color === 'green') return <Badge className="bg-emerald-500/20 text-emerald-700 border-emerald-300">Healthy</Badge>;
     if (color === 'yellow') return <Badge className="bg-amber-500/20 text-amber-700 border-amber-300">Moderate</Badge>;

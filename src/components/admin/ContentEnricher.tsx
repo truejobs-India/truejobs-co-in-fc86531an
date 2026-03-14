@@ -5,7 +5,8 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
-import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
+import { useAdminToast as useToast, useAdminMessagesContext } from '@/contexts/AdminMessagesContext';
+import { AdminMessageLog } from '@/components/admin/AdminMessageLog';
 import { supabase } from '@/integrations/supabase/client';
 import { getAllExamAuthoritySlugs, getExamAuthorityConfig } from '@/data/examAuthority';
 import { getAllPYPSlugs, getPYPConfig } from '@/data/previousYearPapers/types';
@@ -66,13 +67,7 @@ interface EnrichmentDraft {
   failure_reason: string | null;
 }
 
-interface PersistentMessage {
-  id: string;
-  type: 'success' | 'warning' | 'error' | 'info';
-  title: string;
-  description: string;
-  timestamp: Date;
-}
+// PersistentMessage removed — using AdminMessagesContext
 
 function countWordsInHtml(html: string): number {
   return html.replace(/<[^>]+>/g, ' ').trim().split(/\s+/).filter(Boolean).length;
@@ -131,16 +126,8 @@ export function ContentEnricher() {
   const [bgEnriching, setBgEnriching] = useState(false);
   const [bgProgress, setBgProgress] = useState<{ done: number; total: number; failed: number } | null>(null);
   const [aiModel, setAiModel] = useState<string>('gemini-flash');
-  const [messages, setMessages] = useState<PersistentMessage[]>([]);
+  const { messages, addMessage, dismissMessage, clearAll, toggleExpand } = useAdminMessagesContext();
   const [enrichProgress, setEnrichProgress] = useState<string | null>(null);
-
-  const addMessage = (type: PersistentMessage['type'], title: string, description: string) => {
-    setMessages(prev => [{ id: crypto.randomUUID(), type, title, description, timestamp: new Date() }, ...prev]);
-  };
-
-  const dismissMessage = (id: string) => {
-    setMessages(prev => prev.filter(m => m.id !== id));
-  };
 
   useEffect(() => { loadDrafts(); }, []);
 
@@ -603,39 +590,12 @@ export function ContentEnricher() {
           )}
 
           {/* Persistent status messages */}
-          {messages.length > 0 && (
-            <div className="space-y-2 max-h-48 overflow-y-auto border rounded-lg p-3 bg-muted/30">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs font-medium text-muted-foreground">Activity Log</span>
-                <Button variant="ghost" size="sm" className="h-5 text-xs px-1" onClick={() => setMessages([])}>Clear all</Button>
-              </div>
-              {messages.map(msg => (
-                <div key={msg.id} className={`flex items-start gap-2 p-2 rounded text-sm border ${
-                  msg.type === 'success' ? 'bg-emerald-50 border-emerald-200' :
-                  msg.type === 'warning' ? 'bg-amber-50 border-amber-200' :
-                  msg.type === 'error' ? 'bg-red-50 border-red-200' :
-                  'bg-blue-50 border-blue-200'
-                }`}>
-                  <div className="mt-0.5 shrink-0">
-                    {msg.type === 'success' && <CheckCircle className="h-4 w-4 text-emerald-600" />}
-                    {msg.type === 'warning' && <AlertTriangle className="h-4 w-4 text-amber-600" />}
-                    {msg.type === 'error' && <XCircle className="h-4 w-4 text-red-600" />}
-                    {msg.type === 'info' && <Info className="h-4 w-4 text-blue-600" />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm">{msg.title}</p>
-                    <p className="text-muted-foreground text-xs">{msg.description}</p>
-                  </div>
-                  <span className="text-xs text-muted-foreground shrink-0">
-                    {msg.timestamp.toLocaleTimeString()}
-                  </span>
-                  <button onClick={() => dismissMessage(msg.id)} className="text-muted-foreground hover:text-foreground shrink-0">
-                    <X className="h-3 w-3" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
+          <AdminMessageLog
+            messages={messages}
+            onDismiss={dismissMessage}
+            onClearAll={clearAll}
+            onToggleExpand={toggleExpand}
+          />
 
           <div className="rounded-md border">
             <Table>

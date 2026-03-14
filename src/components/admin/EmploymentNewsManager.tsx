@@ -54,6 +54,8 @@ type EmpNewsJob = {
   published_at: string | null;
   job_category: string | null;
   state: string | null;
+  enrichment_error: string | null;
+  enrichment_attempts: number;
 };
 
 type UploadBatch = {

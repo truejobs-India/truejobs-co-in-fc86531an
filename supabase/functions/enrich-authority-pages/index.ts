@@ -253,6 +253,7 @@ async function claudeProbe(): Promise<void> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 12_000);
   const probeStart = Date.now();
+  logClaudePreRequest('probe', { model: ANTHROPIC_MODEL, maxTokens: 8, structured: false });
 
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {

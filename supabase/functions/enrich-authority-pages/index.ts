@@ -269,7 +269,7 @@ async function callClaudeRaw(prompt: string): Promise<string> {
       },
       signal: controller.signal,
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-4-6',
         max_tokens: 16384,
         temperature: 0.6,
         messages: [{ role: 'user', content: prompt }],

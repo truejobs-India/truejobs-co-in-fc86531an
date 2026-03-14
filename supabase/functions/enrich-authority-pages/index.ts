@@ -562,7 +562,7 @@ async function callAI(model: string, prompt: string): Promise<Record<string, unk
       break;
     case 'claude-sonnet':
     case 'claude':
-      rawText = await callClaudeRaw(prompt, { timeoutMs: AI_TIMEOUT_MS_SLOW, maxTokens: 8192 });
+      rawText = await callClaudeRaw(prompt, { timeoutMs: AI_TIMEOUT_MS_CLAUDE, maxTokens: 8192 });
       break;
     case 'mistral':
       rawText = await callMistralRaw(prompt);

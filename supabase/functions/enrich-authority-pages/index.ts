@@ -1145,7 +1145,8 @@ serve(async (req) => {
       }
     }
 
-    const CONCURRENCY = 3;
+    // Claude is slower — limit concurrency to 2 so each call gets full 75s budget
+    const CONCURRENCY = (selectedModel === 'claude-sonnet' || selectedModel === 'claude') ? 2 : 3;
 
     for (let i = 0; i < slugs.length; i += CONCURRENCY) {
       // ── Time budget guard ──

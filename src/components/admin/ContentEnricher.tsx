@@ -581,6 +581,14 @@ export function ContentEnricher() {
             </span>
           </div>
 
+          {/* Claude quality note */}
+          {(aiModel === 'claude-sonnet' || aiModel === 'claude') && (
+            <div className="flex items-center gap-2 text-xs p-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-700">
+              <Info className="h-3 w-3 shrink-0" />
+              <span>Claude Sonnet produces highest quality but processes 1–2 pages per minute. For bulk enrichment, Gemini 2.5 Flash is faster.</span>
+            </div>
+          )}
+
           {/* Enrichment progress */}
           {enrichProgress && (
             <div className="flex items-center gap-2 p-2 rounded-lg bg-blue-50 border border-blue-200 text-sm text-blue-700">

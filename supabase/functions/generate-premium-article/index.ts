@@ -14,7 +14,7 @@ const corsHeaders = {
 // CONFIG
 // ═══════════════════════════════════════════════════════════════
 
-const VERTEX_MODEL = Deno.env.get('VERTEX_PRO_MODEL') || 'gemini-2.5-pro-preview-06-05';
+const VERTEX_MODEL = Deno.env.get('VERTEX_PRO_MODEL') || 'gemini-2.5-pro';
 const VERTEX_TIMEOUT_MS = 120_000;
 
 const VALID_ACTIONS = new Set([

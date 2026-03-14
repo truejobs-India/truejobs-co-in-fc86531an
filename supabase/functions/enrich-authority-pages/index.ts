@@ -199,8 +199,8 @@ If any check fails, fix it before returning.
 const TIMEOUTS: Record<string, number> = {
   'gemini-flash': 60_000,
   'gemini-pro': 60_000,
-  'claude-sonnet': 130_000,
-  'claude': 130_000,
+  'claude-sonnet': 145_000,
+  'claude': 145_000,
   'mistral': 120_000,
   'groq': 30_000,
   'lovable-gemini': 60_000,

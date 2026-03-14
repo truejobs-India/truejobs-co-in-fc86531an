@@ -14,6 +14,7 @@ interface HealthIssue {
 }
 
 export function SEOContentHealth() {
+  const { toast } = useAdminToast();
   const [issues, setIssues] = useState<HealthIssue[]>([]);
   const [isScanning, setIsScanning] = useState(false);
   const [hasScanned, setHasScanned] = useState(false);

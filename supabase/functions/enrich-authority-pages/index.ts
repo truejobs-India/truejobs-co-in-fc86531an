@@ -1139,7 +1139,8 @@ serve(async (req) => {
     let aiDiagnostics: Record<string, unknown> | undefined;
     try {
       const prompt = getPromptForType(pageType, currentContent!, selectedModel);
-      console.log(`[enrich] ${slug}: calling ${selectedModel}, prompt ${prompt.length} chars, timeout ${getTimeout(selectedModel)}ms`);
+      const hasSchema = prompt.includes('JSON Schema:');
+      console.log(`[enrich] ${slug}: calling ${selectedModel}, prompt ${prompt.length} chars, timeout ${getTimeout(selectedModel)}ms, schema_in_prompt=${hasSchema}`);
       const result = await callAI(selectedModel, prompt, slug);
       enrichmentData = result.data;
       aiDiagnostics = result.diagnostics;

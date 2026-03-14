@@ -419,7 +419,7 @@ async function callOpenAIRaw(prompt: string, model = 'gpt-5'): Promise<string> {
   if (!apiKey) throw new Error('OpenAI API key not configured — please add OPENAI_API_KEY secret');
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), AI_TIMEOUT_MS_SLOW);
+  const timer = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
 
   try {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {

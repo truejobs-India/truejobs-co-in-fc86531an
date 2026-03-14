@@ -156,6 +156,7 @@ Return ONLY the JSON array, no markdown formatting, no code blocks.`;
       if (!geminiApiKey) throw new Error('GEMINI_API_KEY not configured');
       raw = await callGemini(geminiApiKey, prompt);
     }
+    raw = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
 
     let faqs: { question: string; answer: string }[];
     try {

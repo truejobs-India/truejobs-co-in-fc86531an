@@ -529,6 +529,12 @@ export function ContentEnricher() {
     : null;
 
   const pendingCount = pageRows.filter(r => getLatest(r.slug) === undefined).length;
+  const publishableCount = pageRows.reduce((count, row) => {
+    const latest = getLatest(row.slug);
+    const published = getPublished(row.slug);
+    if (!latest || published) return count;
+    return canPublish(latest, row).ok ? count + 1 : count;
+  }, 0);
 
   return (
     <div className="space-y-6">

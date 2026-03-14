@@ -312,12 +312,20 @@ Keep content compact and data-dense. Avoid long prose.`;
  * Full Claude call: attempt → targeted retry when needed.
  * Does NOT handle Gemini fallback (that's in callAI).
  */
-async function callClaudeWithRetry(prompt: string, slug: string): Promise<{ data: Record<string, unknown>; diagnostics: ClaudeDiagnostics }> {
+async function callClaudeWithRetry(
+  prompt: string,
+  slug: string,
+  startedAtMs: number,
+): Promise<{ data: Record<string, unknown>; diagnostics: ClaudeDiagnostics }> {
+  const firstAttemptTimeout = Math.min(
+    CLAUDE_SDK_TIMEOUT_MS,
+    Math.max(15_000, getRemainingBudgetMs(startedAtMs) - GEMINI_FALLBACK_RESERVED_MS),
+  );
+
   try {
-    const result = await callClaudeSDK(prompt, slug, ANTHROPIC_DEFAULT_MAX_TOKENS);
+    const result = await callClaudeSDK(prompt, slug, ANTHROPIC_DEFAULT_MAX_TOKENS, firstAttemptTimeout);
 
     // If we already parsed valid structured output, do NOT retry even if stop_reason=max_tokens.
-    // This avoids unnecessary long second calls and client-side fetch timeouts.
     if (result.diagnostics.stopReason === 'max_tokens') {
       console.warn(`[claude-truncated-valid] ${slug}: stop_reason=max_tokens but required schema parsed successfully; using attempt 1 output.`);
     }
@@ -333,17 +341,28 @@ async function callClaudeWithRetry(prompt: string, slug: string): Promise<{ data
       throw firstErr;
     }
 
+    const remainingBudget = getRemainingBudgetMs(startedAtMs);
+
     // If truncation caused missing required fields, retry once with compact recovery instructions.
     const isTruncationMissingRequired =
       diag?.stopReason === 'max_tokens' &&
       (errMsg.includes('Missing required fields') || errMsg.includes('No tool_use block'));
 
     if (isTruncationMissingRequired) {
+      if (remainingBudget < CLAUDE_RETRY_MIN_REMAINING_MS) {
+        console.warn(`[claude-circuit-breaker] ${slug}: skip retry due low remaining budget (${remainingBudget}ms). Failing over to Gemini.`);
+        throw firstErr;
+      }
+
       console.warn(`[claude-retry] ${slug}: max_tokens truncation with incomplete required fields. Retrying once with compact recovery prompt at ${ANTHROPIC_RETRY_MAX_TOKENS} tokens...`);
       const compactPrompt = buildClaudeRecoveryPrompt(prompt);
+      const retryTimeout = Math.min(
+        CLAUDE_SDK_TIMEOUT_MS,
+        Math.max(15_000, getRemainingBudgetMs(startedAtMs) - GEMINI_FALLBACK_RESERVED_MS),
+      );
 
       try {
-        const retryResult = await callClaudeSDK(compactPrompt, slug, ANTHROPIC_RETRY_MAX_TOKENS);
+        const retryResult = await callClaudeSDK(compactPrompt, slug, ANTHROPIC_RETRY_MAX_TOKENS, retryTimeout);
         retryResult.diagnostics.attempt = 2;
         retryResult.diagnostics.retried = true;
         retryResult.diagnostics.retryReason = 'max_tokens_missing_required_compact_prompt';
@@ -359,7 +378,12 @@ async function callClaudeWithRetry(prompt: string, slug: string): Promise<{ data
       }
     }
 
-    // Single retry for transient errors (5xx, timeout, network)
+    // Single retry for transient errors (5xx, timeout, network), only if budget allows.
+    if (remainingBudget < CLAUDE_RETRY_MIN_REMAINING_MS) {
+      console.warn(`[claude-circuit-breaker] ${slug}: skip transient retry due low remaining budget (${remainingBudget}ms). Failing over to Gemini.`);
+      throw firstErr;
+    }
+
     console.warn(`[claude-retry] ${slug}: First attempt failed: ${errMsg}. Retrying once with ${ANTHROPIC_RETRY_MAX_TOKENS} tokens...`);
     if (diag) {
       diag.attempt = 2;
@@ -367,8 +391,13 @@ async function callClaudeWithRetry(prompt: string, slug: string): Promise<{ data
       diag.retryReason = 'transient_error';
     }
 
+    const retryTimeout = Math.min(
+      CLAUDE_SDK_TIMEOUT_MS,
+      Math.max(15_000, getRemainingBudgetMs(startedAtMs) - GEMINI_FALLBACK_RESERVED_MS),
+    );
+
     try {
-      const retryResult = await callClaudeSDK(prompt, slug, ANTHROPIC_RETRY_MAX_TOKENS);
+      const retryResult = await callClaudeSDK(prompt, slug, ANTHROPIC_RETRY_MAX_TOKENS, retryTimeout);
       retryResult.diagnostics.attempt = 2;
       retryResult.diagnostics.retried = true;
       retryResult.diagnostics.retryReason = 'transient_error';

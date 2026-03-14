@@ -318,7 +318,7 @@ async function callClaudeRaw(
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured — please add it to secrets');
 
-  const timeoutMs = options?.timeoutMs ?? AI_TIMEOUT_MS_SLOW;
+  const timeoutMs = options?.timeoutMs ?? AI_TIMEOUT_MS_CLAUDE;
   const maxTokens = options?.maxTokens ?? 12288;
 
   const controller = new AbortController();

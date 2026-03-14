@@ -755,8 +755,7 @@ Generate content for these sections (concise, data-dense, no filler):
 
 Existing overview for reference (enrich, don't duplicate): ${(page.existingOverview || '').substring(0, 300)}
 
-FAQs: 6-8 questions real aspirants search for.
-Return the JSON matching the schema provided. Be concise — each section 100-300 words.`;
+FAQs: 6-8 questions real aspirants search for.`;
 }
 
 function buildSyllabusPrompt(page: PageContent): string {
@@ -777,8 +776,7 @@ Generate content for these sections:
 7. Subject-wise Preparation Strategy
 8. Common Mistakes in Preparation
 
-FAQs: 5-7 questions.
-Return the JSON matching the schema provided. Be concise — each section 150-350 words.`;
+FAQs: 5-7 questions.`;
 }
 
 function buildExamPatternPrompt(page: PageContent): string {
@@ -799,8 +797,7 @@ Generate content for these sections:
 7. Smart Time Management Strategy
 8. Changes from Previous Year
 
-FAQs: 5-7 questions.
-Return the JSON matching the schema provided. Be concise — each section 100-300 words.`;
+FAQs: 5-7 questions.`;
 }
 
 function buildPYPPrompt(page: PageContent): string {
@@ -820,8 +817,7 @@ Generate content for these sections:
 7. Preparation Insights from PYP
 8. Expected Pattern for Next Exam
 
-FAQs: 4-6 questions.
-Return the JSON matching the schema provided. Be concise — each section 100-250 words.`;
+FAQs: 4-6 questions.`;
 }
 
 function buildStatePrompt(page: PageContent): string {
@@ -841,9 +837,30 @@ Generate content for these sections (MUST be specific to ${stateName}, reference
 7. Salary Structure in State Government
 8. Preparation Strategy for State Exams
 
-FAQs: 6-8 questions.
-Return the JSON matching the schema provided. Be concise — each section 150-350 words.`;
+FAQs: 6-8 questions.`;
 }
+
+// The JSON schema that non-Claude models must follow.
+// Claude gets this via tool_use; other models need it explicitly in the prompt.
+const JSON_OUTPUT_SCHEMA = `
+{
+  "overview": "<string> HTML overview with Quick Overview Table. 200-400 words. MUST include an HTML <table> with key facts.",
+  "eligibility": "<string> HTML eligibility section with category-wise age relaxation table. 150-300 words.",
+  "vacancyDetails": "<string> HTML vacancy breakdown with category-wise table (UR/OBC/SC/ST/EWS/PwD). 100-250 words.",
+  "examPattern": "<string> HTML exam pattern with table (sections, questions, marks, time, negative marking). 150-300 words.",
+  "salary": "<string> HTML salary structure with Pay Level, Grade Pay, in-hand estimate. 100-200 words.",
+  "applicationProcess": "<string> HTML step-by-step how to apply with numbered steps, documents, fee breakup. 150-250 words.",
+  "importantDates": "<string> HTML table of important dates (notification, apply start/end, exam, admit card, result). 50-150 words.",
+  "preparationTips": "<string> HTML preparation strategy, subject-wise. 150-300 words.",
+  "cutoffTrends": "<string> HTML previous year cutoff analysis with table if available. 100-250 words.",
+  "importantLinks": "<string> HTML list of important links (official website, notification PDF, apply link). 50-100 words.",
+  "faq": [
+    { "question": "<string> A real question aspirants search for", "answer": "<string> Concise, factual answer" }
+  ],
+  "meta_title": "<string> Under 60 chars, primary keyword included",
+  "meta_description": "<string> Under 155 chars, action-oriented",
+  "internal_links": ["<string> 3-5 related page slugs for internal linking"]
+}`;
 
 function getPromptForType(pageType: string, page: PageContent, model?: string): string {
   let typePrompt: string;
@@ -870,7 +887,24 @@ function getPromptForType(pageType: string, page: PageContent, model?: string): 
 - Use the save_enrichment tool to return your response.`;
   }
 
-  return fullPrompt + '\n\nReturn ONLY the JSON object matching the schema. No commentary, no markdown fences, no text outside the JSON.';
+  // For all other models: include the JSON schema explicitly in the prompt
+  return fullPrompt + `
+
+=== REQUIRED JSON OUTPUT SCHEMA ===
+You MUST return a JSON object with ALL of the following fields populated with rich, detailed HTML content.
+Each HTML field must contain substantial content (100-400 words each) with proper HTML tags (h2, h3, table, ul, ol, strong, p).
+Do NOT return placeholder text. Every field must have real, specific, data-dense content.
+
+MINIMUM REQUIREMENTS:
+- Total content across all fields: at least 1800 words
+- FAQ array: at least 5 items
+- All HTML fields must contain actual HTML with tables where specified
+- overview field is MANDATORY and must include a Quick Overview HTML table
+
+JSON Schema:
+${JSON_OUTPUT_SCHEMA}
+
+CRITICAL: Return ONLY the raw JSON object. No markdown fences, no backticks, no commentary, no text before or after the JSON. The response must start with { and end with }.`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1105,7 +1139,8 @@ serve(async (req) => {
     let aiDiagnostics: Record<string, unknown> | undefined;
     try {
       const prompt = getPromptForType(pageType, currentContent!, selectedModel);
-      console.log(`[enrich] ${slug}: calling ${selectedModel}, prompt ${prompt.length} chars, timeout ${getTimeout(selectedModel)}ms`);
+      const hasSchema = prompt.includes('JSON Schema:');
+      console.log(`[enrich] ${slug}: calling ${selectedModel}, prompt ${prompt.length} chars, timeout ${getTimeout(selectedModel)}ms, schema_in_prompt=${hasSchema}`);
       const result = await callAI(selectedModel, prompt, slug);
       enrichmentData = result.data;
       aiDiagnostics = result.diagnostics;

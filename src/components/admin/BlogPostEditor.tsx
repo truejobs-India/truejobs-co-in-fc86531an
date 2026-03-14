@@ -1174,6 +1174,11 @@ export function BlogPostEditor() {
             ? `Generating… ${bulkCoverProgress ? `${bulkCoverProgress.done}/${bulkCoverProgress.total}` : ''}`
             : 'Generate Missing Cover Images'}
         </Button>
+        {isBulkCoverRunning && (
+          <Button variant="destructive" size="sm" onClick={() => { bulkCoverAbortRef.current = true; }}>
+            <Square className="h-4 w-4 mr-1" />Stop
+          </Button>
+        )}
         <Button variant="outline" size="sm" onClick={handleBulkFixAndEnrich} disabled={isBulkFixEnrichRunning}>
           {isBulkFixEnrichRunning ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Zap className="h-4 w-4 mr-1" />}
           {isBulkFixEnrichRunning

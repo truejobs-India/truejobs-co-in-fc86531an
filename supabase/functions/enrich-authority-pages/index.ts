@@ -193,14 +193,19 @@ If any check fails, fix it before returning.
 `;
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// MODEL-SPECIFIC TIMEOUTS
+// MODEL-SPECIFIC TIMEOUTS & CLAUDE CONFIG
 // ═══════════════════════════════════════════════════════════════════════════════
+
+const ANTHROPIC_MODEL = Deno.env.get('ANTHROPIC_MODEL') || 'claude-sonnet-4-6';
+const ANTHROPIC_TIMEOUT_MS = parseInt(Deno.env.get('ANTHROPIC_TIMEOUT_MS') || '140000', 10);
+const ANTHROPIC_MAX_TOKENS = parseInt(Deno.env.get('ANTHROPIC_MAX_TOKENS') || '3072', 10);
+const ANTHROPIC_RETRY_MAX_TOKENS = Math.min(ANTHROPIC_MAX_TOKENS, 2200);
 
 const TIMEOUTS: Record<string, number> = {
   'gemini-flash': 60_000,
   'gemini-pro': 60_000,
-  'claude-sonnet': 145_000,
-  'claude': 145_000,
+  'claude-sonnet': ANTHROPIC_TIMEOUT_MS,
+  'claude': ANTHROPIC_TIMEOUT_MS,
   'mistral': 120_000,
   'groq': 30_000,
   'lovable-gemini': 60_000,
@@ -268,13 +273,14 @@ async function fetchGemini(prompt: string, model = 'gemini-2.5-flash', timeoutMs
   }
 }
 
-// ── Claude Sonnet 4.6 (Direct Anthropic API) ──
-async function callClaudeRaw(prompt: string, timeoutMs = 145_000): Promise<string> {
+// ── Claude: Connectivity Probe ──
+async function claudeProbe(): Promise<void> {
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured — please add it to secrets');
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const timer = setTimeout(() => controller.abort(), 12_000);
+  const probeStart = Date.now();
 
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -286,21 +292,147 @@ async function callClaudeRaw(prompt: string, timeoutMs = 145_000): Promise<strin
       },
       signal: controller.signal,
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 12288,
-        temperature: 0.6,
+        model: ANTHROPIC_MODEL,
+        max_tokens: 8,
+        messages: [{ role: 'user', content: 'Reply with OK' }],
+      }),
+    });
+
+    const elapsed = Date.now() - probeStart;
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`Claude probe failed HTTP ${response.status} in ${elapsed}ms: ${errText.substring(0, 300)}`);
+    }
+    console.log(`[claude-probe] OK in ${elapsed}ms, model=${ANTHROPIC_MODEL}, request-id=${response.headers.get('request-id') || 'n/a'}`);
+  } catch (err) {
+    const elapsed = Date.now() - probeStart;
+    const isAbort = err instanceof Error && (err.message.includes('aborted') || err.message.includes('signal'));
+    if (isAbort) {
+      throw new Error(`Claude probe TIMEOUT after ${elapsed}ms — API unreachable or model "${ANTHROPIC_MODEL}" invalid`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// ── Claude: Streaming SSE call ──
+async function callClaudeStreaming(prompt: string, maxTokens: number, timeoutMs: number): Promise<string> {
+  const apiKey = Deno.env.get('ANTHROPIC_API_KEY')!;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const reqStart = Date.now();
+
+  console.log(`[claude-stream] START model=${ANTHROPIC_MODEL} max_tokens=${maxTokens} timeout=${timeoutMs}ms prompt_chars=${prompt.length}`);
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: ANTHROPIC_MODEL,
+        max_tokens: maxTokens,
+        temperature: 0.5,
+        stream: true,
         messages: [{ role: 'user', content: prompt }],
       }),
     });
+
+    const connectMs = Date.now() - reqStart;
+    const requestId = response.headers.get('request-id') || 'n/a';
+    console.log(`[claude-stream] CONNECTED in ${connectMs}ms, HTTP ${response.status}, request-id=${requestId}`);
 
     if (!response.ok) {
       const errorText = await response.text();
       throw new Error(`Claude API error ${response.status}: ${errorText.substring(0, 500)}`);
     }
-    const data = await response.json();
-    return data.content?.[0]?.text || '';
+
+    if (!response.body) throw new Error('Claude response has no body (streaming expected)');
+
+    // Parse SSE stream
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let accumulated = '';
+    let buffer = '';
+    let chunksReceived = 0;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || ''; // keep incomplete line in buffer
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const jsonStr = line.slice(6).trim();
+        if (jsonStr === '[DONE]') continue;
+
+        try {
+          const event = JSON.parse(jsonStr);
+          chunksReceived++;
+
+          if (event.type === 'content_block_delta' && event.delta?.text) {
+            accumulated += event.delta.text;
+          } else if (event.type === 'message_stop') {
+            // done
+          } else if (event.type === 'error') {
+            throw new Error(`Claude stream error event: ${JSON.stringify(event.error)}`);
+          }
+        } catch (parseErr) {
+          if (parseErr instanceof Error && parseErr.message.startsWith('Claude stream error')) throw parseErr;
+          // skip unparseable SSE lines
+        }
+      }
+    }
+
+    const totalMs = Date.now() - reqStart;
+    console.log(`[claude-stream] DONE in ${totalMs}ms, chunks=${chunksReceived}, output_chars=${accumulated.length}`);
+    return accumulated;
+
+  } catch (err) {
+    const elapsed = Date.now() - reqStart;
+    const isAbort = err instanceof Error && (err.message.includes('aborted') || err.message.includes('signal'));
+    const phase = elapsed < 5000 ? 'initial_connection' : 'stream_read';
+    if (isAbort) {
+      throw new Error(`Claude streaming TIMEOUT after ${elapsed}ms (phase: ${phase})`);
+    }
+    throw new Error(`Claude streaming FAILED after ${elapsed}ms (phase: ${phase}): ${err instanceof Error ? err.message : 'Unknown'}`);
   } finally {
     clearTimeout(timer);
+  }
+}
+
+// ── Claude: Full call with probe + retry ──
+async function callClaudeRaw(prompt: string, timeoutMs = ANTHROPIC_TIMEOUT_MS): Promise<string> {
+  // Step 1: Connectivity probe
+  await claudeProbe();
+
+  // Step 2: Main streaming call
+  try {
+    return await callClaudeStreaming(prompt, ANTHROPIC_MAX_TOKENS, timeoutMs);
+  } catch (firstErr) {
+    const errMsg = firstErr instanceof Error ? firstErr.message : String(firstErr);
+
+    // Don't retry on clear 4xx errors
+    if (errMsg.includes('API error 4')) {
+      throw firstErr;
+    }
+
+    // Retry once with reduced tokens on transient failures
+    console.warn(`[claude-retry] First attempt failed: ${errMsg}. Retrying with max_tokens=${ANTHROPIC_RETRY_MAX_TOKENS}...`);
+    try {
+      return await callClaudeStreaming(prompt, ANTHROPIC_RETRY_MAX_TOKENS, timeoutMs);
+    } catch (retryErr) {
+      const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
+      throw new Error(`Claude failed after retry: ${retryMsg} (original: ${errMsg})`);
+    }
   }
 }
 
@@ -793,7 +925,7 @@ OUTPUT FORMAT — Return valid JSON:
 Return ONLY the JSON object.`;
 }
 
-function getPromptForType(pageType: string, page: PageContent): string {
+function getPromptForType(pageType: string, page: PageContent, model?: string): string {
   let typePrompt: string;
   switch (pageType) {
     case 'notification': typePrompt = buildNotificationPrompt(page); break;
@@ -803,8 +935,23 @@ function getPromptForType(pageType: string, page: PageContent): string {
     case 'state': typePrompt = buildStatePrompt(page); break;
     default: typePrompt = buildNotificationPrompt(page);
   }
-  // ALL models get the FULL MASTER_AUTHORITY_PROMPT — zero compression
-  return MASTER_AUTHORITY_PROMPT + '\n\n' + typePrompt;
+
+  const fullPrompt = MASTER_AUTHORITY_PROMPT + '\n\n' + typePrompt;
+
+  // For Claude: add concise output constraint to reduce verbosity
+  if (model === 'claude-sonnet' || model === 'claude') {
+    return fullPrompt + `
+
+=== CRITICAL OUTPUT CONSTRAINTS ===
+- Return ONLY the JSON object. No commentary, no markdown fences, no explanation outside JSON.
+- Be concise in each section. Prioritize data density over prose length.
+- Avoid repetition across sections. Each section should contain unique information.
+- Target 1200-1800 total words across all JSON values combined.
+- Every word must add value. Remove filler sentences.
+- Do NOT repeat the exam name unnecessarily in every paragraph.`;
+  }
+
+  return fullPrompt;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1039,7 +1186,7 @@ serve(async (req) => {
     // ── Step 1: Call AI ──
     let enrichmentData: Record<string, unknown>;
     try {
-      const prompt = getPromptForType(pageType, currentContent!);
+      const prompt = getPromptForType(pageType, currentContent!, selectedModel);
       console.log(`[enrich] ${slug}: calling ${selectedModel}, prompt ${prompt.length} chars, timeout ${getTimeout(selectedModel)}ms`);
       enrichmentData = await callAI(selectedModel, prompt);
       console.log(`[enrich] ${slug}: AI returned successfully`);

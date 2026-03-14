@@ -115,16 +115,8 @@ const ENRICHMENT_TOOL_SCHEMA: Anthropic.Tool = {
   input_schema: {
     type: 'object' as const,
     properties: {
+      // Keep required fields first so they are emitted before optional fields if output gets truncated.
       overview: { type: 'string', description: 'HTML overview with Quick Overview Table, 200-400 words' },
-      eligibility: { type: 'string', description: 'HTML eligibility section' },
-      vacancyDetails: { type: 'string', description: 'HTML vacancy breakdown with table' },
-      examPattern: { type: 'string', description: 'HTML exam pattern with table' },
-      salary: { type: 'string', description: 'HTML salary structure' },
-      applicationProcess: { type: 'string', description: 'HTML step-by-step how to apply' },
-      importantDates: { type: 'string', description: 'HTML table of important dates' },
-      preparationTips: { type: 'string', description: 'HTML preparation strategy' },
-      cutoffTrends: { type: 'string', description: 'HTML previous year cutoff analysis' },
-      importantLinks: { type: 'string', description: 'HTML list of important links' },
       faq: {
         type: 'array',
         items: {
@@ -139,6 +131,16 @@ const ENRICHMENT_TOOL_SCHEMA: Anthropic.Tool = {
       },
       meta_title: { type: 'string', description: 'Under 60 chars, primary keyword included' },
       meta_description: { type: 'string', description: 'Under 155 chars' },
+
+      eligibility: { type: 'string', description: 'HTML eligibility section' },
+      vacancyDetails: { type: 'string', description: 'HTML vacancy breakdown with table' },
+      examPattern: { type: 'string', description: 'HTML exam pattern with table' },
+      salary: { type: 'string', description: 'HTML salary structure' },
+      applicationProcess: { type: 'string', description: 'HTML step-by-step how to apply' },
+      importantDates: { type: 'string', description: 'HTML table of important dates' },
+      preparationTips: { type: 'string', description: 'HTML preparation strategy' },
+      cutoffTrends: { type: 'string', description: 'HTML previous year cutoff analysis' },
+      importantLinks: { type: 'string', description: 'HTML list of important links' },
       internal_links: {
         type: 'array',
         items: { type: 'string' },

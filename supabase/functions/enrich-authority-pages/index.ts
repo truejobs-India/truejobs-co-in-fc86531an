@@ -244,14 +244,18 @@ async function callClaudeSDK(
   const startMs = Date.now();
 
   try {
-    const response = await client.messages.create({
-      model: ANTHROPIC_MODEL,
-      max_tokens: maxTokens,
-      temperature: 0.5,
-      tools: [ENRICHMENT_TOOL_SCHEMA],
-      tool_choice: { type: 'tool' as const, name: 'save_enrichment' },
-      messages: [{ role: 'user', content: prompt }],
-    });
+    const response = await withTimeout(
+      client.messages.create({
+        model: ANTHROPIC_MODEL,
+        max_tokens: maxTokens,
+        temperature: 0.5,
+        tools: [ENRICHMENT_TOOL_SCHEMA],
+        tool_choice: { type: 'tool' as const, name: 'save_enrichment' },
+        messages: [{ role: 'user', content: prompt }],
+      }),
+      requestTimeoutMs,
+      'Claude SDK request',
+    );
 
     diag.elapsedMs = Date.now() - startMs;
     diag.requestId = (response as any).id || 'n/a';

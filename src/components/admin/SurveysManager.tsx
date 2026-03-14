@@ -9,7 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { useToast } from '@/hooks/use-toast';
+import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Survey, SurveyQuestion, SurveyResponse, TargetAudience, EngagementStatus } from '@/types/engagement';
 import { Plus, Trash2, Eye, Share2, ClipboardList, Loader2, X, DollarSign } from 'lucide-react';

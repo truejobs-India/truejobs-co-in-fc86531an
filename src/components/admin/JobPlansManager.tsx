@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
-import { useToast } from '@/hooks/use-toast';
+import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
 import { Plus, Pencil, Trash2, Loader2, IndianRupee } from 'lucide-react';
 
 interface JobPlan {

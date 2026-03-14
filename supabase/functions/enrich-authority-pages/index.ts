@@ -197,7 +197,7 @@ If any check fails, fix it before returning.
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const AI_TIMEOUT_MS = 120_000; // default timeout for fast/medium models
-const AI_TIMEOUT_MS_SLOW = 135_000; // slower models (Claude/GPT) need more headroom
+const AI_TIMEOUT_MS_SLOW = 90_000; // cap slower models early so fallback can still complete within runtime budget
 
 const FUNCTION_TIME_BUDGET_MS = 140_000; // baseline guard before 150s platform limit
 

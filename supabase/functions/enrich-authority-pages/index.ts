@@ -809,7 +809,7 @@ OUTPUT FORMAT — Return valid JSON:
 Return ONLY the JSON object.`;
 }
 
-function getPromptForType(pageType: string, page: PageContent): string {
+function getPromptForType(pageType: string, page: PageContent, model = ''): string {
   let typePrompt: string;
   switch (pageType) {
     case 'notification': typePrompt = buildNotificationPrompt(page); break;
@@ -819,8 +819,10 @@ function getPromptForType(pageType: string, page: PageContent): string {
     case 'state': typePrompt = buildStatePrompt(page); break;
     default: typePrompt = buildNotificationPrompt(page);
   }
-  // Prepend master prompt before type-specific instructions
-  return MASTER_AUTHORITY_PROMPT + '\n\n' + typePrompt;
+  // Use compressed prompt for Claude (smart enough to follow concise instructions)
+  const isClaude = model === 'claude-sonnet' || model === 'claude';
+  const masterPrompt = isClaude ? CLAUDE_AUTHORITY_PROMPT : MASTER_AUTHORITY_PROMPT;
+  return masterPrompt + '\n\n' + typePrompt;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

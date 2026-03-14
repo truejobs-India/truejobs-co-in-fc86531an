@@ -396,6 +396,10 @@ function AdminDashboardInner() {
                 <SEORoutePolicyDashboard />
               </TabsContent>
 
+              <TabsContent value="custom-pages">
+                <CustomPagesManager />
+              </TabsContent>
+
               <TabsContent value="ai-test">
                 <VertexAITestPanel />
               </TabsContent>

@@ -117,7 +117,7 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'GEMINI_API_KEY not configured' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    const { title, content, existingFaqCount, category, tags, slug } = await req.json();
+    const { title, content, existingFaqCount, category, tags, slug, aiModel } = await req.json();
     if (!title || !content) {
       return new Response(JSON.stringify({ error: 'title and content required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }

@@ -86,6 +86,19 @@ const ANTHROPIC_MODEL = Deno.env.get('ANTHROPIC_MODEL') || 'claude-sonnet-4-6';
 const ANTHROPIC_TIMEOUT_MS = parseInt(Deno.env.get('ANTHROPIC_TIMEOUT_MS') || '140000', 10);
 const ANTHROPIC_MAX_TOKENS = parseInt(Deno.env.get('ANTHROPIC_MAX_TOKENS') || '4096', 10);
 const ANTHROPIC_RETRY_MAX_TOKENS = 6144;
+const ANTHROPIC_API_VERSION = '2023-06-01';
+
+function getClaudeHeaders(apiKey: string) {
+  return {
+    'Content-Type': 'application/json',
+    'x-api-key': apiKey,
+    'anthropic-version': ANTHROPIC_API_VERSION,
+  };
+}
+
+function logClaudePreRequest(label: string, opts: { model: string; maxTokens: number; structured: boolean; promptChars?: number }) {
+  console.log(`[claude-${label}] PRE-REQUEST: anthropic-version=${ANTHROPIC_API_VERSION} model=${opts.model} max_tokens=${opts.maxTokens} structured=${opts.structured}${opts.promptChars ? ` prompt_chars=${opts.promptChars}` : ''}`);
+}
 
 const TIMEOUTS: Record<string, number> = {
   'gemini-flash': 60_000,

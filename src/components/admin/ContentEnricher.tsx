@@ -114,6 +114,7 @@ export function ContentEnricher() {
   const [family, setFamily] = useState<PageFamily>('notification');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [isEnriching, setIsEnriching] = useState(false);
+  const [isPublishingAll, setIsPublishingAll] = useState(false);
   const [batchReport, setBatchReport] = useState<{ results: EnrichmentResult[] } | null>(null);
   const [drafts, setDrafts] = useState<Map<string, EnrichmentDraft[]>>(new Map());
   const [previewSlug, setPreviewSlug] = useState<string | null>(null);

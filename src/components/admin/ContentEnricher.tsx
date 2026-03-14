@@ -89,6 +89,16 @@ function getStaticFaqCount(slug: string): number {
   return 0;
 }
 
+const AI_MODELS = [
+  { value: 'gemini-flash', label: 'Gemini 2.5 Flash' },
+  { value: 'gemini-pro', label: 'Gemini 2.5 Pro' },
+  { value: 'claude-sonnet', label: 'Claude Sonnet 4.6' },
+  { value: 'mistral', label: 'Mistral (Bedrock)' },
+  { value: 'lovable-gemini', label: 'Lovable Gemini (Gateway)' },
+  { value: 'gpt5', label: 'GPT-5 (OpenAI)' },
+  { value: 'gpt5-mini', label: 'GPT-5 Mini' },
+] as const;
+
 export function ContentEnricher() {
   const { toast } = useToast();
   const [family, setFamily] = useState<PageFamily>('notification');
@@ -101,6 +111,7 @@ export function ContentEnricher() {
   const [reviewNotes, setReviewNotes] = useState('');
   const [bgEnriching, setBgEnriching] = useState(false);
   const [bgProgress, setBgProgress] = useState<{ done: number; total: number; failed: number } | null>(null);
+  const [aiModel, setAiModel] = useState<string>('gemini-flash');
 
   useEffect(() => { loadDrafts(); }, []);
 
@@ -236,7 +247,7 @@ export function ContentEnricher() {
       });
 
       const { data, error } = await supabase.functions.invoke('enrich-authority-pages', {
-        body: { slugs, pageType: family, currentContent },
+        body: { slugs, pageType: family, currentContent, aiModel },
       });
 
       if (error) throw error;
@@ -280,7 +291,7 @@ export function ContentEnricher() {
 
       try {
         const { data, error } = await supabase.functions.invoke('enrich-authority-pages', {
-          body: { slugs, pageType: family, currentContent },
+          body: { slugs, pageType: family, currentContent, aiModel },
         });
         if (error) throw error;
         done += (data?.pagesEnriched || 0);
@@ -439,6 +450,17 @@ export function ContentEnricher() {
                 <SelectItem value="exam-pattern">Exam Pattern</SelectItem>
                 <SelectItem value="pyp">Previous Year Papers</SelectItem>
                 <SelectItem value="state">State Govt Jobs</SelectItem>
+            </SelectContent>
+            </Select>
+
+            <Select value={aiModel} onValueChange={setAiModel}>
+              <SelectTrigger className="w-[220px]">
+                <SelectValue placeholder="AI Model" />
+              </SelectTrigger>
+              <SelectContent>
+                {AI_MODELS.map(m => (
+                  <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
 

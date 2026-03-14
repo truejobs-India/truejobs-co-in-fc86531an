@@ -1234,6 +1234,16 @@ export function BlogPostEditor() {
                   </SelectContent>
                 </Select>
               </div>
+              <div className="space-y-1">
+                <Label className="text-xs">AI Model</Label>
+                <Select value={bulkAiModel} onValueChange={(v) => setBulkAiModel(v as 'gemini' | 'claude')}>
+                  <SelectTrigger className="w-[160px] h-8 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="gemini">Gemini 2.5 Flash</SelectItem>
+                    <SelectItem value="claude">Claude Sonnet 4.6</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
               <Button size="sm" onClick={handleBulkGenerate} disabled={isBulkGenerating || !bulkTopics.trim()}>
                 {isBulkGenerating ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Sparkles className="h-4 w-4 mr-1" />}
                 Generate Articles

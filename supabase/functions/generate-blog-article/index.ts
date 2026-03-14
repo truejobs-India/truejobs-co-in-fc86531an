@@ -176,7 +176,7 @@ async function callMistral(prompt: string): Promise<string> {
   const modelId = 'mistral.mistral-7b-instruct-v0:2';
   const region = Deno.env.get('AWS_REGION') || 'ap-south-1';
   const host = `bedrock-runtime.${region}.amazonaws.com`;
-  const canonicalUri = `/model/${modelId.replace(/:/g, '%3A')}/converse`;
+  const rawPath = `/model/${modelId}/converse`;
   const body = JSON.stringify({
     messages: [{ role: 'user', content: [{ text: prompt }] }],
     inferenceConfig: { maxTokens: 8192, temperature: 0.5 },

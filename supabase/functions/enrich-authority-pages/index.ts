@@ -84,7 +84,7 @@ Return ONLY the JSON object matching the schema. No commentary, no markdown fenc
 
 const ANTHROPIC_MODEL = Deno.env.get('ANTHROPIC_MODEL') || 'claude-sonnet-4-6';
 const ANTHROPIC_TIMEOUT_MS = parseInt(Deno.env.get('ANTHROPIC_TIMEOUT_MS') || '140000', 10);
-const ANTHROPIC_MAX_TOKENS = parseInt(Deno.env.get('ANTHROPIC_MAX_TOKENS') || '4096', 10);
+const ANTHROPIC_MAX_TOKENS = parseInt(Deno.env.get('ANTHROPIC_MAX_TOKENS') || '8192', 10);
 const ANTHROPIC_RETRY_MAX_TOKENS = 6144;
 const ANTHROPIC_API_VERSION = '2023-06-01';
 

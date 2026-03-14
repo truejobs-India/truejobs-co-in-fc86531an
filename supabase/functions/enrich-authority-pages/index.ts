@@ -817,8 +817,7 @@ Generate content for these sections:
 7. Preparation Insights from PYP
 8. Expected Pattern for Next Exam
 
-FAQs: 4-6 questions.
-Return the JSON matching the schema provided. Be concise — each section 100-250 words.`;
+FAQs: 4-6 questions.`;
 }
 
 function buildStatePrompt(page: PageContent): string {

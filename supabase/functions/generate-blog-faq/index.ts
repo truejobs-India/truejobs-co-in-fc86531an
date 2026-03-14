@@ -134,7 +134,7 @@ async function awsSigV4Fetch(host: string, rawPath: string, body: string, region
   sigKey = await hmacSha256B(sigKey, service);
   sigKey = await hmacSha256B(sigKey, 'aws4_request');
   const sig = Array.from(new Uint8Array(await hmacSha256B(sigKey, stringToSign))).map(b => b.toString(16).padStart(2, '0')).join('');
-  return fetch(`https://${host}${canonicalUri}`, {
+  return fetch(`https://${host}${encodedUri}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Amz-Date': amzDate, Authorization: `AWS4-HMAC-SHA256 Credential=${ak}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${sig}` },
     body,

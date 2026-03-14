@@ -140,6 +140,10 @@ async function resolveSlug(slug: string): Promise<ResolvedPage> {
   const { isCustomLongTailSlug } = await import('./customLongTailData');
   if (isCustomLongTailSlug(slug)) return CustomLongTailPage;
 
+  // 6.7 Custom pages (admin-created AI pages from DB)
+  const { isCustomPageSlug } = await import('./CustomPageRenderer');
+  if (await isCustomPageSlug(slug)) return CustomPageRenderer;
+
   // 7. Not found
   return NotFound;
 }

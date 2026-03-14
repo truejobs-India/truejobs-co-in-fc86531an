@@ -88,8 +88,8 @@ async function callBedrockConverseRaw(
 }
 
 async function callBedrockWithFallback(systemPrompt: string, userPrompt: string): Promise<string> {
-  const ak = Deno.env.get("API_NAME");
-  const sk = Deno.env.get("API_KEY");
+  const ak = Deno.env.get("AWS_ACCESS_KEY_ID");
+  const sk = Deno.env.get("AWS_SECRET_ACCESS_KEY");
   const region = Deno.env.get("AWS_REGION") || "us-east-1";
   if (!ak || !sk) throw new Error("AWS credentials not configured");
 

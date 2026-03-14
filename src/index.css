@@ -127,6 +127,85 @@ All colors MUST be HSL.
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
 }
+/* ===== Content reading area — premium readability ===== */
+.content-area {
+  background: #ffffff;
+  padding: 1.5rem 2rem;
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 4px 0 rgb(0 0 0 / 0.04);
+  border: 1px solid hsl(214 32% 91%);
+}
+
+.dark .content-area {
+  background: hsl(222 47% 14%);
+  border-color: hsl(217 33% 20%);
+}
+
+/* Font-size bump (+2px) & jet-black text for readable content */
+.content-area p,
+.content-area li,
+.content-area td,
+.content-area th,
+.content-area dd,
+.content-area dt,
+.content-area blockquote,
+.content-area .prose {
+  color: #000000;
+  font-size: 1.125rem; /* 18px */
+  line-height: 1.8;
+}
+
+.dark .content-area p,
+.dark .content-area li,
+.dark .content-area td,
+.dark .content-area th,
+.dark .content-area dd,
+.dark .content-area dt,
+.dark .content-area blockquote,
+.dark .content-area .prose {
+  color: hsl(210 40% 98%);
+}
+
+.content-area h1 {
+  color: #000000;
+  font-size: 2.25rem; /* 36px */
+}
+
+.content-area h2 {
+  color: #000000;
+  font-size: 1.625rem; /* 26px */
+}
+
+.content-area h3 {
+  color: #000000;
+  font-size: 1.375rem; /* 22px */
+}
+
+.content-area h4 {
+  color: #000000;
+  font-size: 1.1875rem; /* 19px */
+}
+
+.dark .content-area h1,
+.dark .content-area h2,
+.dark .content-area h3,
+.dark .content-area h4 {
+  color: hsl(210 40% 98%);
+}
+
+.content-area strong {
+  color: #000000;
+  font-weight: 700;
+}
+
+.dark .content-area strong {
+  color: hsl(210 40% 98%);
+}
+
+/* Keep link colors distinct */
+.content-area a:not(.no-content-style) {
+  color: hsl(217 91% 60%);
+}
 
 /* Premium gradient utility classes */
 @layer utilities {

@@ -10,7 +10,7 @@ export default function Disclaimer() {
         description="Read the TrueJobs disclaimer. TrueJobs is an independent informational portal with no government affiliation. Covers content sourcing, verification responsibility, advertising, and limitation of liability."
         url="/disclaimer"
       />
-      <div className="container mx-auto px-4 py-12 max-w-4xl">
+      <div className="container mx-auto px-4 py-12 max-w-4xl content-area my-8">
         <Card>
           <CardHeader>
             <CardTitle className="text-3xl">Disclaimer</CardTitle>

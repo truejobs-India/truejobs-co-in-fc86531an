@@ -398,7 +398,7 @@ export default function JobDetail() {
 
         <div className="grid lg:grid-cols-3 gap-8">
           {/* Main Content */}
-          <div className="lg:col-span-2 space-y-6">
+          <div className="lg:col-span-2 space-y-6 content-area">
             {/* Header Card */}
             <Card>
               <CardContent className="p-6">

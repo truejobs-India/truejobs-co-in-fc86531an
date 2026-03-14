@@ -61,7 +61,7 @@ export default function CustomLongTailPage() {
         {faqSchema && <script type="application/ld+json">{JSON.stringify(faqSchema)}</script>}
       </Helmet>
 
-      <div className="container mx-auto px-4 py-8 max-w-4xl">
+      <div className="container mx-auto px-4 py-8 max-w-4xl content-area my-8">
         {/* Header */}
         <div className="mb-6">
           <div className="flex items-center gap-2 text-sm text-muted-foreground mb-3">

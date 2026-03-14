@@ -10,7 +10,7 @@ export default function PrivacyPolicy() {
         description="TrueJobs Privacy Policy. Learn how we collect, use, store, and protect your information on our independent government job information portal. Includes cookie policy, Google AdSense disclosures, and your data rights."
         url="/privacypolicy"
       />
-      <div className="container mx-auto px-4 py-12 max-w-4xl">
+      <div className="container mx-auto px-4 py-12 max-w-4xl content-area my-8">
         <Card>
           <CardHeader>
             <CardTitle className="text-3xl">Privacy Policy</CardTitle>

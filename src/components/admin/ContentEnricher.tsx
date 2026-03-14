@@ -450,6 +450,17 @@ export function ContentEnricher() {
                 <SelectItem value="exam-pattern">Exam Pattern</SelectItem>
                 <SelectItem value="pyp">Previous Year Papers</SelectItem>
                 <SelectItem value="state">State Govt Jobs</SelectItem>
+            </SelectContent>
+            </Select>
+
+            <Select value={aiModel} onValueChange={setAiModel}>
+              <SelectTrigger className="w-[220px]">
+                <SelectValue placeholder="AI Model" />
+              </SelectTrigger>
+              <SelectContent>
+                {AI_MODELS.map(m => (
+                  <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
 

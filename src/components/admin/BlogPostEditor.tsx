@@ -21,7 +21,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Edit, Trash2, Eye, EyeOff, ExternalLink, RefreshCw, ClipboardCopy, Link2, AlertTriangle, Search, ChevronDown, ChevronLeft, ChevronRight, ImageIcon, Sparkles, Loader2, Check, X, Zap, Download, FileText } from 'lucide-react';
+import { Plus, Edit, Trash2, Eye, EyeOff, ExternalLink, RefreshCw, ClipboardCopy, Link2, AlertTriangle, Search, ChevronDown, ChevronLeft, ChevronRight, ImageIcon, Sparkles, Loader2, Check, X, Zap, Download, FileText, Square, RotateCcw } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { RichTextEditor } from './blog/RichTextEditor';
 import { CoverImageUploader } from './blog/CoverImageUploader';
@@ -116,10 +116,12 @@ export function BlogPostEditor() {
   const [bulkWordCount, setBulkWordCount] = useState(1500);
   const [bulkResults, setBulkResults] = useState<{ topic: string; status: 'queued' | 'generating' | 'success' | 'failed'; articleId?: string; error?: string }[]>([]);
   const [isBulkGenerating, setIsBulkGenerating] = useState(false);
+  const bulkGenerateAbortRef = useRef(false);
 
   // Bulk cover image generation state
   const [isBulkCoverRunning, setIsBulkCoverRunning] = useState(false);
   const [bulkCoverProgress, setBulkCoverProgress] = useState<{ total: number; done: number; failed: number; current: string } | null>(null);
+  const bulkCoverAbortRef = useRef(false);
 
   // Bulk auto-fix & enrich state
   const [isBulkFixEnrichRunning, setIsBulkFixEnrichRunning] = useState(false);
@@ -416,10 +418,10 @@ export function BlogPostEditor() {
 
   // ── Bulk Generate Missing Cover Images ──────────────
   const handleBulkGenerateCoverImages = async () => {
+    bulkCoverAbortRef.current = false;
     setIsBulkCoverRunning(true);
     setBulkCoverProgress(null);
     try {
-      // Fetch all articles without cover images
       const { data: noCoverPosts, error } = await supabase
         .from('blog_posts')
         .select('id, title, slug, category, tags, cover_image_url')
@@ -439,6 +441,10 @@ export function BlogPostEditor() {
       setBulkCoverProgress({ total, done, failed, current: noCoverPosts[0].title });
 
       for (const post of noCoverPosts) {
+        if (bulkCoverAbortRef.current) {
+          toast({ title: '⏹️ Cover image generation stopped', description: `${done} generated, ${failed} failed, ${total - done - failed} skipped.` });
+          break;
+        }
         setBulkCoverProgress({ total, done, failed, current: post.title });
         try {
           const { data: imgData, error: imgError } = await supabase.functions.invoke('generate-blog-image', {
@@ -449,7 +455,6 @@ export function BlogPostEditor() {
             console.warn(`Cover image failed for "${post.title}":`, imgError?.message || 'No image returned');
             failed++;
           } else {
-            // Update the article with the generated image
             await supabase.from('blog_posts').update({
               cover_image_url: imgData.imageUrl,
               featured_image_alt: imgData.altText || post.title,
@@ -462,17 +467,18 @@ export function BlogPostEditor() {
         }
         setBulkCoverProgress({ total, done: done + failed, failed, current: post.title });
 
-        // Rate limit: wait 3s between requests
         if (done + failed < total) {
           await new Promise(r => setTimeout(r, 3000));
         }
       }
 
-      toast({
-        title: '🖼️ Cover image generation complete',
-        description: `${done} generated, ${failed} failed out of ${total} articles.`,
-      });
-      fetchPosts(); // Refresh the list
+      if (!bulkCoverAbortRef.current) {
+        toast({
+          title: '🖼️ Cover image generation complete',
+          description: `${done} generated, ${failed} failed out of ${total} articles.`,
+        });
+      }
+      fetchPosts();
     } catch (err: any) {
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
     } finally {
@@ -827,10 +833,16 @@ export function BlogPostEditor() {
     if (topics.length === 0) { toast({ title: 'Enter at least one topic', variant: 'destructive' }); return; }
     if (topics.length > 20) { toast({ title: 'Maximum 20 topics at a time', variant: 'destructive' }); return; }
 
+    bulkGenerateAbortRef.current = false;
     setIsBulkGenerating(true);
     setBulkResults(topics.map(topic => ({ topic, status: 'queued' })));
 
     for (let i = 0; i < topics.length; i++) {
+      if (bulkGenerateAbortRef.current) {
+        setBulkResults(prev => prev.map((r, idx) => idx >= i && r.status === 'queued' ? { ...r, status: 'failed', error: 'Stopped by user' } : r));
+        toast({ title: '⏹️ Bulk generation stopped' });
+        break;
+      }
       setBulkResults(prev => prev.map((r, idx) => idx === i ? { ...r, status: 'generating' } : r));
       try {
         const { data: { session } } = await supabase.auth.getSession();
@@ -841,7 +853,6 @@ export function BlogPostEditor() {
         if (error) throw new Error(error.message);
         if (!data?.title || !data?.content) throw new Error('Invalid AI response');
 
-        // Save as draft
         const wordCount = data.content.replace(/<[^>]+>/g, '').split(/\s+/).filter((w: string) => w.length > 0).length;
         const { data: inserted, error: insertErr } = await supabase.from('blog_posts').insert({
           title: data.title, slug: data.slug, content: data.content,
@@ -856,13 +867,63 @@ export function BlogPostEditor() {
       } catch (err: any) {
         setBulkResults(prev => prev.map((r, idx) => idx === i ? { ...r, status: 'failed', error: err.message } : r));
       }
-      // 2s delay between topics
       if (i < topics.length - 1) await new Promise(r => setTimeout(r, 2000));
     }
 
     setIsBulkGenerating(false);
     fetchPosts();
-    toast({ title: 'Bulk generation complete' });
+    if (!bulkGenerateAbortRef.current) toast({ title: 'Bulk generation complete' });
+  };
+
+  const handleRetryFailedArticles = async () => {
+    const failedItems = bulkResults.filter(r => r.status === 'failed');
+    if (failedItems.length === 0) { toast({ title: 'No failed articles to retry' }); return; }
+
+    bulkGenerateAbortRef.current = false;
+    setIsBulkGenerating(true);
+    // Mark failed items as queued again
+    setBulkResults(prev => prev.map(r => r.status === 'failed' ? { ...r, status: 'queued', error: undefined } : r));
+
+    for (let i = 0; i < bulkResults.length; i++) {
+      const item = bulkResults[i];
+      if (item.status !== 'failed') continue; // only retry failed ones
+
+      if (bulkGenerateAbortRef.current) {
+        setBulkResults(prev => prev.map((r, idx) => idx >= i && r.status === 'queued' ? { ...r, status: 'failed', error: 'Stopped by user' } : r));
+        toast({ title: '⏹️ Retry stopped' });
+        break;
+      }
+
+      setBulkResults(prev => prev.map((r, idx) => idx === i ? { ...r, status: 'generating' } : r));
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) throw new Error('Not authenticated');
+        const { data, error } = await supabase.functions.invoke('generate-blog-article', {
+          body: { topic: item.topic, category: bulkCategory, targetWordCount: bulkWordCount },
+        });
+        if (error) throw new Error(error.message);
+        if (!data?.title || !data?.content) throw new Error('Invalid AI response');
+
+        const wordCount = data.content.replace(/<[^>]+>/g, '').split(/\s+/).filter((w: string) => w.length > 0).length;
+        const { data: inserted, error: insertErr } = await supabase.from('blog_posts').insert({
+          title: data.title, slug: data.slug, content: data.content,
+          excerpt: data.excerpt || null, meta_title: data.metaTitle || null,
+          meta_description: data.metaDescription || null, category: data.category || bulkCategory || 'Career Advice',
+          tags: data.tags || [], author_id: user!.id, author_name: 'TrueJobs Editorial Team',
+          canonical_url: `https://truejobs.co.in/blog/${data.slug}`,
+          is_published: false, word_count: wordCount, reading_time: Math.max(1, Math.ceil(wordCount / 200)),
+        }).select('id').single();
+        if (insertErr) throw new Error(insertErr.message);
+        setBulkResults(prev => prev.map((r, idx) => idx === i ? { ...r, status: 'success', articleId: inserted?.id } : r));
+      } catch (err: any) {
+        setBulkResults(prev => prev.map((r, idx) => idx === i ? { ...r, status: 'failed', error: err.message } : r));
+      }
+      await new Promise(r => setTimeout(r, 2000));
+    }
+
+    setIsBulkGenerating(false);
+    fetchPosts();
+    if (!bulkGenerateAbortRef.current) toast({ title: 'Retry complete' });
   };
 
   return (
@@ -1113,6 +1174,11 @@ export function BlogPostEditor() {
             ? `Generating… ${bulkCoverProgress ? `${bulkCoverProgress.done}/${bulkCoverProgress.total}` : ''}`
             : 'Generate Missing Cover Images'}
         </Button>
+        {isBulkCoverRunning && (
+          <Button variant="destructive" size="sm" onClick={() => { bulkCoverAbortRef.current = true; }}>
+            <Square className="h-4 w-4 mr-1" />Stop
+          </Button>
+        )}
         <Button variant="outline" size="sm" onClick={handleBulkFixAndEnrich} disabled={isBulkFixEnrichRunning}>
           {isBulkFixEnrichRunning ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Zap className="h-4 w-4 mr-1" />}
           {isBulkFixEnrichRunning
@@ -1171,6 +1237,16 @@ export function BlogPostEditor() {
                 {isBulkGenerating ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Sparkles className="h-4 w-4 mr-1" />}
                 Generate Articles
               </Button>
+              {isBulkGenerating && (
+                <Button size="sm" variant="destructive" onClick={() => { bulkGenerateAbortRef.current = true; }}>
+                  <Square className="h-4 w-4 mr-1" />Stop
+                </Button>
+              )}
+              {!isBulkGenerating && bulkResults.some(r => r.status === 'failed') && (
+                <Button size="sm" variant="outline" onClick={handleRetryFailedArticles}>
+                  <RotateCcw className="h-4 w-4 mr-1" />Retry Failed ({bulkResults.filter(r => r.status === 'failed').length})
+                </Button>
+              )}
             </div>
             {bulkResults.length > 0 && (
               <div className="space-y-1 mt-2">

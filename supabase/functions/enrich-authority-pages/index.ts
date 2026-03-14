@@ -338,7 +338,7 @@ async function callClaudeWithRetry(
 ): Promise<{ data: Record<string, unknown>; diagnostics: ClaudeDiagnostics }> {
   const firstAttemptTimeout = Math.min(
     CLAUDE_SDK_TIMEOUT_MS,
-    Math.max(15_000, getRemainingBudgetMs(startedAtMs) - GEMINI_FALLBACK_RESERVED_MS),
+    Math.max(15_000, getRemainingBudgetMs(startedAtMs) - 5000),
   );
 
   try {

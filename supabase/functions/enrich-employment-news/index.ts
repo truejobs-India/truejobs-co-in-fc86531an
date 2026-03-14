@@ -286,19 +286,79 @@ function detectLanguage(fields: Record<string, string | null | undefined>): stri
 // ═══════════════════════════════════════════════════════════════
 
 function tryParseJSON(text: string): any {
+  // Attempt 1: direct parse
   try {
     return JSON.parse(text);
-  } catch {
-    if (!text.trimStart().startsWith("{") || text.length < 500) {
-      throw new Error(`JSON repair skipped — response too short (${text.length} chars) or not a JSON object`);
-    }
-    const lastBrace = text.lastIndexOf("}");
-    if (lastBrace > 0) {
-      const trimmed = text.substring(0, lastBrace + 1);
-      return JSON.parse(trimmed);
-    }
-    throw new Error("JSON repair failed");
+  } catch { /* fall through */ }
+
+  // Attempt 2: strip markdown fences
+  let cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+  try {
+    return JSON.parse(cleaned);
+  } catch { /* fall through */ }
+
+  // Attempt 3: extract JSON between first { and last }
+  const firstBrace = cleaned.indexOf('{');
+  const lastBrace = cleaned.lastIndexOf('}');
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    const extracted = cleaned.substring(firstBrace, lastBrace + 1);
+    try {
+      return JSON.parse(extracted);
+    } catch { /* fall through */ }
   }
+
+  // Attempt 4: truncate at last valid }
+  if (cleaned.trimStart().startsWith("{") && cleaned.length >= 200) {
+    const lb = cleaned.lastIndexOf("}");
+    if (lb > 0) {
+      try {
+        return JSON.parse(cleaned.substring(0, lb + 1));
+      } catch { /* fall through */ }
+    }
+  }
+
+  throw new Error(`JSON parse failed after all recovery attempts (response length: ${text.length} chars)`);
+}
+
+// Smart field auto-generation for missing non-critical fields
+function autoFillMissingFields(enriched: any, job: any): string[] {
+  const autoFilled: string[] = [];
+
+  if (!enriched.slug && enriched.enriched_title) {
+    enriched.slug = enriched.enriched_title
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/(^-|-$)/g, '')
+      .substring(0, 80);
+    if (!enriched.slug) enriched.slug = `job-${Date.now()}`;
+    autoFilled.push('slug (auto-generated from title)');
+  }
+
+  if (!enriched.meta_title && enriched.enriched_title) {
+    enriched.meta_title = enriched.enriched_title.substring(0, 60);
+    autoFilled.push('meta_title (first 60 chars of title)');
+  }
+
+  if (!enriched.meta_description && enriched.enriched_description) {
+    const stripped = enriched.enriched_description.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+    enriched.meta_description = stripped.substring(0, 155);
+    autoFilled.push('meta_description (first 155 chars of description)');
+  }
+
+  if (!enriched.job_category) {
+    enriched.job_category = 'Other';
+    autoFilled.push('job_category (defaulted to Other)');
+  }
+
+  if (!Array.isArray(enriched.keywords) || enriched.keywords.length === 0) {
+    const parts = [job.org_name, job.post, 'sarkari naukri', 'govt job', '2026', job.state].filter(Boolean);
+    enriched.keywords = parts;
+    autoFilled.push('keywords (auto-generated from job fields)');
+  }
+
+  return autoFilled;
 }
 
 // ═══════════════════════════════════════════════════════════════

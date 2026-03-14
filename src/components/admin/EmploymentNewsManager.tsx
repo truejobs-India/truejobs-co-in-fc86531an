@@ -800,6 +800,12 @@ export function EmploymentNewsManager() {
                 ? `Enriching${unenrichedCount ? ` ${unenrichedCount}` : ''}...`
                 : 'Find & Enrich Unenriched'}
             </Button>
+            {stats.failed > 0 && (
+              <Button size="sm" variant="outline" className="border-orange-300 text-orange-700 hover:bg-orange-50 dark:border-orange-700 dark:text-orange-400 dark:hover:bg-orange-950" onClick={retryFailedJobs} disabled={isRetryingFailed}>
+                {isRetryingFailed ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <AlertCircle className="h-3 w-3 mr-1" />}
+                Retry Failed ({stats.failed})
+              </Button>
+            )}
           </div>
 
           {/* Table */}

@@ -833,10 +833,16 @@ export function BlogPostEditor() {
     if (topics.length === 0) { toast({ title: 'Enter at least one topic', variant: 'destructive' }); return; }
     if (topics.length > 20) { toast({ title: 'Maximum 20 topics at a time', variant: 'destructive' }); return; }
 
+    bulkGenerateAbortRef.current = false;
     setIsBulkGenerating(true);
     setBulkResults(topics.map(topic => ({ topic, status: 'queued' })));
 
     for (let i = 0; i < topics.length; i++) {
+      if (bulkGenerateAbortRef.current) {
+        setBulkResults(prev => prev.map((r, idx) => idx >= i && r.status === 'queued' ? { ...r, status: 'failed', error: 'Stopped by user' } : r));
+        toast({ title: '⏹️ Bulk generation stopped' });
+        break;
+      }
       setBulkResults(prev => prev.map((r, idx) => idx === i ? { ...r, status: 'generating' } : r));
       try {
         const { data: { session } } = await supabase.auth.getSession();
@@ -847,7 +853,6 @@ export function BlogPostEditor() {
         if (error) throw new Error(error.message);
         if (!data?.title || !data?.content) throw new Error('Invalid AI response');
 
-        // Save as draft
         const wordCount = data.content.replace(/<[^>]+>/g, '').split(/\s+/).filter((w: string) => w.length > 0).length;
         const { data: inserted, error: insertErr } = await supabase.from('blog_posts').insert({
           title: data.title, slug: data.slug, content: data.content,
@@ -862,13 +867,63 @@ export function BlogPostEditor() {
       } catch (err: any) {
         setBulkResults(prev => prev.map((r, idx) => idx === i ? { ...r, status: 'failed', error: err.message } : r));
       }
-      // 2s delay between topics
       if (i < topics.length - 1) await new Promise(r => setTimeout(r, 2000));
     }
 
     setIsBulkGenerating(false);
     fetchPosts();
-    toast({ title: 'Bulk generation complete' });
+    if (!bulkGenerateAbortRef.current) toast({ title: 'Bulk generation complete' });
+  };
+
+  const handleRetryFailedArticles = async () => {
+    const failedItems = bulkResults.filter(r => r.status === 'failed');
+    if (failedItems.length === 0) { toast({ title: 'No failed articles to retry' }); return; }
+
+    bulkGenerateAbortRef.current = false;
+    setIsBulkGenerating(true);
+    // Mark failed items as queued again
+    setBulkResults(prev => prev.map(r => r.status === 'failed' ? { ...r, status: 'queued', error: undefined } : r));
+
+    for (let i = 0; i < bulkResults.length; i++) {
+      const item = bulkResults[i];
+      if (item.status !== 'failed') continue; // only retry failed ones
+
+      if (bulkGenerateAbortRef.current) {
+        setBulkResults(prev => prev.map((r, idx) => idx >= i && r.status === 'queued' ? { ...r, status: 'failed', error: 'Stopped by user' } : r));
+        toast({ title: '⏹️ Retry stopped' });
+        break;
+      }
+
+      setBulkResults(prev => prev.map((r, idx) => idx === i ? { ...r, status: 'generating' } : r));
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) throw new Error('Not authenticated');
+        const { data, error } = await supabase.functions.invoke('generate-blog-article', {
+          body: { topic: item.topic, category: bulkCategory, targetWordCount: bulkWordCount },
+        });
+        if (error) throw new Error(error.message);
+        if (!data?.title || !data?.content) throw new Error('Invalid AI response');
+
+        const wordCount = data.content.replace(/<[^>]+>/g, '').split(/\s+/).filter((w: string) => w.length > 0).length;
+        const { data: inserted, error: insertErr } = await supabase.from('blog_posts').insert({
+          title: data.title, slug: data.slug, content: data.content,
+          excerpt: data.excerpt || null, meta_title: data.metaTitle || null,
+          meta_description: data.metaDescription || null, category: data.category || bulkCategory || 'Career Advice',
+          tags: data.tags || [], author_id: user!.id, author_name: 'TrueJobs Editorial Team',
+          canonical_url: `https://truejobs.co.in/blog/${data.slug}`,
+          is_published: false, word_count: wordCount, reading_time: Math.max(1, Math.ceil(wordCount / 200)),
+        }).select('id').single();
+        if (insertErr) throw new Error(insertErr.message);
+        setBulkResults(prev => prev.map((r, idx) => idx === i ? { ...r, status: 'success', articleId: inserted?.id } : r));
+      } catch (err: any) {
+        setBulkResults(prev => prev.map((r, idx) => idx === i ? { ...r, status: 'failed', error: err.message } : r));
+      }
+      await new Promise(r => setTimeout(r, 2000));
+    }
+
+    setIsBulkGenerating(false);
+    fetchPosts();
+    if (!bulkGenerateAbortRef.current) toast({ title: 'Retry complete' });
   };
 
   return (

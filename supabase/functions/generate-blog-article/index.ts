@@ -155,7 +155,7 @@ async function awsSigV4Fetch(host: string, canonicalUri: string, body: string, r
 // ── 5. Claude Sonnet 4.6 (AWS Bedrock) ──
 async function callClaude(prompt: string): Promise<string> {
   const inferenceProfileId = 'us.anthropic.claude-sonnet-4-6-v1:0';
-  const region = 'ap-south-1';
+  const region = 'us-east-1';
   const host = `bedrock-runtime.${region}.amazonaws.com`;
   const canonicalUri = `/model/${inferenceProfileId}/invoke`;
   const body = JSON.stringify({

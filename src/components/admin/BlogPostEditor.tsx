@@ -119,8 +119,23 @@ export function BlogPostEditor() {
   const [bulkWordCount, setBulkWordCount] = useState(1500);
   const [bulkResults, setBulkResults] = useState<{ topic: string; status: 'queued' | 'generating' | 'success' | 'failed'; articleId?: string; error?: string }[]>([]);
   const [isBulkGenerating, setIsBulkGenerating] = useState(false);
-  const [bulkAiModel, setBulkAiModel] = useState<string>('gemini');
   const bulkGenerateAbortRef = useRef(false);
+
+  // ── Persistent AI Model selectors (localStorage-backed, no fallbacks) ──
+  const [blogTextModel, setBlogTextModel] = useState<string>(() => {
+    try { return localStorage.getItem('blog_text_ai_model') || 'gemini-flash'; } catch { return 'gemini-flash'; }
+  });
+  const [blogImageModel, setBlogImageModel] = useState<string>(() => {
+    try { return localStorage.getItem('blog_image_ai_model') || 'vertex-imagen'; } catch { return 'vertex-imagen'; }
+  });
+  const handleTextModelChange = useCallback((v: string) => {
+    setBlogTextModel(v);
+    try { localStorage.setItem('blog_text_ai_model', v); } catch {}
+  }, []);
+  const handleImageModelChange = useCallback((v: string) => {
+    setBlogImageModel(v);
+    try { localStorage.setItem('blog_image_ai_model', v); } catch {}
+  }, []);
 
   // Bulk cover image generation state
   const [isBulkCoverRunning, setIsBulkCoverRunning] = useState(false);

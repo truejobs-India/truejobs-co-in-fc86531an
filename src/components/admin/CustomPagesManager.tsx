@@ -19,7 +19,7 @@ import { supabase } from '@/integrations/supabase/client';
 import {
   Plus, Sparkles, Loader2, Eye, Pencil, Trash2, Search,
   ChevronLeft, ChevronRight, CheckCircle, XCircle, FileText,
-  Globe, Copy, RotateCcw, Square, Wand2
+  Globe, Copy, RotateCcw, Square, Wand2, Clock
 } from 'lucide-react';
 
 interface CustomPage {

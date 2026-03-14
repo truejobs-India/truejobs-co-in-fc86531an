@@ -158,18 +158,23 @@ async function awsSigV4Fetch(host: string, rawPath: string, body: string, region
 
 // ── 5. Claude (AWS Bedrock via Cross-Region Inference Profile) ──
 async function callClaude(prompt: string): Promise<string> {
-  const inferenceProfileId = 'us.anthropic.claude-sonnet-4-6';
-  const region = 'us-east-1';
-  const host = `bedrock-runtime.${region}.amazonaws.com`;
-  const rawPath = `/model/${inferenceProfileId}/invoke`;
-  const body = JSON.stringify({
-    anthropic_version: 'bedrock-2023-05-31',
-    messages: [{ role: 'user', content: prompt }],
-    max_tokens: 4096,
-    temperature: 0.7,
+  const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
+  if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured');
+  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 4096,
+      temperature: 0.7,
+      messages: [{ role: 'user', content: prompt }],
+    }),
   });
-  const resp = await awsSigV4Fetch(host, rawPath, body, region, 'bedrock');
-  if (!resp.ok) throw new Error(`Claude Bedrock ${resp.status}: ${await resp.text()}`);
+  if (!resp.ok) throw new Error(`Anthropic API error ${resp.status}: ${await resp.text()}`);
   const data = await resp.json();
   return data?.content?.[0]?.text || '';
 }

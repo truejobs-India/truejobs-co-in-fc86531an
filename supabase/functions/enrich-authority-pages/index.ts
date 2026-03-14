@@ -348,7 +348,7 @@ async function awsSigV4Fetch(url: string, body: string, region: string, service:
   headers['Authorization'] = `AWS4-HMAC-SHA256 Credential=${accessKey}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), AI_TIMEOUT_MS_DEFAULT);
+  const timer = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
   try {
     return await fetch(url, { method: 'POST', headers, body, signal: controller.signal });
   } finally {

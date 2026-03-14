@@ -49,6 +49,7 @@ import { GovtExamsManager } from '@/components/admin/GovtExamsManager';
 import { GuideGenerator } from '@/components/admin/GuideGenerator';
 import { ContentEnricher } from '@/components/admin/ContentEnricher';
 import { SEORoutePolicyDashboard } from '@/components/admin/seo-policy/SEORoutePolicyDashboard';
+import { VertexAITestPanel } from '@/components/admin/VertexAITestPanel';
 import { useNavigate } from 'react-router-dom';
 
 type DrilldownView = 

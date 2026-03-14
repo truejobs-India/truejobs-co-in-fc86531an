@@ -235,7 +235,7 @@ export function ContentEnricher() {
     cancelRef.current = false;
     setBatchReport(null);
 
-    const modelLabel = AI_MODELS.find(m => m.value === aiModel)?.label || aiModel;
+    const modelLabel = getModelDef(aiModel)?.label || aiModel;
     const estimatedSeconds = slugsToProcess.length * getModelSpeed(aiModel);
 
     addMessage('info', `Starting enrichment: ${slugsToProcess.length} pages`,

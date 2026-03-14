@@ -749,7 +749,7 @@ export function EmploymentNewsManager() {
               <Sparkles className="h-3.5 w-3.5 text-primary" />
               <span className="text-xs font-medium text-muted-foreground">AI Model:</span>
               <Select value={enrichAiModel} onValueChange={handleEnrichModelChange}>
-                <SelectTrigger className="w-[170px] h-7 text-xs border-0 bg-transparent p-0 pl-1">
+                <SelectTrigger className="w-[200px] h-7 text-xs border-0 bg-transparent p-0 pl-1">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -757,6 +757,8 @@ export function EmploymentNewsManager() {
                   <SelectItem value="lovable-gemini">Lovable Gemini</SelectItem>
                   <SelectItem value="mistral">Mistral 7B (Bedrock)</SelectItem>
                   <SelectItem value="claude">Claude Sonnet 4.6 (Bedrock)</SelectItem>
+                  <SelectItem value="vertex-flash">Gemini 2.5 Flash (From API)</SelectItem>
+                  <SelectItem value="vertex-pro">Gemini 2.5 Pro (From API)</SelectItem>
                 </SelectContent>
               </Select>
             </div>

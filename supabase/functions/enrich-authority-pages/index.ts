@@ -903,6 +903,9 @@ function getPromptForType(pageType: string, page: PageContent, model?: string): 
 
 === CRITICAL OUTPUT CONSTRAINTS ===
 - Be concise inside each field. Prioritize data density over prose length.
+- Fill REQUIRED fields first in this order: overview → faq → meta_title → meta_description.
+- In overview, include the Quick Overview HTML table before narrative text.
+- Keep FAQ compact: 6-8 high-intent questions with direct answers.
 - Avoid repetition across sections. Each section must contain unique information.
 - Every word must add value. Remove filler.
 - Include HTML tables where specified. Use semantic HTML (h2, h3, table, ul, ol, strong).

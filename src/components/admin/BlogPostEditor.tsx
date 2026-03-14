@@ -467,7 +467,7 @@ export function BlogPostEditor() {
         setBulkCoverProgress({ total, done, failed, current: post.title });
         try {
           const { data: imgData, error: imgError } = await supabase.functions.invoke('generate-blog-image', {
-            body: { slug: post.slug, title: post.title, category: post.category || 'General', keywords: post.tags || [] },
+            body: { slug: post.slug, title: post.title, category: post.category || 'General', keywords: post.tags || [], aiModel: blogImageModel },
           });
 
           if (imgError || !imgData?.imageUrl) {

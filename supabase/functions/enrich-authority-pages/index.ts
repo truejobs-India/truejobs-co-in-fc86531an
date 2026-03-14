@@ -369,7 +369,7 @@ async function callClaudeWithRetry(
 
     if (isTruncationMissingRequired) {
       if (remainingBudget < CLAUDE_RETRY_MIN_REMAINING_MS) {
-        console.warn(`[claude-circuit-breaker] ${slug}: skip retry due low remaining budget (${remainingBudget}ms). Failing over to Gemini.`);
+        console.warn(`[claude-circuit-breaker] ${slug}: skip retry due low remaining budget (${remainingBudget}ms). Giving up.`);
         throw firstErr;
       }
 

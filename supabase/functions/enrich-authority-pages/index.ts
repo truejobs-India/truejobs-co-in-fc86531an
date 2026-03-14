@@ -402,7 +402,7 @@ async function awsSigV4Fetch(url: string, body: string, region: string, service:
 
 // ── Mistral Large (AWS Bedrock — us-east-1) ──
 async function callMistralRaw(prompt: string, timeoutMs = 60_000): Promise<string> {
-  const region = 'us-east-1';
+  const region = 'us-west-2';
   const modelId = 'mistral.mistral-large-2407-v1:0';
   const url = `https://bedrock-runtime.${region}.amazonaws.com/model/${modelId}/invoke`;
 

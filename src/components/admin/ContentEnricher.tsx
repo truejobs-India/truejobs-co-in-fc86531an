@@ -10,7 +10,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { getAllExamAuthoritySlugs, getExamAuthorityConfig } from '@/data/examAuthority';
 import { getAllPYPSlugs, getPYPConfig } from '@/data/previousYearPapers/types';
 import { getAllStateGovtSlugs, getStateGovtJobConfig } from '@/pages/seo/stateGovtJobsData';
-import { Loader2, CheckCircle, AlertTriangle, XCircle, Sparkles, Eye, Upload, Undo2, History, Clock } from 'lucide-react';
+import { Loader2, CheckCircle, AlertTriangle, XCircle, Sparkles, Eye, Upload, Undo2, History, Clock, X, Info } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -66,6 +66,14 @@ interface EnrichmentDraft {
   failure_reason: string | null;
 }
 
+interface PersistentMessage {
+  id: string;
+  type: 'success' | 'warning' | 'error' | 'info';
+  title: string;
+  description: string;
+  timestamp: Date;
+}
+
 function countWordsInHtml(html: string): number {
   return html.replace(/<[^>]+>/g, ' ').trim().split(/\s+/).filter(Boolean).length;
 }
@@ -76,16 +84,13 @@ function countSectionsInHtml(html: string): number {
 
 /** Get the actual FAQ count from static config for a slug */
 function getStaticFaqCount(slug: string): number {
-  // Try authority config first
   const authConfig = getExamAuthorityConfig(slug);
   if (authConfig?.faqs?.length) return authConfig.faqs.length;
-  // Try PYP config
   const pypConfig = getPYPConfig(slug);
   if (pypConfig && 'faqs' in pypConfig) {
     const faqs = (pypConfig as unknown as Record<string, unknown>).faqs;
     if (Array.isArray(faqs)) return faqs.length;
   }
-  // State pages don't have structured FAQ in config
   return 0;
 }
 
@@ -98,6 +103,20 @@ const AI_MODELS = [
   { value: 'gpt5', label: 'GPT-5 (OpenAI)' },
   { value: 'gpt5-mini', label: 'GPT-5 Mini' },
 ] as const;
+
+const MODEL_BATCH_LIMITS: Record<string, number> = {
+  'gemini-flash': 8,
+  'gemini-pro': 5,
+  'claude-sonnet': 3,
+  'mistral': 4,
+  'lovable-gemini': 5,
+  'gpt5': 3,
+  'gpt5-mini': 4,
+};
+
+function getModelBatchLimit(model: string): number {
+  return MODEL_BATCH_LIMITS[model] || 3;
+}
 
 export function ContentEnricher() {
   const { toast } = useToast();
@@ -112,6 +131,16 @@ export function ContentEnricher() {
   const [bgEnriching, setBgEnriching] = useState(false);
   const [bgProgress, setBgProgress] = useState<{ done: number; total: number; failed: number } | null>(null);
   const [aiModel, setAiModel] = useState<string>('gemini-flash');
+  const [messages, setMessages] = useState<PersistentMessage[]>([]);
+  const [enrichProgress, setEnrichProgress] = useState<string | null>(null);
+
+  const addMessage = (type: PersistentMessage['type'], title: string, description: string) => {
+    setMessages(prev => [{ id: crypto.randomUUID(), type, title, description, timestamp: new Date() }, ...prev]);
+  };
+
+  const dismissMessage = (id: string) => {
+    setMessages(prev => prev.filter(m => m.id !== id));
+  };
 
   useEffect(() => { loadDrafts(); }, []);
 
@@ -223,8 +252,7 @@ export function ContentEnricher() {
     setSelected(prev => {
       const next = new Set(prev);
       if (next.has(slug)) next.delete(slug);
-      else if (next.size < 8) next.add(slug);
-      else toast({ title: 'Max 8 pages', description: 'Select up to 8 pages per batch', variant: 'destructive' });
+      else next.add(slug); // No upper limit — auto-batching handles it
       return next;
     });
   };
@@ -234,9 +262,24 @@ export function ContentEnricher() {
     setIsEnriching(true);
     setBatchReport(null);
 
-    try {
-      const slugs = Array.from(selected);
-      const currentContent = slugs.map(slug => {
+    const allSlugs = Array.from(selected);
+    const batchLimit = getModelBatchLimit(aiModel);
+    const totalBatches = Math.ceil(allSlugs.length / batchLimit);
+    const allResults: EnrichmentResult[] = [];
+
+    if (totalBatches > 1) {
+      addMessage('info', `Auto-batching ${allSlugs.length} pages`,
+        `${AI_MODELS.find(m => m.value === aiModel)?.label} processes ${batchLimit} pages per batch. Queued ${totalBatches} batches automatically.`);
+    }
+
+    for (let batchIdx = 0; batchIdx < totalBatches; batchIdx++) {
+      const batchSlugs = allSlugs.slice(batchIdx * batchLimit, (batchIdx + 1) * batchLimit);
+      const start = batchIdx * batchLimit + 1;
+      const end = start + batchSlugs.length - 1;
+
+      setEnrichProgress(`Processing batch ${batchIdx + 1} of ${totalBatches} (pages ${start}-${end})...`);
+
+      const currentContent = batchSlugs.map(slug => {
         const row = pageRows.find(r => r.slug === slug);
         return {
           slug,
@@ -246,27 +289,44 @@ export function ContentEnricher() {
         };
       });
 
-      const { data, error } = await supabase.functions.invoke('enrich-authority-pages', {
-        body: { slugs, pageType: family, currentContent, aiModel },
-      });
+      try {
+        const { data, error } = await supabase.functions.invoke('enrich-authority-pages', {
+          body: { slugs: batchSlugs, pageType: family, currentContent, aiModel },
+        });
 
-      if (error) throw error;
-      setBatchReport(data);
+        if (error) throw error;
+
+        const batchResults: EnrichmentResult[] = data.results || [];
+        allResults.push(...batchResults);
+
+        const succeeded = batchResults.filter(r => r.status === 'success' || r.status === 'flagged').length;
+        const failed = batchResults.filter(r => r.status === 'failed').length;
+        const skipped = batchResults.filter(r => r.status === 'skipped').length;
+
+        if (failed > 0 || skipped > 0) {
+          addMessage('warning', `Batch ${batchIdx + 1} of ${totalBatches} — partial`,
+            `${succeeded} enriched, ${failed} failed, ${skipped} skipped`);
+        } else {
+          addMessage('success', `Batch ${batchIdx + 1} of ${totalBatches} — complete`,
+            `${succeeded} pages enriched successfully`);
+        }
+      } catch (err) {
+        addMessage('error', `Batch ${batchIdx + 1} of ${totalBatches} — failed`,
+          err instanceof Error ? err.message : 'Unknown error');
+      }
+
       await loadDrafts();
-
-      toast({
-        title: 'Enrichment complete',
-        description: `${data.pagesEnriched} enriched, ${data.pagesFailed || 0} failed`,
-      });
-    } catch (err) {
-      toast({
-        title: 'Enrichment failed',
-        description: err instanceof Error ? err.message : 'Unknown error',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsEnriching(false);
+      if (batchIdx + 1 < totalBatches) await new Promise(r => setTimeout(r, 3000));
     }
+
+    setBatchReport({ results: allResults });
+    const totalOk = allResults.filter(r => r.status === 'success' || r.status === 'flagged').length;
+    const totalFail = allResults.filter(r => r.status === 'failed').length;
+    const totalSkipped = allResults.filter(r => r.status === 'skipped').length;
+    addMessage(totalFail > 0 || totalSkipped > 0 ? 'warning' : 'success', 'Enrichment complete',
+      `${totalOk} enriched, ${totalFail} failed, ${totalSkipped} skipped out of ${allSlugs.length} pages`);
+    setEnrichProgress(null);
+    setIsEnriching(false);
   };
 
   const handleEnrichAllPending = async () => {
@@ -278,10 +338,16 @@ export function ContentEnricher() {
     let done = 0;
     let failed = 0;
 
-    const BATCH_SIZE = 8;
-    for (let i = 0; i < pending.length; i += BATCH_SIZE) {
-      const batch = pending.slice(i, i + BATCH_SIZE);
+    const batchLimit = getModelBatchLimit(aiModel);
+    const totalBatches = Math.ceil(pending.length / batchLimit);
+
+    addMessage('info', `Enriching all ${pending.length} pending pages`,
+      `Using ${AI_MODELS.find(m => m.value === aiModel)?.label} — ${totalBatches} batches of up to ${batchLimit} pages each`);
+
+    for (let i = 0; i < pending.length; i += batchLimit) {
+      const batch = pending.slice(i, i + batchLimit);
       const slugs = batch.map(r => r.slug);
+      const batchIdx = Math.floor(i / batchLimit) + 1;
       const currentContent = batch.map(r => ({
         slug: r.slug,
         examName: r.name || r.slug,
@@ -289,31 +355,40 @@ export function ContentEnricher() {
         existingSections: [],
       }));
 
+      setEnrichProgress(`Enriching all: batch ${batchIdx} of ${totalBatches}...`);
+
       try {
         const { data, error } = await supabase.functions.invoke('enrich-authority-pages', {
           body: { slugs, pageType: family, currentContent, aiModel },
         });
         if (error) throw error;
-        done += (data?.pagesEnriched || 0);
-        failed += (data?.pagesFailed || 0);
+        const batchDone = (data?.pagesEnriched || 0);
+        const batchFail = (data?.pagesFailed || 0);
+        const batchSkip = (data?.pagesSkipped || 0);
+        done += batchDone;
+        failed += batchFail + batchSkip;
+
+        if (batchFail > 0 || batchSkip > 0) {
+          addMessage('warning', `Batch ${batchIdx} partial`,
+            `${batchDone} enriched, ${batchFail} failed, ${batchSkip} skipped`);
+        }
       } catch {
         failed += batch.length;
+        addMessage('error', `Batch ${batchIdx} failed`, `All ${batch.length} pages in this batch failed`);
       }
 
       setBgProgress({ done: done + failed, total: pending.length, failed });
       await loadDrafts();
 
-      // Small delay between batches to avoid rate limits
-      if (i + BATCH_SIZE < pending.length) {
-        await new Promise(r => setTimeout(r, 2000));
+      if (i + batchLimit < pending.length) {
+        await new Promise(r => setTimeout(r, 3000));
       }
     }
 
     setBgEnriching(false);
-    toast({
-      title: 'All pending enrichment complete',
-      description: `${done} enriched, ${failed} failed out of ${pending.length} pages`,
-    });
+    setEnrichProgress(null);
+    addMessage(failed > 0 ? 'warning' : 'success', 'All pending enrichment complete',
+      `${done} enriched, ${failed} failed out of ${pending.length} pages`);
   };
 
   const handleApprove = async (slug: string) => {
@@ -425,6 +500,8 @@ export function ContentEnricher() {
     return <Badge variant="outline">{status}</Badge>;
   };
 
+  const batchLimit = getModelBatchLimit(aiModel);
+  const selectedModelLabel = AI_MODELS.find(m => m.value === aiModel)?.label || aiModel;
   const previewDrafts = previewSlug ? drafts.get(previewSlug) : null;
   const previewDraft = previewDrafts?.[0] ?? null;
   const historyVersions = historySlug ? drafts.get(historySlug) : null;
@@ -450,7 +527,7 @@ export function ContentEnricher() {
                 <SelectItem value="exam-pattern">Exam Pattern</SelectItem>
                 <SelectItem value="pyp">Previous Year Papers</SelectItem>
                 <SelectItem value="state">State Govt Jobs</SelectItem>
-            </SelectContent>
+              </SelectContent>
             </Select>
 
             <Select value={aiModel} onValueChange={setAiModel}>
@@ -464,24 +541,17 @@ export function ContentEnricher() {
               </SelectContent>
             </Select>
 
-            <Button onClick={handleEnrichBatch} disabled={selected.size === 0 || isEnriching}>
+            <Button onClick={handleEnrichBatch} disabled={selected.size === 0 || isEnriching || bgEnriching}>
               {isEnriching ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Sparkles className="h-4 w-4 mr-2" />}
               Enrich {selected.size} page{selected.size !== 1 ? 's' : ''}
             </Button>
 
             <Button
               variant="outline"
-              disabled={(() => {
-                const pending = pageRows.filter(r => getLatest(r.slug) === undefined);
-                return pending.length === 0 || isEnriching;
-              })()}
+              disabled={isEnriching || bgEnriching}
               onClick={() => {
                 const pending = pageRows.filter(r => getLatest(r.slug) === undefined);
-                const toSelect = pending.slice(0, 8);
-                setSelected(new Set(toSelect.map(r => r.slug)));
-                if (pending.length > 8) {
-                  toast({ title: 'Batch limit', description: `Selected first 8 of ${pending.length} pending pages (batch limit)` });
-                }
+                setSelected(new Set(pending.map(r => r.slug)));
               }}
             >
               Select All Pending
@@ -512,6 +582,60 @@ export function ContentEnricher() {
               {pageRows.length} pages · {pageRows.filter(r => r.healthColor === 'red').length} thin
             </span>
           </div>
+
+          {/* Model batch info */}
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Info className="h-3 w-3 shrink-0" />
+            <span>
+              {selectedModelLabel} processes {batchLimit} pages per batch.
+              {selected.size > batchLimit && (
+                <> Remaining pages auto-queued in {Math.ceil(selected.size / batchLimit)} batches.</>
+              )}
+            </span>
+          </div>
+
+          {/* Enrichment progress */}
+          {enrichProgress && (
+            <div className="flex items-center gap-2 p-2 rounded-lg bg-blue-50 border border-blue-200 text-sm text-blue-700">
+              <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+              {enrichProgress}
+            </div>
+          )}
+
+          {/* Persistent status messages */}
+          {messages.length > 0 && (
+            <div className="space-y-2 max-h-48 overflow-y-auto border rounded-lg p-3 bg-muted/30">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-medium text-muted-foreground">Activity Log</span>
+                <Button variant="ghost" size="sm" className="h-5 text-xs px-1" onClick={() => setMessages([])}>Clear all</Button>
+              </div>
+              {messages.map(msg => (
+                <div key={msg.id} className={`flex items-start gap-2 p-2 rounded text-sm border ${
+                  msg.type === 'success' ? 'bg-emerald-50 border-emerald-200' :
+                  msg.type === 'warning' ? 'bg-amber-50 border-amber-200' :
+                  msg.type === 'error' ? 'bg-red-50 border-red-200' :
+                  'bg-blue-50 border-blue-200'
+                }`}>
+                  <div className="mt-0.5 shrink-0">
+                    {msg.type === 'success' && <CheckCircle className="h-4 w-4 text-emerald-600" />}
+                    {msg.type === 'warning' && <AlertTriangle className="h-4 w-4 text-amber-600" />}
+                    {msg.type === 'error' && <XCircle className="h-4 w-4 text-red-600" />}
+                    {msg.type === 'info' && <Info className="h-4 w-4 text-blue-600" />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm">{msg.title}</p>
+                    <p className="text-muted-foreground text-xs">{msg.description}</p>
+                  </div>
+                  <span className="text-xs text-muted-foreground shrink-0">
+                    {msg.timestamp.toLocaleTimeString()}
+                  </span>
+                  <button onClick={() => dismissMessage(msg.id)} className="text-muted-foreground hover:text-foreground shrink-0">
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
 
           <div className="rounded-md border">
             <Table>
@@ -620,7 +744,7 @@ export function ContentEnricher() {
             <CardTitle className="text-lg">Batch Report</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
               <div className="p-3 rounded-lg bg-muted">
                 <p className="text-2xl font-bold">{batchReport.results.length}</p>
                 <p className="text-xs text-muted-foreground">Pages processed</p>
@@ -638,6 +762,12 @@ export function ContentEnricher() {
                 <p className="text-xs text-muted-foreground">Failed</p>
               </div>
               <div className="p-3 rounded-lg bg-muted">
+                <p className="text-2xl font-bold text-amber-600">
+                  {batchReport.results.filter(r => r.status === 'skipped').length}
+                </p>
+                <p className="text-xs text-muted-foreground">Skipped</p>
+              </div>
+              <div className="p-3 rounded-lg bg-muted">
                 <p className="text-2xl font-bold">
                   {batchReport.results.reduce((s, r) => s + r.sectionsAdded.length, 0)}
                 </p>
@@ -649,6 +779,8 @@ export function ContentEnricher() {
               <div key={r.slug} className="flex items-start gap-3 p-3 rounded-lg border">
                 {r.status === 'failed' ? (
                   <XCircle className="h-5 w-5 text-red-500 mt-0.5 shrink-0" />
+                ) : r.status === 'skipped' ? (
+                  <Clock className="h-5 w-5 text-amber-500 mt-0.5 shrink-0" />
                 ) : r.flags.length > 0 ? (
                   <AlertTriangle className="h-5 w-5 text-amber-500 mt-0.5 shrink-0" />
                 ) : (
@@ -656,7 +788,7 @@ export function ContentEnricher() {
                 )}
                 <div className="min-w-0">
                   <p className="font-medium text-sm">{r.slug}</p>
-                  {r.status === 'failed' ? (
+                  {r.status === 'failed' || r.status === 'skipped' ? (
                     <p className="text-xs text-red-600">{r.failureReason || 'Unknown failure'}</p>
                   ) : (
                     <>
@@ -694,7 +826,6 @@ export function ContentEnricher() {
                 ))}
               </div>
 
-              {/* Failure reason block */}
               {previewDraft.failure_reason && (
                 <div className="p-3 rounded-lg bg-red-50 border border-red-200">
                   <p className="text-sm font-medium text-red-700 mb-1">Failure Reason</p>
@@ -727,7 +858,6 @@ export function ContentEnricher() {
                 </div>
               ))}
 
-              {/* Review notes */}
               {previewDraft.status === 'draft' && (
                 <div>
                   <label className="text-sm font-medium text-muted-foreground mb-1 block">Review Notes (optional)</label>

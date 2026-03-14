@@ -115,6 +115,21 @@ function computeFallbackTimeoutMs(startedAtMs: number): number {
   return Math.max(12_000, Math.min(60_000, remaining));
 }
 
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  return await new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label} timeout after ${timeoutMs}ms`)), timeoutMs);
+    promise
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+  });
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // CLAUDE: SIMPLIFIED TOOL SCHEMA FOR STRUCTURED OUTPUT
 // ═══════════════════════════════════════════════════════════════════════════════

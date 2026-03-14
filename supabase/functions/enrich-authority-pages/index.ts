@@ -797,8 +797,7 @@ Generate content for these sections:
 7. Smart Time Management Strategy
 8. Changes from Previous Year
 
-FAQs: 5-7 questions.
-Return the JSON matching the schema provided. Be concise — each section 100-300 words.`;
+FAQs: 5-7 questions.`;
 }
 
 function buildPYPPrompt(page: PageContent): string {

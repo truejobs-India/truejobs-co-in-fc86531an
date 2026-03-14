@@ -506,7 +506,7 @@ export function ContentEnricher() {
     return <Badge variant="outline">{status}</Badge>;
   };
 
-  const selectedModelInfo = AI_MODELS.find(m => m.value === aiModel);
+  const selectedModelInfo = getModelDef(aiModel);
   const previewDrafts = previewSlug ? drafts.get(previewSlug) : null;
   const previewDraft = previewDrafts?.[0] ?? null;
   const historyVersions = historySlug ? drafts.get(historySlug) : null;

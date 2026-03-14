@@ -263,7 +263,7 @@ async function callClaudeRaw(prompt: string): Promise<string> {
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured — please add it to secrets');
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), AI_TIMEOUT_MS_SLOW);
 
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {

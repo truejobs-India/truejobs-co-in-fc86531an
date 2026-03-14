@@ -596,39 +596,12 @@ export function ContentEnricher() {
           )}
 
           {/* Persistent status messages */}
-          {messages.length > 0 && (
-            <div className="space-y-2 max-h-48 overflow-y-auto border rounded-lg p-3 bg-muted/30">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs font-medium text-muted-foreground">Activity Log</span>
-                <Button variant="ghost" size="sm" className="h-5 text-xs px-1" onClick={() => setMessages([])}>Clear all</Button>
-              </div>
-              {messages.map(msg => (
-                <div key={msg.id} className={`flex items-start gap-2 p-2 rounded text-sm border ${
-                  msg.type === 'success' ? 'bg-emerald-50 border-emerald-200' :
-                  msg.type === 'warning' ? 'bg-amber-50 border-amber-200' :
-                  msg.type === 'error' ? 'bg-red-50 border-red-200' :
-                  'bg-blue-50 border-blue-200'
-                }`}>
-                  <div className="mt-0.5 shrink-0">
-                    {msg.type === 'success' && <CheckCircle className="h-4 w-4 text-emerald-600" />}
-                    {msg.type === 'warning' && <AlertTriangle className="h-4 w-4 text-amber-600" />}
-                    {msg.type === 'error' && <XCircle className="h-4 w-4 text-red-600" />}
-                    {msg.type === 'info' && <Info className="h-4 w-4 text-blue-600" />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm">{msg.title}</p>
-                    <p className="text-muted-foreground text-xs">{msg.description}</p>
-                  </div>
-                  <span className="text-xs text-muted-foreground shrink-0">
-                    {msg.timestamp.toLocaleTimeString()}
-                  </span>
-                  <button onClick={() => dismissMessage(msg.id)} className="text-muted-foreground hover:text-foreground shrink-0">
-                    <X className="h-3 w-3" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
+          <AdminMessageLog
+            messages={messages}
+            onDismiss={dismissMessage}
+            onClearAll={clearAll}
+            onToggleExpand={toggleExpand}
+          />
 
           <div className="rounded-md border">
             <Table>

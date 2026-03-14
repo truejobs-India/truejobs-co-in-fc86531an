@@ -690,6 +690,7 @@ export function EmploymentNewsManager() {
                 <SelectItem value="enriched">Enriched</SelectItem>
                 <SelectItem value="published">Published</SelectItem>
                 <SelectItem value="rejected">Rejected</SelectItem>
+                <SelectItem value="enrichment_failed">Failed</SelectItem>
               </SelectContent>
             </Select>
             <Select value={jobTypeFilter} onValueChange={v => { setJobTypeFilter(v); setCurrentPage(1); }}>

@@ -116,6 +116,7 @@ export function BlogPostEditor() {
   const [bulkWordCount, setBulkWordCount] = useState(1500);
   const [bulkResults, setBulkResults] = useState<{ topic: string; status: 'queued' | 'generating' | 'success' | 'failed'; articleId?: string; error?: string }[]>([]);
   const [isBulkGenerating, setIsBulkGenerating] = useState(false);
+  const [bulkAiModel, setBulkAiModel] = useState<'gemini' | 'claude'>('gemini');
   const bulkGenerateAbortRef = useRef(false);
 
   // Bulk cover image generation state
@@ -848,7 +849,7 @@ export function BlogPostEditor() {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) throw new Error('Not authenticated');
         const { data, error } = await supabase.functions.invoke('generate-blog-article', {
-          body: { topic: topics[i], category: bulkCategory, targetWordCount: bulkWordCount },
+          body: { topic: topics[i], category: bulkCategory, targetWordCount: bulkWordCount, aiModel: bulkAiModel },
         });
         if (error) throw new Error(error.message);
         if (!data?.title || !data?.content) throw new Error('Invalid AI response');
@@ -899,7 +900,7 @@ export function BlogPostEditor() {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) throw new Error('Not authenticated');
         const { data, error } = await supabase.functions.invoke('generate-blog-article', {
-          body: { topic: item.topic, category: bulkCategory, targetWordCount: bulkWordCount },
+          body: { topic: item.topic, category: bulkCategory, targetWordCount: bulkWordCount, aiModel: bulkAiModel },
         });
         if (error) throw new Error(error.message);
         if (!data?.title || !data?.content) throw new Error('Invalid AI response');
@@ -1230,6 +1231,16 @@ export function BlogPostEditor() {
                     <SelectItem value="1500">1500</SelectItem>
                     <SelectItem value="1800">1800</SelectItem>
                     <SelectItem value="2200">2200</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">AI Model</Label>
+                <Select value={bulkAiModel} onValueChange={(v) => setBulkAiModel(v as 'gemini' | 'claude')}>
+                  <SelectTrigger className="w-[160px] h-8 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="gemini">Gemini 2.5 Flash</SelectItem>
+                    <SelectItem value="claude">Claude Sonnet 4.6</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

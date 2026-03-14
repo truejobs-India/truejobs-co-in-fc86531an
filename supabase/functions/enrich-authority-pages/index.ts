@@ -196,19 +196,29 @@ If any check fails, fix it before returning.
 // MULTI-MODEL AI DISPATCHER
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const AI_TIMEOUT_MS = 120_000; // 120s — large structured content needs time
+const AI_TIMEOUT_MS = 120_000; // default timeout for fast/medium models
+const AI_TIMEOUT_MS_SLOW = 90_000; // cap slower models early so fallback can still complete within runtime budget
 
+const FUNCTION_TIME_BUDGET_MS = 140_000; // baseline guard before 150s platform limit
 
-const FUNCTION_TIME_BUDGET_MS = 140_000; // bail before 150s platform limit
+function isAbortError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const msg = error.message.toLowerCase();
+  return msg.includes('signal has been aborted') || msg.includes('aborterror') || msg.includes('aborted');
+}
 
 // ── Gemini (Direct API) ──
-async function fetchGemini(prompt: string, model = 'gemini-2.5-flash'): Promise<string> {
+async function fetchGemini(
+  prompt: string,
+  model = 'gemini-2.5-flash',
+  timeoutMs = AI_TIMEOUT_MS,
+): Promise<string> {
   const apiKey = Deno.env.get('GEMINI_API_KEY');
   if (!apiKey) throw new Error('GEMINI_API_KEY not configured — please add it to secrets');
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetch(url, {
@@ -254,12 +264,18 @@ async function fetchGemini(prompt: string, model = 'gemini-2.5-flash'): Promise<
 }
 
 // ── Claude (Direct Anthropic API) ──
-async function callClaudeRaw(prompt: string): Promise<string> {
+async function callClaudeRaw(
+  prompt: string,
+  options?: { timeoutMs?: number; maxTokens?: number },
+): Promise<string> {
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured — please add it to secrets');
 
+  const timeoutMs = options?.timeoutMs ?? AI_TIMEOUT_MS_SLOW;
+  const maxTokens = options?.maxTokens ?? 12288;
+
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -272,7 +288,7 @@ async function callClaudeRaw(prompt: string): Promise<string> {
       signal: controller.signal,
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: 16384,
+        max_tokens: maxTokens,
         temperature: 0.6,
         messages: [{ role: 'user', content: prompt }],
       }),
@@ -498,9 +514,16 @@ async function callAI(model: string, prompt: string): Promise<Record<string, unk
       rawText = await fetchGemini(prompt, 'gemini-2.5-pro');
       break;
     case 'claude-sonnet':
-    case 'claude':
-      rawText = await callClaudeRaw(prompt);
+    case 'claude': {
+      try {
+        rawText = await callClaudeRaw(prompt, { timeoutMs: AI_TIMEOUT_MS_SLOW, maxTokens: 8192 });
+      } catch (error) {
+        if (!isAbortError(error)) throw error;
+        console.warn('Claude request timed out — falling back to gemini-2.5-flash for completion');
+        rawText = await fetchGemini(prompt, 'gemini-2.5-flash', 45_000);
+      }
       break;
+    }
     case 'mistral':
       rawText = await callMistralRaw(prompt);
       break;
@@ -976,6 +999,9 @@ serve(async (req) => {
 
     const selectedModel = aiModel || 'gemini-flash';
     const fnStart = Date.now();
+    const modelTimeBudgetMs = (selectedModel === 'claude-sonnet' || selectedModel === 'claude' || selectedModel === 'gpt5')
+      ? 130_000
+      : FUNCTION_TIME_BUDGET_MS;
     console.log(`[enrich-authority-pages] Boot: ${slugs.length} slugs, model=${selectedModel}, type=${pageType}`);
 
     const svc = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
@@ -1082,8 +1108,8 @@ serve(async (req) => {
     for (let i = 0; i < slugs.length; i += CONCURRENCY) {
       // ── Time budget guard ──
       const elapsed = Date.now() - fnStart;
-      if (elapsed > FUNCTION_TIME_BUDGET_MS) {
-        console.warn(`[enrich-authority-pages] Time budget exceeded (${elapsed}ms) — skipping remaining ${slugs.length - i} slugs`);
+      if (elapsed > modelTimeBudgetMs) {
+        console.warn(`[enrich-authority-pages] Time budget exceeded (${elapsed}ms / ${modelTimeBudgetMs}ms) — skipping remaining ${slugs.length - i} slugs`);
         for (let j = i; j < slugs.length; j++) {
           results[j] = {
             slug: slugs[j],

@@ -291,7 +291,7 @@ export function ContentEnricher() {
 
       try {
         const { data, error } = await supabase.functions.invoke('enrich-authority-pages', {
-          body: { slugs, pageType: family, currentContent },
+          body: { slugs, pageType: family, currentContent, aiModel },
         });
         if (error) throw error;
         done += (data?.pagesEnriched || 0);

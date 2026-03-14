@@ -10,7 +10,7 @@ export default function TermsOfUse() {
         description="Read the Terms of Use governing your access to TrueJobs, an independent government job information portal. Covers user responsibilities, no government affiliation, verification obligations, and dispute resolution."
         url="/termsofuse"
       />
-      <div className="container mx-auto px-4 py-12 max-w-4xl">
+      <div className="container mx-auto px-4 py-12 max-w-4xl content-area my-8">
         <Card>
           <CardHeader>
             <CardTitle className="text-3xl">Terms of Use</CardTitle>

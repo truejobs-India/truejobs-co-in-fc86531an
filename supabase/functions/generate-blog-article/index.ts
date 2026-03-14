@@ -158,7 +158,7 @@ async function awsSigV4Fetch(host: string, rawPath: string, body: string, region
 
 // ── 5. Claude (AWS Bedrock via Cross-Region Inference Profile) ──
 async function callClaude(prompt: string): Promise<string> {
-  const inferenceProfileId = 'apac.anthropic.claude-sonnet-4-6';
+  const inferenceProfileId = 'global.anthropic.claude-sonnet-4-6';
   const region = 'ap-south-1';
   const host = `bedrock-runtime.${region}.amazonaws.com`;
   const rawPath = `/model/${inferenceProfileId}/invoke`;

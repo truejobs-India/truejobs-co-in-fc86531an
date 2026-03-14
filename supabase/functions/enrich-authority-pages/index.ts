@@ -196,10 +196,16 @@ If any check fails, fix it before returning.
 // MULTI-MODEL AI DISPATCHER
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const AI_TIMEOUT_MS = 120_000; // 120s — large structured content needs time
+const AI_TIMEOUT_MS = 120_000; // default timeout for fast/medium models
+const AI_TIMEOUT_MS_SLOW = 135_000; // slower models (Claude/GPT) need more headroom
 
+const FUNCTION_TIME_BUDGET_MS = 140_000; // baseline guard before 150s platform limit
 
-const FUNCTION_TIME_BUDGET_MS = 140_000; // bail before 150s platform limit
+function isAbortError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const msg = error.message.toLowerCase();
+  return msg.includes('signal has been aborted') || msg.includes('aborterror') || msg.includes('aborted');
+}
 
 // ── Gemini (Direct API) ──
 async function fetchGemini(prompt: string, model = 'gemini-2.5-flash'): Promise<string> {

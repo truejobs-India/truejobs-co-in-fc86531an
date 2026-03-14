@@ -24,6 +24,7 @@ import {
   Sparkles,
   Newspaper,
   Shield,
+  Globe,
 } from 'lucide-react';
 import { RestrictedDomainsManager } from '@/components/admin/RestrictedDomainsManager';
 import { EmploymentNewsManager } from '@/components/admin/EmploymentNewsManager';
@@ -50,6 +51,7 @@ import { GuideGenerator } from '@/components/admin/GuideGenerator';
 import { ContentEnricher } from '@/components/admin/ContentEnricher';
 import { SEORoutePolicyDashboard } from '@/components/admin/seo-policy/SEORoutePolicyDashboard';
 import { VertexAITestPanel } from '@/components/admin/VertexAITestPanel';
+import { CustomPagesManager } from '@/components/admin/CustomPagesManager';
 import { useNavigate } from 'react-router-dom';
 
 type DrilldownView = 
@@ -318,6 +320,10 @@ function AdminDashboardInner() {
                   <Shield className="h-4 w-4" />
                   <span className="hidden sm:inline">SEO Policy</span>
                 </TabsTrigger>
+                <TabsTrigger value="custom-pages" className="flex items-center gap-2">
+                  <Globe className="h-4 w-4" />
+                  <span className="hidden sm:inline">Pages</span>
+                </TabsTrigger>
                 <TabsTrigger value="ai-test" className="flex items-center gap-2">
                   <Sparkles className="h-4 w-4" />
                   <span className="hidden sm:inline">AI Test</span>
@@ -389,6 +395,10 @@ function AdminDashboardInner() {
 
               <TabsContent value="seo-policy">
                 <SEORoutePolicyDashboard />
+              </TabsContent>
+
+              <TabsContent value="custom-pages">
+                <CustomPagesManager />
               </TabsContent>
 
               <TabsContent value="ai-test">

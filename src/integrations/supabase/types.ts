@@ -575,6 +575,93 @@ export type Database = {
         }
         Relationships: []
       }
+      custom_pages: {
+        Row: {
+          ai_generated_at: string | null
+          ai_model_used: string | null
+          author_id: string
+          canonical_url: string | null
+          category: string | null
+          content: string
+          cover_image_url: string | null
+          created_at: string
+          excerpt: string | null
+          faq_schema: Json | null
+          featured_image_alt: string | null
+          id: string
+          is_published: boolean | null
+          language: string | null
+          meta_description: string | null
+          meta_title: string | null
+          page_type: string | null
+          published_at: string | null
+          reading_time: number | null
+          schema_json: string | null
+          slug: string
+          status: string | null
+          tags: string[] | null
+          title: string
+          updated_at: string
+          word_count: number | null
+        }
+        Insert: {
+          ai_generated_at?: string | null
+          ai_model_used?: string | null
+          author_id: string
+          canonical_url?: string | null
+          category?: string | null
+          content?: string
+          cover_image_url?: string | null
+          created_at?: string
+          excerpt?: string | null
+          faq_schema?: Json | null
+          featured_image_alt?: string | null
+          id?: string
+          is_published?: boolean | null
+          language?: string | null
+          meta_description?: string | null
+          meta_title?: string | null
+          page_type?: string | null
+          published_at?: string | null
+          reading_time?: number | null
+          schema_json?: string | null
+          slug: string
+          status?: string | null
+          tags?: string[] | null
+          title: string
+          updated_at?: string
+          word_count?: number | null
+        }
+        Update: {
+          ai_generated_at?: string | null
+          ai_model_used?: string | null
+          author_id?: string
+          canonical_url?: string | null
+          category?: string | null
+          content?: string
+          cover_image_url?: string | null
+          created_at?: string
+          excerpt?: string | null
+          faq_schema?: Json | null
+          featured_image_alt?: string | null
+          id?: string
+          is_published?: boolean | null
+          language?: string | null
+          meta_description?: string | null
+          meta_title?: string | null
+          page_type?: string | null
+          published_at?: string | null
+          reading_time?: number | null
+          schema_json?: string | null
+          slug?: string
+          status?: string | null
+          tags?: string[] | null
+          title?: string
+          updated_at?: string
+          word_count?: number | null
+        }
+        Relationships: []
+      }
       education: {
         Row: {
           created_at: string

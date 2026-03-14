@@ -67,13 +67,7 @@ interface EnrichmentDraft {
   failure_reason: string | null;
 }
 
-interface PersistentMessage {
-  id: string;
-  type: 'success' | 'warning' | 'error' | 'info';
-  title: string;
-  description: string;
-  timestamp: Date;
-}
+// PersistentMessage removed — using AdminMessagesContext
 
 function countWordsInHtml(html: string): number {
   return html.replace(/<[^>]+>/g, ' ').trim().split(/\s+/).filter(Boolean).length;

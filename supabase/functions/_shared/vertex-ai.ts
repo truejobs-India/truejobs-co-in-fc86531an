@@ -59,16 +59,30 @@ export async function getVertexAccessToken(): Promise<string> {
   return access_token;
 }
 
+/** Options to customize Vertex AI generation beyond defaults */
+export interface VertexGeminiOptions {
+  /** Max output tokens (default: 8192) */
+  maxOutputTokens?: number;
+  /** Temperature (default: 0.6) */
+  temperature?: number;
+  /** Response MIME type — set to 'application/json' to force JSON output */
+  responseMimeType?: string;
+  /** Top-P sampling (optional) */
+  topP?: number;
+}
+
 /**
  * Call Vertex AI Gemini model and return raw text.
  * @param model - e.g. 'gemini-2.5-flash' or 'gemini-2.5-pro'
  * @param prompt - user prompt text
  * @param timeoutMs - request timeout (default 60s)
+ * @param options - generation config overrides
  */
 export async function callVertexGemini(
   model: string,
   prompt: string,
   timeoutMs = 60_000,
+  options?: VertexGeminiOptions,
 ): Promise<string> {
   const projectId = Deno.env.get('GCP_PROJECT_ID');
   const location = Deno.env.get('GCP_LOCATION') || 'us-central1';
@@ -81,6 +95,20 @@ export async function callVertexGemini(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
+  // Build generationConfig with caller overrides
+  const generationConfig: Record<string, unknown> = {
+    temperature: options?.temperature ?? 0.6,
+    maxOutputTokens: options?.maxOutputTokens ?? 8192,
+  };
+  if (options?.responseMimeType) {
+    generationConfig.responseMimeType = options.responseMimeType;
+  }
+  if (options?.topP !== undefined) {
+    generationConfig.topP = options.topP;
+  }
+
+  console.log(`[vertex-ai] model=${model} timeout=${timeoutMs}ms maxTokens=${generationConfig.maxOutputTokens} mimeType=${generationConfig.responseMimeType || 'text/plain'} promptLen=${prompt.length}`);
+
   try {
     const resp = await fetch(url, {
       method: 'POST',
@@ -90,10 +118,7 @@ export async function callVertexGemini(
       },
       body: JSON.stringify({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: 0.6,
-          maxOutputTokens: 8192,
-        },
+        generationConfig,
       }),
       signal: controller.signal,
     });
@@ -104,7 +129,9 @@ export async function callVertexGemini(
     }
 
     const data = await resp.json();
-    return data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    console.log(`[vertex-ai] model=${model} responseLen=${text.length}`);
+    return text;
   } finally {
     clearTimeout(timer);
   }

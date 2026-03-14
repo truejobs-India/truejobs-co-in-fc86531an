@@ -116,7 +116,7 @@ export function BlogPostEditor() {
   const [bulkWordCount, setBulkWordCount] = useState(1500);
   const [bulkResults, setBulkResults] = useState<{ topic: string; status: 'queued' | 'generating' | 'success' | 'failed'; articleId?: string; error?: string }[]>([]);
   const [isBulkGenerating, setIsBulkGenerating] = useState(false);
-  const [bulkAiModel, setBulkAiModel] = useState<'gemini' | 'claude'>('gemini');
+  const [bulkAiModel, setBulkAiModel] = useState<string>('gemini');
   const bulkGenerateAbortRef = useRef(false);
 
   // Bulk cover image generation state
@@ -1236,10 +1236,14 @@ export function BlogPostEditor() {
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">AI Model</Label>
-                <Select value={bulkAiModel} onValueChange={(v) => setBulkAiModel(v as 'gemini' | 'claude')}>
-                  <SelectTrigger className="w-[160px] h-8 text-xs"><SelectValue /></SelectTrigger>
+                <Select value={bulkAiModel} onValueChange={setBulkAiModel}>
+                  <SelectTrigger className="w-[180px] h-8 text-xs"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="gemini">Gemini 2.5 Flash</SelectItem>
+                    <SelectItem value="lovable-gemini">Lovable Gemini</SelectItem>
+                    <SelectItem value="groq">Groq (Llama 3.3)</SelectItem>
+                    <SelectItem value="openai">OpenAI GPT-4o</SelectItem>
+                    <SelectItem value="mistral">Mistral 7B</SelectItem>
                     <SelectItem value="claude">Claude Sonnet 4.6</SelectItem>
                   </SelectContent>
                 </Select>

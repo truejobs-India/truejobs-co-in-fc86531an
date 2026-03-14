@@ -1,4 +1,3 @@
-// Direct Gemini 2.5 API only for non-image AI features — does NOT use Lovable AI gateway
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
@@ -26,16 +25,19 @@ async function verifyAdmin(req: Request): Promise<{ userId: string } | Response>
   return { userId };
 }
 
-const GEMINI_MODEL = 'gemini-2.5-flash';
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+// ═══════════════════════════════════════════════════════════════
+// AI Model Providers (same as generate-blog-article)
+// ═══════════════════════════════════════════════════════════════
 
-async function callGemini(apiKey: string, prompt: string): Promise<string> {
-  const resp = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
+async function callGemini(prompt: string): Promise<string> {
+  const apiKey = Deno.env.get('GEMINI_API_KEY');
+  if (!apiKey) throw new Error('GEMINI_API_KEY not configured');
+  const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { maxOutputTokens: 2000, temperature: 0.4 },
+      generationConfig: { maxOutputTokens: 4000, temperature: 0.4 },
     }),
   });
   if (!resp.ok) throw new Error(`Gemini API error ${resp.status}`);
@@ -43,10 +45,65 @@ async function callGemini(apiKey: string, prompt: string): Promise<string> {
   return data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
 }
 
-// ── AWS Bedrock Claude Support ──
-const CLAUDE_REGION = 'ap-south-1';
-const CLAUDE_MODEL_ID = 'anthropic.claude-sonnet-4-6';
+async function callLovableGemini(prompt: string): Promise<string> {
+  const apiKey = Deno.env.get('LOVABLE_API_KEY');
+  if (!apiKey) throw new Error('LOVABLE_API_KEY not configured');
+  const resp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'google/gemini-2.5-flash',
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 4000,
+      temperature: 0.4,
+    }),
+  });
+  if (!resp.ok) {
+    if (resp.status === 429) throw new Error('Rate limit exceeded on Lovable AI.');
+    if (resp.status === 402) throw new Error('Lovable AI credits exhausted.');
+    throw new Error(`Lovable AI error ${resp.status}`);
+  }
+  const data = await resp.json();
+  return data?.choices?.[0]?.message?.content || '';
+}
 
+async function callOpenAI(prompt: string): Promise<string> {
+  const apiKey = Deno.env.get('OPENAI_API_KEY');
+  if (!apiKey) throw new Error('OPENAI_API_KEY not configured');
+  const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 4000,
+      temperature: 0.4,
+    }),
+  });
+  if (!resp.ok) throw new Error(`OpenAI API error ${resp.status}`);
+  const data = await resp.json();
+  return data?.choices?.[0]?.message?.content || '';
+}
+
+async function callGroq(prompt: string): Promise<string> {
+  const apiKey = Deno.env.get('GROQ_API_KEY');
+  if (!apiKey) throw new Error('GROQ_API_KEY not configured');
+  const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'llama-3.3-70b-versatile',
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 4000,
+      temperature: 0.4,
+    }),
+  });
+  if (!resp.ok) throw new Error(`Groq API error ${resp.status}`);
+  const data = await resp.json();
+  return data?.choices?.[0]?.message?.content || '';
+}
+
+// ── AWS Sig V4 helpers ──
 async function hmacSha256B(key: ArrayBuffer | Uint8Array, data: string): Promise<ArrayBuffer> {
   const enc = new TextEncoder();
   const ck = await crypto.subtle.importKey('raw', key instanceof Uint8Array ? key : new Uint8Array(key), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
@@ -56,54 +113,67 @@ async function sha256Hex(data: string): Promise<string> {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(data));
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
-
-async function callClaudeAI(prompt: string): Promise<string> {
+async function awsSigV4Fetch(host: string, canonicalUri: string, body: string, region: string, service: string): Promise<Response> {
   const ak = Deno.env.get('AWS_ACCESS_KEY_ID');
   const sk = Deno.env.get('AWS_SECRET_ACCESS_KEY');
   if (!ak || !sk) throw new Error('AWS credentials not configured');
-
-  const host = `bedrock-runtime.${CLAUDE_REGION}.amazonaws.com`;
-  const canonicalUri = `/model/${CLAUDE_MODEL_ID}/invoke`;
-  const body = JSON.stringify({
-    anthropic_version: 'bedrock-2023-05-31',
-    messages: [{ role: 'user', content: prompt }],
-    max_tokens: 4096,
-    temperature: 0.4,
-  });
-
   const now = new Date();
   const dateStamp = now.toISOString().replace(/[:-]|\.\d{3}/g, '').slice(0, 8);
   const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '').slice(0, 15) + 'Z';
-  const credentialScope = `${dateStamp}/${CLAUDE_REGION}/bedrock/aws4_request`;
+  const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`;
   const payloadHash = await sha256Hex(body);
   const canonicalHeaders = `content-type:application/json\nhost:${host}\nx-amz-date:${amzDate}\n`;
   const signedHeaders = 'content-type;host;x-amz-date';
   const canonicalRequest = `POST\n${canonicalUri}\n\n${canonicalHeaders}\n${signedHeaders}\n${payloadHash}`;
   const stringToSign = `AWS4-HMAC-SHA256\n${amzDate}\n${credentialScope}\n${await sha256Hex(canonicalRequest)}`;
-
   const enc = new TextEncoder();
   let sigKey = await hmacSha256B(enc.encode(`AWS4${sk}`), dateStamp);
-  sigKey = await hmacSha256B(sigKey, CLAUDE_REGION);
-  sigKey = await hmacSha256B(sigKey, 'bedrock');
+  sigKey = await hmacSha256B(sigKey, region);
+  sigKey = await hmacSha256B(sigKey, service);
   sigKey = await hmacSha256B(sigKey, 'aws4_request');
   const sig = Array.from(new Uint8Array(await hmacSha256B(sigKey, stringToSign))).map(b => b.toString(16).padStart(2, '0')).join('');
-
-  const resp = await fetch(`https://${host}${canonicalUri}`, {
+  return fetch(`https://${host}${canonicalUri}`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Amz-Date': amzDate,
-      Authorization: `AWS4-HMAC-SHA256 Credential=${ak}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${sig}`,
-    },
+    headers: { 'Content-Type': 'application/json', 'X-Amz-Date': amzDate, Authorization: `AWS4-HMAC-SHA256 Credential=${ak}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${sig}` },
     body,
   });
-  if (!resp.ok) {
-    const errText = await resp.text();
-    throw new Error(`Claude Bedrock ${resp.status}: ${errText}`);
-  }
+}
+
+async function callClaude(prompt: string): Promise<string> {
+  const modelId = 'anthropic.claude-sonnet-4-6';
+  const region = 'ap-south-1';
+  const host = `bedrock-runtime.${region}.amazonaws.com`;
+  const body = JSON.stringify({ anthropic_version: 'bedrock-2023-05-31', messages: [{ role: 'user', content: prompt }], max_tokens: 4096, temperature: 0.4 });
+  const resp = await awsSigV4Fetch(host, `/model/${modelId}/invoke`, body, region, 'bedrock');
+  if (!resp.ok) throw new Error(`Claude Bedrock ${resp.status}: ${await resp.text()}`);
   const data = await resp.json();
   return data?.content?.[0]?.text || '';
 }
+
+async function callMistral(prompt: string): Promise<string> {
+  const modelId = 'mistral.mistral-7b-instruct-v0:2';
+  const region = Deno.env.get('AWS_REGION') || 'ap-south-1';
+  const host = `bedrock-runtime.${region}.amazonaws.com`;
+  const body = JSON.stringify({ messages: [{ role: 'user', content: [{ text: prompt }] }], inferenceConfig: { maxTokens: 4096, temperature: 0.4 } });
+  const resp = await awsSigV4Fetch(host, `/model/${modelId.replace(/:/g, '%3A')}/converse`, body, region, 'bedrock');
+  if (!resp.ok) throw new Error(`Mistral Bedrock ${resp.status}: ${await resp.text()}`);
+  const data = await resp.json();
+  return data?.output?.message?.content?.[0]?.text || '';
+}
+
+function callAI(model: string, prompt: string): Promise<string> {
+  switch (model) {
+    case 'gemini': return callGemini(prompt);
+    case 'lovable-gemini': return callLovableGemini(prompt);
+    case 'openai': return callOpenAI(prompt);
+    case 'groq': return callGroq(prompt);
+    case 'claude': return callClaude(prompt);
+    case 'mistral': return callMistral(prompt);
+    default: return callGemini(prompt);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
@@ -142,15 +212,9 @@ Article excerpt: ${plainText}
 
 Return ONLY the JSON array, no markdown formatting, no code blocks.`;
 
-    let raw: string;
     const useModel = aiModel || 'gemini';
-    if (useModel === 'claude') {
-      raw = await callClaudeAI(prompt);
-    } else {
-      const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
-      if (!geminiApiKey) throw new Error('GEMINI_API_KEY not configured');
-      raw = await callGemini(geminiApiKey, prompt);
-    }
+    console.log(`[generate-blog-faq] Using model: ${useModel}`);
+    let raw = await callAI(useModel, prompt);
     raw = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
 
     let faqs: { question: string; answer: string }[];
@@ -161,7 +225,6 @@ Return ONLY the JSON array, no markdown formatting, no code blocks.`;
       faqs = [];
     }
 
-    // Build FAQ HTML
     const faqHtml = faqs.length > 0
       ? `<h2>Frequently Asked Questions (FAQ)</h2>\n${faqs.map(f => `<h3>${f.question}</h3>\n<p>${f.answer}</p>`).join('\n')}`
       : '';

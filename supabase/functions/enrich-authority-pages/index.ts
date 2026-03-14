@@ -995,6 +995,9 @@ serve(async (req) => {
 
     const selectedModel = aiModel || 'gemini-flash';
     const fnStart = Date.now();
+    const modelTimeBudgetMs = (selectedModel === 'claude-sonnet' || selectedModel === 'claude' || selectedModel === 'gpt5')
+      ? 130_000
+      : FUNCTION_TIME_BUDGET_MS;
     console.log(`[enrich-authority-pages] Boot: ${slugs.length} slugs, model=${selectedModel}, type=${pageType}`);
 
     const svc = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);

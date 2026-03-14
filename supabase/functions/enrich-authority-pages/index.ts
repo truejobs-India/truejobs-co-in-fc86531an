@@ -196,7 +196,13 @@ If any check fails, fix it before returning.
 // MULTI-MODEL AI DISPATCHER
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const AI_TIMEOUT_MS = 60_000; // 60 seconds per AI call
+const AI_TIMEOUT_MS_DEFAULT = 60_000; // 60s for fast models
+const AI_TIMEOUT_MS_SLOW = 120_000;   // 120s for Claude / GPT (large output)
+
+function getAiTimeout(model: string): number {
+  if (model.includes('claude') || model.includes('gpt')) return AI_TIMEOUT_MS_SLOW;
+  return AI_TIMEOUT_MS_DEFAULT;
+}
 const FUNCTION_TIME_BUDGET_MS = 120_000; // bail before 150s platform limit
 
 // ── Gemini (Direct API) ──

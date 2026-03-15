@@ -1314,6 +1314,10 @@ export function useBulkBlogWorkflow() {
 
     const preWordCount = (post.content || '').replace(/<[^>]+>/g, '').split(/\s+/).filter((w: string) => w.length > 0).length;
 
+    // ── Pre-enrichment readiness check to get failing criteria ──
+    const preReadiness = checkEnrichReadiness(post, post.category || undefined);
+    const isStubRebuild = preWordCount < 500;
+
     // Dynamic target: at least current + 30%, minimum 1500
     const dynamicTarget = Math.max(1500, Math.ceil(preWordCount * 1.3), preWordCount + 300);
 
@@ -1325,6 +1329,8 @@ export function useBulkBlogWorkflow() {
         aiModel,
         preserveElements: article.preserve_elements,
         missingElements: article.missing_elements,
+        failingCriteria: preReadiness.failing,
+        isStubRebuild,
       },
     });
 
@@ -1336,10 +1342,10 @@ export function useBulkBlogWorkflow() {
       throw new Error('Enrichment returned empty or unusable content');
     }
 
-    // ── Guard: content shrinkage — AI truncated or summarized the article ──
+    // ── Guard: content shrinkage (relaxed for stub rebuilds) ──
     const newPlainText = newContent.replace(/<[^>]+>/g, '');
     const newWordCount = newPlainText.split(/\s+/).filter((w: string) => w.length > 0).length;
-    if (newWordCount < preWordCount * 0.8) {
+    if (!isStubRebuild && newWordCount < preWordCount * 0.8) {
       throw new Error(`Enrichment SHRUNK content from ${preWordCount} to ${newWordCount} words (${Math.round((1 - newWordCount/preWordCount) * 100)}% loss). Rejecting to protect original.`);
     }
 
@@ -1353,18 +1359,25 @@ export function useBulkBlogWorkflow() {
     const wordCount = plainText.split(/\s+/).filter((w: string) => w.length > 0).length;
     const readingTime = Math.max(1, Math.ceil(wordCount / 200));
 
-    // FAQ detection from content
+    // ── FAQ detection from content (broadened) ──
     let faqCount = 0;
     let hasFaqSchema = post.has_faq_schema || false;
     if (typeof DOMParser !== 'undefined') {
       const parser = new DOMParser();
       const doc = parser.parseFromString(newContent, 'text/html');
-      // Count FAQ questions (strong/b ending with ?)
+      // Count <strong>/<b> ending with ? (original detection)
       doc.querySelectorAll('strong, b').forEach(el => {
         const text = el.textContent?.trim() || '';
         if (text.endsWith('?') && text.length > 10) faqCount++;
       });
-      // Also check for FAQ schema-style structure
+      // Also count <h3> ending with ? (common FAQ format)
+      doc.querySelectorAll('h3').forEach(el => {
+        const text = el.textContent?.trim() || '';
+        if (text.endsWith('?') && text.length > 10) faqCount++;
+      });
+      // Count <dt> items (definition list FAQ format)
+      faqCount += doc.querySelectorAll('dt').length;
+      // Check for FAQ heading
       const h2s = doc.querySelectorAll('h2');
       h2s.forEach(h2 => {
         const text = h2.textContent?.trim()?.toLowerCase() || '';
@@ -1372,54 +1385,87 @@ export function useBulkBlogWorkflow() {
           hasFaqSchema = true;
         }
       });
-    }
 
-    // Auto-generate excerpt if empty
-    const excerpt = post.excerpt || plainText.replace(/\s+/g, ' ').trim().substring(0, 155) + '...';
+      // ── Extract internal links from content → update DB field ──
+      const internalLinksFromContent: { path: string; anchorText: string }[] = [];
+      doc.querySelectorAll('a[href]').forEach(a => {
+        const href = a.getAttribute('href') || '';
+        if (href.startsWith('/') || href.includes('truejobs.co.in')) {
+          internalLinksFromContent.push({
+            path: href.replace(/^https?:\/\/truejobs\.co\.in/, ''),
+            anchorText: a.textContent?.trim() || '',
+          });
+        }
+      });
 
-    // ── Save enriched content + all recomputed metrics ──
-    const updatePayload: Record<string, any> = {
-      content: newContent,
-      word_count: wordCount,
-      reading_time: readingTime,
-      faq_count: faqCount > 0 ? faqCount : (post.faq_count || 0),
-      has_faq_schema: hasFaqSchema,
-      excerpt,
-    };
+      // Merge with existing internal_links
+      const existingLinks = Array.isArray(post.internal_links) ? post.internal_links : [];
+      const seenPaths = new Set(existingLinks.map((l: any) => l.path || l));
+      for (const link of internalLinksFromContent) {
+        if (!seenPaths.has(link.path)) {
+          existingLinks.push(link);
+          seenPaths.add(link.path);
+        }
+      }
 
-    await supabase.from('blog_posts').update(updatePayload).eq('id', post.id);
+      // Auto-generate excerpt if empty
+      const excerpt = post.excerpt || plainText.replace(/\s+/g, ' ').trim().substring(0, 155) + '...';
 
-    // ── Post-enrichment verification: re-check against enrich-readiness criteria ──
-    const postEnrichPost = { ...post, ...updatePayload };
-    const readiness = checkEnrichReadiness(postEnrichPost);
-
-    if (readiness.passes) {
-      return {
-        outcome: 'fully_enriched',
-        reason: `Enriched: ${preWordCount} → ${wordCount} words. All criteria pass.`,
-        failing_criteria: [],
+      // ── Save enriched content + all recomputed metrics ──
+      // For stub rebuilds: only update content fields, not metadata
+      const updatePayload: Record<string, any> = {
+        content: newContent,
+        word_count: wordCount,
+        reading_time: readingTime,
+        faq_count: faqCount > 0 ? faqCount : (post.faq_count || 0),
+        has_faq_schema: hasFaqSchema,
+        excerpt,
+        internal_links: existingLinks,
       };
-    }
 
-    // Determine if partially improved: content grew AND some pre-existing failures were fixed
-    const preReadiness = checkEnrichReadiness(post);
-    const preFailCount = preReadiness.failing.length;
-    const postFailCount = readiness.failing.length;
-    const contentGrew = wordCount > preWordCount;
+      await supabase.from('blog_posts').update(updatePayload).eq('id', post.id);
 
-    if (contentGrew && postFailCount < preFailCount) {
+      // ── Post-enrichment verification ──
+      const postEnrichPost = { ...post, ...updatePayload };
+      const readiness = checkEnrichReadiness(postEnrichPost, post.category || undefined);
+
+      if (readiness.passes) {
+        return {
+          outcome: 'fully_enriched',
+          reason: `Enriched: ${preWordCount} → ${wordCount} words. All criteria pass.`,
+          failing_criteria: [],
+        };
+      }
+
+      const preFailCount = preReadiness.failing.length;
+      const postFailCount = readiness.failing.length;
+      const contentGrew = wordCount > preWordCount;
+
+      if (contentGrew && postFailCount < preFailCount) {
+        return {
+          outcome: 'partially_improved',
+          reason: `Improved: ${preWordCount} → ${wordCount} words. ${postFailCount} criteria still failing.`,
+          failing_criteria: readiness.failing,
+        };
+      }
+
       return {
-        outcome: 'partially_improved',
-        reason: `Improved: ${preWordCount} → ${wordCount} words. ${postFailCount} criteria still failing.`,
+        outcome: 'still_pending',
+        reason: `Still pending: ${preWordCount} → ${wordCount} words. ${postFailCount} criteria failing.`,
         failing_criteria: readiness.failing,
       };
     }
 
-    return {
-      outcome: 'still_pending',
-      reason: `Still pending: ${preWordCount} → ${wordCount} words. ${postFailCount} criteria failing.`,
-      failing_criteria: readiness.failing,
+    // Fallback if DOMParser not available (shouldn't happen in browser)
+    const excerpt = post.excerpt || plainText.replace(/\s+/g, ' ').trim().substring(0, 155) + '...';
+    const updatePayload: Record<string, any> = {
+      content: newContent,
+      word_count: wordCount,
+      reading_time: readingTime,
+      excerpt,
     };
+    await supabase.from('blog_posts').update(updatePayload).eq('id', post.id);
+    return { outcome: 'still_pending', reason: 'DOMParser unavailable for verification', failing_criteria: [] };
   };
 
   // ── Append execution result (append-safe) ──

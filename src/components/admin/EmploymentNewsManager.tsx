@@ -117,7 +117,8 @@ export function EmploymentNewsManager() {
   // Pipeline state
   const [jobs, setJobs] = useState<EmpNewsJob[]>([]);
   const [batches, setBatches] = useState<UploadBatch[]>([]);
-  const [isLoadingJobs, setIsLoadingJobs] = useState(false);
+  const [isLoadingJobs, setIsLoadingJobs] = useState(true);
+  const [isRefetching, setIsRefetching] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');

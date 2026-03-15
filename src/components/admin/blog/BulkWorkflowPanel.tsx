@@ -13,7 +13,7 @@ import {
 import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
 import {
   useBulkBlogWorkflow,
-  type WorkflowType, type ArticleVerdict, type ScanReport,
+  type WorkflowType, type ArticleVerdict, type ScanReport, type ExecutionResult,
 } from '@/hooks/useBulkBlogWorkflow';
 
 interface BulkWorkflowPanelProps {
@@ -22,13 +22,38 @@ interface BulkWorkflowPanelProps {
   onComplete?: () => void;
 }
 
+// ── Workflow-specific labels ──
+function getWorkflowLabel(type: WorkflowType | null): string {
+  if (type === 'enrich') return 'Enrichment';
+  if (type === 'publish') return 'Publish';
+  return 'Fix';
+}
+
+function getScanTitle(type: WorkflowType | null): string {
+  if (type === 'enrich') return 'Enrichment Scan';
+  if (type === 'publish') return 'Publish Eligibility Scan';
+  return 'Fix Scan';
+}
+
+function getConfirmLabel(type: WorkflowType | null, count: number): string {
+  if (type === 'enrich') return `Confirm & Enrich (${count} articles)`;
+  if (type === 'publish') return `Publish ${count} Ready Articles`;
+  return `Confirm & Fix (${count} articles)`;
+}
+
+function getExecutingLabel(type: WorkflowType | null, title: string): string {
+  if (type === 'enrich') return `Enriching: ${title || 'Processing…'}`;
+  if (type === 'publish') return `Publishing: ${title || 'Processing…'}`;
+  return `Fixing: ${title || 'Processing…'}`;
+}
+
 export function BulkWorkflowPanel({ posts, blogTextModel, onComplete }: BulkWorkflowPanelProps) {
   const { toast } = useToast();
   const [isOpen, setIsOpen] = useState(false);
   const [maxPerRun, setMaxPerRun] = useState(50);
 
   const {
-    status, scanReport, progress, executionResults, scanProgress,
+    status, scanReport, progress, executionResults, scanProgress, workflowType,
     startScan, confirmExecution, requestStop, cancelScan, reset,
   } = useBulkBlogWorkflow();
 
@@ -43,7 +68,8 @@ export function BulkWorkflowPanel({ posts, blogTextModel, onComplete }: BulkWork
   const handleConfirm = async () => {
     try {
       await confirmExecution(blogTextModel, onComplete);
-      toast({ title: '✅ Bulk workflow complete' });
+      const label = getWorkflowLabel(workflowType);
+      toast({ title: `✅ ${label} workflow complete` });
       onComplete?.();
     } catch (err: any) {
       toast({ title: 'Execution failed', description: err.message, variant: 'destructive' });
@@ -51,7 +77,8 @@ export function BulkWorkflowPanel({ posts, blogTextModel, onComplete }: BulkWork
   };
 
   const isActive = status !== 'idle';
-  const isPublishWorkflow = scanReport?.workflow_type === 'publish';
+  const isPublishWorkflow = workflowType === 'publish';
+  const isEnrichWorkflow = workflowType === 'enrich';
 
   return (
     <div className="px-6 pb-4 border-b">
@@ -59,7 +86,7 @@ export function BulkWorkflowPanel({ posts, blogTextModel, onComplete }: BulkWork
         <CollapsibleTrigger className="flex items-center gap-2 w-full py-2 text-sm font-medium hover:text-primary">
           <ChevronDown className={`h-4 w-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
           <Zap className="h-4 w-4" /> Bulk Fix, Enrich & Publish Workflows
-          {isActive && <Badge variant="secondary" className="ml-2 text-xs">{status}</Badge>}
+          {isActive && <Badge variant="secondary" className="ml-2 text-xs">{status}{workflowType ? ` (${getWorkflowLabel(workflowType)})` : ''}</Badge>}
         </CollapsibleTrigger>
 
         <CollapsibleContent className="space-y-4 mt-3">
@@ -101,7 +128,7 @@ export function BulkWorkflowPanel({ posts, blogTextModel, onComplete }: BulkWork
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium">
-                  Stage {scanProgress.stage}: {scanProgress.stage === 1 ? 'Eligibility Analysis' : 'AI Content Verification'}
+                  {getScanTitle(workflowType)} — Stage {scanProgress.stage}: {scanProgress.stage === 1 ? 'Eligibility Analysis' : 'AI Content Verification'}
                 </span>
                 <Button size="sm" variant="destructive" onClick={cancelScan}>
                   <Square className="h-3 w-3 mr-1" /> Cancel
@@ -118,9 +145,9 @@ export function BulkWorkflowPanel({ posts, blogTextModel, onComplete }: BulkWork
           {status === 'cancelled' && (
             <div className="space-y-3">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <XCircle className="h-4 w-4" /> Scan cancelled. Partial data preserved.
+                <XCircle className="h-4 w-4" /> {getWorkflowLabel(workflowType)} scan cancelled. Partial data preserved.
               </div>
-              {scanReport && (isPublishWorkflow ? <PublishReportView report={scanReport} /> : <ReportView report={scanReport} />)}
+              {scanReport && (isPublishWorkflow ? <PublishReportView report={scanReport} /> : <ReportView report={scanReport} workflowType={workflowType} />)}
               <Button size="sm" variant="outline" onClick={reset}>
                 <RotateCcw className="h-3 w-3 mr-1" /> Start Fresh
               </Button>
@@ -147,10 +174,10 @@ export function BulkWorkflowPanel({ posts, blogTextModel, onComplete }: BulkWork
                 </>
               ) : (
                 <>
-                  <ReportView report={scanReport} />
+                  <ReportView report={scanReport} workflowType={workflowType} />
                   <div className="flex gap-2">
                     <Button size="sm" onClick={handleConfirm} disabled={scanReport.total_pending === 0}>
-                      <Play className="h-3 w-3 mr-1" /> Confirm & Execute ({Math.min(scanReport.total_pending, scanReport.max_per_run)} articles)
+                      <Play className="h-3 w-3 mr-1" /> {getConfirmLabel(workflowType, Math.min(scanReport.total_pending, scanReport.max_per_run))}
                     </Button>
                     <Button size="sm" variant="outline" onClick={reset}>
                       <RotateCcw className="h-3 w-3 mr-1" /> Discard
@@ -165,7 +192,7 @@ export function BulkWorkflowPanel({ posts, blogTextModel, onComplete }: BulkWork
           {status === 'executing' && progress && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">{isPublishWorkflow ? 'Publishing' : 'Executing'}: {progress.current_title || 'Processing…'}</span>
+                <span className="text-sm font-medium">{getExecutingLabel(workflowType, progress.current_title)}</span>
                 <Button size="sm" variant="destructive" onClick={requestStop}>
                   <Square className="h-3 w-3 mr-1" /> Stop
                 </Button>
@@ -173,9 +200,20 @@ export function BulkWorkflowPanel({ posts, blogTextModel, onComplete }: BulkWork
               <Progress value={(progress.done / progress.total) * 100} className="h-2" />
               <div className="flex gap-3 text-xs text-muted-foreground">
                 <span>{progress.done}/{progress.total} done</span>
-                <span className="text-green-600">{progress.success} success</span>
-                <span className="text-destructive">{progress.failed} failed</span>
-                <span>{progress.skipped} skipped</span>
+                {isEnrichWorkflow ? (
+                  <>
+                    <span className="text-green-600">{progress.fully_enriched} enriched</span>
+                    <span className="text-yellow-600">{progress.partially_improved} partial</span>
+                    <span className="text-orange-600">{progress.still_pending} still pending</span>
+                    <span className="text-destructive">{progress.failed} failed</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-green-600">{progress.success} success</span>
+                    <span className="text-destructive">{progress.failed} failed</span>
+                    <span>{progress.skipped} skipped</span>
+                  </>
+                )}
               </div>
             </div>
           )}
@@ -187,17 +225,20 @@ export function BulkWorkflowPanel({ posts, blogTextModel, onComplete }: BulkWork
                 {status === 'completed' && <CheckCircle2 className="h-4 w-4 text-green-600" />}
                 {status === 'stopped' && <Square className="h-4 w-4 text-yellow-600" />}
                 {status === 'failed' && <XCircle className="h-4 w-4 text-destructive" />}
-                <span className="text-sm font-medium capitalize">{status}</span>
+                <span className="text-sm font-medium">{getWorkflowLabel(workflowType)} — {status}</span>
                 {progress && (
                   <span className="text-xs text-muted-foreground">
-                    — {progress.success} success, {progress.failed} failed, {progress.skipped} skipped
+                    {isEnrichWorkflow
+                      ? `— ${progress.fully_enriched} enriched, ${progress.partially_improved} partial, ${progress.still_pending} still pending, ${progress.failed} failed, ${progress.skipped} skipped`
+                      : `— ${progress.success} success, ${progress.failed} failed, ${progress.skipped} skipped`
+                    }
                     {progress.capped_remaining > 0 && `, ${progress.capped_remaining} deferred by cap`}
                   </span>
                 )}
               </div>
 
               {executionResults.length > 0 && (
-                <ExecutionResultsView results={executionResults} cappedRemaining={progress?.capped_remaining || 0} />
+                <ExecutionResultsView results={executionResults} cappedRemaining={progress?.capped_remaining || 0} isEnrichWorkflow={isEnrichWorkflow} />
               )}
 
               <Button size="sm" variant="outline" onClick={reset}>
@@ -224,8 +265,9 @@ export function BulkWorkflowPanel({ posts, blogTextModel, onComplete }: BulkWork
 }
 
 // ── Fix/Enrich Report View ──
-function ReportView({ report }: { report: ScanReport }) {
+function ReportView({ report, workflowType }: { report: ScanReport; workflowType: WorkflowType | null }) {
   const cats = report.categories;
+  const label = getWorkflowLabel(workflowType);
 
   const categoryCards: { label: string; icon: React.ReactNode; items: ArticleVerdict[]; color: string }[] = [
     { label: 'Skip (Already Good)', icon: <CheckCircle2 className="h-3.5 w-3.5" />, items: cats.skip_already_good, color: 'text-green-600' },
@@ -239,6 +281,7 @@ function ReportView({ report }: { report: ScanReport }) {
 
   return (
     <div className="space-y-3">
+      <div className="text-xs font-medium text-muted-foreground">{label} Scan Report</div>
       <div className="grid grid-cols-4 gap-2 text-xs">
         <div className="bg-muted rounded p-2 text-center">
           <div className="font-semibold text-base">{report.total_scanned}</div>
@@ -290,7 +333,7 @@ function PublishReportView({ report }: { report: ScanReport }) {
 
   return (
     <div className="space-y-3">
-      {/* Summary banner */}
+      <div className="text-xs font-medium text-muted-foreground">Publish Scan Report</div>
       <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-xs">
         <div className="bg-muted rounded p-2 text-center">
           <div className="font-semibold text-base">{report.total_scanned}</div>
@@ -318,7 +361,6 @@ function PublishReportView({ report }: { report: ScanReport }) {
         </div>
       </div>
 
-      {/* Category cards */}
       <div className="space-y-1">
         {categoryCards.filter(c => c.items.length > 0).map(cat => (
           <CategoryRow key={cat.label} label={cat.label} icon={cat.icon} items={cat.items} color={cat.color} showPublishChecks />
@@ -382,14 +424,23 @@ function CategoryRow({ label, icon, items, color, showPublishChecks }: {
 }
 
 // ── Execution Results View ──
-function ExecutionResultsView({ results, cappedRemaining }: { results: any[]; cappedRemaining: number }) {
+function ExecutionResultsView({ results, cappedRemaining, isEnrichWorkflow }: { results: ExecutionResult[]; cappedRemaining: number; isEnrichWorkflow: boolean }) {
   const [expanded, setExpanded] = useState(false);
 
-  const grouped = {
-    success: results.filter(r => r.status === 'success'),
-    failed: results.filter(r => r.status === 'failed'),
-    skipped: results.filter(r => r.status === 'skipped'),
-  };
+  // Group results based on workflow type
+  const grouped = isEnrichWorkflow
+    ? {
+        fully_enriched: results.filter(r => r.status === 'fully_enriched'),
+        partially_improved: results.filter(r => r.status === 'partially_improved'),
+        still_pending: results.filter(r => r.status === 'still_pending'),
+        failed: results.filter(r => r.status === 'failed'),
+        skipped: results.filter(r => r.status === 'skipped'),
+      }
+    : {
+        success: results.filter(r => r.status === 'success' || r.status === 'fully_enriched'),
+        failed: results.filter(r => r.status === 'failed'),
+        skipped: results.filter(r => r.status === 'skipped'),
+      };
 
   return (
     <Collapsible open={expanded} onOpenChange={setExpanded}>
@@ -400,38 +451,83 @@ function ExecutionResultsView({ results, cappedRemaining }: { results: any[]; ca
       <CollapsibleContent>
         <ScrollArea className="max-h-60 mt-2">
           <div className="space-y-2">
-            {grouped.success.length > 0 && (
-              <div>
-                <div className="text-xs font-medium text-green-600 mb-1">✅ Success ({grouped.success.length})</div>
-                {grouped.success.map(r => (
-                  <div key={r.slug} className="text-xs py-1 px-2 bg-muted/30 rounded flex justify-between">
-                    <span className="truncate">{r.title}</span>
-                    <span className="text-muted-foreground shrink-0 ml-2">{r.reason}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-            {grouped.failed.length > 0 && (
-              <div>
-                <div className="text-xs font-medium text-destructive mb-1">❌ Failed ({grouped.failed.length})</div>
-                {grouped.failed.map(r => (
-                  <div key={r.slug} className="text-xs py-1 px-2 bg-destructive/5 rounded">
-                    <span className="font-medium">{r.title}</span>
-                    <span className="text-muted-foreground ml-2">{r.reason}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-            {grouped.skipped.length > 0 && (
-              <div>
-                <div className="text-xs font-medium text-yellow-600 mb-1">⏭️ Skipped ({grouped.skipped.length})</div>
-                {grouped.skipped.map(r => (
-                  <div key={r.slug} className="text-xs py-1 px-2 bg-muted/30 rounded">
-                    <span>{r.title}</span>
-                    <span className="text-muted-foreground ml-2">{r.reason}</span>
-                  </div>
-                ))}
-              </div>
+            {isEnrichWorkflow ? (
+              <>
+                {/* Fully Enriched */}
+                {(grouped as any).fully_enriched?.length > 0 && (
+                  <ResultGroup
+                    label="✅ Fully Enriched"
+                    color="text-green-600"
+                    results={(grouped as any).fully_enriched}
+                    bgClass="bg-green-50/50 dark:bg-green-950/20"
+                  />
+                )}
+                {/* Partially Improved */}
+                {(grouped as any).partially_improved?.length > 0 && (
+                  <ResultGroup
+                    label="🟡 Partially Improved"
+                    color="text-yellow-600"
+                    results={(grouped as any).partially_improved}
+                    bgClass="bg-yellow-50/50 dark:bg-yellow-950/20"
+                    showFailingCriteria
+                  />
+                )}
+                {/* Still Pending */}
+                {(grouped as any).still_pending?.length > 0 && (
+                  <ResultGroup
+                    label="🟠 Still Pending After Enrichment"
+                    color="text-orange-600"
+                    results={(grouped as any).still_pending}
+                    bgClass="bg-orange-50/50 dark:bg-orange-950/20"
+                    showFailingCriteria
+                  />
+                )}
+                {/* Failed */}
+                {(grouped as any).failed?.length > 0 && (
+                  <ResultGroup
+                    label="❌ Failed"
+                    color="text-destructive"
+                    results={(grouped as any).failed}
+                    bgClass="bg-destructive/5"
+                  />
+                )}
+                {/* Skipped */}
+                {(grouped as any).skipped?.length > 0 && (
+                  <ResultGroup
+                    label="⏭️ Skipped"
+                    color="text-muted-foreground"
+                    results={(grouped as any).skipped}
+                    bgClass="bg-muted/30"
+                  />
+                )}
+              </>
+            ) : (
+              <>
+                {(grouped as any).success?.length > 0 && (
+                  <ResultGroup
+                    label="✅ Success"
+                    color="text-green-600"
+                    results={(grouped as any).success}
+                    bgClass="bg-muted/30"
+                  />
+                )}
+                {(grouped as any).failed?.length > 0 && (
+                  <ResultGroup
+                    label="❌ Failed"
+                    color="text-destructive"
+                    results={(grouped as any).failed}
+                    bgClass="bg-destructive/5"
+                  />
+                )}
+                {(grouped as any).skipped?.length > 0 && (
+                  <ResultGroup
+                    label="⏭️ Skipped"
+                    color="text-yellow-600"
+                    results={(grouped as any).skipped}
+                    bgClass="bg-muted/30"
+                  />
+                )}
+              </>
             )}
             {cappedRemaining > 0 && (
               <div className="text-xs text-muted-foreground py-1">
@@ -442,5 +538,33 @@ function ExecutionResultsView({ results, cappedRemaining }: { results: any[]; ca
         </ScrollArea>
       </CollapsibleContent>
     </Collapsible>
+  );
+}
+
+// ── Result Group Component ──
+function ResultGroup({ label, color, results, bgClass, showFailingCriteria }: {
+  label: string;
+  color: string;
+  results: ExecutionResult[];
+  bgClass: string;
+  showFailingCriteria?: boolean;
+}) {
+  return (
+    <div>
+      <div className={`text-xs font-medium ${color} mb-1`}>{label} ({results.length})</div>
+      {results.map(r => (
+        <div key={r.slug} className={`text-xs py-1 px-2 ${bgClass} rounded mb-0.5`}>
+          <div className="flex justify-between">
+            <span className="font-medium truncate">{r.title}</span>
+            <span className="text-muted-foreground shrink-0 ml-2 max-w-[50%] truncate">{r.reason}</span>
+          </div>
+          {showFailingCriteria && r.failing_criteria && r.failing_criteria.length > 0 && (
+            <div className="mt-0.5 text-[10px] text-muted-foreground">
+              Still failing: {r.failing_criteria.join(' · ')}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
   );
 }

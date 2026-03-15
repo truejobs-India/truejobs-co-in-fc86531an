@@ -634,7 +634,35 @@ No markdown code blocks. Return ONLY the JSON object.`;
     try {
       parsed = JSON.parse(cleaned);
     } catch {
-      return new Response(JSON.stringify({ error: 'Failed to parse AI response', raw: cleaned.substring(0, 500) }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      // Attempt regex extraction of JSON object from truncated response
+      console.warn('[generate-blog-article] JSON.parse failed, attempting regex extraction...');
+      const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          parsed = JSON.parse(jsonMatch[0]);
+        } catch {
+          // Try to repair truncated JSON by closing open strings/objects
+          let repaired = jsonMatch[0];
+          // Count unmatched braces and brackets
+          const openBraces = (repaired.match(/\{/g) || []).length - (repaired.match(/\}/g) || []).length;
+          const openBrackets = (repaired.match(/\[/g) || []).length - (repaired.match(/\]/g) || []).length;
+          // Close any open string
+          const quoteCount = (repaired.match(/(?<!\\)"/g) || []).length;
+          if (quoteCount % 2 !== 0) repaired += '"';
+          // Close brackets and braces
+          for (let i = 0; i < openBrackets; i++) repaired += ']';
+          for (let i = 0; i < openBraces; i++) repaired += '}';
+          try {
+            parsed = JSON.parse(repaired);
+            console.log('[generate-blog-article] Repaired truncated JSON successfully');
+          } catch (e2) {
+            console.error('[generate-blog-article] JSON repair failed:', (e2 as Error).message);
+            return new Response(JSON.stringify({ error: 'Failed to parse AI response (truncated)', raw: cleaned.substring(0, 500) }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+          }
+        }
+      } else {
+        return new Response(JSON.stringify({ error: 'Failed to parse AI response', raw: cleaned.substring(0, 500) }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
     }
 
     if (!parsed.title || !parsed.content) {

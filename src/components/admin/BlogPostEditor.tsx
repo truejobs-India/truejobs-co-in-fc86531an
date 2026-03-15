@@ -1395,6 +1395,7 @@ export function BlogPostEditor() {
       filter={drilldownFilter}
       posts={posts}
       onEditPost={(post) => openEditDialog(post as any)}
+      onRefresh={fetchPosts}
     />
 
     {/* ── Fix All With AI Dialog ── */}

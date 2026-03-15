@@ -542,7 +542,29 @@ export function EmploymentNewsManager() {
     }
   };
 
-  const saveEdit = async () => {
+  const checkUnpublishedJobs = async () => {
+    setIsCheckingUnpublished(true);
+    try {
+      const [pendingRes, enrichedRes, rejectedRes, failedRes] = await Promise.all([
+        supabase.from('employment_news_jobs').select('*').eq('status', 'pending').order('created_at', { ascending: false }).limit(500),
+        supabase.from('employment_news_jobs').select('*').eq('status', 'enriched').order('created_at', { ascending: false }).limit(500),
+        supabase.from('employment_news_jobs').select('*').eq('status', 'rejected').order('created_at', { ascending: false }).limit(500),
+        supabase.from('employment_news_jobs').select('*').eq('status', 'enrichment_failed').order('created_at', { ascending: false }).limit(500),
+      ]);
+      setUnpublishedReport({
+        pending: (pendingRes.data || []) as EmpNewsJob[],
+        enriched: (enrichedRes.data || []) as EmpNewsJob[],
+        rejected: (rejectedRes.data || []) as EmpNewsJob[],
+        failed: (failedRes.data || []) as EmpNewsJob[],
+      });
+    } catch (err) {
+      console.error('Check unpublished error:', err);
+      toastRef.current({ title: 'Error', description: 'Failed to fetch unpublished jobs', variant: 'destructive' });
+    } finally {
+      setIsCheckingUnpublished(false);
+    }
+  };
+
     if (!editJob) return;
     const errors: Record<string, string> = {};
 

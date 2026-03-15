@@ -1,4 +1,4 @@
-// Direct Gemini 2.5 API only for non-image AI features — does NOT use Lovable AI gateway
+// Direct Gemini API only for non-image AI features — does NOT use Lovable AI gateway
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 /** Lightweight markdown-to-HTML converter for AI output that ignores the HTML-only instruction */
@@ -63,7 +63,19 @@ async function verifyAdmin(req: Request): Promise<{ userId: string } | Response>
 }
 
 const GEMINI_MODEL = 'gemini-2.5-flash';
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
+
+// Map known model identifiers to Gemini model names
+const MODEL_MAP: Record<string, string> = {
+  'gemini-2.5-flash': 'gemini-2.5-flash',
+  'gemini-2.5-pro': 'gemini-2.5-pro',
+  'gemini-2.0-flash': 'gemini-2.0-flash',
+};
+
+function resolveGeminiUrl(aiModel?: string): string {
+  const effectiveModel = (aiModel && MODEL_MAP[aiModel]) || GEMINI_MODEL;
+  return `${GEMINI_BASE_URL}/${effectiveModel}:generateContent`;
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
@@ -77,10 +89,12 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'GEMINI_API_KEY not configured' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    const { title, content, action, selectedHtml, headings, hasIntro, hasConclusion, wordCount, category, tags, targetWordCount } = await req.json();
+    const { title, content, action, selectedHtml, headings, hasIntro, hasConclusion, wordCount, category, tags, targetWordCount, aiModel } = await req.json();
     if (!title || !action) {
       return new Response(JSON.stringify({ error: 'title and action required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
+
+    const geminiUrl = resolveGeminiUrl(aiModel);
 
     let prompt: string;
     let maxTokens = 2000;
@@ -221,7 +235,7 @@ No markdown code blocks.`;
       return new Response(JSON.stringify({ error: 'Invalid action. Use "structure", "rewrite-section", "generate-intro", "generate-conclusion", or "enrich-article"' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    const resp = await fetch(`${GEMINI_URL}?key=${geminiApiKey}`, {
+    const resp = await fetch(`${geminiUrl}?key=${geminiApiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

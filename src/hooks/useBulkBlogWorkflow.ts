@@ -19,6 +19,9 @@ export type SkipReason =
 
 export type ActionType = 'minimal_safe_edit' | 'targeted_fix' | 'full_enrich' | 'skip';
 
+export type EnrichOutcome = 'fully_enriched' | 'partially_improved' | 'still_pending';
+export type ExecutionStatus = EnrichOutcome | 'success' | 'failed' | 'skipped';
+
 export interface ArticleVerdict {
   slug: string;
   title: string;
@@ -84,14 +87,18 @@ export interface ScanReport {
 export interface ExecutionResult {
   slug: string;
   title: string;
-  status: 'success' | 'failed' | 'skipped';
+  status: ExecutionStatus;
   reason: string;
   timestamp: string;
+  failing_criteria?: string[];
 }
 
 export interface WorkflowProgress {
   total: number;
   done: number;
+  fully_enriched: number;
+  partially_improved: number;
+  still_pending: number;
   success: number;
   failed: number;
   skipped: number;
@@ -142,6 +149,25 @@ interface BlogPost {
 const SAFE_METADATA_FIELDS = new Set(['meta_title', 'meta_description', 'excerpt', 'featured_image_alt', 'canonical_url', 'slug', 'author_name']);
 const STALE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
 const STAGE2_BATCH_SIZE = 6;
+
+// ── Enrich Readiness Checker ──
+export interface EnrichReadiness {
+  passes: boolean;
+  failing: string[];
+}
+
+export function checkEnrichReadiness(post: any): EnrichReadiness {
+  const meta = blogPostToMetadata(post);
+  const failing: string[] = [];
+  if (meta.wordCount < 1200) failing.push(`Word count ${meta.wordCount} < 1200`);
+  if (!meta.hasIntro) failing.push('Missing intro');
+  if (!meta.hasConclusion) failing.push('Missing conclusion');
+  const h2Count = (meta.headings || []).filter((h: any) => h.level === 2).length;
+  if (h2Count < 3) failing.push(`Only ${h2Count} H2 headings (need ≥ 3)`);
+  if ((meta.faqCount || 0) === 0) failing.push('No FAQs');
+  if ((meta.internalLinks?.length || 0) === 0) failing.push('No internal links');
+  return { passes: failing.length === 0, failing };
+}
 
 // ── Publish eligibility checker (reusable) ──
 // Soft-only keys: canonical and author are not hard blockers
@@ -278,14 +304,13 @@ export function checkPublishEligibility(post: BlogPost): PublishEligibility {
     (!post.ai_fixed_at && quality.totalScore < 70);
 
   if (isBorderline) {
-    // Borderline — needs Stage 2 AI verification
     return {
       eligible: false, verified_fixed, verified_enriched,
       publish_requirements_passed,
       confidence: 0.5,
       reasons: [`Borderline: quality=${quality.totalScore}, seo=${seo.totalScore}, warns=${compliance.warnCount}, words=${wordCount}`],
       soft_warnings: softWarnings,
-      category: 'manual_review', // Will be routed to Stage 2
+      category: 'manual_review',
     };
   }
 
@@ -300,6 +325,16 @@ export function checkPublishEligibility(post: BlogPost): PublishEligibility {
   };
 }
 
+function makeInitialProgress(total: number, maxPerRun: number, cappedRemaining: number): WorkflowProgress {
+  return {
+    total, done: 0,
+    fully_enriched: 0, partially_improved: 0, still_pending: 0,
+    success: 0, failed: 0, skipped: 0,
+    current_article_id: null, current_title: '',
+    max_per_run: maxPerRun, capped_remaining: cappedRemaining,
+  };
+}
+
 export function useBulkBlogWorkflow() {
   const [status, setStatus] = useState<WorkflowStatus>('idle');
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -307,6 +342,7 @@ export function useBulkBlogWorkflow() {
   const [progress, setProgress] = useState<WorkflowProgress | null>(null);
   const [executionResults, setExecutionResults] = useState<ExecutionResult[]>([]);
   const [scanProgress, setScanProgress] = useState<{ stage: number; done: number; total: number; detail: string } | null>(null);
+  const [workflowType, setWorkflowType] = useState<WorkflowType | null>(null);
   const cancelRef = useRef(false);
 
   // ── On mount: check for existing sessions ──
@@ -333,6 +369,7 @@ export function useBulkBlogWorkflow() {
     }
 
     setSessionId(session.id);
+    setWorkflowType(session.workflow_type);
     if (session.status === 'scan_complete' && session.scan_report) {
       setScanReport(session.scan_report as ScanReport);
       setStatus('scan_complete');
@@ -361,6 +398,7 @@ export function useBulkBlogWorkflow() {
     maxPerRun: number
   ) => {
     cancelRef.current = false;
+    setWorkflowType(type);
 
     // Check for active sessions
     const { data: active } = await supabase
@@ -393,7 +431,7 @@ export function useBulkBlogWorkflow() {
     const sid = (session as any).id;
     setSessionId(sid);
     setStatus('scanning');
-    setScanProgress({ stage: 1, done: 0, total: posts.length, detail: type === 'publish' ? 'Running publish eligibility checks…' : 'Running heuristic analysis…' });
+    setScanProgress({ stage: 1, done: 0, total: posts.length, detail: type === 'publish' ? 'Running publish eligibility checks…' : type === 'enrich' ? 'Running enrichment analysis…' : 'Running heuristic analysis…' });
 
     try {
       if (type === 'publish') {
@@ -472,7 +510,6 @@ export function useBulkBlogWorkflow() {
       } else if (eligibility.category === 'missing_enrichment') {
         notReadyEnrichment.push(makePublishVerdict(post, 'skip', eligibility.reasons.join('; '), undefined, checks));
       } else if (eligibility.category === 'manual_review' && eligibility.confidence < 0.7) {
-        // Borderline → Stage 2
         const verdict = makePublishVerdict(post, 'manual_review', eligibility.reasons.join('; '), 'manual_review', checks);
         verdict.heuristic_triage = 'BORDERLINE';
         stage2Candidates.push({ post, verdict, eligibility });
@@ -493,7 +530,6 @@ export function useBulkBlogWorkflow() {
 
       for (let batchStart = 0; batchStart < stage2Candidates.length; batchStart += STAGE2_BATCH_SIZE) {
         if (cancelRef.current) {
-          // Route remaining to manual_review
           for (let j = batchStart; j < stage2Candidates.length; j++) {
             manualReview.push(stage2Candidates[j].verdict);
           }
@@ -516,7 +552,6 @@ export function useBulkBlogWorkflow() {
             const aiVerdict = aiVerdicts[j];
 
             if (aiVerdict && aiVerdict.verdict === 'needs_action' && aiVerdict.confidence >= 0.7) {
-              // AI says publish-ready — upgrade from borderline
               candidate.verdict.verdict = 'needs_action';
               candidate.verdict.confidence = aiVerdict.confidence;
               candidate.verdict.reasons = ['AI verified as publish-ready', ...(aiVerdict.reasons || [])];
@@ -525,7 +560,6 @@ export function useBulkBlogWorkflow() {
               }
               readyToPublish.push(candidate.verdict);
             } else {
-              // AI says not ready or low confidence → manual_review
               candidate.verdict.verdict = 'manual_review';
               candidate.verdict.requires_manual_review = true;
               candidate.verdict.skip_reason = 'manual_review';
@@ -592,7 +626,7 @@ export function useBulkBlogWorkflow() {
         manual_review_count: manualReview.length,
         deferred_count: deferredByCap.length,
       },
-      estimated_api_calls: 0, // Publish doesn't use AI calls for execution
+      estimated_api_calls: 0,
     };
 
     setScanReport(report);
@@ -875,9 +909,9 @@ export function useBulkBlogWorkflow() {
       .eq('id', sessionId)
       .single() as any;
 
-    const workflowType: WorkflowType = sessionData?.workflow_type || 'fix';
+    const wfType: WorkflowType = sessionData?.workflow_type || 'fix';
 
-    if (workflowType === 'publish') {
+    if (wfType === 'publish') {
       await executePublish(onArticleComplete);
       return;
     }
@@ -896,12 +930,7 @@ export function useBulkBlogWorkflow() {
     }
 
     const total = cappedQueue.length;
-    const initialProgress: WorkflowProgress = {
-      total, done: 0, success: 0, failed: 0, skipped: 0,
-      current_article_id: null, current_title: '',
-      max_per_run: scanReport.max_per_run,
-      capped_remaining: deferred.length,
-    };
+    const initialProgress = makeInitialProgress(total, scanReport.max_per_run, deferred.length);
 
     setProgress(initialProgress);
     setExecutionResults([]);
@@ -915,6 +944,7 @@ export function useBulkBlogWorkflow() {
     } as any).eq('id', sessionId);
 
     let done = 0, success = 0, failed = 0, skipped = 0;
+    let fullyEnriched = 0, partiallyImproved = 0, stillPending = 0;
 
     for (const article of cappedQueue) {
       const { data: sessionCheck } = await supabase
@@ -939,7 +969,8 @@ export function useBulkBlogWorkflow() {
       }
 
       const currentProgress: WorkflowProgress = {
-        total, done, success, failed, skipped,
+        total, done, fully_enriched: fullyEnriched, partially_improved: partiallyImproved, still_pending: stillPending,
+        success, failed, skipped,
         current_article_id: article.post_id,
         current_title: article.title,
         max_per_run: scanReport.max_per_run,
@@ -948,20 +979,33 @@ export function useBulkBlogWorkflow() {
       setProgress(currentProgress);
 
       try {
-        if (workflowType === 'fix') {
+        if (wfType === 'fix') {
           await executeFixForArticle(article, blogTextModel);
+          const result: ExecutionResult = {
+            slug: article.slug, title: article.title,
+            status: 'success', reason: `${article.action_type} applied`,
+            timestamp: new Date().toISOString(),
+          };
+          await appendExecutionResult(sessionId, result);
+          setExecutionResults(prev => [...prev, result]);
+          success++;
         } else {
-          await executeEnrichForArticle(article, blogTextModel);
-        }
+          // Enrich workflow — use structured outcome
+          const enrichResult = await executeEnrichForArticle(article, blogTextModel);
+          const result: ExecutionResult = {
+            slug: article.slug, title: article.title,
+            status: enrichResult.outcome,
+            reason: enrichResult.reason,
+            timestamp: new Date().toISOString(),
+            failing_criteria: enrichResult.failing_criteria,
+          };
+          await appendExecutionResult(sessionId, result);
+          setExecutionResults(prev => [...prev, result]);
 
-        const result: ExecutionResult = {
-          slug: article.slug, title: article.title,
-          status: 'success', reason: `${article.action_type} applied`,
-          timestamp: new Date().toISOString(),
-        };
-        await appendExecutionResult(sessionId, result);
-        setExecutionResults(prev => [...prev, result]);
-        success++;
+          if (enrichResult.outcome === 'fully_enriched') fullyEnriched++;
+          else if (enrichResult.outcome === 'partially_improved') partiallyImproved++;
+          else stillPending++;
+        }
       } catch (err: any) {
         const result: ExecutionResult = {
           slug: article.slug, title: article.title,
@@ -975,7 +1019,11 @@ export function useBulkBlogWorkflow() {
 
       done++;
       await updateHeartbeat(sessionId, {
-        progress: { total, done, success, failed, skipped, current_article_id: null, current_title: '', max_per_run: scanReport.max_per_run, capped_remaining: deferred.length },
+        progress: {
+          total, done, fully_enriched: fullyEnriched, partially_improved: partiallyImproved, still_pending: stillPending,
+          success, failed, skipped, current_article_id: null, current_title: '',
+          max_per_run: scanReport.max_per_run, capped_remaining: deferred.length,
+        },
       });
 
       onArticleComplete?.();
@@ -992,7 +1040,8 @@ export function useBulkBlogWorkflow() {
       .single() as any).data?.stop_requested ? 'stopped' : 'completed';
 
     const finalProgress: WorkflowProgress = {
-      total, done, success, failed, skipped,
+      total, done, fully_enriched: fullyEnriched, partially_improved: partiallyImproved, still_pending: stillPending,
+      success, failed, skipped,
       current_article_id: null, current_title: '',
       max_per_run: scanReport.max_per_run,
       capped_remaining: deferred.length,
@@ -1016,12 +1065,7 @@ export function useBulkBlogWorkflow() {
 
     const publishQueue = scanReport.publish_categories.ready_to_publish;
     const total = publishQueue.length;
-    const initialProgress: WorkflowProgress = {
-      total, done: 0, success: 0, failed: 0, skipped: 0,
-      current_article_id: null, current_title: '',
-      max_per_run: scanReport.max_per_run,
-      capped_remaining: scanReport.capped_remaining,
-    };
+    const initialProgress = makeInitialProgress(total, scanReport.max_per_run, scanReport.capped_remaining);
 
     setProgress(initialProgress);
     setExecutionResults([]);
@@ -1037,7 +1081,6 @@ export function useBulkBlogWorkflow() {
     let done = 0, success = 0, failed = 0, skipped = 0;
 
     for (const article of publishQueue) {
-      // Check stop_requested
       const { data: sessionCheck } = await supabase
         .from('blog_bulk_workflow_sessions')
         .select('stop_requested')
@@ -1061,7 +1104,8 @@ export function useBulkBlogWorkflow() {
       }
 
       setProgress({
-        total, done, success, failed, skipped,
+        total, done, fully_enriched: 0, partially_improved: 0, still_pending: 0,
+        success, failed, skipped,
         current_article_id: article.post_id,
         current_title: article.title,
         max_per_run: scanReport.max_per_run,
@@ -1069,7 +1113,6 @@ export function useBulkBlogWorkflow() {
       });
 
       try {
-        // Re-fetch post from DB
         const { data: freshPost, error: fetchErr } = await supabase
           .from('blog_posts')
           .select('*')
@@ -1080,7 +1123,6 @@ export function useBulkBlogWorkflow() {
           throw new Error(`Post not found: ${article.slug}`);
         }
 
-        // Re-verify: check if already published
         if (freshPost.is_published) {
           const result: ExecutionResult = {
             slug: article.slug, title: article.title,
@@ -1094,7 +1136,6 @@ export function useBulkBlogWorkflow() {
           continue;
         }
 
-        // Re-verify: full publish eligibility check
         const recheck = checkPublishEligibility(freshPost as any);
         if (!recheck.eligible && recheck.confidence < 0.7) {
           const result: ExecutionResult = {
@@ -1110,7 +1151,6 @@ export function useBulkBlogWorkflow() {
           continue;
         }
 
-        // Publish
         const { error: updateErr } = await supabase
           .from('blog_posts')
           .update({
@@ -1143,12 +1183,15 @@ export function useBulkBlogWorkflow() {
 
       done++;
       await updateHeartbeat(sessionId, {
-        progress: { total, done, success, failed, skipped, current_article_id: null, current_title: '', max_per_run: scanReport.max_per_run, capped_remaining: scanReport.capped_remaining },
+        progress: {
+          total, done, fully_enriched: 0, partially_improved: 0, still_pending: 0,
+          success, failed, skipped, current_article_id: null, current_title: '',
+          max_per_run: scanReport.max_per_run, capped_remaining: scanReport.capped_remaining,
+        },
       });
 
       onArticleComplete?.();
 
-      // 1s delay between publishes
       if (done < total) {
         await new Promise(r => setTimeout(r, 1000));
       }
@@ -1161,7 +1204,8 @@ export function useBulkBlogWorkflow() {
       .single() as any).data?.stop_requested ? 'stopped' : 'completed';
 
     const finalProgress: WorkflowProgress = {
-      total, done, success, failed, skipped,
+      total, done, fully_enriched: 0, partially_improved: 0, still_pending: 0,
+      success, failed, skipped,
       current_article_id: null, current_title: '',
       max_per_run: scanReport.max_per_run,
       capped_remaining: scanReport.capped_remaining,
@@ -1232,8 +1276,14 @@ export function useBulkBlogWorkflow() {
     await supabase.from('blog_posts').update({ ai_fixed_at: new Date().toISOString() } as any).eq('id', post.id);
   };
 
-  // ── Execute Enrich for single article ──
-  const executeEnrichForArticle = async (article: ArticleVerdict, aiModel: string) => {
+  // ── Execute Enrich for single article (with post-enrichment verification) ──
+  interface EnrichExecutionResult {
+    outcome: EnrichOutcome;
+    reason: string;
+    failing_criteria: string[];
+  }
+
+  const executeEnrichForArticle = async (article: ArticleVerdict, aiModel: string): Promise<EnrichExecutionResult> => {
     const { data: post, error } = await supabase
       .from('blog_posts')
       .select('*')
@@ -1241,6 +1291,8 @@ export function useBulkBlogWorkflow() {
       .single();
 
     if (error || !post) throw new Error(`Post not found: ${article.slug}`);
+
+    const preWordCount = (post.content || '').replace(/<[^>]+>/g, '').split(/\s+/).filter((w: string) => w.length > 0).length;
 
     const { data: enrichData, error: enrichError } = await supabase.functions.invoke('improve-blog-content', {
       body: {
@@ -1255,15 +1307,84 @@ export function useBulkBlogWorkflow() {
 
     if (enrichError) throw enrichError;
 
-    if (enrichData?.result) {
-      const newContent = enrichData.result;
-      const wordCount = newContent.replace(/<[^>]+>/g, '').split(/\s+/).filter((w: string) => w.length > 0).length;
-      await supabase.from('blog_posts').update({
-        content: newContent,
-        word_count: wordCount,
-        reading_time: Math.max(1, Math.ceil(wordCount / 200)),
-      }).eq('id', post.id);
+    // ── Guard: empty or unusable result ──
+    const newContent = enrichData?.result;
+    if (!newContent || typeof newContent !== 'string' || newContent.trim().length < 100) {
+      throw new Error('Enrichment returned empty or unusable content');
     }
+
+    // ── Compute all post-enrichment metrics ──
+    const plainText = newContent.replace(/<[^>]+>/g, '');
+    const wordCount = plainText.split(/\s+/).filter((w: string) => w.length > 0).length;
+    const readingTime = Math.max(1, Math.ceil(wordCount / 200));
+
+    // FAQ detection from content
+    let faqCount = 0;
+    let hasFaqSchema = post.has_faq_schema || false;
+    if (typeof DOMParser !== 'undefined') {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(newContent, 'text/html');
+      // Count FAQ questions (strong/b ending with ?)
+      doc.querySelectorAll('strong, b').forEach(el => {
+        const text = el.textContent?.trim() || '';
+        if (text.endsWith('?') && text.length > 10) faqCount++;
+      });
+      // Also check for FAQ schema-style structure
+      const h2s = doc.querySelectorAll('h2');
+      h2s.forEach(h2 => {
+        const text = h2.textContent?.trim()?.toLowerCase() || '';
+        if (text.includes('faq') || text.includes('frequently asked')) {
+          hasFaqSchema = true;
+        }
+      });
+    }
+
+    // Auto-generate excerpt if empty
+    const excerpt = post.excerpt || plainText.replace(/\s+/g, ' ').trim().substring(0, 155) + '...';
+
+    // ── Save enriched content + all recomputed metrics ──
+    const updatePayload: Record<string, any> = {
+      content: newContent,
+      word_count: wordCount,
+      reading_time: readingTime,
+      faq_count: faqCount > 0 ? faqCount : (post.faq_count || 0),
+      has_faq_schema: hasFaqSchema,
+      excerpt,
+    };
+
+    await supabase.from('blog_posts').update(updatePayload).eq('id', post.id);
+
+    // ── Post-enrichment verification: re-check against enrich-readiness criteria ──
+    const postEnrichPost = { ...post, ...updatePayload };
+    const readiness = checkEnrichReadiness(postEnrichPost);
+
+    if (readiness.passes) {
+      return {
+        outcome: 'fully_enriched',
+        reason: `Enriched: ${preWordCount} → ${wordCount} words. All criteria pass.`,
+        failing_criteria: [],
+      };
+    }
+
+    // Determine if partially improved: content grew AND some pre-existing failures were fixed
+    const preReadiness = checkEnrichReadiness(post);
+    const preFailCount = preReadiness.failing.length;
+    const postFailCount = readiness.failing.length;
+    const contentGrew = wordCount > preWordCount;
+
+    if (contentGrew && postFailCount < preFailCount) {
+      return {
+        outcome: 'partially_improved',
+        reason: `Improved: ${preWordCount} → ${wordCount} words. ${postFailCount} criteria still failing.`,
+        failing_criteria: readiness.failing,
+      };
+    }
+
+    return {
+      outcome: 'still_pending',
+      reason: `Still pending: ${preWordCount} → ${wordCount} words. ${postFailCount} criteria failing.`,
+      failing_criteria: readiness.failing,
+    };
   };
 
   // ── Append execution result (append-safe) ──
@@ -1303,6 +1424,7 @@ export function useBulkBlogWorkflow() {
     setProgress(null);
     setExecutionResults([]);
     setScanProgress(null);
+    setWorkflowType(null);
     cancelRef.current = false;
   }, []);
 
@@ -1313,6 +1435,7 @@ export function useBulkBlogWorkflow() {
     progress,
     executionResults,
     scanProgress,
+    workflowType,
     startScan,
     confirmExecution,
     requestStop,
@@ -1377,6 +1500,12 @@ function buildDigest(post: BlogPost, verdict: ArticleVerdict) {
     });
   }
 
+  // Compute real heuristic scores instead of zeros
+  const meta = blogPostToMetadata(post as any);
+  const quality = analyzeQuality(meta);
+  const seo = analyzeSEO(meta);
+  const compliance = analyzePublishCompliance(meta);
+
   return {
     slug: post.slug,
     title: post.title,
@@ -1396,10 +1525,10 @@ function buildDigest(post: BlogPost, verdict: ArticleVerdict) {
     faq_summary: faqSummary.slice(0, 10),
     internal_links: internalLinks.slice(0, 10),
     heuristic_scores: {
-      quality_score: 0,
-      seo_score: 0,
-      compliance_fail_count: 0,
-      compliance_warn_count: 0,
+      quality_score: quality.totalScore,
+      seo_score: seo.totalScore,
+      compliance_fail_count: compliance.failCount,
+      compliance_warn_count: compliance.warnCount,
     },
     is_published: post.is_published,
     word_count: post.word_count || 0,

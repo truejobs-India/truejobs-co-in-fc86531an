@@ -120,6 +120,8 @@ export function BlogPostEditor() {
   const [bulkTopics, setBulkTopics] = useState('');
   const [bulkCategory, setBulkCategory] = useState<string | null>(null);
   const [bulkWordCount, setBulkWordCount] = useState(1500);
+  const [duplicateCheckResults, setDuplicateCheckResults] = useState<{ topic: string; matchedTitle: string; matchedSlug: string }[]>([]);
+  const [isCheckingDuplicates, setIsCheckingDuplicates] = useState(false);
   const [bulkResults, setBulkResults] = useState<{ topic: string; status: 'queued' | 'generating' | 'success' | 'failed'; articleId?: string; error?: string }[]>([]);
   const [isBulkGenerating, setIsBulkGenerating] = useState(false);
   const bulkGenerateAbortRef = useRef(false);

@@ -357,6 +357,7 @@ No markdown code blocks.`;
       return new Response(JSON.stringify({
         result: resultHtml,
         wordCount: wordCountComputed,
+        wasTruncated,
         changes: Array.isArray(changes) ? changes : [],
       }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }

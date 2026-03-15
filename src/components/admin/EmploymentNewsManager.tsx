@@ -117,7 +117,8 @@ export function EmploymentNewsManager() {
   // Pipeline state
   const [jobs, setJobs] = useState<EmpNewsJob[]>([]);
   const [batches, setBatches] = useState<UploadBatch[]>([]);
-  const [isLoadingJobs, setIsLoadingJobs] = useState(false);
+  const [isLoadingJobs, setIsLoadingJobs] = useState(true);
+  const [isRefetching, setIsRefetching] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -186,7 +187,12 @@ export function EmploymentNewsManager() {
   }, []);
 
   const fetchJobs = useCallback(async () => {
-    setIsLoadingJobs(true);
+    const hasExistingData = jobs.length > 0;
+    if (hasExistingData) {
+      setIsRefetching(true);
+    } else {
+      setIsLoadingJobs(true);
+    }
     let query = supabase
       .from('employment_news_jobs')
       .select('*', { count: 'exact' })
@@ -213,6 +219,7 @@ export function EmploymentNewsManager() {
       setTotalCount(count || 0);
     }
     setIsLoadingJobs(false);
+    setIsRefetching(false);
   }, [statusFilter, jobTypeFilter, batchFilter, categoryFilter, stateFilter, searchQuery, currentPage, perPage, toast]);
 
   useEffect(() => {

@@ -177,9 +177,9 @@ async function callClaude(prompt: string, maxTokens: number): Promise<string> {
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured');
 
-  // Cap input to ~12k chars to prevent timeouts on huge articles
-  const cappedPrompt = prompt.length > 12_000
-    ? prompt.substring(0, 12_000) + '\n\n[Content truncated for processing — work with the above portion.]'
+  // Cap input to keep latency under the platform execution limit (Claude slows down on huge prompts).
+  const cappedPrompt = prompt.length > 8_000
+    ? prompt.substring(0, 8_000) + '\n\n[Content truncated for processing — work with the above portion.]'
     : prompt;
 
   const controller = new AbortController();
@@ -196,15 +196,16 @@ async function callClaude(prompt: string, maxTokens: number): Promise<string> {
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: Math.min(maxTokens, 8192),
-        system: 'You are a professional content editor for TrueJobs.co.in, an Indian job portal. Follow the user instructions exactly. Output only what is requested — no preamble, no markdown code blocks.',
+        // Keep output budget conservative to reduce latency and avoid platform timeouts.
+        max_tokens: Math.min(maxTokens, 4096),
+        system: 'You are a professional content editor for TrueJobs.co.in, an Indian job portal. Follow the user instructions exactly. Output only what is requested — no preamble, no markdown code blocks. Be concise and avoid unnecessary verbosity.',
         messages: [{ role: 'user', content: cappedPrompt }],
       }),
       signal: controller.signal,
     });
   } catch (err) {
     clearTimeout(timeoutId);
-    if (err instanceof DOMException && err.name === 'AbortError') throw new Error('Claude API timeout after 120 seconds — try a shorter article or a faster model like Gemini Flash');
+    if (err instanceof DOMException && err.name === 'AbortError') throw new Error('Claude API timeout after 120 seconds — try a shorter article, a smaller word target, or a faster model like Gemini Flash');
     throw err;
   }
   clearTimeout(timeoutId);
@@ -474,6 +475,11 @@ No JSON wrappers, no markdown, no code blocks, no explanations.`;
         const estimatedTokens = Math.max(8000, Math.ceil(effectiveTarget * 2.5));
         maxTokens = Math.min(estimatedTokens, 65536);
 
+        // Claude Sonnet can hit platform timeouts on very large generations — keep output budget tighter.
+        if (effectiveModel === 'claude-sonnet' || effectiveModel === 'claude') {
+          maxTokens = Math.min(maxTokens, 3500);
+        }
+
       } else {
         prompt = `You are a professional content editor for TrueJobs.co.in, an Indian government job portal.
 Expand and improve the following article to approximately ${effectiveTarget} words (currently ~${currentWords} words).
@@ -512,6 +518,11 @@ REMINDER: Your output must contain ALL original content plus additions. Do NOT c
 
         const estimatedTokensNeeded = Math.max(8000, Math.ceil(currentWords * 2.5));
         maxTokens = Math.min(estimatedTokensNeeded, 65536);
+
+        // Claude Sonnet can hit platform timeouts on very large generations — keep output budget tighter.
+        if (effectiveModel === 'claude-sonnet' || effectiveModel === 'claude') {
+          maxTokens = Math.min(maxTokens, 3500);
+        }
       }
 
     } else if (action === 'structure') {
@@ -669,6 +680,8 @@ No markdown code blocks.`;
     return new Response(JSON.stringify({ ...parsed, actualProvider, actualModelId }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   } catch (err) {
     console.error('improve-blog-content error:', err);
-    return new Response(JSON.stringify({ error: err instanceof Error ? err.message : 'Unknown error' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    const msg = err instanceof Error ? err.message : 'Unknown error';
+    const status = typeof msg === 'string' && msg.toLowerCase().includes('timeout') ? 504 : 500;
+    return new Response(JSON.stringify({ error: msg }), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 });

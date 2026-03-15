@@ -90,7 +90,7 @@ Deno.serve(async (req) => {
     for (const article of articles) {
       try {
         // Build context for the AI
-        const plainText = (article.content || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 3000);
+        const plainText = (article.content || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 2000);
 
         const issueList = article.issues.length > 0
           ? `\nCURRENT ISSUES:\n${article.issues.map((i, idx) => `${idx + 1}. ${i}`).join('\n')}`

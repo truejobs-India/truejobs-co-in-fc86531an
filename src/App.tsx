@@ -60,6 +60,14 @@ const Blog = lazy(() => import("./pages/blog/Blog"));
 const BlogCategory = lazy(() => import("./pages/blog/BlogCategory"));
 const BlogPost = lazy(() => import("./pages/blog/BlogPost"));
 
+// Resources
+const SamplePapers = lazy(() => import("./pages/resources/SamplePapers"));
+const Books = lazy(() => import("./pages/resources/Books"));
+const PreviousYearPapers = lazy(() => import("./pages/resources/PreviousYearPapers"));
+const ResourceHub = lazy(() => import("./pages/resources/ResourceHub"));
+const ResourceDetail = lazy(() => import("./pages/resources/ResourceDetail"));
+const ResourceDownload = lazy(() => import("./pages/resources/ResourceDownload"));
+
 // Tools (heavy – jspdf)
 const Tools = lazy(() => import("./pages/tools/Tools"));
 const ResumeChecker = lazy(() => import("./pages/tools/ResumeChecker"));

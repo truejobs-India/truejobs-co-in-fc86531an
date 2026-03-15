@@ -1,123 +1,303 @@
 
 
-# Implementation Plan: Production-Grade Bulk Fix & Enrich System
+## Phase 5: AI Features + Current Affairs — Implementation Plan
 
-## Overview
+### Architecture
 
-Replace the "Auto Fix & Enrich All" button (lines 145-149, 509-657, 1231-1236 of `BlogPostEditor.tsx`) with two separate report-first, stoppable, DB-persisted workflows: **"Fix All Pending"** and **"Enrich All Pending"**.
-
-## Files to Create/Modify
-
-### 1. DB Migration: `blog_bulk_workflow_sessions` table
-
-```sql
-CREATE TABLE public.blog_bulk_workflow_sessions (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  workflow_type text NOT NULL CHECK (workflow_type IN ('fix', 'enrich')),
-  status text NOT NULL DEFAULT 'scanning'
-    CHECK (status IN ('scanning','scan_complete','executing','stopped','completed','failed','stale','cancelled')),
-  scan_report jsonb DEFAULT '{}'::jsonb,
-  progress jsonb DEFAULT '{"total":0,"done":0,"success":0,"failed":0,"skipped":0,"current_article_id":null}'::jsonb,
-  execution_results jsonb DEFAULT '[]'::jsonb,
-  stop_requested boolean NOT NULL DEFAULT false,
-  ai_model text,
-  max_articles_per_run integer NOT NULL DEFAULT 50,
-  started_at timestamptz NOT NULL DEFAULT now(),
-  completed_at timestamptz,
-  last_heartbeat_at timestamptz NOT NULL DEFAULT now(),
-  started_by uuid NOT NULL
-);
-ALTER TABLE public.blog_bulk_workflow_sessions ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Admins manage workflow sessions"
-ON public.blog_bulk_workflow_sessions FOR ALL TO authenticated
-USING (public.has_role(auth.uid(), 'admin'));
+```
+Frontend (React)
+    ↓ supabase.functions.invoke() with auth token
+Edge Function (Deno)
+    ↓ JWT validated via getClaims()
+    ↓ DB queries via Supabase client
+AWS Bedrock (SigV4 signing)
+    ↓
+Mistral Models
+    ├─ mistral.mixtral-8x7b-instruct-v0:1  → Question generation
+    └─ mistral.mistral-large-2402-v1:0      → Answer evaluation + Reports
 ```
 
-### 2. New Edge Function: `supabase/functions/classify-blog-articles/index.ts`
+Reuses existing `callBedrockConverse()` + SigV4 signing from `enrich-job-descriptions/index.ts`.
 
-- Uses exact `verifyAdmin()` pattern from `analyze-blog-compliance-fixes`
-- Accepts batch of 5-8 articles with structured content digest:
-  - `headings[]`, `meta_summary`, `intro_excerpt` (500 chars), `middle_excerpt` (500 chars from ~50%), `ending_excerpt` (500 chars), `faq_summary`, `internal_links`, `heuristic_scores`, `is_published`, `word_count`
-  - For short articles (< 6000 chars): `full_plain_text`
-- Returns per-article verdict: `{ slug, verdict, confidence, reasons, severity, action_type, safe_to_bulk_edit, requires_manual_review, preserve_elements, missing_elements, ranking_risk }`
-- AI prompt includes ranking-protection rules for published strong posts
-- Confidence < 0.7 or ranking_risk 'high' → `manual_review`
+---
 
-### 3. New Hook: `src/hooks/useBulkBlogWorkflow.ts`
+### Batch 1: Database + Current Affairs (5B)
 
-Core state machine:
+**Migration — 5 tables:**
 
-**`startScan(type, posts, aiModel, maxPerRun)`**:
-1. Check DB for active sessions (heartbeat < 5 min) → block if exists
-2. Insert new session row (status='scanning')
-3. **Stage 1**: Client-side heuristic triage using `analyzeQuality()`, `analyzeSEO()`, `analyzePublishCompliance()`, `blogPostToMetadata()`
-   - Fix triage: PASS (quality >= 80, SEO >= 80, 0 compliance fails, <= 1 warn) / BORDERLINE (60-80 or warns 2-4) / LIKELY_PENDING_OBJECTIVE (quality < 60 OR SEO < 60 OR compliance failCount >= 3 — skip Stage 2 only for these clear-cut cases)
-   - Enrich triage: PASS (wordCount >= 1200, intro+conclusion, >= 3 H2s, FAQs, internal links) / AUTO_PENDING (wordCount < 200, near-empty) / **all others → Stage 2**
-4. Update heartbeat after Stage 1
-5. **Stage 2**: Send non-PASS candidates to `classify-blog-articles` edge fn in batches of 5-8, update heartbeat after each batch
-   - Fix: only BORDERLINE goes to Stage 2 (LIKELY_PENDING_OBJECTIVE already decided)
-   - Enrich: everything except PASS and AUTO_PENDING goes to Stage 2
-6. Build report with categories: skip_already_good, skip_ranking_protection, minimal_safe_edit, targeted_fix, deeper_enrichment, manual_review, with per-article details
-7. Store report in `scan_report` JSONB, set status='scan_complete'
+1. `current_affairs`: id, date, slug, title, content, category, tags (text[]), source_url, created_at
+2. `daily_quiz_questions`: id, date, question_text, options (jsonb), correct_option_id, explanation, category, difficulty_level, created_at
+   - RLS: public SELECT, admin ALL via `has_role()`
+3. `ai_interview_sessions`: id, user_id, exam_type, interview_mode, subject_area, candidate_profile (jsonb), questions_count, overall_score, timer_seconds (nullable), status (default 'in_progress'), created_at, updated_at
+4. `ai_interview_messages`: id, session_id (FK), board_member, question, answer, score, knowledge_score, communication_score, confidence_score, structure_score, relevance_score, feedback, question_order, created_at
+5. `ai_interview_reports`: id, session_id (FK), user_id, exam_type, mode, report_json (jsonb), overall_score, knowledge_score, communication_score, confidence_score, structure_score, presence_score, strengths (text[]), improvements (text[]), recommended_topics (text[]), created_at
+   - RLS on 3-5: users CRUD own rows, admin SELECT all
 
-**`confirmExecution(sessionId)`**:
-1. Set status='executing'
-2. Process only `safe_to_bulk_edit === true` articles, capped at `max_articles_per_run`
-3. Sequential with 3s delay; before each article: fetch session to check `stop_requested`
-4. After each article: append result to `execution_results` via `jsonb_concat` pattern (read existing array, append, write back) — never overwrites earlier results
-5. Update `progress` and `last_heartbeat_at`
-6. On stop/complete: set final status, `completed_at`
+**Frontend — `/current-affairs`:** Date picker, category tabs, CA cards, 10-question daily quiz, monthly PDF download, JSON-LD.
 
-**`requestStop(sessionId)`**: UPDATE `stop_requested = true`
+**Admin — `CurrentAffairsManager`:** CRUD + bulk add in AdminDashboard.
 
-**`cancelScan(sessionId)`**: Set status='cancelled', preserve partial scan_report for audit
+---
 
-**On mount**: Check for active/scan_complete sessions, restore state. Mark stale if heartbeat > 5 min.
+### Batch 2: AI Interview Edge Function (5A — Backend)
 
-### 4. New Component: `src/components/admin/blog/BulkWorkflowPanel.tsx`
+**Edge function: `ai-interview`**
+- `verify_jwt = false` in config.toml but validates JWT in code via `getClaims()` — returns 401 if unauthenticated
+- Models: Mixtral 8x7B for questions, Mistral Large for evaluation + reports
+- Actions: `start_interview`, `next_question`, `evaluate_answer`, `generate_report`
+- Queries `current_affairs` for question context
+- DB filtering before any AI call
 
-Collapsible panel replacing old button. States:
-- **Idle**: Two buttons + max-per-run input (default 50)
-- **Scanning**: Progress with cancel button
-- **Report**: Summary cards showing:
-  - Total scanned / Total pending / Max this run / Deferred by cap
-  - Skip (already good) / Skip (ranking protection) / Minimal safe edit / Targeted fix or Deeper enrichment / Manual review
-  - Estimated API calls
-  - Expandable per-article rows with reasons, severity, confidence
-  - Confirm button (only for safe_to_bulk_edit articles up to cap)
-- **Executing**: Progress bar, current article, counters, Stop button
-- **Stopped/Completed**: Final summary from `execution_results` showing per-article status/reason/timestamp, grouped by: success, failed, skipped during execution, deferred by cap
+---
 
-### 5. Modify `BlogPostEditor.tsx`
+### Batch 3: AI Interview Frontend (5A — UI)
 
-- Remove lines 145-149 (bulk fix-enrich state)
-- Remove lines 509-657 (handleBulkFixAndEnrich function)
-- Remove lines 1231-1236 (old button)
-- Add `<BulkWorkflowPanel posts={posts} blogTextModel={blogTextModel} onComplete={fetchPosts} />` in toolbar area
-- Keep SAFE_METADATA_FIELDS (used by per-article fix too)
+**`/ai-interview`:** Step 1 exam type → Step 2 mode → Step 3 profile → Timer config (60/90/120s/unlimited) → Chat interface with board member labels → Post-interview report with recharts + PDF download + save.
 
-### 6. Modify `supabase/config.toml`
+**`/dashboard/interview-history`:**
+- Paginated table (20/page) with next/previous
+- Progress tracking: score trend, skill radar, subject-wise bar charts
+- Interview comparison: side-by-side skill table
+- **AI progress analysis:** Button that sends **max 5** most recent session summaries (scores + metadata only, not full Q&A) to Bedrock (Mistral Large) for textual insights. Hard cap enforced server-side in the edge function — reject requests exceeding 5 sessions.
 
-Add:
-```toml
-[functions.classify-blog-articles]
-verify_jwt = false
+Voice-ready architecture: input via `onSubmit(text: string)` for future speech-to-text.
+
+---
+
+### Batch 4: AI Exam Matcher (5C)
+
+**Edge function: `ai-exam-matcher`** (public, no auth)
+- Step 1: DB filter `govt_exams` by age/qualification/category (SQL WHERE)
+- Step 2: Send filtered list (max ~30) to Mixtral 8x7B for ranking
+
+**`/ai-exam-matcher`:** Multi-step form → loading animation → sorted result cards with match %, reasons, "View Details" link.
+
+---
+
+### Batch 5: Tools Page + Polish
+
+- Add "AI-Powered Tools" and "Exam Preparation" sections to Tools.tsx
+- Cross-links from Sarkari Jobs and Govt Exam Detail pages
+
+---
+
+## Phase 6 Addendum — SEO & Feature Enhancements
+
+### 1. Telegram Bot (Replaces Widget)
+
+- **Edge function: `telegram-bot-webhook`** — handles `/start`, `/subscribe`, `/unsubscribe`, `/categories`, `/state`, `/qualification`
+- **Edge function: `send-telegram-alerts`** — triggered on new job/admit card/result/deadline
+- **Database:** `telegram_subscribers` table (`id`, `telegram_user_id` bigint unique, `categories` jsonb, `qualification` text, `state` text, `is_active` boolean default true, `created_at`). RLS: service_role ALL.
+- **Frontend:** Update `TelegramAlertWidget.tsx` to link to bot URL (stored in `app_settings`)
+- **Secret required:** `TELEGRAM_BOT_TOKEN`
+
+---
+
+### 2. Programmatic SEO — Complete Combinations
+
+New `GovtProgrammaticPage.tsx` (lazy-loaded). Slug patterns resolved via DB queries:
+
+| Pattern | Example | DB Query |
+|---------|---------|----------|
+| `{dept}-jobs` | `/ssc-jobs` | `WHERE exam_category ILIKE '%ssc%'` |
+| `govt-jobs-{state}` | `/govt-jobs-bihar` | `WHERE states @> '{bihar}'` |
+| `govt-jobs-{city}` | `/govt-jobs-patna` | Predefined city-to-state map |
+| `{qual}-govt-jobs` | `/graduate-govt-jobs` | `WHERE qualification_tags @> '{graduate}'` |
+| `{dept}-jobs-{state}` | `/ssc-jobs-bihar` | Combined filters |
+| `{dept}-{qual}-jobs` | `/ssc-graduate-jobs` | Combined filters |
+| `govt-jobs-{state}-{qual}` | `/govt-jobs-up-graduate` | Combined filters |
+| `{dept}-jobs-{city}` | `/ssc-jobs-delhi` | Combined filters |
+
+Page only renders if >= 1 matching exam exists. Falls through to NotFound otherwise.
+
+---
+
+### 3. Auto-Generated SEO Intro Content
+
+Template-driven `generateSEOIntro(filters)` utility producing 300+ word HTML intros + 3-5 FAQs + FAQ JSON-LD + internal links per programmatic page.
+
+---
+
+### 4. Deadline-Based SEO Pages
+
+New `GovtDeadlinePage.tsx` (lazy-loaded). Slug patterns:
+
+- `govt-jobs-last-date-today` / `tomorrow` / `this-week` / `this-month`
+- `govt-jobs-last-date-{month}-{year}` (e.g., `govt-jobs-last-date-july-2026`)
+
+Queries `govt_exams.application_end` relative to current date. Badges: "Closing Today", "Closing Tomorrow", "Closing This Week".
+
+---
+
+### 5. Search Query Capture
+
+Wire existing `upsert_search_query` RPC into `Jobs.tsx`, `SarkariJobs.tsx`. Add "Search Insights" (top 50 queries) to admin panel.
+
+---
+
+### 6. Internal Linking Enforcement
+
+- **`QuickLinksBlock.tsx`** — standardized links grid on all govt exam detail pages
+- **`ContextualLinks.tsx`** — "More {department} Jobs", "More Jobs in {state}", "More {qualification} Jobs"
+- **`RelatedExams.tsx`** — 4-6 similar exams by `exam_category` or `qualification_tags`
+
+All integrated into `GovtExamDetail.tsx`.
+
+---
+
+### 7. Discovery Page — `/all-sarkari-jobs`
+
+Sections: A-Z index, department grouping, year grouping, qualification grouping, latest jobs, closing soon, upcoming exams, latest results, latest admit cards. Auto-updates on new entries.
+
+---
+
+### 8. Job Freshness Signals
+
+In `GovtExamDetail.tsx`: "Last Updated" display, badges (Updated Today, Recently Updated, Closing Soon, Closing Tomorrow), `datePublished`/`dateModified` in JSON-LD schema.
+
+---
+
+### 9. Prerender Verification
+
+Add `GovtProgrammaticPage` and `GovtDeadlinePage` to `SEOCacheBuilder` for static HTML generation. Verify structured data in cached HTML.
+
+---
+
+### 10. Execution Order
+
+| Batch | Additions |
+|-------|-----------|
+| Batch 3 (Alerts) | Telegram bot, `telegram_subscribers` table |
+| Batch 4 (Programmatic SEO) | Complete combinations, auto-generated intros, deadline pages |
+| Batch 5 (Discovery) | `/all-sarkari-jobs`, freshness badges |
+| Batch 6 (Internal Linking) | QuickLinksBlock, ContextualLinks, RelatedExams |
+| Batch 7 (Sitemap) | Deadline pages + programmatic slugs in sitemaps, prerender cache |
+| Any batch | Search query capture wiring |
+
+---
+
+## Selection-Based SEO Pages (Without Exam)
+
+### Database
+- `selection_type` text column added to `govt_exams` (values: `written_exam`, `interview`, `merit`, `direct_recruitment`, `skill_test`)
+- Index: `idx_govt_exams_selection_type`
+
+### Components
+- **`GovtSelectionPage.tsx`** — renders selection-based programmatic pages with DB-driven listings, 300+ word intro, FAQ schema, internal links
+- **`selectionPageData.ts`** — slug parser (`parseSelectionSlug`) + config builder (`buildSelectionPageConfig`) + SEO intro generator + FAQ generator
+
+### Slug Patterns (in SEOLandingResolver)
+| Pattern | Example |
+|---------|---------|
+| `govt-jobs-without-exam` | Main page |
+| `{qual}-govt-jobs-without-exam` | `/10th-pass-govt-jobs-without-exam` |
+| `{dept}-jobs-without-exam` | `/railway-jobs-without-exam` |
+| `govt-jobs-without-exam-{state}` | `/govt-jobs-without-exam-bihar` |
+
+### Query Logic
+All pages filter `govt_exams WHERE selection_type IN ('interview','merit','direct_recruitment')` + optional dept/qual/state filters. Page only renders if >= 1 result.
+
+### Sitemap & Prerender
+Add to `sitemap-combinations.xml` and `seo_page_cache` in future batches.
+
+---
+
+## Phase C: Exam Authority Pages (SEO Content Hub)
+
+### Architecture
+- `src/data/examAuthority/` — typed config registry with `Map<string, ExamAuthorityConfig>` for O(1) slug lookup
+- `src/pages/govt/ExamAuthorityPage.tsx` — renders all authority page types (notification, syllabus, exam-pattern, eligibility, salary)
+- Resolved via `SEOLandingResolver.tsx` Step 0 (before all other SEO pages)
+
+### Batch 1 (Complete): SSC CGL — 5 pages
+| Slug | Type | Meta Title |
+|------|------|-----------|
+| `ssc-cgl-2026-notification` | notification | SSC CGL 2026 Notification – Dates, Eligibility, Apply |
+| `ssc-cgl-2026-syllabus` | syllabus | SSC CGL Syllabus 2026 – Complete Topic-wise Guide |
+| `ssc-cgl-2026-exam-pattern` | exam-pattern | SSC CGL Exam Pattern 2026 – Tier 1 & 2 Details |
+| `ssc-cgl-2026-eligibility` | eligibility | SSC CGL Eligibility 2026 – Age, Qualification |
+| `ssc-cgl-2026-salary` | salary | SSC CGL Salary 2026 – Pay Scale, In-Hand, Perks |
+
+### Phase C Complete ✅
+- 80 authority pages across 16 exam clusters (SSC, Railway, Banking, Defence/UPSC)
+- 16 Exam Cluster Hub pages (`/{exam}-hub`) with subtopic cards + FAQs
+- 16 Previous Year Paper pages (`/{exam}-previous-year-paper`) with year-wise tables
+- 3 enrichment sections on notification pages: Admit Card, Cutoff Table, Result
+- PopularExamsBlock on SarkariJobs, LatestGovtJobs, GovtExamDetail
+- SEOCacheBuilder updated with hub + PYP loops (sections 13, 14)
+- Dynamic sitemap includes all 32 new slugs
+
+---
+
+## Phase D: Programmatic Pages (Planned)
+
+### Objective
+Generate programmatic SEO pages from database fields for long-tail traffic capture.
+
+### Planned Page Types
+1. **State + Qualification combos** — `/govt-jobs-{state}-{qualification}` (e.g. `/govt-jobs-uttar-pradesh-graduation`)
+2. **Department landing pages** — `/{dept}-jobs` with live listings from DB
+3. **Monthly deadline pages** — `/govt-jobs-last-date-{month}-{year}`
+4. **Exam calendar pages** — `/govt-exam-calendar-{month}-{year}`
+
+### Prerequisites
+- Phase C complete ✅
+- Minimum 50 active govt_exams rows in database
+- State/qualification taxonomy finalized
+
+### Implementation Notes
+- Reuse SEOLandingResolver pattern with new step priorities
+- Each page type needs 300+ word intro + FAQ schema
+- Thin-content guard: only render if ≥1 matching listing exists
+
+---
+
+## Phase E: Calculator Tie-ins, Guide System, Internal Linking, Outreach Assets
+
+### E-3: Long-Form Guide Generation via External Gemini API
+
+#### Architecture
+- **Single source of truth**: Guide metadata (slugs, prompts, tags, internal links) lives ONLY in the edge function `generate-guide-content/index.ts`. No separate `src/data/guidesMetadata.ts` file. The edge function owns the config array and uses it directly for generation + insertion.
+- **Storage**: Existing `blog_posts` table + `/blog/:slug` route. No new tables or routes.
+- **Model**: External Gemini API (`gemini-2.5-flash`) via `GEMINI_API_KEY` secret.
+- **Category**: `'Career Advice'` (already allowed by DB).
+
+#### Validation Rules (enforced before DB insert)
+Before inserting into `blog_posts`, the edge function MUST validate Gemini output:
+
+1. **meta_title**: ≤60 characters. If over, truncate at last word boundary + "…"
+2. **meta_description**: 140–155 characters. If under 140, pad with " | TrueJobs". If over 155, truncate at last word boundary + "…"
+3. **FAQ count**: Must contain 5–7 FAQs. If fewer than 5 or more than 7, re-extract or trim to exactly 5.
+4. **Internal link URLs**: Each `href` must start with `/` and match a known route pattern (e.g., `/ssc-cgl-2026-notification`, `/govt-salary-calculator`, `/sarkari-jobs`). Reject any absolute URLs or broken paths. Log warnings for unrecognized paths but still insert.
+5. **Word count**: Must be ≥1,800 words. If under, log warning but still insert as draft for manual expansion.
+6. **Content structure**: Must contain at least 3 H2 headings. If not, log warning.
+
+#### 10 Guide Slugs
+All published under `/blog/`:
+1. `ssc-cgl-preparation-guide`
+2. `govt-jobs-after-12th-guide`
+3. `upsc-vs-ssc-guide`
+4. `railway-jobs-guide`
+5. `govt-salary-calculation-guide`
+6. `govt-jobs-by-stream-guide`
+7. `nda-preparation-guide`
+8. `sbi-po-vs-ibps-po-guide`
+9. `govt-jobs-bihar-guide`
+10. `agniveer-complete-guide`
+
+#### Flow
+```
+POST /functions/v1/generate-guide-content { slug: "all" | "<specific-slug>" }
+  → Loop guide configs (single source array in edge function)
+  → Call Gemini API with detailed prompt per guide
+  → Parse + validate response (meta title, meta desc, FAQs, links, word count)
+  → Fix/truncate fields that fail validation
+  → Insert into blog_posts as draft (status: 'draft', is_published: false)
+  → Return report: { generated: [...], skipped: [...], validation_warnings: [...], errors: [...] }
 ```
 
-## Key Design Decisions
-
-**Execution results append-safety**: Each article result is appended by reading the current `execution_results` array from DB, pushing the new entry, and writing back. This ensures no data loss on concurrent reads.
-
-**Cancel during scanning**: Sets status to `'cancelled'` — a terminal state. Partial scan data in `scan_report` is preserved for audit. Admin must start fresh scan.
-
-**Objective fix cases that skip Stage 2**: Only articles with compliance `failCount >= 3` OR quality < 60 OR SEO < 60. These are unambiguous. Articles with 1-2 compliance fails or scores 60-80 always go to Stage 2.
-
-**Skip reason separation in final summary**:
-- `skip_already_good` — passed Stage 1 heuristics
-- `skip_ranking_protection` — Stage 2 AI determined strong published post
-- `manual_review` — low confidence or high ranking risk, excluded from bulk
-- `deferred_by_cap` — eligible but exceeded max_articles_per_run
-- `skipped_execution` — skipped during execution (e.g., edge fn returned skip verdict)
-
-**Stale session handling**: Sessions with `last_heartbeat_at` > 5 min in `scanning`/`executing` status are auto-marked `stale` on mount. No resume — fresh scan required.
-
+#### Files
+| Action | File |
+|--------|------|
+| CREATE | `supabase/functions/generate-guide-content/index.ts` |
+| MODIFY | `supabase/config.toml` — add `[functions.generate-guide-content]` |

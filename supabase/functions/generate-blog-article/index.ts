@@ -237,7 +237,7 @@ async function verifyAdmin(req: Request): Promise<{ userId: string } | Response>
 // ═══════════════════════════════════════════════════════════════
 
 // ── 1. Gemini (direct API) — supports optional system instruction ──
-async function callGemini(prompt: string, systemPrompt?: string, maxTokens = 32000, temperature = 0.5): Promise<string> {
+async function callGemini(prompt: string, systemPrompt?: string, maxTokens = 32000, temperature = 0.5, modelName = 'gemini-2.5-flash'): Promise<string> {
   const apiKey = Deno.env.get('GEMINI_API_KEY');
   if (!apiKey) throw new Error('GEMINI_API_KEY not configured');
 
@@ -246,12 +246,12 @@ async function callGemini(prompt: string, systemPrompt?: string, maxTokens = 320
     generationConfig: { maxOutputTokens: maxTokens, temperature },
   };
 
-  // Add system instruction if provided
   if (systemPrompt) {
     requestBody.systemInstruction = { parts: [{ text: systemPrompt }] };
   }
 
-  const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+  console.log(`[callGemini] model=${modelName} maxTokens=${maxTokens}`);
+  const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(requestBody),
@@ -259,6 +259,7 @@ async function callGemini(prompt: string, systemPrompt?: string, maxTokens = 320
   if (!resp.ok) throw new Error(`Gemini API error ${resp.status}`);
   const data = await resp.json();
   const candidate = data?.candidates?.[0];
+  console.log(`[callGemini] finishReason=${candidate?.finishReason}`);
   if (candidate?.finishReason === 'MAX_TOKENS') throw new Error('AI response truncated (MAX_TOKENS). Try shorter target word count.');
   return candidate?.content?.parts?.[0]?.text || '';
 }

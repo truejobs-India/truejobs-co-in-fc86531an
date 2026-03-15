@@ -392,8 +392,46 @@ function detectIntro(content: string): boolean {
 
 function detectConclusion(headings: { level: number; text: string }[]): boolean {
   if (headings.length === 0) return false;
-  const lastHeading = headings[headings.length - 1].text.toLowerCase();
-  return /conclusion|summary|निष्कर्ष|सारांश|final|wrap/i.test(lastHeading);
+  const conclusionPattern = /conclusion|summary|final\s*thoughts|key\s*takeaway|wrap\s*up|in\s*short|to\s*sum|summing|closing|last\s*word|निष्कर्ष|सारांश|अंतिम|महत्वपूर्ण\s*बातें/i;
+  // Check last 2 headings (FAQ section may come after conclusion)
+  const lastTwo = headings.slice(-2);
+  for (const h of lastTwo) {
+    if (conclusionPattern.test(h.text)) return true;
+  }
+  return false;
+}
+
+/** Detect conclusion by checking for a substantive closing paragraph after the last heading */
+export function detectConclusionFromContent(content: string): boolean {
+  if (!content) return false;
+  // First check heading-based detection
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(content, 'text/html');
+  const headings: { level: number; text: string }[] = [];
+  doc.querySelectorAll('h1, h2, h3, h4').forEach(el => {
+    headings.push({ level: parseInt(el.tagName.substring(1)), text: el.textContent?.trim() || '' });
+  });
+  if (detectConclusion(headings)) return true;
+
+  // Paragraph-based fallback: check if there's a substantial <p> after the last heading
+  const allElements = Array.from(doc.body.children);
+  let lastHeadingIdx = -1;
+  for (let i = allElements.length - 1; i >= 0; i--) {
+    if (/^H[1-6]$/i.test(allElements[i].tagName)) {
+      lastHeadingIdx = i;
+      break;
+    }
+  }
+  if (lastHeadingIdx >= 0) {
+    // Look for a paragraph after the last heading that's at least 50 chars
+    for (let i = lastHeadingIdx + 1; i < allElements.length; i++) {
+      const el = allElements[i];
+      if (el.tagName === 'P' && (el.textContent?.trim().length || 0) >= 50) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 function computeKeywordOverlap(title: string, content: string): number {
@@ -461,6 +499,6 @@ export function blogPostToMetadata(post: {
     authorName: post.author_name || undefined,
     headings,
     hasIntro: detectIntro(post.content || ''),
-    hasConclusion: detectConclusion(headings),
+    hasConclusion: detectConclusionFromContent(post.content || ''),
   };
 }

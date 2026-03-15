@@ -4,13 +4,10 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 /** Lightweight markdown-to-HTML converter for AI output that ignores the HTML-only instruction */
 function markdownToHtml(md: string): string {
   let html = md;
-  // Headings: ### before ##
   html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
   html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
-  // Bold and italic
   html = html.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
   html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  // Unordered lists: lines starting with * or -
   html = html.replace(/(?:^|\n)((?:[ \t]*[\*\-] .+\n?)+)/g, (_: string, block: string) => {
     const items = block.trim().split('\n').map((line: string) => {
       const text = line.replace(/^[ \t]*[\*\-] /, '');
@@ -18,7 +15,6 @@ function markdownToHtml(md: string): string {
     }).join('\n');
     return `\n<ul>\n${items}\n</ul>\n`;
   });
-  // Ordered lists
   html = html.replace(/(?:^|\n)((?:\d+\. .+\n?)+)/g, (_: string, block: string) => {
     const items = block.trim().split('\n').map((line: string) => {
       const text = line.replace(/^\d+\.\s*/, '');
@@ -26,7 +22,6 @@ function markdownToHtml(md: string): string {
     }).join('\n');
     return `\n<ol>\n${items}\n</ol>\n`;
   });
-  // Wrap remaining bare text lines in <p> tags
   html = html.split('\n').map((line: string) => {
     const trimmed = line.trim();
     if (!trimmed) return '';
@@ -65,7 +60,6 @@ async function verifyAdmin(req: Request): Promise<{ userId: string } | Response>
 const GEMINI_MODEL = 'gemini-2.5-flash';
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
 
-// Map known model identifiers to Gemini model names
 const MODEL_MAP: Record<string, string> = {
   'gemini-2.5-flash': 'gemini-2.5-flash',
   'gemini-2.5-pro': 'gemini-2.5-pro',
@@ -75,6 +69,40 @@ const MODEL_MAP: Record<string, string> = {
 function resolveGeminiUrl(aiModel?: string): string {
   const effectiveModel = (aiModel && MODEL_MAP[aiModel]) || GEMINI_MODEL;
   return `${GEMINI_BASE_URL}/${effectiveModel}:generateContent`;
+}
+
+// ── Build criteria-specific enrichment instructions ──
+function buildCriteriaInstructions(failingCriteria: string[]): string {
+  if (!failingCriteria || failingCriteria.length === 0) return '';
+
+  const instructions: string[] = [];
+
+  for (const criterion of failingCriteria) {
+    const lower = criterion.toLowerCase();
+
+    if (lower.includes('conclusion')) {
+      instructions.push('- ADD a conclusion section at the end: Use <h2>Conclusion</h2> or <h2>निष्कर्ष</h2> followed by a 2-3 sentence summary paragraph wrapped in <p> tags.');
+    }
+    if (lower.includes('faq') || lower.includes('no faqs')) {
+      instructions.push('- ADD a FAQ section with at least 3 relevant Q&A items. Use this EXACT format:\n  <h2>FAQ</h2>\n  <p><strong>Question here?</strong></p>\n  <p>Answer here.</p>\n  (Repeat for each FAQ item. Questions MUST be wrapped in <strong> tags and end with ?)');
+    }
+    if (lower.includes('intro')) {
+      instructions.push('- ADD an introduction paragraph (2-3 sentences) BEFORE the first H2 heading, wrapped in <p> tags. This should set context for what the reader will learn.');
+    }
+    if (lower.includes('h2') || lower.includes('heading')) {
+      instructions.push('- ENSURE at least 4 H2 headings structuring the article into clear, logical sections. Add new <h2> sections where the content can be meaningfully divided.');
+    }
+    if (lower.includes('word count') || lower.includes('< 1200')) {
+      instructions.push('- EXPAND content to at least 1200 words with substantive depth. Add real explanations, practical tips, examples, eligibility details, or process steps — not filler.');
+    }
+    if (lower.includes('internal link') || lower.includes('no internal links')) {
+      instructions.push('- Where contextually relevant, add 2-3 internal links using <a href="/relevant-path">descriptive anchor text</a>. Use paths like /sarkari-naukri, /results, /admit-cards, /blog/related-topic-slug only where they genuinely fit the content.');
+    }
+  }
+
+  if (instructions.length === 0) return '';
+
+  return `\n\nSPECIFIC REQUIREMENTS — You MUST address ALL of the following:\n${instructions.join('\n')}\n\nThese are the exact criteria this article is currently FAILING. Your output will be automatically verified against them. If you do not add these elements, the enrichment will be marked as unsuccessful.`;
 }
 
 Deno.serve(async (req) => {
@@ -89,7 +117,7 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'GEMINI_API_KEY not configured' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    const { title, content, action, selectedHtml, headings, hasIntro, hasConclusion, wordCount, category, tags, targetWordCount, aiModel } = await req.json();
+    const { title, content, action, selectedHtml, headings, hasIntro, hasConclusion, wordCount, category, tags, targetWordCount, aiModel, failingCriteria, isStubRebuild } = await req.json();
     if (!title || !action) {
       return new Response(JSON.stringify({ error: 'title and action required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
@@ -154,11 +182,49 @@ No markdown code blocks.`;
     } else if (action === 'enrich-article') {
       const plainText = (content || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
       const currentWords = plainText.split(/\s+/).filter((w: string) => w.length > 0).length;
-      // Dynamic target: at least current + 30%, but within 800-5000 range
       const dynamicTarget = Math.max(Math.ceil(currentWords * 1.3), currentWords + 300);
       const effectiveTarget = Math.min(Math.max(Number(targetWordCount) || dynamicTarget, 800), 5000);
 
-      prompt = `You are a professional content editor for TrueJobs.co.in, an Indian government job portal.
+      // Build criteria-specific instructions
+      const criteriaBlock = buildCriteriaInstructions(Array.isArray(failingCriteria) ? failingCriteria : []);
+
+      if (isStubRebuild && currentWords < 500) {
+        // ── FULL REBUILD MODE for stub articles (<500 words) ──
+        prompt = `You are a professional content writer for TrueJobs.co.in, an Indian government job portal.
+
+Write a comprehensive, well-structured article on the topic below. Target approximately ${Math.max(1200, effectiveTarget)} words.
+
+TOPIC: ${title}
+Category: ${category || 'General'}
+Tags: ${(tags || []).join(', ') || 'none'}
+
+EXISTING CONTENT (use as context and outline — preserve the topic, angle, and any surviving factual content):
+${content}
+
+CRITICAL RULES:
+- Preserve the topic intent and angle of the original article — do NOT change the subject
+- If the existing content contains specific facts, dates, or details, KEEP them
+- Do NOT invent specific statistics, official dates, vacancy counts, or government notification details
+- Do NOT hallucinate specific salary figures, exam dates, or application deadlines
+- If specific details are unknown, use general guidance language instead
+- Write in the same language as the original content (Hindi or English)
+- Maintain an informational, non-official tone
+- Output MUST use HTML tags: <h2>, <h3>, <p>, <ul>, <li>, <ol>, <strong>, <em>
+- Do NOT use markdown syntax. Use ONLY HTML tags
+- Include at least 4 H2 sections for proper structure
+- Start with an introduction paragraph before the first H2
+- End with a conclusion section
+${criteriaBlock}
+
+Return ONLY the full article as valid HTML.
+No JSON wrappers, no markdown, no code blocks, no explanations.`;
+
+        const estimatedTokens = Math.max(8000, Math.ceil(effectiveTarget * 2.5));
+        maxTokens = Math.min(estimatedTokens, 65536);
+
+      } else {
+        // ── STANDARD ENRICHMENT MODE ──
+        prompt = `You are a professional content editor for TrueJobs.co.in, an Indian government job portal.
 Expand and improve the following article to approximately ${effectiveTarget} words (currently ~${currentWords} words).
 
 CRITICAL RULES:
@@ -169,17 +235,18 @@ CRITICAL RULES:
 - Strengthen depth: add explanations, examples, practical tips, and context
 - Do NOT add fluff, repetition, or fabricated claims
 - Do NOT add keyword stuffing
+- Do NOT invent specific statistics, dates, or official details that were not in the original
 - Keep the same language (Hindi/English) as the original
 - Maintain an informational, non-official tone
 - Output MUST use HTML tags: <h2>, <h3>, <p>, <ul>, <li>, <ol>, <strong>, <em>, <table>, <tr>, <td>, <th>
 - Do NOT use markdown syntax (no ##, no **, no *, no - for lists). Use ONLY HTML tags.
 - Keep all existing HTML structure (H2, H3, lists, tables)
 - Add new subsections (<h3>) under existing <h2>s where appropriate
-- If the article has FAQs, you may add 1-2 more relevant FAQs
 - Do NOT remove any existing content
 - Wrap every paragraph in <p> tags
 - Wrap every heading in <h2> or <h3> tags
 - Wrap every list in <ul> or <ol> with <li> items
+${criteriaBlock}
 
 Article title: ${title}
 Category: ${category || 'General'}
@@ -191,9 +258,10 @@ ${content}
 Return ONLY the full enriched article as valid HTML.
 No JSON wrappers, no markdown, no code blocks, no explanations.
 REMINDER: Your output must contain ALL original content plus additions. Do NOT cut short.`;
-      // Scale maxTokens based on content size: minimum 8000, scale up for large articles
-      const estimatedTokensNeeded = Math.max(8000, Math.ceil(currentWords * 2.5));
-      maxTokens = Math.min(estimatedTokensNeeded, 65536);
+
+        const estimatedTokensNeeded = Math.max(8000, Math.ceil(currentWords * 2.5));
+        maxTokens = Math.min(estimatedTokensNeeded, 65536);
+      }
 
     } else if (action === 'structure') {
       const plainText = (content || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 3000);
@@ -281,44 +349,25 @@ No markdown code blocks.`;
       const extractResultFromPseudoJson = (input: string): string => {
         const resultKeyIndex = input.indexOf('"result"');
         if (resultKeyIndex === -1) return '';
-
         const colonIndex = input.indexOf(':', resultKeyIndex);
         if (colonIndex === -1) return '';
-
         let i = colonIndex + 1;
         while (i < input.length && /\s/.test(input[i])) i++;
         if (input[i] !== '"') return '';
         i++;
-
         let out = '';
         let escaped = false;
-
         for (; i < input.length; i++) {
           const ch = input[i];
-
-          if (escaped) {
-            out += ch === 'n' ? '\n' : ch;
-            escaped = false;
-            continue;
-          }
-
-          if (ch === '\\') {
-            escaped = true;
-            continue;
-          }
-
+          if (escaped) { out += ch === 'n' ? '\n' : ch; escaped = false; continue; }
+          if (ch === '\\') { escaped = true; continue; }
           if (ch === '"') {
             const rest = input.slice(i + 1);
-            if (/^\s*,\s*"(wordCount|changes)"/.test(rest) || /^\s*}\s*$/.test(rest)) {
-              return out.trim();
-            }
-            out += ch;
-            continue;
+            if (/^\s*,\s*"(wordCount|changes)"/.test(rest) || /^\s*}\s*$/.test(rest)) return out.trim();
+            out += ch; continue;
           }
-
           out += ch;
         }
-
         return out.trim();
       };
 
@@ -330,15 +379,12 @@ No markdown code blocks.`;
         resultHtml = typeof parsed?.result === 'string' ? parsed.result : '';
         changes = Array.isArray(parsed?.changes) ? parsed.changes : [];
       } catch {
-        // Common malformed payloads: `json { ... }` or invalid JSON with unescaped quotes
         const withoutJsonPrefix = cleaned.replace(/^json\s*/i, '').trim();
         const recovered = extractResultFromPseudoJson(withoutJsonPrefix);
-
         if (recovered) {
           resultHtml = recovered;
           changes = ['Content enriched'];
         } else {
-          // HTML-first fallback (new prompt asks for direct HTML)
           resultHtml = withoutJsonPrefix;
           changes = ['Content enriched'];
         }
@@ -348,7 +394,6 @@ No markdown code blocks.`;
         resultHtml = '';
       }
 
-      // Convert any remaining markdown to HTML as safety net
       if (resultHtml && !resultHtml.includes('<h2') && !resultHtml.includes('<h3') && /^#{2,3}\s/m.test(resultHtml)) {
         resultHtml = markdownToHtml(resultHtml);
       }
@@ -371,7 +416,6 @@ No markdown code blocks.`;
       parsed = { result: raw, changes: [], proposedOutline: [], missingSections: [], suggestedInsertions: [] };
     }
 
-    // Ensure arrays
     if (!Array.isArray(parsed.proposedOutline)) parsed.proposedOutline = [];
     if (!Array.isArray(parsed.missingSections)) parsed.missingSections = [];
     if (!Array.isArray(parsed.changes)) parsed.changes = [];

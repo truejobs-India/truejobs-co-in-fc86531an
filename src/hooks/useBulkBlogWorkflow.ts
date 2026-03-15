@@ -158,7 +158,13 @@ export interface EnrichReadiness {
   failing: string[];
 }
 
-export function checkEnrichReadiness(post: any): EnrichReadiness {
+// Categories where FAQs are naturally expected
+const FAQ_REQUIRED_CATEGORIES = new Set([
+  'Sarkari Naukri Basics', 'Exam Preparation', 'Career Advice', 'Job Search',
+  'Government Jobs', 'Sarkari Result', 'Admit Card',
+]);
+
+export function checkEnrichReadiness(post: any, categoryOverride?: string): EnrichReadiness {
   const meta = blogPostToMetadata(post);
   const failing: string[] = [];
   if (meta.wordCount < 1200) failing.push(`Word count ${meta.wordCount} < 1200`);
@@ -166,7 +172,14 @@ export function checkEnrichReadiness(post: any): EnrichReadiness {
   if (!meta.hasConclusion) failing.push('Missing conclusion');
   const h2Count = (meta.headings || []).filter((h: any) => h.level === 2).length;
   if (h2Count < 3) failing.push(`Only ${h2Count} H2 headings (need ≥ 3)`);
-  if ((meta.faqCount || 0) === 0) failing.push('No FAQs');
+
+  // Topic-aware FAQ requirement
+  const category = categoryOverride || post.category || '';
+  const faqRequired = FAQ_REQUIRED_CATEGORIES.has(category);
+  if ((meta.faqCount || 0) === 0 && faqRequired) {
+    failing.push('No FAQs');
+  }
+
   if ((meta.internalLinks?.length || 0) === 0) failing.push('No internal links');
   return { passes: failing.length === 0, failing };
 }
@@ -1040,6 +1053,107 @@ export function useBulkBlogWorkflow() {
       }
     }
 
+    // ── PASS 2: Escalate to Pro model for still-pending/partial articles ──
+    if (wfType === 'enrich') {
+      const { data: stopCheck2 } = await supabase
+        .from('blog_bulk_workflow_sessions')
+        .select('stop_requested')
+        .eq('id', sessionId)
+        .single() as any;
+
+      if (!stopCheck2?.stop_requested) {
+        // Collect pending articles by slug (stable ID, not array index)
+        const pendingSlugs = new Map<string, ArticleVerdict>();
+        for (const article of cappedQueue) {
+          const latestResult = [...executionResults].reverse().find(r => r.slug === article.slug);
+          // Also check locally tracked results
+          const localResult = executionResults.find(r => r.slug === article.slug);
+          const resultToCheck = latestResult || localResult;
+          if (resultToCheck && (resultToCheck.status === 'still_pending' || resultToCheck.status === 'partially_improved')) {
+            pendingSlugs.set(article.slug, article);
+          }
+        }
+
+        if (pendingSlugs.size > 0) {
+          console.log(`Pass 2: Escalating ${pendingSlugs.size} articles to gemini-2.5-pro`);
+
+          // Update progress to indicate Pass 2
+          const pass2Total = total + pendingSlugs.size;
+          setProgress({
+            total: pass2Total, done,
+            fully_enriched: fullyEnriched, partially_improved: partiallyImproved, still_pending: stillPending,
+            success, failed, skipped,
+            current_article_id: null,
+            current_title: 'Pass 2: Escalating to Pro model…',
+            max_per_run: scanReport.max_per_run,
+            capped_remaining: deferred.length,
+          });
+
+          for (const [slug, article] of pendingSlugs) {
+            // Check stop again
+            const { data: stopP2 } = await supabase
+              .from('blog_bulk_workflow_sessions')
+              .select('stop_requested')
+              .eq('id', sessionId)
+              .single() as any;
+            if (stopP2?.stop_requested) break;
+
+            setProgress(prev => prev ? {
+              ...prev,
+              current_article_id: article.post_id,
+              current_title: `Pass 2 (Pro): ${article.title}`,
+            } : prev);
+
+            try {
+              const enrichResult = await executeEnrichForArticle(article, 'gemini-2.5-pro');
+              const result: ExecutionResult = {
+                slug: article.slug, title: article.title,
+                status: enrichResult.outcome,
+                reason: `[Pass 2 Pro] ${enrichResult.reason}`,
+                timestamp: new Date().toISOString(),
+                failing_criteria: enrichResult.failing_criteria,
+              };
+              await appendExecutionResult(sessionId, result);
+              setExecutionResults(prev => [...prev, result]);
+
+              // Update counters: reverse the previous outcome first
+              const prevResult = [...executionResults].reverse().find(r => r.slug === slug);
+              if (prevResult?.status === 'still_pending') stillPending--;
+              else if (prevResult?.status === 'partially_improved') partiallyImproved--;
+
+              if (enrichResult.outcome === 'fully_enriched') fullyEnriched++;
+              else if (enrichResult.outcome === 'partially_improved') partiallyImproved++;
+              else stillPending++;
+
+            } catch (err: any) {
+              const result: ExecutionResult = {
+                slug: article.slug, title: article.title,
+                status: 'failed', reason: `[Pass 2 Pro] ${err.message?.substring(0, 200) || 'Unknown error'}`,
+                timestamp: new Date().toISOString(),
+              };
+              await appendExecutionResult(sessionId, result);
+              setExecutionResults(prev => [...prev, result]);
+              // Don't change counters - keep the Pass 1 outcome
+            }
+
+            done++;
+            await updateHeartbeat(sessionId, {
+              progress: {
+                total: pass2Total, done,
+                fully_enriched: fullyEnriched, partially_improved: partiallyImproved, still_pending: stillPending,
+                success, failed, skipped,
+                current_article_id: null, current_title: '',
+                max_per_run: scanReport.max_per_run, capped_remaining: deferred.length,
+              },
+            });
+
+            onArticleComplete?.();
+            await new Promise(r => setTimeout(r, 3000));
+          }
+        }
+      }
+    }
+
     const finalStatus = (await supabase
       .from('blog_bulk_workflow_sessions')
       .select('stop_requested')
@@ -1047,7 +1161,7 @@ export function useBulkBlogWorkflow() {
       .single() as any).data?.stop_requested ? 'stopped' : 'completed';
 
     const finalProgress: WorkflowProgress = {
-      total, done, fully_enriched: fullyEnriched, partially_improved: partiallyImproved, still_pending: stillPending,
+      total: done, done, fully_enriched: fullyEnriched, partially_improved: partiallyImproved, still_pending: stillPending,
       success, failed, skipped,
       current_article_id: null, current_title: '',
       max_per_run: scanReport.max_per_run,
@@ -1301,6 +1415,10 @@ export function useBulkBlogWorkflow() {
 
     const preWordCount = (post.content || '').replace(/<[^>]+>/g, '').split(/\s+/).filter((w: string) => w.length > 0).length;
 
+    // ── Pre-enrichment readiness check to get failing criteria ──
+    const preReadiness = checkEnrichReadiness(post, post.category || undefined);
+    const isStubRebuild = preWordCount < 500;
+
     // Dynamic target: at least current + 30%, minimum 1500
     const dynamicTarget = Math.max(1500, Math.ceil(preWordCount * 1.3), preWordCount + 300);
 
@@ -1312,6 +1430,8 @@ export function useBulkBlogWorkflow() {
         aiModel,
         preserveElements: article.preserve_elements,
         missingElements: article.missing_elements,
+        failingCriteria: preReadiness.failing,
+        isStubRebuild,
       },
     });
 
@@ -1323,10 +1443,10 @@ export function useBulkBlogWorkflow() {
       throw new Error('Enrichment returned empty or unusable content');
     }
 
-    // ── Guard: content shrinkage — AI truncated or summarized the article ──
+    // ── Guard: content shrinkage (relaxed for stub rebuilds) ──
     const newPlainText = newContent.replace(/<[^>]+>/g, '');
     const newWordCount = newPlainText.split(/\s+/).filter((w: string) => w.length > 0).length;
-    if (newWordCount < preWordCount * 0.8) {
+    if (!isStubRebuild && newWordCount < preWordCount * 0.8) {
       throw new Error(`Enrichment SHRUNK content from ${preWordCount} to ${newWordCount} words (${Math.round((1 - newWordCount/preWordCount) * 100)}% loss). Rejecting to protect original.`);
     }
 
@@ -1340,18 +1460,25 @@ export function useBulkBlogWorkflow() {
     const wordCount = plainText.split(/\s+/).filter((w: string) => w.length > 0).length;
     const readingTime = Math.max(1, Math.ceil(wordCount / 200));
 
-    // FAQ detection from content
+    // ── FAQ detection from content (broadened) ──
     let faqCount = 0;
     let hasFaqSchema = post.has_faq_schema || false;
     if (typeof DOMParser !== 'undefined') {
       const parser = new DOMParser();
       const doc = parser.parseFromString(newContent, 'text/html');
-      // Count FAQ questions (strong/b ending with ?)
+      // Count <strong>/<b> ending with ? (original detection)
       doc.querySelectorAll('strong, b').forEach(el => {
         const text = el.textContent?.trim() || '';
         if (text.endsWith('?') && text.length > 10) faqCount++;
       });
-      // Also check for FAQ schema-style structure
+      // Also count <h3> ending with ? (common FAQ format)
+      doc.querySelectorAll('h3').forEach(el => {
+        const text = el.textContent?.trim() || '';
+        if (text.endsWith('?') && text.length > 10) faqCount++;
+      });
+      // Count <dt> items (definition list FAQ format)
+      faqCount += doc.querySelectorAll('dt').length;
+      // Check for FAQ heading
       const h2s = doc.querySelectorAll('h2');
       h2s.forEach(h2 => {
         const text = h2.textContent?.trim()?.toLowerCase() || '';
@@ -1359,54 +1486,87 @@ export function useBulkBlogWorkflow() {
           hasFaqSchema = true;
         }
       });
-    }
 
-    // Auto-generate excerpt if empty
-    const excerpt = post.excerpt || plainText.replace(/\s+/g, ' ').trim().substring(0, 155) + '...';
+      // ── Extract internal links from content → update DB field ──
+      const internalLinksFromContent: { path: string; anchorText: string }[] = [];
+      doc.querySelectorAll('a[href]').forEach(a => {
+        const href = a.getAttribute('href') || '';
+        if (href.startsWith('/') || href.includes('truejobs.co.in')) {
+          internalLinksFromContent.push({
+            path: href.replace(/^https?:\/\/truejobs\.co\.in/, ''),
+            anchorText: a.textContent?.trim() || '',
+          });
+        }
+      });
 
-    // ── Save enriched content + all recomputed metrics ──
-    const updatePayload: Record<string, any> = {
-      content: newContent,
-      word_count: wordCount,
-      reading_time: readingTime,
-      faq_count: faqCount > 0 ? faqCount : (post.faq_count || 0),
-      has_faq_schema: hasFaqSchema,
-      excerpt,
-    };
+      // Merge with existing internal_links
+      const existingLinks = Array.isArray(post.internal_links) ? post.internal_links : [];
+      const seenPaths = new Set(existingLinks.map((l: any) => l.path || l));
+      for (const link of internalLinksFromContent) {
+        if (!seenPaths.has(link.path)) {
+          existingLinks.push(link);
+          seenPaths.add(link.path);
+        }
+      }
 
-    await supabase.from('blog_posts').update(updatePayload).eq('id', post.id);
+      // Auto-generate excerpt if empty
+      const excerpt = post.excerpt || plainText.replace(/\s+/g, ' ').trim().substring(0, 155) + '...';
 
-    // ── Post-enrichment verification: re-check against enrich-readiness criteria ──
-    const postEnrichPost = { ...post, ...updatePayload };
-    const readiness = checkEnrichReadiness(postEnrichPost);
-
-    if (readiness.passes) {
-      return {
-        outcome: 'fully_enriched',
-        reason: `Enriched: ${preWordCount} → ${wordCount} words. All criteria pass.`,
-        failing_criteria: [],
+      // ── Save enriched content + all recomputed metrics ──
+      // For stub rebuilds: only update content fields, not metadata
+      const updatePayload: Record<string, any> = {
+        content: newContent,
+        word_count: wordCount,
+        reading_time: readingTime,
+        faq_count: faqCount > 0 ? faqCount : (post.faq_count || 0),
+        has_faq_schema: hasFaqSchema,
+        excerpt,
+        internal_links: existingLinks,
       };
-    }
 
-    // Determine if partially improved: content grew AND some pre-existing failures were fixed
-    const preReadiness = checkEnrichReadiness(post);
-    const preFailCount = preReadiness.failing.length;
-    const postFailCount = readiness.failing.length;
-    const contentGrew = wordCount > preWordCount;
+      await supabase.from('blog_posts').update(updatePayload).eq('id', post.id);
 
-    if (contentGrew && postFailCount < preFailCount) {
+      // ── Post-enrichment verification ──
+      const postEnrichPost = { ...post, ...updatePayload };
+      const readiness = checkEnrichReadiness(postEnrichPost, post.category || undefined);
+
+      if (readiness.passes) {
+        return {
+          outcome: 'fully_enriched',
+          reason: `Enriched: ${preWordCount} → ${wordCount} words. All criteria pass.`,
+          failing_criteria: [],
+        };
+      }
+
+      const preFailCount = preReadiness.failing.length;
+      const postFailCount = readiness.failing.length;
+      const contentGrew = wordCount > preWordCount;
+
+      if (contentGrew && postFailCount < preFailCount) {
+        return {
+          outcome: 'partially_improved',
+          reason: `Improved: ${preWordCount} → ${wordCount} words. ${postFailCount} criteria still failing.`,
+          failing_criteria: readiness.failing,
+        };
+      }
+
       return {
-        outcome: 'partially_improved',
-        reason: `Improved: ${preWordCount} → ${wordCount} words. ${postFailCount} criteria still failing.`,
+        outcome: 'still_pending',
+        reason: `Still pending: ${preWordCount} → ${wordCount} words. ${postFailCount} criteria failing.`,
         failing_criteria: readiness.failing,
       };
     }
 
-    return {
-      outcome: 'still_pending',
-      reason: `Still pending: ${preWordCount} → ${wordCount} words. ${postFailCount} criteria failing.`,
-      failing_criteria: readiness.failing,
+    // Fallback if DOMParser not available (shouldn't happen in browser)
+    const excerpt = post.excerpt || plainText.replace(/\s+/g, ' ').trim().substring(0, 155) + '...';
+    const updatePayload: Record<string, any> = {
+      content: newContent,
+      word_count: wordCount,
+      reading_time: readingTime,
+      excerpt,
     };
+    await supabase.from('blog_posts').update(updatePayload).eq('id', post.id);
+    return { outcome: 'still_pending', reason: 'DOMParser unavailable for verification', failing_criteria: [] };
   };
 
   // ── Append execution result (append-safe) ──

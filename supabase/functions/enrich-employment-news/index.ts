@@ -502,14 +502,14 @@ async function callClaudeRaw(prompt: string): Promise<string> {
     resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        'content-type': 'application/json',
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
         max_tokens: 8192,
-        temperature: 0.6,
+        system: 'You are an expert employment news content writer for an Indian job portal. Write structured, SEO-optimized, factual content about government job notifications. Return valid JSON only.',
         messages: [{ role: 'user', content: prompt }],
       }),
       signal: controller.signal,
@@ -517,14 +517,15 @@ async function callClaudeRaw(prompt: string): Promise<string> {
   } catch (err) {
     clearTimeout(timeoutId);
     if (err instanceof DOMException && err.name === 'AbortError') {
-      throw new Error('AI model timeout after 60 seconds');
+      throw new Error('Claude API timeout after 60 seconds');
     }
     throw err;
   }
   clearTimeout(timeoutId);
   if (!resp.ok) throw new Error(`Anthropic API error ${resp.status}: ${await resp.text()}`);
   const data = await resp.json();
-  return data?.content?.[0]?.text || '';
+  const textBlocks = (data?.content || []).filter((b: any) => b.type === 'text');
+  return textBlocks.map((b: any) => b.text).join('') || '';
 }
 
 async function callLovableGeminiRaw(prompt: string): Promise<string> {

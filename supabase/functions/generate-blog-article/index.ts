@@ -552,6 +552,7 @@ Deno.serve(async (req) => {
     const useModel = aiModel || 'gemini';
     console.log(`[generate-blog-article] Using model: ${useModel}`);
 
+    const wordTarget = Math.min(Math.max(Number(targetWordCount) || 1500, 800), 3000);
     let prompt: string;
 
     if (useModel === 'gemini' || useModel === 'mistral') {
@@ -562,9 +563,29 @@ Deno.serve(async (req) => {
 Topic: ${topic}${category ? `\nCategory: ${category}` : ''}${tagsList}
 
 Follow all the writing rules and output format specified in your instructions. Return ONLY the JSON object.`;
+    } else if (useModel === 'claude-sonnet' || useModel === 'claude') {
+      // Claude uses the system prompt in top-level "system" field (handled by callClaude)
+      // The user prompt here only contains the task-specific instructions
+      const tagsList = Array.isArray(tags) && tags.length > 0 ? tags.join(', ') : '';
+      prompt = `Write a complete article for the following input.
+
+Topic: ${topic}
+${category ? `Category: ${category}` : ''}
+${tagsList ? `Tags: ${tagsList}` : ''}
+Target word count: ${wordTarget} words
+
+Important instructions:
+- Follow the system SEO and AdSense rules strictly
+- Keep the article close to the target word count of ${wordTarget} words
+- Do not significantly exceed or undershoot the target
+- Make it original, useful, and publishable
+- Use proper heading hierarchy
+- Include strong search-friendly structure
+- Avoid filler
+- Make internal linking suggestions relevant to the topic
+- Return ONLY a valid JSON object matching the output format in your system instructions. No markdown code blocks.`;
     } else {
-      // Default prompt for all other models
-      const wordTarget = Math.min(Math.max(Number(targetWordCount) || 1500, 800), 3000);
+      // Default prompt for all other models (OpenAI, Groq, Lovable, Vertex, etc.)
       const tagsList = Array.isArray(tags) && tags.length > 0 ? tags.join(', ') : '';
 
       prompt = `You are a professional content writer for TrueJobs.co.in, an Indian government job portal and career advice website.
@@ -603,7 +624,7 @@ Format: {"title": "...", "slug": "...", "content": "...", "metaTitle": "...", "m
 No markdown code blocks. Return ONLY the JSON object.`;
     }
 
-    const raw = await callAI(useModel, prompt);
+    const raw = await callAI(useModel, prompt, wordTarget);
     const cleaned = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
 
     let parsed: any;

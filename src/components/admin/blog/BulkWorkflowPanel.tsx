@@ -200,19 +200,26 @@ export function BulkWorkflowPanel({ posts, blogTextModel, onComplete }: BulkWork
                 </Button>
               </div>
               <Progress value={(progress.done / progress.total) * 100} className="h-2" />
-              <div className="flex gap-3 text-xs text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
                 <span>{progress.done}/{progress.total} done</span>
                 {isEnrichWorkflow ? (
                   <>
+                    <span aria-hidden="true">•</span>
                     <span className="text-green-600">{progress.fully_enriched} enriched</span>
+                    <span aria-hidden="true">•</span>
                     <span className="text-yellow-600">{progress.partially_improved} partial</span>
+                    <span aria-hidden="true">•</span>
                     <span className="text-orange-600">{progress.still_pending} still pending</span>
+                    <span aria-hidden="true">•</span>
                     <span className="text-destructive">{progress.failed} failed</span>
                   </>
                 ) : (
                   <>
+                    <span aria-hidden="true">•</span>
                     <span className="text-green-600">{progress.success} success</span>
+                    <span aria-hidden="true">•</span>
                     <span className="text-destructive">{progress.failed} failed</span>
+                    <span aria-hidden="true">•</span>
                     <span>{progress.skipped} skipped</span>
                   </>
                 )}

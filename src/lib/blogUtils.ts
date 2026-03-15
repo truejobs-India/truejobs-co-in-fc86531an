@@ -16,6 +16,15 @@ export const BLOG_CATEGORIES: BlogCategory[] = [
   { slug: 'hr-recruitment', name: 'HR & Recruitment', description: 'Insights for HR professionals and recruiters' },
   { slug: 'hiring-trends', name: 'Hiring Trends', description: 'Latest trends in the Indian job market' },
   { slug: 'ai-in-recruitment', name: 'AI in Recruitment', description: 'How AI is transforming the hiring landscape' },
+  { slug: 'results-admit-cards', name: 'Results & Admit Cards', description: 'Government exam results and admit card updates' },
+  { slug: 'exam-preparation', name: 'Exam Preparation', description: 'Study tips and strategies for competitive exams' },
+  { slug: 'sarkari-naukri-basics', name: 'Sarkari Naukri Basics', description: 'Fundamentals of government job preparation' },
+  { slug: 'career-guides-tips', name: 'Career Guides & Tips', description: 'Comprehensive career guidance and practical tips' },
+  { slug: 'job-information', name: 'Job Information', description: 'Detailed job notifications and vacancy information' },
+  { slug: 'government-jobs', name: 'Government Jobs', description: 'Latest government job notifications and updates' },
+  { slug: 'syllabus', name: 'Syllabus', description: 'Exam syllabus and preparation material' },
+  { slug: 'current-affairs', name: 'Current Affairs', description: 'Current affairs for competitive exam preparation' },
+  { slug: 'admit-cards', name: 'Admit Cards', description: 'Admit card download links and instructions' },
 ];
 
 /**
@@ -37,6 +46,15 @@ export function slugToCategory(slug: string): string {
     'hr-recruitment': 'HR & Recruitment',
     'hiring-trends': 'Hiring Trends',
     'ai-in-recruitment': 'AI in Recruitment',
+    'results-admit-cards': 'Results & Admit Cards',
+    'exam-preparation': 'Exam Preparation',
+    'sarkari-naukri-basics': 'Sarkari Naukri Basics',
+    'career-guides-tips': 'Career Guides & Tips',
+    'job-information': 'Job Information',
+    'government-jobs': 'Government Jobs',
+    'syllabus': 'Syllabus',
+    'current-affairs': 'Current Affairs',
+    'admit-cards': 'Admit Cards',
   };
   return mapping[slug] || slug;
 }

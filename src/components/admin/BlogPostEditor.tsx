@@ -48,6 +48,7 @@ import { BlogComplianceChecklist } from './blog/BlogComplianceChecklist';
 import { BlogPolicyWarnings } from './blog/BlogPolicyWarnings';
 import { Checkbox } from '@/components/ui/checkbox';
 import { BlogAITools } from './blog/BlogAITools';
+import { normalizeBlogCategory, VALID_BLOG_CATEGORIES } from '@/lib/blogCategoryUtils';
 import { BulkWorkflowPanel } from './blog/BulkWorkflowPanel';
 import { SeoMetadataWorkflowPanel } from './blog/SeoMetadataWorkflowPanel';
 import { BlogScoreBreakdown } from './blog/BlogScoreBreakdown';
@@ -297,6 +298,8 @@ export function BlogPostEditor() {
     meta_description: formData.meta_description.trim() || null,
     author_name: formData.author_name.trim() || null,
     canonical_url: formData.canonical_url.trim() || null,
+    category: normalizeBlogCategory(formData.category),
+    tags: formData.tags || [],
     author_id: user!.id,
     ai_fixed_at: null, // Clear AI fixed status on manual save
   });
@@ -730,7 +733,7 @@ export function BlogPostEditor() {
         const { data: inserted, error: insertErr } = await supabase.from('blog_posts').insert({
           title: data.title, slug: data.slug, content: data.content,
           excerpt: data.excerpt || null, meta_title: data.metaTitle || null,
-          meta_description: data.metaDescription || null, category: data.category || bulkCategory || 'Career Advice',
+          meta_description: data.metaDescription || null, category: normalizeBlogCategory(data.category || bulkCategory),
           tags: data.tags || [], author_id: user!.id, author_name: 'TrueJobs Editorial Team',
           canonical_url: `https://truejobs.co.in/blog/${data.slug}`,
           is_published: false, word_count: wordCount, reading_time: Math.max(1, Math.ceil(wordCount / 200)),
@@ -1109,13 +1112,9 @@ export function BlogPostEditor() {
                 <Select value={bulkCategory || ''} onValueChange={(v) => setBulkCategory(v || null)}>
                   <SelectTrigger className="w-[180px] h-8 text-xs"><SelectValue placeholder="Auto-detect" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Career Advice">Career Advice</SelectItem>
-                    <SelectItem value="Government Jobs">Government Jobs</SelectItem>
-                    <SelectItem value="Exam Preparation">Exam Preparation</SelectItem>
-                    <SelectItem value="Results & Cutoffs">Results & Cutoffs</SelectItem>
-                    <SelectItem value="Admit Cards">Admit Cards</SelectItem>
-                    <SelectItem value="Syllabus">Syllabus</SelectItem>
-                    <SelectItem value="Current Affairs">Current Affairs</SelectItem>
+                    {VALID_BLOG_CATEGORIES.filter(c => c !== 'Uncategorized').map(cat => (
+                      <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

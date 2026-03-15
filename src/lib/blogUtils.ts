@@ -46,6 +46,15 @@ export function slugToCategory(slug: string): string {
     'hr-recruitment': 'HR & Recruitment',
     'hiring-trends': 'Hiring Trends',
     'ai-in-recruitment': 'AI in Recruitment',
+    'results-admit-cards': 'Results & Admit Cards',
+    'exam-preparation': 'Exam Preparation',
+    'sarkari-naukri-basics': 'Sarkari Naukri Basics',
+    'career-guides-tips': 'Career Guides & Tips',
+    'job-information': 'Job Information',
+    'government-jobs': 'Government Jobs',
+    'syllabus': 'Syllabus',
+    'current-affairs': 'Current Affairs',
+    'admit-cards': 'Admit Cards',
   };
   return mapping[slug] || slug;
 }

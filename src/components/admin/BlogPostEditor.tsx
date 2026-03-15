@@ -152,6 +152,14 @@ export function BlogPostEditor() {
   const [bulkCoverProgress, setBulkCoverProgress] = useState<{ total: number; done: number; failed: number; current: string } | null>(null);
   const bulkCoverAbortRef = useRef(false);
 
+  // Bulk inline image generation state
+  const [isBulkInlineRunning, setIsBulkInlineRunning] = useState(false);
+  const [bulkInlineProgress, setBulkInlineProgress] = useState<{ total: number; done: number; failed: number; skipped: number; current: string } | null>(null);
+  const bulkInlineAbortRef = useRef(false);
+
+  // Per-article image generation loading
+  const [perArticleLoading, setPerArticleLoading] = useState<Record<string, 'cover' | 'inline' | null>>({});
+
   // Bulk workflow panel is now handled by BulkWorkflowPanel component
 
   // Search, filter, pagination

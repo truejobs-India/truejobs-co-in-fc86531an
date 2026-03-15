@@ -167,52 +167,11 @@ ${contentSection}
       break;
     }
 
-    // Fallback to Lovable AI gateway if Gemini quota is exhausted
-    if (geminiRes?.status === 429) {
-      const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-      if (LOVABLE_API_KEY) {
-        console.log('[classify-blog-articles] Gemini quota exhausted, falling back to Lovable AI gateway');
-        await geminiRes.text(); // consume body
-        try {
-          const fallbackRes = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              model: 'google/gemini-2.5-flash',
-              messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: userPrompt },
-              ],
-              temperature: 0.1,
-              max_tokens: 16384,
-            }),
-          });
-
-          if (fallbackRes.ok) {
-            const fallbackData = await fallbackRes.json();
-            const fallbackText = fallbackData?.choices?.[0]?.message?.content || '[]';
-            // Synthesize a gemini-compatible response structure for downstream parsing
-            geminiRes = new Response(JSON.stringify({
-              candidates: [{ content: { parts: [{ text: fallbackText }] } }]
-            }), { status: 200 });
-            usedFallback = true;
-          } else {
-            console.error('[classify-blog-articles] Lovable AI fallback also failed:', fallbackRes.status);
-          }
-        } catch (fallbackErr) {
-          console.error('[classify-blog-articles] Lovable AI fallback error:', fallbackErr);
-        }
-      }
-    }
-
     if (!geminiRes || !geminiRes.ok) {
       const errText = geminiRes ? await geminiRes.text() : 'No response';
       console.error('Gemini API error:', errText);
       if (geminiRes?.status === 429) {
-        return new Response(JSON.stringify({ error: 'AI rate limit exceeded on all providers. Please wait a few minutes and try again.' }), { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        return new Response(JSON.stringify({ error: 'Gemini API rate limit exceeded. Please wait a few minutes and try again.' }), { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
       return new Response(JSON.stringify({ error: 'AI classification failed', detail: errText.substring(0, 200) }), { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }

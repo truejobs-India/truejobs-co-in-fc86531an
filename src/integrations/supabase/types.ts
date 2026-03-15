@@ -193,6 +193,54 @@ export type Database = {
         }
         Relationships: []
       }
+      blog_bulk_workflow_sessions: {
+        Row: {
+          ai_model: string | null
+          completed_at: string | null
+          execution_results: Json | null
+          id: string
+          last_heartbeat_at: string
+          max_articles_per_run: number
+          progress: Json | null
+          scan_report: Json | null
+          started_at: string
+          started_by: string
+          status: string
+          stop_requested: boolean
+          workflow_type: string
+        }
+        Insert: {
+          ai_model?: string | null
+          completed_at?: string | null
+          execution_results?: Json | null
+          id?: string
+          last_heartbeat_at?: string
+          max_articles_per_run?: number
+          progress?: Json | null
+          scan_report?: Json | null
+          started_at?: string
+          started_by: string
+          status?: string
+          stop_requested?: boolean
+          workflow_type: string
+        }
+        Update: {
+          ai_model?: string | null
+          completed_at?: string | null
+          execution_results?: Json | null
+          id?: string
+          last_heartbeat_at?: string
+          max_articles_per_run?: number
+          progress?: Json | null
+          scan_report?: Json | null
+          started_at?: string
+          started_by?: string
+          status?: string
+          stop_requested?: boolean
+          workflow_type?: string
+        }
+        Relationships: []
+      }
       blog_posts: {
         Row: {
           ai_fixed_at: string | null

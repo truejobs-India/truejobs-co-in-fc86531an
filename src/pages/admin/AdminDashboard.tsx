@@ -52,6 +52,7 @@ import { ContentEnricher } from '@/components/admin/ContentEnricher';
 import { SEORoutePolicyDashboard } from '@/components/admin/seo-policy/SEORoutePolicyDashboard';
 import { VertexAITestPanel } from '@/components/admin/VertexAITestPanel';
 import { CustomPagesManager } from '@/components/admin/CustomPagesManager';
+import { PdfResourcesManager } from '@/components/admin/PdfResourcesManager';
 import { useNavigate } from 'react-router-dom';
 
 type DrilldownView = 

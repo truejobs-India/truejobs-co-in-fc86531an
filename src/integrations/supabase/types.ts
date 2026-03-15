@@ -382,6 +382,51 @@ export type Database = {
         }
         Relationships: []
       }
+      chatbot_analytics: {
+        Row: {
+          created_at: string | null
+          id: string
+          intent: string | null
+          ip_hash: string | null
+          query_language: string | null
+          query_text: string | null
+          refusal_reason: string | null
+          response_time_ms: number | null
+          retrieval_count: number | null
+          retrieval_status: string | null
+          session_id: string
+          was_refused: boolean | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          intent?: string | null
+          ip_hash?: string | null
+          query_language?: string | null
+          query_text?: string | null
+          refusal_reason?: string | null
+          response_time_ms?: number | null
+          retrieval_count?: number | null
+          retrieval_status?: string | null
+          session_id: string
+          was_refused?: boolean | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          intent?: string | null
+          ip_hash?: string | null
+          query_language?: string | null
+          query_text?: string | null
+          refusal_reason?: string | null
+          response_time_ms?: number | null
+          retrieval_count?: number | null
+          retrieval_status?: string | null
+          session_id?: string
+          was_refused?: boolean | null
+        }
+        Relationships: []
+      }
       companies: {
         Row: {
           auto_approve_jobs: boolean | null
@@ -2769,6 +2814,21 @@ export type Database = {
           p_status: string
         }
         Returns: number
+      }
+      log_chatbot_event: {
+        Args: {
+          p_intent: string
+          p_ip_hash: string
+          p_query_language: string
+          p_query_text: string
+          p_refusal_reason: string
+          p_response_time_ms: number
+          p_retrieval_count: number
+          p_retrieval_status: string
+          p_session_id: string
+          p_was_refused: boolean
+        }
+        Returns: undefined
       }
       log_resource_event: {
         Args: {

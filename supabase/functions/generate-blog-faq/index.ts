@@ -164,10 +164,10 @@ async function callClaude(prompt: string): Promise<string> {
 }
 
 async function callMistral(prompt: string): Promise<string> {
-  const modelId = 'mistral.mistral-7b-instruct-v0:2';
-  const region = Deno.env.get('AWS_REGION') || 'ap-south-1';
+  const modelId = 'mistral.mistral-large-2407-v1:0';
+  const region = 'us-west-2';
   const host = `bedrock-runtime.${region}.amazonaws.com`;
-  const body = JSON.stringify({ messages: [{ role: 'user', content: [{ text: prompt }] }], inferenceConfig: { maxTokens: 4096, temperature: 0.4 } });
+  const body = JSON.stringify({ messages: [{ role: 'user', content: [{ text: prompt }] }], inferenceConfig: { maxTokens: 8192, temperature: 0.4 } });
   const resp = await awsSigV4Fetch(host, `/model/${modelId}/converse`, body, region, 'bedrock');
   if (!resp.ok) throw new Error(`Mistral Bedrock ${resp.status}: ${await resp.text()}`);
   const data = await resp.json();

@@ -142,11 +142,7 @@ export function BlogPostEditor() {
   const [bulkCoverProgress, setBulkCoverProgress] = useState<{ total: number; done: number; failed: number; current: string } | null>(null);
   const bulkCoverAbortRef = useRef(false);
 
-  // Bulk auto-fix & enrich state
-  const [isBulkFixEnrichRunning, setIsBulkFixEnrichRunning] = useState(false);
-  const [bulkFixEnrichProgress, setBulkFixEnrichProgress] = useState<{
-    total: number; done: number; fixed: number; enriched: number; failed: number; current: string; phase: 'scanning' | 'fixing' | 'enriching';
-  } | null>(null);
+  // Bulk workflow panel is now handled by BulkWorkflowPanel component
 
   // Search, filter, pagination
   const [searchQuery, setSearchQuery] = useState('');

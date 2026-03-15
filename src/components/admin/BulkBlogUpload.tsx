@@ -128,7 +128,7 @@ export function BulkBlogUpload() {
           canonical_url: `https://truejobs.co.in/blog/${finalSlug}`,
           cover_image_url: article.coverImageUrl || null,
           featured_image_alt: article.coverImageAlt || null,
-          category: article.category,
+          category: normalizeBlogCategory(article.category),
           tags: article.tags,
           author_name: article.authorName,
           author_id: user.id,

@@ -487,19 +487,18 @@ async function callClaude(prompt: string, wordLimit: number): Promise<string> {
   return text;
 }
 
-// ── 6. Mistral (AWS Bedrock Converse) — Enhanced with system prompt ──
+// ── 6. Mistral Large (AWS Bedrock Converse — us-west-2) ──
 async function callMistral(prompt: string, systemPrompt?: string): Promise<string> {
-  const modelId = 'mistral.mistral-7b-instruct-v0:2';
-  const region = Deno.env.get('AWS_REGION') || 'ap-south-1';
+  const modelId = 'mistral.mistral-large-2407-v1:0';
+  const region = 'us-west-2';
   const host = `bedrock-runtime.${region}.amazonaws.com`;
   const rawPath = `/model/${modelId}/converse`;
 
   const payload: Record<string, unknown> = {
     messages: [{ role: 'user', content: [{ text: prompt }] }],
-    inferenceConfig: { maxTokens: 8192, temperature: 0.6 },
+    inferenceConfig: { maxTokens: 16384, temperature: 0.5 },
   };
 
-  // Add system prompt if provided
   if (systemPrompt) {
     payload.system = [{ text: systemPrompt }];
   }

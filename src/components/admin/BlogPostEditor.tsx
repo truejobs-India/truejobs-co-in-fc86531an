@@ -41,6 +41,11 @@ import {
   type QualityReport, type SEOReport
 } from '@/lib/blogArticleAnalyzer';
 import {
+  detectInlineSlots, insertInlineImage, getContextForSlot,
+  buildArticleImagesMetadata, isInvalidImageUrl,
+  type InlineSlotStatus,
+} from '@/lib/blogInlineImages';
+import {
   analyzePublishCompliance, getComplianceReadinessStatus,
 } from '@/lib/blogComplianceAnalyzer';
 import { ComplianceReadinessBadge } from './blog/ComplianceReadinessBadge';

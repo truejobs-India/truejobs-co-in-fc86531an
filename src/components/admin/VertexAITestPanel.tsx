@@ -89,6 +89,18 @@ export function VertexAITestPanel() {
       },
     );
 
+  const testGeminiImage = () =>
+    runTest(
+      'generate-vertex-image',
+      { title: 'Government Jobs Portal Test', topic: 'Indian Government Recruitment', slug: 'gemini-img-test', aspectRatio: '16:9', imageCount: 1, model: 'gemini-flash-image' },
+      setGeminiImage,
+      (d) => {
+        if (!d) return 'No data returned';
+        if (d.images?.[0]?.url) return d.images[0].url;
+        return JSON.stringify(d).substring(0, 300);
+      },
+    );
+
   const StatusIcon = ({ status }: { status: TestStatus }) => {
     if (status === 'running') return <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />;
     if (status === 'success') return <CheckCircle2 className="h-4 w-4 text-green-600" />;
@@ -137,10 +149,11 @@ export function VertexAITestPanel() {
         <h3 className="text-lg font-semibold">Vertex AI Model Tests</h3>
         <p className="text-sm text-muted-foreground">Quick connectivity & response checks for each Google model.</p>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <ResultCard label="Gemini 2.5 Flash" icon={Zap} result={flash} onRun={testFlash} />
         <ResultCard label="Gemini 2.5 Pro" icon={Crown} result={pro} onRun={testPro} />
         <ResultCard label="Imagen" icon={ImageIcon} result={imagen} onRun={testImagen} />
+        <ResultCard label="Gemini 2.5 Flash Image" icon={Sparkles} result={geminiImage} onRun={testGeminiImage} />
       </div>
     </div>
   );

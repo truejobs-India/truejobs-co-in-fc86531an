@@ -177,8 +177,13 @@ async function callClaude(prompt: string, maxTokens: number): Promise<string> {
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured');
 
+  // Cap input to ~12k chars to prevent timeouts on huge articles
+  const cappedPrompt = prompt.length > 12_000
+    ? prompt.substring(0, 12_000) + '\n\n[Content truncated for processing — work with the above portion.]'
+    : prompt;
+
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 140_000);
+  const timeoutId = setTimeout(() => controller.abort(), 120_000); // 120s — safe margin from 150s platform limit
 
   let resp: Response;
   try {
@@ -193,13 +198,13 @@ async function callClaude(prompt: string, maxTokens: number): Promise<string> {
         model: 'claude-sonnet-4-6',
         max_tokens: Math.min(maxTokens, 8192),
         system: 'You are a professional content editor for TrueJobs.co.in, an Indian job portal. Follow the user instructions exactly. Output only what is requested — no preamble, no markdown code blocks.',
-        messages: [{ role: 'user', content: prompt }],
+        messages: [{ role: 'user', content: cappedPrompt }],
       }),
       signal: controller.signal,
     });
   } catch (err) {
     clearTimeout(timeoutId);
-    if (err instanceof DOMException && err.name === 'AbortError') throw new Error('Claude API timeout after 140 seconds');
+    if (err instanceof DOMException && err.name === 'AbortError') throw new Error('Claude API timeout after 120 seconds — try a shorter article or a faster model like Gemini Flash');
     throw err;
   }
   clearTimeout(timeoutId);

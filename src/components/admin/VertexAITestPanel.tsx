@@ -19,6 +19,7 @@ export function VertexAITestPanel() {
   const [flash, setFlash] = useState<TestResult>({ status: 'idle' });
   const [pro, setPro] = useState<TestResult>({ status: 'idle' });
   const [imagen, setImagen] = useState<TestResult>({ status: 'idle' });
+  const [geminiImage, setGeminiImage] = useState<TestResult>({ status: 'idle' });
 
   const runTest = async (
     fnName: string,

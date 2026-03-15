@@ -693,7 +693,7 @@ export function PdfResourcesManager() {
                     <Sparkles className="h-4 w-4 text-primary" />
                     <span className="font-medium text-sm">AI Content Generation</span>
                   </div>
-                  <AiModelSelector value={aiModel} onChange={setAiModel} />
+                  <AiModelSelector value={aiModel} onValueChange={setAiModel} />
                   <Button onClick={handleGenerate} disabled={generating} className="w-full gap-2">
                     {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                     {generating ? 'Generating...' : 'Generate Content'}

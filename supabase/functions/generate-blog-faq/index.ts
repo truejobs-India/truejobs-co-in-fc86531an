@@ -164,10 +164,10 @@ async function callClaude(prompt: string): Promise<string> {
 }
 
 async function callMistral(prompt: string): Promise<string> {
-  const modelId = 'mistral.mistral-7b-instruct-v0:2';
-  const region = Deno.env.get('AWS_REGION') || 'ap-south-1';
+  const modelId = 'mistral.mistral-large-2407-v1:0';
+  const region = 'us-west-2';
   const host = `bedrock-runtime.${region}.amazonaws.com`;
-  const body = JSON.stringify({ messages: [{ role: 'user', content: [{ text: prompt }] }], inferenceConfig: { maxTokens: 4096, temperature: 0.4 } });
+  const body = JSON.stringify({ messages: [{ role: 'user', content: [{ text: prompt }] }], inferenceConfig: { maxTokens: 8192, temperature: 0.4 } });
   const resp = await awsSigV4Fetch(host, `/model/${modelId}/converse`, body, region, 'bedrock');
   if (!resp.ok) throw new Error(`Mistral Bedrock ${resp.status}: ${await resp.text()}`);
   const data = await resp.json();
@@ -175,18 +175,20 @@ async function callMistral(prompt: string): Promise<string> {
 }
 
 function callAI(model: string, prompt: string): Promise<string> {
+  console.log(`[generate-blog-faq] model_requested=${model}`);
   switch (model) {
-    case 'gemini': return callGemini(prompt);
+    case 'gemini': case 'gemini-flash': return callGemini(prompt);
     case 'lovable-gemini': return callLovableGemini(prompt);
-    case 'openai': return callOpenAI(prompt);
+    case 'openai': case 'gpt5': case 'gpt5-mini': return callOpenAI(prompt);
     case 'groq': return callGroq(prompt);
-    case 'claude': return callClaude(prompt);
+    case 'claude-sonnet': case 'claude': return callClaude(prompt);
     case 'mistral': return callMistral(prompt);
     case 'vertex-flash':
       return import('../_shared/vertex-ai.ts').then(m => m.callVertexGemini('gemini-2.5-flash', prompt, 60_000));
     case 'vertex-pro':
       return import('../_shared/vertex-ai.ts').then(m => m.callVertexGemini('gemini-2.5-pro', prompt, 120_000));
-    default: return callGemini(prompt);
+    default:
+      throw new Error(`Unsupported AI model: "${model}". Supported: gemini, mistral, claude-sonnet, openai, groq, lovable-gemini, vertex-flash, vertex-pro`);
   }
 }
 

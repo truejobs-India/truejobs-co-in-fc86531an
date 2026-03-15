@@ -476,16 +476,16 @@ async function awsSigV4Fetch(host: string, rawPath: string, body: string, region
 }
 
 async function callMistralRaw(prompt: string): Promise<string> {
-  const modelId = 'mistral.mistral-7b-instruct-v0:2';
-  const region = Deno.env.get('AWS_REGION') || 'ap-south-1';
+  const modelId = 'mistral.mistral-large-2407-v1:0';
+  const region = 'us-west-2';
   const host = `bedrock-runtime.${region}.amazonaws.com`;
   const body = JSON.stringify({
     messages: [{ role: 'user', content: [{ text: prompt }] }],
-    inferenceConfig: { maxTokens: 8192, temperature: 0.5 },
+    inferenceConfig: { maxTokens: 16384, temperature: 0.5 },
   });
   const resp = await Promise.race([
     awsSigV4Fetch(host, `/model/${modelId}/converse`, body, region, 'bedrock'),
-    new Promise<never>((_, reject) => setTimeout(() => reject(new Error('AI model timeout after 60 seconds')), AI_TIMEOUT_MS)),
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Mistral timeout after 120 seconds')), 120_000)),
   ]);
   if (!resp.ok) throw new Error(`Mistral Bedrock ${resp.status}: ${await resp.text()}`);
   const data = await resp.json();

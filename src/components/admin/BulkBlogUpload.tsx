@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
+import { normalizeBlogCategory } from '@/lib/blogCategoryUtils';
 import { ParsedArticle, getArticleReadiness } from '@/lib/blogParser';
 import { UploadZone } from './bulk-blog/UploadZone';
 import { ArticleQueue } from './bulk-blog/ArticleQueue';

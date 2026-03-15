@@ -1337,6 +1337,17 @@ export function BlogPostEditor() {
             <Square className="h-4 w-4 mr-1" />Stop
           </Button>
         )}
+        <Button variant="outline" size="sm" onClick={handleBulkGenerateInlineImages} disabled={isBulkInlineRunning}>
+          {isBulkInlineRunning ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <ImageIcon className="h-4 w-4 mr-1" />}
+          {isBulkInlineRunning
+            ? `In-Between… ${bulkInlineProgress ? `${bulkInlineProgress.done}/${bulkInlineProgress.total}` : ''}`
+            : 'Generate Pending In-Between Images'}
+        </Button>
+        {isBulkInlineRunning && (
+          <Button variant="destructive" size="sm" onClick={() => { bulkInlineAbortRef.current = true; }}>
+            <Square className="h-4 w-4 mr-1" />Stop
+          </Button>
+        )}
       </div>
 
       {/* ── Bulk Article Generator ── */}

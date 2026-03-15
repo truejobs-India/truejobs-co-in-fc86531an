@@ -515,8 +515,8 @@ async function callMistral(prompt: string, systemPrompt?: string): Promise<strin
 async function callAI(model: string, prompt: string, wordLimit = 1500): Promise<string> {
   console.log(`[generate-blog-article] model_requested=${model} wordLimit=${wordLimit}`);
   switch (model) {
-    case 'gemini': case 'gemini-flash': return callGemini(prompt, GEMINI_SYSTEM_PROMPT, 8192, 0.65);
-    case 'gemini-pro': return callGemini(prompt, GEMINI_SYSTEM_PROMPT, 16384, 0.5);
+    case 'gemini': case 'gemini-flash': return callGemini(prompt, GEMINI_SYSTEM_PROMPT, 16384, 0.65, 'gemini-2.5-flash');
+    case 'gemini-pro': return callGemini(prompt, GEMINI_SYSTEM_PROMPT, 32768, 0.5, 'gemini-2.5-pro');
     case 'lovable-gemini': return callLovableGemini(prompt);
     case 'openai': case 'gpt5': case 'gpt5-mini': return callOpenAI(prompt);
     case 'groq': return callGroq(prompt);

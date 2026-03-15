@@ -2,14 +2,13 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
-  ChevronDown, Wrench, Zap, Square, Loader2, CheckCircle2,
-  XCircle, AlertTriangle, Shield, Clock, SkipForward, Play, RotateCcw,
+  ChevronDown, Wrench, Zap, Square, CheckCircle2,
+  XCircle, AlertTriangle, Shield, Clock, SkipForward, Play, RotateCcw, Upload,
 } from 'lucide-react';
 import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
 import {
@@ -52,13 +51,14 @@ export function BulkWorkflowPanel({ posts, blogTextModel, onComplete }: BulkWork
   };
 
   const isActive = status !== 'idle';
+  const isPublishWorkflow = scanReport?.workflow_type === 'publish';
 
   return (
     <div className="px-6 pb-4 border-b">
       <Collapsible open={isOpen} onOpenChange={setIsOpen}>
         <CollapsibleTrigger className="flex items-center gap-2 w-full py-2 text-sm font-medium hover:text-primary">
           <ChevronDown className={`h-4 w-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-          <Zap className="h-4 w-4" /> Bulk Fix & Enrich Workflows
+          <Zap className="h-4 w-4" /> Bulk Fix, Enrich & Publish Workflows
           {isActive && <Badge variant="secondary" className="ml-2 text-xs">{status}</Badge>}
         </CollapsibleTrigger>
 
@@ -79,12 +79,15 @@ export function BulkWorkflowPanel({ posts, blogTextModel, onComplete }: BulkWork
                   />
                 </div>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Button size="sm" variant="outline" onClick={() => handleStartScan('fix')}>
                   <Wrench className="h-4 w-4 mr-1" /> Fix All Pending
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => handleStartScan('enrich')}>
                   <Zap className="h-4 w-4 mr-1" /> Enrich All Pending
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => handleStartScan('publish')} className="border-green-600/30 text-green-700 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-950/30">
+                  <Upload className="h-4 w-4 mr-1" /> Publish All Fixed & Enriched
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
@@ -98,7 +101,7 @@ export function BulkWorkflowPanel({ posts, blogTextModel, onComplete }: BulkWork
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium">
-                  Stage {scanProgress.stage}: {scanProgress.stage === 1 ? 'Heuristic Analysis' : 'AI Classification'}
+                  Stage {scanProgress.stage}: {scanProgress.stage === 1 ? 'Eligibility Analysis' : 'AI Content Verification'}
                 </span>
                 <Button size="sm" variant="destructive" onClick={cancelScan}>
                   <Square className="h-3 w-3 mr-1" /> Cancel
@@ -117,7 +120,7 @@ export function BulkWorkflowPanel({ posts, blogTextModel, onComplete }: BulkWork
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <XCircle className="h-4 w-4" /> Scan cancelled. Partial data preserved.
               </div>
-              {scanReport && <ReportView report={scanReport} />}
+              {scanReport && (isPublishWorkflow ? <PublishReportView report={scanReport} /> : <ReportView report={scanReport} />)}
               <Button size="sm" variant="outline" onClick={reset}>
                 <RotateCcw className="h-3 w-3 mr-1" /> Start Fresh
               </Button>
@@ -127,15 +130,34 @@ export function BulkWorkflowPanel({ posts, blogTextModel, onComplete }: BulkWork
           {/* ── Report State ── */}
           {status === 'scan_complete' && scanReport && (
             <div className="space-y-4">
-              <ReportView report={scanReport} />
-              <div className="flex gap-2">
-                <Button size="sm" onClick={handleConfirm} disabled={scanReport.total_pending === 0}>
-                  <Play className="h-3 w-3 mr-1" /> Confirm & Execute ({Math.min(scanReport.total_pending, scanReport.max_per_run)} articles)
-                </Button>
-                <Button size="sm" variant="outline" onClick={reset}>
-                  <RotateCcw className="h-3 w-3 mr-1" /> Discard
-                </Button>
-              </div>
+              {isPublishWorkflow ? (
+                <>
+                  <PublishReportView report={scanReport} />
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={handleConfirm} disabled={(scanReport.publish_categories?.ready_to_publish.length || 0) === 0} className="bg-green-600 hover:bg-green-700 text-white">
+                      <Play className="h-3 w-3 mr-1" /> Publish {scanReport.publish_categories?.ready_to_publish.length || 0} Ready Articles
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={reset}>
+                      <RotateCcw className="h-3 w-3 mr-1" /> Discard
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    ⚠️ Each article will be re-verified immediately before publishing.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <ReportView report={scanReport} />
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={handleConfirm} disabled={scanReport.total_pending === 0}>
+                      <Play className="h-3 w-3 mr-1" /> Confirm & Execute ({Math.min(scanReport.total_pending, scanReport.max_per_run)} articles)
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={reset}>
+                      <RotateCcw className="h-3 w-3 mr-1" /> Discard
+                    </Button>
+                  </div>
+                </>
+              )}
             </div>
           )}
 
@@ -143,7 +165,7 @@ export function BulkWorkflowPanel({ posts, blogTextModel, onComplete }: BulkWork
           {status === 'executing' && progress && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">Executing: {progress.current_title || 'Processing…'}</span>
+                <span className="text-sm font-medium">{isPublishWorkflow ? 'Publishing' : 'Executing'}: {progress.current_title || 'Processing…'}</span>
                 <Button size="sm" variant="destructive" onClick={requestStop}>
                   <Square className="h-3 w-3 mr-1" /> Stop
                 </Button>
@@ -174,7 +196,6 @@ export function BulkWorkflowPanel({ posts, blogTextModel, onComplete }: BulkWork
                 )}
               </div>
 
-              {/* Execution results summary */}
               {executionResults.length > 0 && (
                 <ExecutionResultsView results={executionResults} cappedRemaining={progress?.capped_remaining || 0} />
               )}
@@ -202,7 +223,7 @@ export function BulkWorkflowPanel({ posts, blogTextModel, onComplete }: BulkWork
   );
 }
 
-// ── Report View Sub-component ──
+// ── Fix/Enrich Report View ──
 function ReportView({ report }: { report: ScanReport }) {
   const cats = report.categories;
 
@@ -218,7 +239,6 @@ function ReportView({ report }: { report: ScanReport }) {
 
   return (
     <div className="space-y-3">
-      {/* Summary banner */}
       <div className="grid grid-cols-4 gap-2 text-xs">
         <div className="bg-muted rounded p-2 text-center">
           <div className="font-semibold text-base">{report.total_scanned}</div>
@@ -238,7 +258,6 @@ function ReportView({ report }: { report: ScanReport }) {
         </div>
       </div>
 
-      {/* Category cards */}
       <div className="space-y-1">
         {categoryCards.filter(c => c.items.length > 0).map(cat => (
           <CategoryRow key={cat.label} label={cat.label} icon={cat.icon} items={cat.items} color={cat.color} />
@@ -252,12 +271,70 @@ function ReportView({ report }: { report: ScanReport }) {
   );
 }
 
+// ── Publish Report View ──
+function PublishReportView({ report }: { report: ScanReport }) {
+  const pc = report.publish_categories;
+  const ps = report.publish_summary;
+
+  if (!pc || !ps) return null;
+
+  const categoryCards: { label: string; icon: React.ReactNode; items: ArticleVerdict[]; color: string }[] = [
+    { label: 'Ready to Publish', icon: <CheckCircle2 className="h-3.5 w-3.5" />, items: pc.ready_to_publish, color: 'text-green-600' },
+    { label: 'Already Published', icon: <Shield className="h-3.5 w-3.5" />, items: pc.already_published, color: 'text-blue-600' },
+    { label: 'Not Ready — Missing Fixes', icon: <Wrench className="h-3.5 w-3.5" />, items: pc.not_ready_missing_fixes, color: 'text-orange-600' },
+    { label: 'Not Ready — Missing Enrichment', icon: <Zap className="h-3.5 w-3.5" />, items: pc.not_ready_missing_enrichment, color: 'text-purple-600' },
+    { label: 'Not Ready — Publish Requirements', icon: <XCircle className="h-3.5 w-3.5" />, items: pc.not_ready_publish_requirements, color: 'text-destructive' },
+    { label: 'Manual Review', icon: <AlertTriangle className="h-3.5 w-3.5" />, items: pc.manual_review, color: 'text-yellow-600' },
+    { label: 'Deferred by Cap', icon: <SkipForward className="h-3.5 w-3.5" />, items: pc.deferred_by_cap, color: 'text-muted-foreground' },
+  ];
+
+  return (
+    <div className="space-y-3">
+      {/* Summary banner */}
+      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-xs">
+        <div className="bg-muted rounded p-2 text-center">
+          <div className="font-semibold text-base">{report.total_scanned}</div>
+          <div className="text-muted-foreground">Scanned</div>
+        </div>
+        <div className="bg-green-50 dark:bg-green-950/30 rounded p-2 text-center">
+          <div className="font-semibold text-base text-green-600">{ps.ready_to_publish_count}</div>
+          <div className="text-muted-foreground">Ready</div>
+        </div>
+        <div className="bg-blue-50 dark:bg-blue-950/30 rounded p-2 text-center">
+          <div className="font-semibold text-base text-blue-600">{pc.already_published.length}</div>
+          <div className="text-muted-foreground">Published</div>
+        </div>
+        <div className="bg-muted rounded p-2 text-center">
+          <div className="font-semibold text-base">{ps.verified_fixed_count}</div>
+          <div className="text-muted-foreground">V. Fixed</div>
+        </div>
+        <div className="bg-muted rounded p-2 text-center">
+          <div className="font-semibold text-base">{ps.verified_enriched_count}</div>
+          <div className="text-muted-foreground">V. Enriched</div>
+        </div>
+        <div className="bg-muted rounded p-2 text-center">
+          <div className="font-semibold text-base">{ps.manual_review_count}</div>
+          <div className="text-muted-foreground">Review</div>
+        </div>
+      </div>
+
+      {/* Category cards */}
+      <div className="space-y-1">
+        {categoryCards.filter(c => c.items.length > 0).map(cat => (
+          <CategoryRow key={cat.label} label={cat.label} icon={cat.icon} items={cat.items} color={cat.color} showPublishChecks />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Category Row with expandable articles ──
-function CategoryRow({ label, icon, items, color }: {
+function CategoryRow({ label, icon, items, color, showPublishChecks }: {
   label: string;
   icon: React.ReactNode;
   items: ArticleVerdict[];
   color: string;
+  showPublishChecks?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -278,8 +355,19 @@ function CategoryRow({ label, icon, items, color }: {
                   <div className="font-medium truncate">{item.title}</div>
                   <div className="text-muted-foreground truncate">
                     {item.reasons.slice(0, 2).join(' · ')}
-                    {item.confidence < 1 && ` · ${Math.round(item.confidence * 100)}% conf`}
+                    {item.confidence < 1 && item.confidence > 0 && ` · ${Math.round(item.confidence * 100)}% conf`}
                   </div>
+                  {showPublishChecks && item.publish_checks && (
+                    <div className="flex gap-2 mt-0.5">
+                      {item.publish_checks.verified_fixed && <span className="text-green-600">✓ Fixed</span>}
+                      {!item.publish_checks.verified_fixed && <span className="text-destructive">✗ Fixed</span>}
+                      {item.publish_checks.verified_enriched && <span className="text-green-600">✓ Enriched</span>}
+                      {!item.publish_checks.verified_enriched && <span className="text-destructive">✗ Enriched</span>}
+                      {item.publish_checks.soft_warnings.length > 0 && (
+                        <span className="text-yellow-600">⚠ {item.publish_checks.soft_warnings.join(', ')}</span>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <Badge variant="outline" className="text-[10px] h-4 shrink-0">
                   {item.severity}

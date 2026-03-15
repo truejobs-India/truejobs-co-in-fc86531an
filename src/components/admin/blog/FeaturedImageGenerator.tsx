@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
 import { Sparkles, RefreshCw, Loader2 } from 'lucide-react';
+import { getModelDef } from '@/lib/aiModels';
 
 interface FeaturedImageGeneratorProps {
   slug: string;
@@ -12,13 +13,13 @@ interface FeaturedImageGeneratorProps {
   category?: string;
   tags?: string[];
   currentImageUrl?: string;
+  imageModel?: string;
   onImageGenerated: (url: string, altText: string) => void;
 }
 
 /**
- * Generates featured images via gemini-2.5-flash direct Google API.
- * Does NOT use Lovable AI gateway — calls external Gemini API only.
- * Image generation is fully optional and never blocks manual workflow.
+ * Generates featured images via the selected image model.
+ * Routes to the correct edge function based on model selection.
  */
 export function FeaturedImageGenerator({
   slug,
@@ -26,11 +27,15 @@ export function FeaturedImageGenerator({
   category,
   tags,
   currentImageUrl,
+  imageModel = 'vertex-imagen',
   onImageGenerated,
 }: FeaturedImageGeneratorProps) {
   const { toast } = useToast();
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedAlt, setGeneratedAlt] = useState('');
+
+  const modelDef = getModelDef(imageModel);
+  const modelLabel = modelDef?.label || imageModel;
 
   const handleGenerate = async () => {
     if (!slug || !title) {
@@ -40,24 +45,42 @@ export function FeaturedImageGenerator({
 
     setIsGenerating(true);
     try {
-      const { data, error } = await supabase.functions.invoke('generate-blog-image', {
-        body: { slug, title, category: category || 'General', keywords: tags || [] },
-      });
-
-      if (error) throw error;
-      if (data?.code === 'IMAGE_GEN_REGION_UNAVAILABLE') {
-        toast({
-          title: 'Region unavailable',
-          description: 'AI cover image generation is currently unavailable in the deployed edge region. Please upload a cover image manually.',
-          variant: 'destructive',
+      // Route based on selected model
+      if (imageModel === 'gemini-flash-image' || imageModel === 'vertex-imagen') {
+        // Both go through generate-vertex-image with model routing
+        const { data, error } = await supabase.functions.invoke('generate-vertex-image', {
+          body: { slug, title, category: category || 'General', tags: tags || [], model: imageModel, imageCount: 1, aspectRatio: '16:9' },
         });
-        return;
-      }
-      if (!data?.imageUrl) throw new Error('No image returned');
 
-      setGeneratedAlt(data.altText || title);
-      onImageGenerated(data.imageUrl, data.altText || title);
-      toast({ title: 'Cover image generated', description: 'AI Generated via gemini-3.1-flash-image-preview' });
+        if (error) throw error;
+        if (data?.success === false) throw new Error(data.error || 'Image generation failed');
+        if (!data?.data?.images?.[0]?.url) throw new Error('No image returned');
+
+        const img = data.data.images[0];
+        setGeneratedAlt(img.altText || title);
+        onImageGenerated(img.url, img.altText || title);
+        toast({ title: 'Cover image generated', description: `Via ${data.model || modelLabel}` });
+      } else {
+        // Fallback: generate-blog-image (legacy Lovable gateway path)
+        const { data, error } = await supabase.functions.invoke('generate-blog-image', {
+          body: { slug, title, category: category || 'General', keywords: tags || [] },
+        });
+
+        if (error) throw error;
+        if (data?.code === 'IMAGE_GEN_REGION_UNAVAILABLE') {
+          toast({
+            title: 'Region unavailable',
+            description: 'AI cover image generation is currently unavailable. Please upload manually.',
+            variant: 'destructive',
+          });
+          return;
+        }
+        if (!data?.imageUrl) throw new Error('No image returned');
+
+        setGeneratedAlt(data.altText || title);
+        onImageGenerated(data.imageUrl, data.altText || title);
+        toast({ title: 'Cover image generated', description: `Via ${data.model || 'AI'}` });
+      }
     } catch (err: any) {
       console.error('Image generation failed:', err);
       toast({
@@ -89,7 +112,7 @@ export function FeaturedImageGenerator({
           )}
           {isGenerating ? 'Generating...' : currentImageUrl ? 'Regenerate' : 'Generate Cover'}
         </Button>
-        <span className="text-[10px] text-muted-foreground">AI via gemini-3.1-flash-image</span>
+        <span className="text-[10px] text-muted-foreground">via {modelLabel}</span>
       </div>
 
       {generatedAlt && (

@@ -139,6 +139,15 @@ export const AI_MODELS: readonly AiModelDef[] = [
     provider: 'Google Vertex AI',
     capabilities: ['image'],
   },
+  {
+    value: 'gemini-flash-image',
+    label: 'Gemini 2.5 Flash Image',
+    desc: 'Lovable AI · Fast image generation',
+    speed: 20,
+    source: 'built-in',
+    provider: 'Google',
+    capabilities: ['image'],
+  },
 ] as const;
 
 // ═══════════════════════════════════════════════════════════════

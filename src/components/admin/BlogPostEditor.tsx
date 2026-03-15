@@ -469,20 +469,38 @@ export function BlogPostEditor() {
         }
         setBulkCoverProgress({ total, done, failed, current: post.title });
         try {
-          const { data: imgData, error: imgError } = await supabase.functions.invoke('generate-blog-image', {
-            body: { slug: post.slug, title: post.title, category: post.category || 'General', keywords: post.tags || [], aiModel: blogImageModel },
-          });
+          let coverUrl = '';
+          let coverAlt = post.title;
 
-          if (imgError || !imgData?.imageUrl) {
-            console.warn(`Cover image failed for "${post.title}":`, imgError?.message || 'No image returned');
-            failed++;
+          if (blogImageModel === 'gemini-flash-image' || blogImageModel === 'vertex-imagen') {
+            const { data: imgData, error: imgError } = await supabase.functions.invoke('generate-vertex-image', {
+              body: { slug: post.slug, title: post.title, category: post.category || 'General', tags: post.tags || [], model: blogImageModel, imageCount: 1, aspectRatio: '16:9' },
+            });
+            if (imgError || !imgData?.data?.images?.[0]?.url) {
+              console.warn(`Cover image failed for "${post.title}":`, imgError?.message || imgData?.error || 'No image returned');
+              failed++;
+              continue;
+            }
+            coverUrl = imgData.data.images[0].url;
+            coverAlt = imgData.data.images[0].altText || post.title;
           } else {
-            await supabase.from('blog_posts').update({
-              cover_image_url: imgData.imageUrl,
-              featured_image_alt: imgData.altText || post.title,
-            }).eq('id', post.id);
-            done++;
+            const { data: imgData, error: imgError } = await supabase.functions.invoke('generate-blog-image', {
+              body: { slug: post.slug, title: post.title, category: post.category || 'General', keywords: post.tags || [] },
+            });
+            if (imgError || !imgData?.imageUrl) {
+              console.warn(`Cover image failed for "${post.title}":`, imgError?.message || 'No image returned');
+              failed++;
+              continue;
+            }
+            coverUrl = imgData.imageUrl;
+            coverAlt = imgData.altText || post.title;
           }
+
+          await supabase.from('blog_posts').update({
+            cover_image_url: coverUrl,
+            featured_image_alt: coverAlt,
+          }).eq('id', post.id);
+          done++;
         } catch (genErr: any) {
           console.warn(`Cover image error for "${post.title}":`, genErr.message);
           failed++;
@@ -902,6 +920,7 @@ export function BlogPostEditor() {
                   category={undefined}
                   tags={undefined}
                   currentImageUrl={formData.cover_image_url || undefined}
+                  imageModel={blogImageModel}
                   onImageGenerated={(url, alt) => handleFormChange({ cover_image_url: url, featured_image_alt: alt })}
                 />
                 <div className="space-y-1">

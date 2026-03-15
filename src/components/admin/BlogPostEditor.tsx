@@ -41,6 +41,11 @@ import {
   type QualityReport, type SEOReport
 } from '@/lib/blogArticleAnalyzer';
 import {
+  detectInlineSlots, insertInlineImage, getContextForSlot,
+  buildArticleImagesMetadata, isInvalidImageUrl,
+  type InlineSlotStatus,
+} from '@/lib/blogInlineImages';
+import {
   analyzePublishCompliance, getComplianceReadinessStatus,
 } from '@/lib/blogComplianceAnalyzer';
 import { ComplianceReadinessBadge } from './blog/ComplianceReadinessBadge';
@@ -79,6 +84,7 @@ interface BlogPost {
   canonical_url: string | null;
   author_name: string | null;
   ai_fixed_at: string | null;
+  article_images: any;
 }
 
 const POSTS_PER_PAGE = 20;
@@ -146,6 +152,14 @@ export function BlogPostEditor() {
   const [isBulkCoverRunning, setIsBulkCoverRunning] = useState(false);
   const [bulkCoverProgress, setBulkCoverProgress] = useState<{ total: number; done: number; failed: number; current: string } | null>(null);
   const bulkCoverAbortRef = useRef(false);
+
+  // Bulk inline image generation state
+  const [isBulkInlineRunning, setIsBulkInlineRunning] = useState(false);
+  const [bulkInlineProgress, setBulkInlineProgress] = useState<{ total: number; done: number; failed: number; skipped: number; current: string } | null>(null);
+  const bulkInlineAbortRef = useRef(false);
+
+  // Per-article image generation loading
+  const [perArticleLoading, setPerArticleLoading] = useState<Record<string, 'cover' | 'inline' | null>>({});
 
   // Bulk workflow panel is now handled by BulkWorkflowPanel component
 
@@ -438,21 +452,23 @@ export function BlogPostEditor() {
     }
   };
 
-  // ── Bulk Generate Missing Cover Images ──────────────
+  // ── Bulk Generate Missing Cover Images (ENFORCED: gemini-flash-image) ──
   const handleBulkGenerateCoverImages = async () => {
     bulkCoverAbortRef.current = false;
     setIsBulkCoverRunning(true);
     setBulkCoverProgress(null);
     try {
-      const { data: noCoverPosts, error } = await supabase
+      // Fetch all posts and filter client-side for invalid cover URLs
+      const { data: allPosts, error } = await supabase
         .from('blog_posts')
         .select('id, title, slug, category, tags, cover_image_url')
-        .or('cover_image_url.is.null,cover_image_url.eq.')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      if (!noCoverPosts || noCoverPosts.length === 0) {
-        toast({ title: '✅ All articles already have cover images!' });
+      const noCoverPosts = (allPosts || []).filter(p => isInvalidImageUrl(p.cover_image_url));
+
+      if (noCoverPosts.length === 0) {
+        toast({ title: '✅ All articles already have valid cover images!' });
         setIsBulkCoverRunning(false);
         return;
       }
@@ -469,32 +485,17 @@ export function BlogPostEditor() {
         }
         setBulkCoverProgress({ total, done, failed, current: post.title });
         try {
-          let coverUrl = '';
-          let coverAlt = post.title;
-
-          if (blogImageModel === 'gemini-flash-image' || blogImageModel === 'vertex-imagen') {
-            const { data: imgData, error: imgError } = await supabase.functions.invoke('generate-vertex-image', {
-              body: { slug: post.slug, title: post.title, category: post.category || 'General', tags: post.tags || [], model: blogImageModel, imageCount: 1, aspectRatio: '16:9' },
-            });
-            if (imgError || !imgData?.data?.images?.[0]?.url) {
-              console.warn(`Cover image failed for "${post.title}":`, imgError?.message || imgData?.error || 'No image returned');
-              failed++;
-              continue;
-            }
-            coverUrl = imgData.data.images[0].url;
-            coverAlt = imgData.data.images[0].altText || post.title;
-          } else {
-            const { data: imgData, error: imgError } = await supabase.functions.invoke('generate-blog-image', {
-              body: { slug: post.slug, title: post.title, category: post.category || 'General', keywords: post.tags || [] },
-            });
-            if (imgError || !imgData?.imageUrl) {
-              console.warn(`Cover image failed for "${post.title}":`, imgError?.message || 'No image returned');
-              failed++;
-              continue;
-            }
-            coverUrl = imgData.imageUrl;
-            coverAlt = imgData.altText || post.title;
+          // ENFORCED: Always use gemini-flash-image for cover images
+          const { data: imgData, error: imgError } = await supabase.functions.invoke('generate-vertex-image', {
+            body: { slug: post.slug, title: post.title, category: post.category || 'General', tags: post.tags || [], model: 'gemini-flash-image', purpose: 'cover', imageCount: 1, aspectRatio: '16:9' },
+          });
+          if (imgError || !imgData?.data?.images?.[0]?.url) {
+            console.warn(`Cover image failed for "${post.title}":`, imgError?.message || imgData?.error || 'No image returned');
+            failed++;
+            continue;
           }
+          const coverUrl = imgData.data.images[0].url;
+          const coverAlt = imgData.data.images[0].altText || post.title;
 
           await supabase.from('blog_posts').update({
             cover_image_url: coverUrl,
@@ -524,6 +525,240 @@ export function BlogPostEditor() {
     } finally {
       setIsBulkCoverRunning(false);
       setBulkCoverProgress(null);
+    }
+  };
+
+  // ── Bulk Generate Missing In-Between Images (ENFORCED: vertex-imagen) ──
+  const handleBulkGenerateInlineImages = async () => {
+    bulkInlineAbortRef.current = false;
+    setIsBulkInlineRunning(true);
+    setBulkInlineProgress(null);
+    try {
+      const { data: allPosts, error } = await supabase
+        .from('blog_posts')
+        .select('id, title, slug, content, category, tags, article_images')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      if (!allPosts || allPosts.length === 0) {
+        toast({ title: '✅ No articles found' });
+        setIsBulkInlineRunning(false);
+        return;
+      }
+
+      // Scan all posts for missing inline slots
+      const postsNeedingInline = allPosts.filter(post => {
+        const status = detectInlineSlots(post.content || '', post.article_images);
+        return (!status.slot1Filled && status.canPlaceSlot1) || (!status.slot2Filled && status.canPlaceSlot2);
+      });
+
+      if (postsNeedingInline.length === 0) {
+        toast({ title: '✅ All articles already have in-between images!' });
+        setIsBulkInlineRunning(false);
+        return;
+      }
+
+      const total = postsNeedingInline.length;
+      let done = 0;
+      let failed = 0;
+      let skipped = 0;
+      setBulkInlineProgress({ total, done, failed, skipped, current: postsNeedingInline[0].title });
+
+      for (const post of postsNeedingInline) {
+        if (bulkInlineAbortRef.current) {
+          toast({ title: '⏹️ Inline image generation stopped', description: `${done} done, ${failed} failed, ${skipped} skipped.` });
+          break;
+        }
+        setBulkInlineProgress({ total, done, failed, skipped, current: post.title });
+
+        try {
+          const status = detectInlineSlots(post.content || '', post.article_images);
+          let updatedContent = post.content || '';
+          let updatedArticleImages = post.article_images || {};
+          let anySuccess = false;
+
+          // Process slot 1
+          if (!status.slot1Filled && status.canPlaceSlot1) {
+            const ctx = getContextForSlot(updatedContent, 1, post.title, post.category);
+            const { data: imgData, error: imgError } = await supabase.functions.invoke('generate-vertex-image', {
+              body: { slug: post.slug, title: post.title, category: post.category || 'General', tags: post.tags || [], model: 'vertex-imagen', purpose: 'inline', slotNumber: 1, contextSnippet: ctx.nearbyText, nearbyHeading: ctx.nearbyHeading },
+            });
+            if (!imgError && imgData?.data?.images?.[0]?.url) {
+              const imgUrl = imgData.data.images[0].url;
+              const altText = imgData.data.images[0].altText || `${post.title} - illustration`;
+              const result = insertInlineImage(updatedContent, 1, imgUrl, altText);
+              if (result) {
+                updatedContent = result;
+                updatedArticleImages = buildArticleImagesMetadata(updatedArticleImages, 1, imgUrl, altText);
+                anySuccess = true;
+              }
+            }
+          }
+
+          // Process slot 2
+          if (!status.slot2Filled && status.canPlaceSlot2) {
+            const ctx = getContextForSlot(updatedContent, 2, post.title, post.category);
+            const { data: imgData, error: imgError } = await supabase.functions.invoke('generate-vertex-image', {
+              body: { slug: post.slug, title: post.title, category: post.category || 'General', tags: post.tags || [], model: 'vertex-imagen', purpose: 'inline', slotNumber: 2, contextSnippet: ctx.nearbyText, nearbyHeading: ctx.nearbyHeading },
+            });
+            if (!imgError && imgData?.data?.images?.[0]?.url) {
+              const imgUrl = imgData.data.images[0].url;
+              const altText = imgData.data.images[0].altText || `${post.title} - illustration`;
+              const result = insertInlineImage(updatedContent, 2, imgUrl, altText);
+              if (result) {
+                updatedContent = result;
+                updatedArticleImages = buildArticleImagesMetadata(updatedArticleImages, 2, imgUrl, altText);
+                anySuccess = true;
+              }
+            }
+          }
+
+          if (anySuccess) {
+            await supabase.from('blog_posts').update({
+              content: updatedContent,
+              article_images: updatedArticleImages,
+            }).eq('id', post.id);
+            done++;
+          } else {
+            skipped++;
+          }
+        } catch (genErr: any) {
+          console.warn(`Inline image error for "${post.title}":`, genErr.message);
+          failed++;
+        }
+
+        setBulkInlineProgress({ total, done: done + failed + skipped, failed, skipped, current: post.title });
+        if (done + failed + skipped < total) {
+          await new Promise(r => setTimeout(r, 3000));
+        }
+      }
+
+      if (!bulkInlineAbortRef.current) {
+        toast({
+          title: '🖼️ Inline image generation complete',
+          description: `${done} done, ${failed} failed, ${skipped} skipped out of ${total} articles.`,
+        });
+      }
+      fetchPosts();
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    } finally {
+      setIsBulkInlineRunning(false);
+      setBulkInlineProgress(null);
+    }
+  };
+
+  // ── Per-article cover image generation ──
+  const handleGenerateCoverForPost = async (post: BlogPost) => {
+    if (!isInvalidImageUrl(post.cover_image_url)) {
+      toast({ title: 'Cover image already exists', description: 'This article already has a valid cover image.' });
+      return;
+    }
+    setPerArticleLoading(prev => ({ ...prev, [post.id]: 'cover' }));
+    try {
+      const { data: imgData, error: imgError } = await supabase.functions.invoke('generate-vertex-image', {
+        body: { slug: post.slug, title: post.title, category: post.category || 'General', tags: post.tags || [], model: 'gemini-flash-image', purpose: 'cover', imageCount: 1, aspectRatio: '16:9' },
+      });
+      if (imgError || !imgData?.data?.images?.[0]?.url) {
+        throw new Error(imgError?.message || imgData?.error || 'No image returned');
+      }
+      await supabase.from('blog_posts').update({
+        cover_image_url: imgData.data.images[0].url,
+        featured_image_alt: imgData.data.images[0].altText || post.title,
+      }).eq('id', post.id);
+      toast({ title: '✅ Cover image generated', description: post.title });
+      fetchPosts();
+    } catch (err: any) {
+      toast({ title: 'Cover generation failed', description: err.message, variant: 'destructive' });
+    } finally {
+      setPerArticleLoading(prev => ({ ...prev, [post.id]: null }));
+    }
+  };
+
+  // ── Per-article inline image generation ──
+  const handleGenerateInlineForPost = async (post: BlogPost) => {
+    setPerArticleLoading(prev => ({ ...prev, [post.id]: 'inline' }));
+    try {
+      const status = detectInlineSlots(post.content || '', post.article_images);
+      if (status.slot1Filled && status.slot2Filled) {
+        toast({ title: 'All inline slots filled', description: 'Both in-between images already exist.' });
+        return;
+      }
+
+      let updatedContent = post.content || '';
+      let updatedArticleImages = post.article_images || {};
+      const outcomes: string[] = [];
+
+      // Slot 1
+      if (!status.slot1Filled) {
+        if (!status.canPlaceSlot1) {
+          outcomes.push(`Slot 1 skipped: ${status.skipReasons.find(r => r.includes('slot 1')) || 'article too short'}`);
+        } else {
+          const ctx = getContextForSlot(updatedContent, 1, post.title, post.category);
+          const { data: imgData, error: imgError } = await supabase.functions.invoke('generate-vertex-image', {
+            body: { slug: post.slug, title: post.title, category: post.category || 'General', tags: post.tags || [], model: 'vertex-imagen', purpose: 'inline', slotNumber: 1, contextSnippet: ctx.nearbyText, nearbyHeading: ctx.nearbyHeading },
+          });
+          if (!imgError && imgData?.data?.images?.[0]?.url) {
+            const imgUrl = imgData.data.images[0].url;
+            const altText = imgData.data.images[0].altText || `${post.title} - illustration`;
+            const result = insertInlineImage(updatedContent, 1, imgUrl, altText);
+            if (result) {
+              updatedContent = result;
+              updatedArticleImages = buildArticleImagesMetadata(updatedArticleImages, 1, imgUrl, altText);
+              outcomes.push('Slot 1 generated ✓');
+            } else {
+              outcomes.push('Slot 1 skipped: insertion point not found');
+            }
+          } else {
+            outcomes.push(`Slot 1 failed: ${imgError?.message || imgData?.error || 'No image'}`);
+          }
+        }
+      } else {
+        outcomes.push('Slot 1 already filled ✓');
+      }
+
+      // Slot 2
+      if (!status.slot2Filled) {
+        if (!status.canPlaceSlot2) {
+          outcomes.push(`Slot 2 skipped: ${status.skipReasons.find(r => r.includes('slot 2')) || 'article too short'}`);
+        } else {
+          const ctx = getContextForSlot(updatedContent, 2, post.title, post.category);
+          const { data: imgData, error: imgError } = await supabase.functions.invoke('generate-vertex-image', {
+            body: { slug: post.slug, title: post.title, category: post.category || 'General', tags: post.tags || [], model: 'vertex-imagen', purpose: 'inline', slotNumber: 2, contextSnippet: ctx.nearbyText, nearbyHeading: ctx.nearbyHeading },
+          });
+          if (!imgError && imgData?.data?.images?.[0]?.url) {
+            const imgUrl = imgData.data.images[0].url;
+            const altText = imgData.data.images[0].altText || `${post.title} - illustration`;
+            const result = insertInlineImage(updatedContent, 2, imgUrl, altText);
+            if (result) {
+              updatedContent = result;
+              updatedArticleImages = buildArticleImagesMetadata(updatedArticleImages, 2, imgUrl, altText);
+              outcomes.push('Slot 2 generated ✓');
+            } else {
+              outcomes.push('Slot 2 skipped: insertion point not found');
+            }
+          } else {
+            outcomes.push(`Slot 2 failed: ${imgError?.message || imgData?.error || 'No image'}`);
+          }
+        }
+      } else {
+        outcomes.push('Slot 2 already filled ✓');
+      }
+
+      // Save if anything changed
+      if (updatedContent !== post.content) {
+        await supabase.from('blog_posts').update({
+          content: updatedContent,
+          article_images: updatedArticleImages,
+        }).eq('id', post.id);
+        fetchPosts();
+      }
+
+      toast({ title: '🖼️ Inline images', description: outcomes.join(' | ') });
+    } catch (err: any) {
+      toast({ title: 'Inline generation failed', description: err.message, variant: 'destructive' });
+    } finally {
+      setPerArticleLoading(prev => ({ ...prev, [post.id]: null }));
     }
   };
 
@@ -1102,6 +1337,17 @@ export function BlogPostEditor() {
             <Square className="h-4 w-4 mr-1" />Stop
           </Button>
         )}
+        <Button variant="outline" size="sm" onClick={handleBulkGenerateInlineImages} disabled={isBulkInlineRunning}>
+          {isBulkInlineRunning ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <ImageIcon className="h-4 w-4 mr-1" />}
+          {isBulkInlineRunning
+            ? `In-Between… ${bulkInlineProgress ? `${bulkInlineProgress.done}/${bulkInlineProgress.total}` : ''}`
+            : 'Generate Pending In-Between Images'}
+        </Button>
+        {isBulkInlineRunning && (
+          <Button variant="destructive" size="sm" onClick={() => { bulkInlineAbortRef.current = true; }}>
+            <Square className="h-4 w-4 mr-1" />Stop
+          </Button>
+        )}
       </div>
 
       {/* ── Bulk Article Generator ── */}
@@ -1396,6 +1642,7 @@ export function BlogPostEditor() {
                   <TableHead>Quality</TableHead>
                   <TableHead>SEO</TableHead>
                   <TableHead>Cover</TableHead>
+                  <TableHead>Inline</TableHead>
                   <TableHead>Updated</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -1434,11 +1681,44 @@ export function BlogPostEditor() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        {post.cover_image_url ? (
-                          <ImageIcon className="h-4 w-4 text-green-500" />
+                        {!isInvalidImageUrl(post.cover_image_url) ? (
+                          <Button variant="ghost" size="icon" className="h-7 w-7" title="Cover image exists" disabled>
+                            <Check className="h-4 w-4 text-green-600" />
+                          </Button>
                         ) : (
-                          <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                          <Button
+                            variant="ghost" size="icon" className="h-7 w-7"
+                            title="Generate Cover Image"
+                            disabled={perArticleLoading[post.id] === 'cover'}
+                            onClick={() => handleGenerateCoverForPost(post)}
+                          >
+                            {perArticleLoading[post.id] === 'cover'
+                              ? <Loader2 className="h-4 w-4 animate-spin" />
+                              : <ImageIcon className="h-4 w-4 text-muted-foreground" />}
+                          </Button>
                         )}
+                      </TableCell>
+                      <TableCell>
+                        {(() => {
+                          const inlineStatus = detectInlineSlots(post.content || '', post.article_images);
+                          const filledCount = (inlineStatus.slot1Filled ? 1 : 0) + (inlineStatus.slot2Filled ? 1 : 0);
+                          const isLoading = perArticleLoading[post.id] === 'inline';
+                          if (filledCount === 2) {
+                            return <Badge variant="secondary" className="text-[10px]">2/2</Badge>;
+                          }
+                          return (
+                            <Button
+                              variant="ghost" size="sm" className="h-7 px-1.5 text-[10px] gap-1"
+                              title="Generate In-Between Images"
+                              disabled={isLoading}
+                              onClick={() => handleGenerateInlineForPost(post)}
+                            >
+                              {isLoading
+                                ? <Loader2 className="h-3 w-3 animate-spin" />
+                                : <Badge variant="outline" className="text-[10px] px-1">{filledCount}/2</Badge>}
+                            </Button>
+                          );
+                        })()}
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
                         {formatDistanceToNow(new Date(post.updated_at), { addSuffix: true })}

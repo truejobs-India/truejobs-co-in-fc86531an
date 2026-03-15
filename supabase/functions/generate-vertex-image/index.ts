@@ -1,8 +1,10 @@
 /**
  * generate-vertex-image — Image generation via Imagen (Vertex AI) or Gemini 2.5 Flash Image (Lovable AI Gateway).
- * Routes based on `body.model`:
- *   - "gemini-flash-image" → Lovable AI Gateway (google/gemini-2.5-flash-image)
- *   - anything else (default) → Imagen via Vertex AI
+ * 
+ * Routes based on `body.purpose` (enforced) or `body.model` (backward compat):
+ *   - purpose: "cover"  → forces Gemini Flash Image (gemini-2.5-flash-image)
+ *   - purpose: "inline" → forces Imagen via Vertex AI
+ *   - no purpose        → routes by body.model (backward compatible)
  */
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
@@ -126,10 +128,10 @@ async function verifyAdmin(req: Request): Promise<{ userId: string; adminClient:
 }
 
 // ═══════════════════════════════════════════════════════════════
-// IMAGE PROMPT BUILDER
+// PROMPT BUILDERS
 // ═══════════════════════════════════════════════════════════════
 
-function buildImagePrompt(body: any): string {
+function buildCoverImagePrompt(body: any): string {
   if (body.prompt) return body.prompt;
 
   const title = body.title || body.topic || 'Government Jobs in India';
@@ -139,6 +141,20 @@ function buildImagePrompt(body: any): string {
   const brand = body.brandGuidelines || '';
 
   return `Create a clean, professional ${style} for a blog article titled "${title}" about ${category}.${tags ? ` Related topics: ${tags}.` : ''}${brand ? ` Brand guidelines: ${brand}.` : ''} Style: suitable for an Indian government jobs and exam preparation portal. Use warm, professional colors. Do NOT include any text overlays, watermarks, official government seals, emblems, logos, or misleading official symbols. The image should be abstract, editorial, and visually appealing.${body.excerpt ? ` Article summary: ${body.excerpt.substring(0, 200)}` : ''}`;
+}
+
+function buildInlineImagePrompt(body: any): string {
+  const title = body.title || 'Government Jobs';
+  const contextSnippet = body.contextSnippet || '';
+  const nearbyHeading = body.nearbyHeading || '';
+  const category = body.category || 'Government Jobs';
+  const slotNumber = body.slotNumber || 1;
+
+  const sectionContext = nearbyHeading
+    ? `for a section about "${nearbyHeading}"`
+    : `for section ${slotNumber} of the article`;
+
+  return `Create a contextual editorial illustration ${sectionContext} in a blog article titled "${title}" about ${category}. ${contextSnippet ? `Nearby content context: ${contextSnippet.substring(0, 250)}.` : ''} Style: clean, professional infographic or illustration suitable for inline blog placement. Aspect ratio 4:3. Use warm, professional colors. Do NOT include any text overlays, watermarks, official government seals, emblems, logos, or misleading official symbols. The image should complement the article section and be visually distinct from a cover image.`;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -161,7 +177,7 @@ async function generateViaGeminiFlashImage(
     }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 
-  console.log(`[gemini-flash-image] slug=${slug} model=${GEMINI_IMAGE_MODEL}`);
+  console.log(`[gemini-flash-image] slug=${slug} model=${GEMINI_IMAGE_MODEL} purpose=${body.purpose || 'unspecified'}`);
 
   const gatewayResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
     method: 'POST',
@@ -292,6 +308,7 @@ async function generateViaGeminiFlashImage(
     },
     model: GEMINI_IMAGE_MODEL,
     action: 'generate-image',
+    purpose: body.purpose || 'cover',
     elapsedMs: elapsed,
   }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 }
@@ -309,7 +326,9 @@ async function generateViaImagen(
   adminClient: any,
   startMs: number,
 ): Promise<Response> {
-  console.log(`[vertex-imagen] slug=${slug} count=${imageCount} ratio=${aspectRatio} model=${IMAGEN_MODEL}`);
+  const purpose = body.purpose || 'unspecified';
+  const slotNumber = body.slotNumber || 0;
+  console.log(`[vertex-imagen] slug=${slug} count=${imageCount} ratio=${aspectRatio} model=${IMAGEN_MODEL} purpose=${purpose} slot=${slotNumber}`);
 
   const accessToken = await getVertexAccessToken();
   const projectId = Deno.env.get('GCP_PROJECT_ID');
@@ -363,6 +382,10 @@ async function generateViaImagen(
 
   const images: Array<{ url: string; path: string; altText: string; mimeType: string; width: number; height: number }> = [];
 
+  // Determine upload path based on purpose
+  const isInline = purpose === 'inline';
+  const pathPrefix = isInline ? 'inline' : 'covers';
+
   for (let i = 0; i < predictions.length; i++) {
     const prediction = predictions[i];
     const base64Data = prediction.bytesBase64Encoded;
@@ -374,8 +397,10 @@ async function generateViaImagen(
     }
 
     const ext = mimeType.includes('jpeg') ? 'jpg' : 'png';
-    const suffix = predictions.length > 1 ? `-${i + 1}` : '';
-    const filePath = `covers/${slug}-vertex${suffix}.${ext}`;
+    const suffix = isInline && slotNumber
+      ? `-slot${slotNumber}`
+      : (predictions.length > 1 ? `-${i + 1}` : '');
+    const filePath = `${pathPrefix}/${slug}-vertex${suffix}.${ext}`;
 
     const imageBytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
     const blob = new Blob([imageBytes], { type: mimeType });
@@ -396,8 +421,8 @@ async function generateViaImagen(
       path: filePath,
       altText: body.title || body.topic || `Blog image for ${slug}`,
       mimeType,
-      width: aspectRatio === '16:9' ? 1280 : aspectRatio === '1:1' ? 1024 : 1200,
-      height: aspectRatio === '16:9' ? 720 : aspectRatio === '1:1' ? 1024 : 900,
+      width: aspectRatio === '16:9' ? 1280 : aspectRatio === '4:3' ? 1024 : aspectRatio === '1:1' ? 1024 : 1200,
+      height: aspectRatio === '16:9' ? 720 : aspectRatio === '4:3' ? 768 : aspectRatio === '1:1' ? 1024 : 900,
     });
   }
 
@@ -410,19 +435,21 @@ async function generateViaImagen(
   }
 
   const elapsed = Date.now() - startMs;
-  console.log(`[vertex-imagen] completed in ${elapsed}ms, ${images.length} images uploaded`);
+  console.log(`[vertex-imagen] completed in ${elapsed}ms, ${images.length} images uploaded, purpose=${purpose}`);
 
   return new Response(JSON.stringify({
     success: true,
     data: { images, promptUsed: imagePrompt },
     model: IMAGEN_MODEL,
     action: 'generate-image',
+    purpose,
+    slotNumber,
     elapsedMs: elapsed,
   }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 }
 
 // ═══════════════════════════════════════════════════════════════
-// HANDLER — routes based on body.model
+// HANDLER — routes based on body.purpose (enforced) or body.model (backward compat)
 // ═══════════════════════════════════════════════════════════════
 
 serve(async (req) => {
@@ -436,15 +463,32 @@ serve(async (req) => {
 
     const body = await req.json();
     const slug = body.slug || 'untitled';
+    const purpose = body.purpose; // "cover" | "inline" | undefined
+
+    console.log(`[generate-vertex-image] Routing: purpose=${purpose || 'none'}, model=${body.model || 'none'}, slug=${slug}`);
+
+    // ── Purpose-based enforced routing ──
+    if (purpose === 'cover') {
+      // Cover images ALWAYS use Gemini Flash Image
+      const imagePrompt = buildCoverImagePrompt(body);
+      console.log(`[generate-vertex-image] ENFORCED: purpose=cover → gemini-flash-image`);
+      return await generateViaGeminiFlashImage(body, slug, imagePrompt, adminClient, startMs);
+    }
+
+    if (purpose === 'inline') {
+      // Inline images ALWAYS use Imagen via Vertex AI
+      const imagePrompt = buildInlineImagePrompt(body);
+      const aspectRatio = '4:3'; // Enforced for inline
+      console.log(`[generate-vertex-image] ENFORCED: purpose=inline → vertex-imagen, slot=${body.slotNumber}`);
+      return await generateViaImagen(body, slug, imagePrompt, 1, aspectRatio, adminClient, startMs);
+    }
+
+    // ── Backward-compatible model-based routing (no purpose specified) ──
     const selectedModel = body.model || 'vertex-imagen';
     const imageCount = Math.min(Math.max(body.imageCount || 1, 1), 4);
     const aspectRatio = ASPECT_RATIOS[body.aspectRatio || '16:9'] || '16:9';
+    const imagePrompt = buildCoverImagePrompt(body);
 
-    console.log(`[generate-vertex-image] Routing: model=${selectedModel}, slug=${slug}`);
-
-    const imagePrompt = buildImagePrompt(body);
-
-    // Route to correct provider
     if (selectedModel === 'gemini-flash-image') {
       return await generateViaGeminiFlashImage(body, slug, imagePrompt, adminClient, startMs);
     } else {

@@ -510,12 +510,14 @@ async function callMistral(prompt: string, systemPrompt?: string): Promise<strin
   return data?.output?.message?.content?.[0]?.text || '';
 }
 
-// ── Model dispatcher ──
+// ── Model dispatcher — NO silent fallback ──
 async function callAI(model: string, prompt: string, wordLimit = 1500): Promise<string> {
+  console.log(`[generate-blog-article] model_requested=${model} wordLimit=${wordLimit}`);
   switch (model) {
-    case 'gemini': return callGemini(prompt, GEMINI_SYSTEM_PROMPT, 8192, 0.65);
+    case 'gemini': case 'gemini-flash': return callGemini(prompt, GEMINI_SYSTEM_PROMPT, 8192, 0.65);
+    case 'gemini-pro': return callGemini(prompt, GEMINI_SYSTEM_PROMPT, 16384, 0.5);
     case 'lovable-gemini': return callLovableGemini(prompt);
-    case 'openai': return callOpenAI(prompt);
+    case 'openai': case 'gpt5': case 'gpt5-mini': return callOpenAI(prompt);
     case 'groq': return callGroq(prompt);
     case 'claude-sonnet':
     case 'claude': return callClaude(prompt, wordLimit);
@@ -528,7 +530,8 @@ async function callAI(model: string, prompt: string, wordLimit = 1500): Promise<
       const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
       return callVertexGemini('gemini-2.5-pro', prompt, 120_000);
     }
-    default: return callGemini(prompt, GEMINI_SYSTEM_PROMPT, 8192, 0.65);
+    default:
+      throw new Error(`Unsupported AI model: "${model}". Supported: gemini, gemini-flash, gemini-pro, mistral, claude-sonnet, openai, gpt5, groq, lovable-gemini, vertex-flash, vertex-pro`);
   }
 }
 

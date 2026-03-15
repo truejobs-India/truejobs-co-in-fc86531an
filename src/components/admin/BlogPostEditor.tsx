@@ -733,7 +733,7 @@ export function BlogPostEditor() {
         const { data: inserted, error: insertErr } = await supabase.from('blog_posts').insert({
           title: data.title, slug: data.slug, content: data.content,
           excerpt: data.excerpt || null, meta_title: data.metaTitle || null,
-          meta_description: data.metaDescription || null, category: data.category || bulkCategory || 'Career Advice',
+          meta_description: data.metaDescription || null, category: normalizeBlogCategory(data.category || bulkCategory),
           tags: data.tags || [], author_id: user!.id, author_name: 'TrueJobs Editorial Team',
           canonical_url: `https://truejobs.co.in/blog/${data.slug}`,
           is_published: false, word_count: wordCount, reading_time: Math.max(1, Math.ceil(wordCount / 200)),

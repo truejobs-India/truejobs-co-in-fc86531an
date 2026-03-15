@@ -325,6 +325,10 @@ function AdminDashboardInner() {
                   <Globe className="h-4 w-4" />
                   <span className="hidden sm:inline">Pages</span>
                 </TabsTrigger>
+                <TabsTrigger value="resources" className="flex items-center gap-2">
+                  <Download className="h-4 w-4" />
+                  <span className="hidden sm:inline">Resources</span>
+                </TabsTrigger>
                 <TabsTrigger value="ai-test" className="flex items-center gap-2">
                   <Sparkles className="h-4 w-4" />
                   <span className="hidden sm:inline">AI Test</span>

@@ -801,7 +801,8 @@ export function useBulkBlogWorkflow() {
 
     // Stage 2: AI Classification
     if (stage2Candidates.length > 0) {
-      setScanProgress({ stage: 2, done: 0, total: stage2Candidates.length, detail: 'Starting AI classification…' });
+      const resolvedInStage1 = posts.length - stage2Candidates.length;
+      setScanProgress({ stage: 2, done: 0, total: stage2Candidates.length, detail: `${resolvedInStage1} resolved in Stage 1, ${stage2Candidates.length} borderline need AI classification…` });
 
       for (let batchStart = 0; batchStart < stage2Candidates.length; batchStart += STAGE2_BATCH_SIZE) {
         if (cancelRef.current) {

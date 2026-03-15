@@ -846,6 +846,11 @@ export function EmploymentNewsManager() {
                 Retry Failed ({stats.failed})
               </Button>
             )}
+            <div className="border-l h-6 mx-1" />
+            <Button size="sm" variant="outline" onClick={checkUnpublishedJobs} disabled={isCheckingUnpublished}>
+              {isCheckingUnpublished ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Eye className="h-3 w-3 mr-1" />}
+              Check All Not Published
+            </Button>
           </div>
 
           {/* Table */}

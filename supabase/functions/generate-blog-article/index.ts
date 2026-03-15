@@ -537,6 +537,89 @@ async function callAI(model: string, prompt: string, wordLimit = 1500): Promise<
 }
 
 // ═══════════════════════════════════════════════════════════════
+// Robust field extraction from malformed JSON
+// Handles HTML content with unescaped quotes that break JSON.parse
+// ═══════════════════════════════════════════════════════════════
+
+function extractStringField(json: string, field: string): string {
+  // Match "field": "value" where value may contain unescaped quotes from HTML
+  // Strategy: find the field key, then scan forward to find the value boundary
+  const keyPattern = new RegExp(`"${field}"\\s*:\\s*"`);
+  const match = keyPattern.exec(json);
+  if (!match) return '';
+
+  const valueStart = match.index + match[0].length;
+  // Scan forward to find the closing quote followed by , or } or another key
+  // This handles unescaped quotes inside HTML content
+  const closingPatterns = [
+    /"\s*,\s*"/,   // ", "nextField
+    /"\s*,\s*\[/,  // ", [
+    /"\s*\}\s*$/,  // "} at end
+    /"\s*\}/,      // "}
+  ];
+
+  let bestEnd = -1;
+  for (const pat of closingPatterns) {
+    const sub = json.substring(valueStart);
+    // Search from the end backward to find the LAST valid closing pattern
+    let lastIdx = -1;
+    let searchFrom = 0;
+    let m;
+    while ((m = pat.exec(sub.substring(searchFrom))) !== null) {
+      lastIdx = searchFrom + m.index;
+      searchFrom = lastIdx + 1;
+    }
+    if (lastIdx !== -1 && (bestEnd === -1 || lastIdx > bestEnd)) {
+      bestEnd = lastIdx;
+    }
+  }
+
+  if (bestEnd === -1) {
+    // Fallback: take everything up to end, stripping trailing junk
+    return json.substring(valueStart).replace(/["}\]\s]+$/, '');
+  }
+
+  return json.substring(valueStart, valueStart + bestEnd);
+}
+
+function extractArrayField(json: string, field: string): string[] {
+  const pattern = new RegExp(`"${field}"\\s*:\\s*\\[([^\\]]*?)\\]`);
+  const match = pattern.exec(json);
+  if (!match) return [];
+  try {
+    return JSON.parse(`[${match[1]}]`);
+  } catch {
+    // Extract quoted strings manually
+    const items: string[] = [];
+    const itemPattern = /"([^"]+)"/g;
+    let m;
+    while ((m = itemPattern.exec(match[1])) !== null) items.push(m[1]);
+    return items;
+  }
+}
+
+function extractFieldsFromBrokenJson(json: string): Record<string, any> | null {
+  const title = extractStringField(json, 'title');
+  const content = extractStringField(json, 'content');
+
+  if (!title && !content) return null;
+
+  return {
+    title: title || 'Untitled',
+    slug: extractStringField(json, 'slug') || '',
+    content: content || '',
+    metaTitle: extractStringField(json, 'metaTitle') || title?.substring(0, 60) || '',
+    metaDescription: extractStringField(json, 'metaDescription') || '',
+    excerpt: extractStringField(json, 'excerpt') || '',
+    category: extractStringField(json, 'category') || '',
+    tags: extractArrayField(json, 'tags'),
+    primaryKeyword: extractStringField(json, 'primaryKeyword') || '',
+    secondaryKeywords: extractArrayField(json, 'secondaryKeywords'),
+    suggestedInternalLinks: extractArrayField(json, 'suggestedInternalLinks'),
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════
 // Main handler
 // ═══════════════════════════════════════════════════════════════
 
@@ -634,34 +717,34 @@ No markdown code blocks. Return ONLY the JSON object.`;
     try {
       parsed = JSON.parse(cleaned);
     } catch {
-      // Attempt regex extraction of JSON object from truncated response
       console.warn('[generate-blog-article] JSON.parse failed, attempting regex extraction...');
       const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
+      const jsonStr = jsonMatch ? jsonMatch[0] : cleaned;
+
+      // Try direct parse of extracted block
+      try {
+        parsed = JSON.parse(jsonStr);
+      } catch {
+        // Try repair: close open strings/brackets/braces
+        let repaired = jsonStr;
+        const openBraces = (repaired.match(/\{/g) || []).length - (repaired.match(/\}/g) || []).length;
+        const openBrackets = (repaired.match(/\[/g) || []).length - (repaired.match(/\]/g) || []).length;
+        const quoteCount = (repaired.match(/(?<!\\)"/g) || []).length;
+        if (quoteCount % 2 !== 0) repaired += '"';
+        for (let i = 0; i < openBrackets; i++) repaired += ']';
+        for (let i = 0; i < openBraces; i++) repaired += '}';
         try {
-          parsed = JSON.parse(jsonMatch[0]);
+          parsed = JSON.parse(repaired);
+          console.log('[generate-blog-article] Repaired truncated JSON successfully');
         } catch {
-          // Try to repair truncated JSON by closing open strings/objects
-          let repaired = jsonMatch[0];
-          // Count unmatched braces and brackets
-          const openBraces = (repaired.match(/\{/g) || []).length - (repaired.match(/\}/g) || []).length;
-          const openBrackets = (repaired.match(/\[/g) || []).length - (repaired.match(/\]/g) || []).length;
-          // Close any open string
-          const quoteCount = (repaired.match(/(?<!\\)"/g) || []).length;
-          if (quoteCount % 2 !== 0) repaired += '"';
-          // Close brackets and braces
-          for (let i = 0; i < openBrackets; i++) repaired += ']';
-          for (let i = 0; i < openBraces; i++) repaired += '}';
-          try {
-            parsed = JSON.parse(repaired);
-            console.log('[generate-blog-article] Repaired truncated JSON successfully');
-          } catch (e2) {
-            console.error('[generate-blog-article] JSON repair failed:', (e2 as Error).message);
-            return new Response(JSON.stringify({ error: 'Failed to parse AI response (truncated)', raw: cleaned.substring(0, 500) }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+          // Last resort: extract fields individually via regex
+          console.warn('[generate-blog-article] Repair failed, extracting fields via regex...');
+          parsed = extractFieldsFromBrokenJson(jsonStr);
+          if (!parsed) {
+            return new Response(JSON.stringify({ error: 'Failed to parse AI response', raw: cleaned.substring(0, 500) }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
           }
+          console.log('[generate-blog-article] Regex field extraction succeeded');
         }
-      } else {
-        return new Response(JSON.stringify({ error: 'Failed to parse AI response', raw: cleaned.substring(0, 500) }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
     }
 

@@ -421,6 +421,11 @@ function AdminDashboardInner() {
               <TabsContent value="ai-test">
                 <VertexAITestPanel />
               </TabsContent>
+
+              <TabsContent value="chatbot" className="space-y-6">
+                <ChatbotSettingsManager />
+                <ChatbotAnalytics />
+              </TabsContent>
             </Tabs>
           </>
         ) : currentView.type === 'users' ? (

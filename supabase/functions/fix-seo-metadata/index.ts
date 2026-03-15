@@ -90,7 +90,7 @@ Deno.serve(async (req) => {
     for (const article of articles) {
       try {
         // Build context for the AI
-        const plainText = (article.content || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 3000);
+        const plainText = (article.content || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 2000);
 
         const issueList = article.issues.length > 0
           ? `\nCURRENT ISSUES:\n${article.issues.map((i, idx) => `${idx + 1}. ${i}`).join('\n')}`
@@ -116,26 +116,15 @@ Content excerpt:
 ${plainText}
 
 RULES:
-1. meta_title: MUST be under 60 characters. Include primary keyword. Be search-friendly and relevant. Write in the same language as the title. No quotes.
-2. meta_description: MUST be 130-155 characters. Include primary keyword and a call-to-action. Be useful and human-readable. No quotes. No keyword stuffing.
-3. slug: lowercase, hyphenated, based on the article's primary topic. Max 70 chars. Remove stop words where possible. Clean and URL-safe.
-4. excerpt: 2-3 sentences, under 200 characters, capturing the main value for readers.
+1. meta_title: under 60 chars, primary keyword, same language as title
+2. meta_description: 130-155 chars, keyword + CTA, no stuffing
+3. slug: lowercase hyphenated, max 70 chars, URL-safe
+4. excerpt: 1-2 sentences, under 200 chars
+5. If existing value is already good, set "keep_existing": true
+6. Same language as article (Hindi/English). No clickbait.
 
-SAFETY RULES:
-- If the existing value is ALREADY STRONG and aligned with content, set "keep_existing": true for that field
-- Do NOT generate clickbait, misleading claims, or keyword-stuffed metadata
-- Metadata must accurately reflect the article content
-- Prefer the same language as the article title (Hindi/English)
-- No misleading government or official claims
-
-Return ONLY valid JSON (no markdown) with this exact structure:
-{
-  "meta_title": { "value": "generated title", "keep_existing": false, "reason": "why changed" },
-  "meta_description": { "value": "generated description", "keep_existing": false, "reason": "why changed" },
-  "slug": { "value": "generated-slug", "keep_existing": true, "reason": "existing slug is good" },
-  "excerpt": { "value": "generated excerpt", "keep_existing": false, "reason": "was missing" },
-  "summary": "Brief summary of what was improved"
-}`;
+Return ONLY this compact JSON (keep each "reason" under 15 words):
+{"meta_title":{"value":"...","keep_existing":false,"reason":"..."},"meta_description":{"value":"...","keep_existing":false,"reason":"..."},"slug":{"value":"...","keep_existing":true,"reason":"..."},"excerpt":{"value":"...","keep_existing":false,"reason":"..."},"summary":"..."}`;
 
         // Call Gemini 2.5 Pro with retry
         let geminiRes: Response | null = null;
@@ -147,7 +136,7 @@ Return ONLY valid JSON (no markdown) with this exact structure:
               contents: [{ parts: [{ text: prompt }] }],
               generationConfig: {
                 temperature: 0.2,
-                maxOutputTokens: 2048,
+                maxOutputTokens: 8192,
                 responseMimeType: 'application/json',
               },
             }),

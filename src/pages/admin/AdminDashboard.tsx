@@ -55,6 +55,8 @@ import { SEORoutePolicyDashboard } from '@/components/admin/seo-policy/SEORouteP
 import { VertexAITestPanel } from '@/components/admin/VertexAITestPanel';
 import { CustomPagesManager } from '@/components/admin/CustomPagesManager';
 import { PdfResourcesManager } from '@/components/admin/PdfResourcesManager';
+import { ChatbotSettingsManager } from '@/components/admin/ChatbotSettingsManager';
+import { ChatbotAnalytics } from '@/components/admin/ChatbotAnalytics';
 import { useNavigate } from 'react-router-dom';
 
 type DrilldownView = 

@@ -144,6 +144,13 @@ export function EmploymentNewsManager() {
   const [isScanningUnenriched, setIsScanningUnenriched] = useState(false);
   const [unenrichedCount, setUnenrichedCount] = useState<number | null>(null);
   const [isPublishingAll, setIsPublishingAll] = useState(false);
+  const [isCheckingUnpublished, setIsCheckingUnpublished] = useState(false);
+  const [unpublishedReport, setUnpublishedReport] = useState<{
+    pending: EmpNewsJob[];
+    enriched: EmpNewsJob[];
+    rejected: EmpNewsJob[];
+    failed: EmpNewsJob[];
+  } | null>(null);
   const [editErrors, setEditErrors] = useState<Record<string, string>>({});
   // AI Model selection for enrichment (persisted in localStorage)
   const [enrichAiModel, setEnrichAiModel] = useState<string>(() => {

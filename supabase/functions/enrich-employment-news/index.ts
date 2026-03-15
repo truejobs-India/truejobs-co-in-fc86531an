@@ -618,7 +618,7 @@ async function callAI(model: string, prompt: string): Promise<any> {
     // Retry the call
     let retryText: string;
     if (model === 'mistral') retryText = await callMistralRaw(prompt);
-    else if (model === 'claude') retryText = await callClaudeRaw(prompt);
+    else if (model === 'claude' || model === 'claude-sonnet') retryText = await callClaudeRaw(prompt);
     else if (model === 'vertex-flash') {
       const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
       retryText = await callVertexGemini('gemini-2.5-flash', prompt, 60_000);

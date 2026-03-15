@@ -196,15 +196,16 @@ async function callClaude(prompt: string, maxTokens: number): Promise<string> {
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: Math.min(maxTokens, 8192),
-        system: 'You are a professional content editor for TrueJobs.co.in, an Indian job portal. Follow the user instructions exactly. Output only what is requested — no preamble, no markdown code blocks.',
+        // Keep output budget conservative to reduce latency and avoid platform timeouts.
+        max_tokens: Math.min(maxTokens, 4096),
+        system: 'You are a professional content editor for TrueJobs.co.in, an Indian job portal. Follow the user instructions exactly. Output only what is requested — no preamble, no markdown code blocks. Be concise and avoid unnecessary verbosity.',
         messages: [{ role: 'user', content: cappedPrompt }],
       }),
       signal: controller.signal,
     });
   } catch (err) {
     clearTimeout(timeoutId);
-    if (err instanceof DOMException && err.name === 'AbortError') throw new Error('Claude API timeout after 120 seconds — try a shorter article or a faster model like Gemini Flash');
+    if (err instanceof DOMException && err.name === 'AbortError') throw new Error('Claude API timeout after 120 seconds — try a shorter article, a smaller word target, or a faster model like Gemini Flash');
     throw err;
   }
   clearTimeout(timeoutId);

@@ -215,7 +215,7 @@ export function EmploymentNewsManager() {
     const { data, count, error } = await query;
     if (error) {
       console.error('Fetch jobs error:', error);
-      toast({ title: 'Error', description: 'Failed to load jobs', variant: 'destructive' });
+      toastRef.current({ title: 'Error', description: 'Failed to load jobs', variant: 'destructive' });
     } else {
       setJobs((data || []) as EmpNewsJob[]);
       setTotalCount(count || 0);

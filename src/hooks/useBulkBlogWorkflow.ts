@@ -52,6 +52,8 @@ export interface PublishChecks {
 export interface ScanReport {
   total_scanned: number;
   total_pending: number;
+  total_actionable: number; // safe_to_bulk_edit only
+  unsafe_count: number; // in actionable categories but safe_to_bulk_edit=false
   max_per_run: number;
   capped_remaining: number;
   workflow_type?: WorkflowType;

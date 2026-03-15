@@ -253,7 +253,9 @@ No markdown code blocks.`;
     });
     if (!resp.ok) throw new Error(`Gemini API error ${resp.status}`);
     const data = await resp.json();
+    const finishReason = data?.candidates?.[0]?.finishReason || '';
     const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const wasTruncated = finishReason === 'MAX_TOKENS' || finishReason === 'LENGTH';
 
     if (action === 'rewrite-section') {
       const cleaned = raw.replace(/```html\n?/g, '').replace(/```\n?/g, '').trim();

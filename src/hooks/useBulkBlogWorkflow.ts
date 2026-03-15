@@ -1320,6 +1320,18 @@ export function useBulkBlogWorkflow() {
       throw new Error('Enrichment returned empty or unusable content');
     }
 
+    // ── Guard: content shrinkage — AI truncated or summarized the article ──
+    const newPlainText = newContent.replace(/<[^>]+>/g, '');
+    const newWordCount = newPlainText.split(/\s+/).filter((w: string) => w.length > 0).length;
+    if (newWordCount < preWordCount * 0.8) {
+      throw new Error(`Enrichment SHRUNK content from ${preWordCount} to ${newWordCount} words (${Math.round((1 - newWordCount/preWordCount) * 100)}% loss). Rejecting to protect original.`);
+    }
+
+    // Check if AI flagged truncation
+    if (enrichData?.wasTruncated) {
+      throw new Error(`Enrichment was truncated by AI model (output cut at ${newWordCount} words). Original ${preWordCount} words preserved.`);
+    }
+
     // ── Compute all post-enrichment metrics ──
     const plainText = newContent.replace(/<[^>]+>/g, '');
     const wordCount = plainText.split(/\s+/).filter((w: string) => w.length > 0).length;

@@ -1,7 +1,7 @@
-// Direct Gemini API only for non-image AI features — does NOT use Lovable AI gateway
+// Multi-model blog content improvement — supports Gemini, Mistral, Claude, OpenAI, Groq, Vertex
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-/** Lightweight markdown-to-HTML converter for AI output that ignores the HTML-only instruction */
+/** Lightweight markdown-to-HTML converter for AI output */
 function markdownToHtml(md: string): string {
   let html = md;
   html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
@@ -57,18 +57,271 @@ async function verifyAdmin(req: Request): Promise<{ userId: string } | Response>
   return { userId };
 }
 
-const GEMINI_MODEL = 'gemini-2.5-flash';
-const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
+// ═══════════════════════════════════════════════════════════════
+// AI Provider Implementations
+// ═══════════════════════════════════════════════════════════════
 
-const MODEL_MAP: Record<string, string> = {
-  'gemini-2.5-flash': 'gemini-2.5-flash',
-  'gemini-2.5-pro': 'gemini-2.5-pro',
-  'gemini-2.0-flash': 'gemini-2.0-flash',
-};
+// ── AWS SigV4 helpers (for Mistral via Bedrock) ──
+async function hmacSha256B(key: ArrayBuffer | Uint8Array, data: string): Promise<ArrayBuffer> {
+  const enc = new TextEncoder();
+  const ck = await crypto.subtle.importKey('raw', key instanceof Uint8Array ? key : new Uint8Array(key), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  return crypto.subtle.sign('HMAC', ck, enc.encode(data));
+}
+async function sha256Hex(data: string): Promise<string> {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(data));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+async function awsSigV4Fetch(host: string, rawPath: string, body: string, region: string, service: string): Promise<Response> {
+  const ak = Deno.env.get('AWS_ACCESS_KEY_ID');
+  const sk = Deno.env.get('AWS_SECRET_ACCESS_KEY');
+  if (!ak || !sk) throw new Error('AWS credentials not configured (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY)');
 
-function resolveGeminiUrl(aiModel?: string): string {
-  const effectiveModel = (aiModel && MODEL_MAP[aiModel]) || GEMINI_MODEL;
-  return `${GEMINI_BASE_URL}/${effectiveModel}:generateContent`;
+  const encodedUri = '/' + rawPath.split('/').filter(Boolean).map(s => encodeURIComponent(s)).join('/');
+  const canonicalUri = '/' + rawPath.split('/').filter(Boolean).map(s => encodeURIComponent(encodeURIComponent(s))).join('/');
+
+  const now = new Date();
+  const dateStamp = now.toISOString().replace(/[:-]|\.\d{3}/g, '').slice(0, 8);
+  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '').slice(0, 15) + 'Z';
+  const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`;
+  const payloadHash = await sha256Hex(body);
+  const canonicalHeaders = `content-type:application/json\nhost:${host}\nx-amz-date:${amzDate}\n`;
+  const signedHeaders = 'content-type;host;x-amz-date';
+  const canonicalRequest = `POST\n${canonicalUri}\n\n${canonicalHeaders}\n${signedHeaders}\n${payloadHash}`;
+  const stringToSign = `AWS4-HMAC-SHA256\n${amzDate}\n${credentialScope}\n${await sha256Hex(canonicalRequest)}`;
+
+  const enc = new TextEncoder();
+  let sigKey = await hmacSha256B(enc.encode(`AWS4${sk}`), dateStamp);
+  sigKey = await hmacSha256B(sigKey, region);
+  sigKey = await hmacSha256B(sigKey, service);
+  sigKey = await hmacSha256B(sigKey, 'aws4_request');
+  const sig = Array.from(new Uint8Array(await hmacSha256B(sigKey, stringToSign))).map(b => b.toString(16).padStart(2, '0')).join('');
+
+  return fetch(`https://${host}${encodedUri}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Amz-Date': amzDate,
+      Authorization: `AWS4-HMAC-SHA256 Credential=${ak}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${sig}`,
+    },
+    body,
+  });
+}
+
+// ── Gemini (direct API) ──
+async function callGemini(prompt: string, maxTokens: number, geminiModel = 'gemini-2.5-flash'): Promise<string> {
+  const apiKey = Deno.env.get('GEMINI_API_KEY');
+  if (!apiKey) throw new Error('GEMINI_API_KEY not configured');
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${apiKey}`;
+  const maxRetries = 3;
+  let resp: Response | null = null;
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { maxOutputTokens: maxTokens, temperature: 0.4 },
+      }),
+    });
+    if (resp.status === 429 && attempt < maxRetries - 1) {
+      const backoffMs = (attempt + 1) * 5000;
+      console.warn(`[improve-blog-content] Gemini 429, retrying in ${backoffMs}ms (attempt ${attempt + 1}/${maxRetries})`);
+      await new Promise(r => setTimeout(r, backoffMs));
+      continue;
+    }
+    break;
+  }
+  if (!resp || !resp.ok) {
+    const status = resp?.status || 500;
+    if (status === 429) throw new Error('Gemini API rate limit exceeded. Please wait a moment and try again.');
+    throw new Error(`Gemini API error ${status}`);
+  }
+  const data = await resp.json();
+  const finishReason = data?.candidates?.[0]?.finishReason || '';
+  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  return JSON.stringify({ __raw: text, __finishReason: finishReason });
+}
+
+// ── Mistral Large (AWS Bedrock — us-west-2) ──
+async function callMistral(prompt: string, maxTokens: number): Promise<string> {
+  const modelId = 'mistral.mistral-large-2407-v1:0';
+  const region = 'us-west-2';
+  const host = `bedrock-runtime.${region}.amazonaws.com`;
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 120_000);
+
+  try {
+    const body = JSON.stringify({
+      messages: [{ role: 'user', content: [{ text: prompt }] }],
+      inferenceConfig: { maxTokens: Math.min(maxTokens, 16384), temperature: 0.5 },
+    });
+    const resp = await awsSigV4Fetch(host, `/model/${modelId}/converse`, body, region, 'bedrock');
+    clearTimeout(timeoutId);
+    if (!resp.ok) throw new Error(`Mistral Bedrock ${resp.status}: ${await resp.text()}`);
+    const data = await resp.json();
+    const text = data?.output?.message?.content?.[0]?.text || '';
+    return JSON.stringify({ __raw: text, __finishReason: data?.stopReason || 'end_turn' });
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new Error('Mistral timeout after 120 seconds');
+    }
+    throw err;
+  }
+}
+
+// ── Claude Sonnet 4.6 (Anthropic Messages API) ──
+async function callClaude(prompt: string, maxTokens: number): Promise<string> {
+  const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
+  if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured');
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 140_000);
+
+  let resp: Response;
+  try {
+    resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: Math.min(maxTokens, 8192),
+        system: 'You are a professional content editor for TrueJobs.co.in, an Indian job portal. Follow the user instructions exactly. Output only what is requested — no preamble, no markdown code blocks.',
+        messages: [{ role: 'user', content: prompt }],
+      }),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err instanceof DOMException && err.name === 'AbortError') throw new Error('Claude API timeout after 140 seconds');
+    throw err;
+  }
+  clearTimeout(timeoutId);
+
+  if (!resp.ok) {
+    const errBody = await resp.text().catch(() => 'unknown');
+    if (resp.status === 429) throw new Error('Anthropic rate limit exceeded. Please wait and try again.');
+    if (resp.status === 401) throw new Error('Anthropic API key is invalid or expired.');
+    throw new Error(`Anthropic API error ${resp.status}: ${errBody.substring(0, 200)}`);
+  }
+
+  const data = await resp.json();
+  const textBlocks = (data?.content || []).filter((b: any) => b.type === 'text');
+  const text = textBlocks.map((b: any) => b.text).join('');
+  if (!text.trim()) throw new Error('Anthropic returned empty text output');
+  return JSON.stringify({ __raw: text, __finishReason: data?.stop_reason || 'end_turn' });
+}
+
+// ── OpenAI ──
+async function callOpenAI(prompt: string, maxTokens: number): Promise<string> {
+  const apiKey = Deno.env.get('OPENAI_API_KEY');
+  if (!apiKey) throw new Error('OPENAI_API_KEY not configured');
+  const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: 'gpt-4o', messages: [{ role: 'user', content: prompt }], max_tokens: maxTokens, temperature: 0.4 }),
+  });
+  if (!resp.ok) throw new Error(`OpenAI API error ${resp.status}`);
+  const data = await resp.json();
+  const text = data?.choices?.[0]?.message?.content || '';
+  return JSON.stringify({ __raw: text, __finishReason: data?.choices?.[0]?.finish_reason || 'stop' });
+}
+
+// ── Groq ──
+async function callGroq(prompt: string, maxTokens: number): Promise<string> {
+  const apiKey = Deno.env.get('GROQ_API_KEY');
+  if (!apiKey) throw new Error('GROQ_API_KEY not configured');
+  const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], max_tokens: maxTokens, temperature: 0.4 }),
+  });
+  if (!resp.ok) throw new Error(`Groq API error ${resp.status}`);
+  const data = await resp.json();
+  const text = data?.choices?.[0]?.message?.content || '';
+  return JSON.stringify({ __raw: text, __finishReason: data?.choices?.[0]?.finish_reason || 'stop' });
+}
+
+// ── Lovable Gemini (gateway) ──
+async function callLovableGemini(prompt: string, maxTokens: number): Promise<string> {
+  const apiKey = Deno.env.get('LOVABLE_API_KEY');
+  if (!apiKey) throw new Error('LOVABLE_API_KEY not configured');
+  const resp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: 'google/gemini-2.5-flash', messages: [{ role: 'user', content: prompt }], max_tokens: maxTokens, temperature: 0.4 }),
+  });
+  if (!resp.ok) {
+    if (resp.status === 429) throw new Error('Rate limit exceeded on Lovable AI. Try again later.');
+    if (resp.status === 402) throw new Error('Lovable AI credits exhausted.');
+    throw new Error(`Lovable AI error ${resp.status}`);
+  }
+  const data = await resp.json();
+  const text = data?.choices?.[0]?.message?.content || '';
+  return JSON.stringify({ __raw: text, __finishReason: data?.choices?.[0]?.finish_reason || 'stop' });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Unified dispatcher — NO silent fallback
+// ═══════════════════════════════════════════════════════════════
+
+const SUPPORTED_MODELS = ['gemini', 'gemini-flash', 'gemini-pro', 'mistral', 'claude-sonnet', 'claude', 'openai', 'gpt5', 'gpt5-mini', 'groq', 'lovable-gemini', 'vertex-flash', 'vertex-pro'];
+
+async function callAI(aiModel: string, prompt: string, maxTokens: number): Promise<{ raw: string; finishReason: string; actualProvider: string; actualModelId: string }> {
+  const model = aiModel || 'gemini';
+  console.log(`[improve-blog-content] dispatcher model_requested="${model}" maxTokens=${maxTokens}`);
+
+  let resultJson: string;
+  let actualProvider: string;
+  let actualModelId: string;
+
+  switch (model) {
+    case 'gemini': case 'gemini-flash':
+      resultJson = await callGemini(prompt, maxTokens, 'gemini-2.5-flash');
+      actualProvider = 'google-gemini'; actualModelId = 'gemini-2.5-flash'; break;
+    case 'gemini-pro':
+      resultJson = await callGemini(prompt, maxTokens, 'gemini-2.5-pro');
+      actualProvider = 'google-gemini'; actualModelId = 'gemini-2.5-pro'; break;
+    case 'mistral':
+      resultJson = await callMistral(prompt, maxTokens);
+      actualProvider = 'aws-bedrock'; actualModelId = 'mistral.mistral-large-2407-v1:0'; break;
+    case 'claude-sonnet': case 'claude':
+      resultJson = await callClaude(prompt, maxTokens);
+      actualProvider = 'anthropic'; actualModelId = 'claude-sonnet-4-6'; break;
+    case 'openai': case 'gpt5': case 'gpt5-mini':
+      resultJson = await callOpenAI(prompt, maxTokens);
+      actualProvider = 'openai'; actualModelId = 'gpt-4o'; break;
+    case 'groq':
+      resultJson = await callGroq(prompt, maxTokens);
+      actualProvider = 'groq'; actualModelId = 'llama-3.3-70b-versatile'; break;
+    case 'lovable-gemini':
+      resultJson = await callLovableGemini(prompt, maxTokens);
+      actualProvider = 'lovable-gateway'; actualModelId = 'google/gemini-2.5-flash'; break;
+    case 'vertex-flash': {
+      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      const text = await callVertexGemini('gemini-2.5-flash', prompt, 90_000);
+      resultJson = JSON.stringify({ __raw: text, __finishReason: 'stop' });
+      actualProvider = 'vertex-ai'; actualModelId = 'gemini-2.5-flash'; break;
+    }
+    case 'vertex-pro': {
+      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      const text = await callVertexGemini('gemini-2.5-pro', prompt, 120_000);
+      resultJson = JSON.stringify({ __raw: text, __finishReason: 'stop' });
+      actualProvider = 'vertex-ai'; actualModelId = 'gemini-2.5-pro'; break;
+    }
+    default:
+      throw new Error(`Unsupported AI model: "${model}". Supported models: ${SUPPORTED_MODELS.join(', ')}`);
+  }
+
+  const parsed = JSON.parse(resultJson);
+  console.log(`[improve-blog-content] dispatcher actual_provider=${actualProvider} actual_model=${actualModelId} finish_reason=${parsed.__finishReason}`);
+  return { raw: parsed.__raw, finishReason: parsed.__finishReason, actualProvider, actualModelId };
 }
 
 // ── Build criteria-specific enrichment instructions ──

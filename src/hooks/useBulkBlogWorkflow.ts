@@ -1301,10 +1301,13 @@ export function useBulkBlogWorkflow() {
 
     const preWordCount = (post.content || '').replace(/<[^>]+>/g, '').split(/\s+/).filter((w: string) => w.length > 0).length;
 
+    // Dynamic target: at least current + 30%, minimum 1500
+    const dynamicTarget = Math.max(1500, Math.ceil(preWordCount * 1.3), preWordCount + 300);
+
     const { data: enrichData, error: enrichError } = await supabase.functions.invoke('improve-blog-content', {
       body: {
         title: post.title, content: post.content,
-        action: 'enrich-article', targetWordCount: 1500,
+        action: 'enrich-article', targetWordCount: dynamicTarget,
         category: post.category, tags: post.tags,
         aiModel,
         preserveElements: article.preserve_elements,
@@ -1318,6 +1321,18 @@ export function useBulkBlogWorkflow() {
     const newContent = enrichData?.result;
     if (!newContent || typeof newContent !== 'string' || newContent.trim().length < 100) {
       throw new Error('Enrichment returned empty or unusable content');
+    }
+
+    // ── Guard: content shrinkage — AI truncated or summarized the article ──
+    const newPlainText = newContent.replace(/<[^>]+>/g, '');
+    const newWordCount = newPlainText.split(/\s+/).filter((w: string) => w.length > 0).length;
+    if (newWordCount < preWordCount * 0.8) {
+      throw new Error(`Enrichment SHRUNK content from ${preWordCount} to ${newWordCount} words (${Math.round((1 - newWordCount/preWordCount) * 100)}% loss). Rejecting to protect original.`);
+    }
+
+    // Check if AI flagged truncation
+    if (enrichData?.wasTruncated) {
+      throw new Error(`Enrichment was truncated by AI model (output cut at ${newWordCount} words). Original ${preWordCount} words preserved.`);
     }
 
     // ── Compute all post-enrichment metrics ──

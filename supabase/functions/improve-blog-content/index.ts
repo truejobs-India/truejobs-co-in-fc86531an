@@ -152,14 +152,19 @@ No markdown code blocks.`;
       maxTokens = 500;
 
     } else if (action === 'enrich-article') {
-      const effectiveTarget = Math.min(Math.max(Number(targetWordCount) || 1500, 800), 3000);
       const plainText = (content || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
       const currentWords = plainText.split(/\s+/).filter((w: string) => w.length > 0).length;
+      // Dynamic target: at least current + 30%, but within 800-5000 range
+      const dynamicTarget = Math.max(Math.ceil(currentWords * 1.3), currentWords + 300);
+      const effectiveTarget = Math.min(Math.max(Number(targetWordCount) || dynamicTarget, 800), 5000);
 
       prompt = `You are a professional content editor for TrueJobs.co.in, an Indian government job portal.
 Expand and improve the following article to approximately ${effectiveTarget} words (currently ~${currentWords} words).
 
-RULES:
+CRITICAL RULES:
+- You MUST return the COMPLETE article — every single section from the original MUST be present in your output
+- The output MUST be LONGER than the input, never shorter
+- Do NOT truncate, summarize, or abbreviate any part of the original content
 - Preserve the original structure, intent, headings, and factual content
 - Strengthen depth: add explanations, examples, practical tips, and context
 - Do NOT add fluff, repetition, or fabricated claims
@@ -184,8 +189,11 @@ Current content:
 ${content}
 
 Return ONLY the full enriched article as valid HTML.
-No JSON wrappers, no markdown, no code blocks, no explanations.`;
-      maxTokens = 8000;
+No JSON wrappers, no markdown, no code blocks, no explanations.
+REMINDER: Your output must contain ALL original content plus additions. Do NOT cut short.`;
+      // Scale maxTokens based on content size: minimum 8000, scale up for large articles
+      const estimatedTokensNeeded = Math.max(8000, Math.ceil(currentWords * 2.5));
+      maxTokens = Math.min(estimatedTokensNeeded, 65536);
 
     } else if (action === 'structure') {
       const plainText = (content || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 3000);
@@ -245,7 +253,9 @@ No markdown code blocks.`;
     });
     if (!resp.ok) throw new Error(`Gemini API error ${resp.status}`);
     const data = await resp.json();
+    const finishReason = data?.candidates?.[0]?.finishReason || '';
     const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const wasTruncated = finishReason === 'MAX_TOKENS' || finishReason === 'LENGTH';
 
     if (action === 'rewrite-section') {
       const cleaned = raw.replace(/```html\n?/g, '').replace(/```\n?/g, '').trim();
@@ -347,6 +357,7 @@ No markdown code blocks.`;
       return new Response(JSON.stringify({
         result: resultHtml,
         wordCount: wordCountComputed,
+        wasTruncated,
         changes: Array.isArray(changes) ? changes : [],
       }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }

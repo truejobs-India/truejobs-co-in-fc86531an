@@ -1681,11 +1681,44 @@ export function BlogPostEditor() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        {post.cover_image_url ? (
-                          <ImageIcon className="h-4 w-4 text-green-500" />
+                        {!isInvalidImageUrl(post.cover_image_url) ? (
+                          <Button variant="ghost" size="icon" className="h-7 w-7" title="Cover image exists" disabled>
+                            <Check className="h-4 w-4 text-green-600" />
+                          </Button>
                         ) : (
-                          <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                          <Button
+                            variant="ghost" size="icon" className="h-7 w-7"
+                            title="Generate Cover Image"
+                            disabled={perArticleLoading[post.id] === 'cover'}
+                            onClick={() => handleGenerateCoverForPost(post)}
+                          >
+                            {perArticleLoading[post.id] === 'cover'
+                              ? <Loader2 className="h-4 w-4 animate-spin" />
+                              : <ImageIcon className="h-4 w-4 text-muted-foreground" />}
+                          </Button>
                         )}
+                      </TableCell>
+                      <TableCell>
+                        {(() => {
+                          const inlineStatus = detectInlineSlots(post.content || '', post.article_images);
+                          const filledCount = (inlineStatus.slot1Filled ? 1 : 0) + (inlineStatus.slot2Filled ? 1 : 0);
+                          const isLoading = perArticleLoading[post.id] === 'inline';
+                          if (filledCount === 2) {
+                            return <Badge variant="secondary" className="text-[10px]">2/2</Badge>;
+                          }
+                          return (
+                            <Button
+                              variant="ghost" size="sm" className="h-7 px-1.5 text-[10px] gap-1"
+                              title="Generate In-Between Images"
+                              disabled={isLoading}
+                              onClick={() => handleGenerateInlineForPost(post)}
+                            >
+                              {isLoading
+                                ? <Loader2 className="h-3 w-3 animate-spin" />
+                                : <Badge variant="outline" className="text-[10px] px-1">{filledCount}/2</Badge>}
+                            </Button>
+                          );
+                        })()}
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
                         {formatDistanceToNow(new Date(post.updated_at), { addSuffix: true })}

@@ -105,6 +105,8 @@ function splitIntoChunks(text: string): string[] {
 
 export function EmploymentNewsManager() {
   const { toast } = useToast();
+  const toastRef = useRef(toast);
+  toastRef.current = toast;
   const [view, setView] = useState<'upload' | 'pipeline'>('pipeline');
 
   // Upload state

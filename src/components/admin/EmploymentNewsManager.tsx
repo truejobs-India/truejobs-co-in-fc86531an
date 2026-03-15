@@ -222,7 +222,7 @@ export function EmploymentNewsManager() {
     }
     setIsLoadingJobs(false);
     setIsRefetching(false);
-  }, [statusFilter, jobTypeFilter, batchFilter, categoryFilter, stateFilter, searchQuery, currentPage, perPage, toast]);
+  }, [statusFilter, jobTypeFilter, batchFilter, categoryFilter, stateFilter, searchQuery, currentPage, perPage]);
 
   useEffect(() => {
     fetchStats();

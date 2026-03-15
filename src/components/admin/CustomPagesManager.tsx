@@ -152,6 +152,9 @@ export function CustomPagesManager() {
   const bulkAbortRef = useRef(false);
 
   // ── Load pages ──
+  const toastRef = useRef(toast);
+  toastRef.current = toast;
+
   const loadPages = useCallback(async () => {
     setLoading(true);
     let query = supabase.from('custom_pages').select('*', { count: 'exact' });
@@ -159,11 +162,11 @@ export function CustomPagesManager() {
     if (statusFilter !== 'all') query = query.eq('status', statusFilter);
     query = query.order('created_at', { ascending: false }).range(pageNum * PAGE_SIZE, (pageNum + 1) * PAGE_SIZE - 1);
     const { data, count, error } = await query;
-    if (error) toast({ title: 'Error loading pages', description: error.message, variant: 'destructive' });
+    if (error) toastRef.current({ title: 'Error loading pages', description: error.message, variant: 'destructive' });
     setPages((data as unknown as CustomPage[]) || []);
     setTotal(count || 0);
     setLoading(false);
-  }, [search, statusFilter, pageNum, toast]);
+  }, [search, statusFilter, pageNum]);
 
   useEffect(() => { loadPages(); }, [loadPages]);
 

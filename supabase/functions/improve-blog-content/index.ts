@@ -365,17 +365,13 @@ Deno.serve(async (req) => {
     const authResult = await verifyAdmin(req);
     if (authResult instanceof Response) return authResult;
 
-    const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
-    if (!geminiApiKey) {
-      return new Response(JSON.stringify({ error: 'GEMINI_API_KEY not configured' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-    }
-
     const { title, content, action, selectedHtml, headings, hasIntro, hasConclusion, wordCount, category, tags, targetWordCount, aiModel, failingCriteria, isStubRebuild } = await req.json();
     if (!title || !action) {
       return new Response(JSON.stringify({ error: 'title and action required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    const geminiUrl = resolveGeminiUrl(aiModel);
+    const effectiveModel = aiModel || 'gemini';
+    console.log(`[improve-blog-content] action=${action} model_requested=${effectiveModel} title="${title.substring(0, 60)}"`);
 
     let prompt: string;
     let maxTokens = 2000;
@@ -438,11 +434,9 @@ No markdown code blocks.`;
       const dynamicTarget = Math.max(Math.ceil(currentWords * 1.3), currentWords + 300);
       const effectiveTarget = Math.min(Math.max(Number(targetWordCount) || dynamicTarget, 800), 5000);
 
-      // Build criteria-specific instructions
       const criteriaBlock = buildCriteriaInstructions(Array.isArray(failingCriteria) ? failingCriteria : []);
 
       if (isStubRebuild && currentWords < 500) {
-        // ── FULL REBUILD MODE for stub articles (<500 words) ──
         prompt = `You are a professional content writer for TrueJobs.co.in, an Indian government job portal.
 
 Write a comprehensive, well-structured article on the topic below. Target approximately ${Math.max(1200, effectiveTarget)} words.
@@ -476,7 +470,6 @@ No JSON wrappers, no markdown, no code blocks, no explanations.`;
         maxTokens = Math.min(estimatedTokens, 65536);
 
       } else {
-        // ── STANDARD ENRICHMENT MODE ──
         prompt = `You are a professional content editor for TrueJobs.co.in, an Indian government job portal.
 Expand and improve the following article to approximately ${effectiveTarget} words (currently ~${currentWords} words).
 
@@ -564,55 +557,25 @@ No markdown code blocks.`;
       return new Response(JSON.stringify({ error: 'Invalid action. Use "structure", "rewrite-section", "generate-intro", "generate-conclusion", or "enrich-article"' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    // Retry with exponential backoff for 429 rate limits (up to 3 attempts)
-    let resp: Response | null = null;
-    const maxRetries = 3;
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-      resp = await fetch(`${geminiUrl}?key=${geminiApiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { maxOutputTokens: maxTokens, temperature: 0.4 },
-        }),
-      });
-      if (resp.status === 429 && attempt < maxRetries - 1) {
-        const backoffMs = (attempt + 1) * 5000; // 5s, 10s
-        console.warn(`[improve-blog-content] 429 rate limit, retrying in ${backoffMs}ms (attempt ${attempt + 1}/${maxRetries})`);
-        await new Promise(r => setTimeout(r, backoffMs));
-        continue;
-      }
-      break;
-    }
-    if (!resp || !resp.ok) {
-      const status = resp?.status || 500;
-      if (status === 429) {
-        return new Response(
-          JSON.stringify({ error: 'Gemini API rate limit exceeded. Please wait a moment and try again.' }),
-          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      } else {
-        throw new Error(`Gemini API error ${status}`);
-      }
-    }
-    const data = await resp.json();
-    const finishReason = data?.candidates?.[0]?.finishReason || '';
-    const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    const wasTruncated = finishReason === 'MAX_TOKENS' || finishReason === 'LENGTH';
+    // ── Call AI via unified dispatcher ──
+    const { raw, finishReason, actualProvider, actualModelId } = await callAI(effectiveModel, prompt, maxTokens);
+    const wasTruncated = finishReason === 'MAX_TOKENS' || finishReason === 'LENGTH' || finishReason === 'max_tokens';
+
+    console.log(`[improve-blog-content] AI response received provider=${actualProvider} model=${actualModelId} finishReason=${finishReason} rawLength=${raw.length} wasTruncated=${wasTruncated}`);
 
     if (action === 'rewrite-section') {
       const cleaned = raw.replace(/```html\n?/g, '').replace(/```\n?/g, '').trim();
-      return new Response(JSON.stringify({ result: cleaned, changes: ['Section rewritten for improved clarity'] }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ result: cleaned, changes: ['Section rewritten for improved clarity'], actualProvider, actualModelId }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     if (action === 'generate-intro') {
       const cleaned = raw.replace(/```html\n?/g, '').replace(/```\n?/g, '').trim();
-      return new Response(JSON.stringify({ result: cleaned, applyMode: 'insert_before_first_heading' }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ result: cleaned, applyMode: 'insert_before_first_heading', actualProvider, actualModelId }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     if (action === 'generate-conclusion') {
       const cleaned = raw.replace(/```html\n?/g, '').replace(/```\n?/g, '').trim();
-      return new Response(JSON.stringify({ result: cleaned, applyMode: 'append_content' }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ result: cleaned, applyMode: 'append_content', actualProvider, actualModelId }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     if (action === 'enrich-article') {
@@ -679,6 +642,8 @@ No markdown code blocks.`;
         wordCount: wordCountComputed,
         wasTruncated,
         changes: Array.isArray(changes) ? changes : [],
+        actualProvider,
+        actualModelId,
       }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
@@ -696,7 +661,7 @@ No markdown code blocks.`;
     if (!Array.isArray(parsed.changes)) parsed.changes = [];
     if (!Array.isArray(parsed.suggestedInsertions)) parsed.suggestedInsertions = [];
 
-    return new Response(JSON.stringify(parsed), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    return new Response(JSON.stringify({ ...parsed, actualProvider, actualModelId }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   } catch (err) {
     console.error('improve-blog-content error:', err);
     return new Response(JSON.stringify({ error: err instanceof Error ? err.message : 'Unknown error' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });

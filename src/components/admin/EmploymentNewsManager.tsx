@@ -187,7 +187,12 @@ export function EmploymentNewsManager() {
   }, []);
 
   const fetchJobs = useCallback(async () => {
-    setIsLoadingJobs(true);
+    const hasExistingData = jobs.length > 0;
+    if (hasExistingData) {
+      setIsRefetching(true);
+    } else {
+      setIsLoadingJobs(true);
+    }
     let query = supabase
       .from('employment_news_jobs')
       .select('*', { count: 'exact' })
@@ -214,6 +219,7 @@ export function EmploymentNewsManager() {
       setTotalCount(count || 0);
     }
     setIsLoadingJobs(false);
+    setIsRefetching(false);
   }, [statusFilter, jobTypeFilter, batchFilter, categoryFilter, stateFilter, searchQuery, currentPage, perPage, toast]);
 
   useEffect(() => {

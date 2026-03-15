@@ -475,6 +475,11 @@ No JSON wrappers, no markdown, no code blocks, no explanations.`;
         const estimatedTokens = Math.max(8000, Math.ceil(effectiveTarget * 2.5));
         maxTokens = Math.min(estimatedTokens, 65536);
 
+        // Claude Sonnet can hit platform timeouts on very large generations — keep output budget tighter.
+        if (effectiveModel === 'claude-sonnet' || effectiveModel === 'claude') {
+          maxTokens = Math.min(maxTokens, 3500);
+        }
+
       } else {
         prompt = `You are a professional content editor for TrueJobs.co.in, an Indian government job portal.
 Expand and improve the following article to approximately ${effectiveTarget} words (currently ~${currentWords} words).
@@ -513,6 +518,11 @@ REMINDER: Your output must contain ALL original content plus additions. Do NOT c
 
         const estimatedTokensNeeded = Math.max(8000, Math.ceil(currentWords * 2.5));
         maxTokens = Math.min(estimatedTokensNeeded, 65536);
+
+        // Claude Sonnet can hit platform timeouts on very large generations — keep output budget tighter.
+        if (effectiveModel === 'claude-sonnet' || effectiveModel === 'claude') {
+          maxTokens = Math.min(maxTokens, 3500);
+        }
       }
 
     } else if (action === 'structure') {

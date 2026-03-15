@@ -1080,6 +1080,10 @@ export function BlogPostEditor() {
       </div>
 
       {/* ── Bulk Article Generator ── */}
+      {/* ── Bulk Fix & Enrich Workflows ── */}
+      <BulkWorkflowPanel posts={posts} blogTextModel={blogTextModel} onComplete={fetchPosts} />
+
+      {/* ── Bulk Article Generator ── */}
       <div className="px-6 pb-4 border-b">
         <Collapsible open={showBulkGenerator} onOpenChange={setShowBulkGenerator}>
           <CollapsibleTrigger className="flex items-center gap-2 w-full py-2 text-sm font-medium hover:text-primary">

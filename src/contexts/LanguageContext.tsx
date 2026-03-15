@@ -279,15 +279,15 @@ const translations: Translations = {
   'jobCard.jobSaved': { en: 'Job saved!', hi: 'नौकरी सेव हो गई!', bn: 'চাকরি সংরক্ষিত!' },
   'jobCard.jobRemoved': { en: 'Job removed from saved', hi: 'नौकरी सेव से हटा दी गई', bn: 'চাকরি সংরক্ষিত থেকে সরানো হয়েছে' },
 
-  // Chat bot
-  'chat.title': { en: 'TrueJobs AI', hi: 'TrueJobs AI', bn: 'TrueJobs AI' },
-  'chat.subtitle': { en: 'Smart Job Matching', hi: 'स्मार्ट जॉब मिलान', bn: 'স্মার্ট জব ম্যাচিং' },
-  'chat.placeholder': { en: 'Describe your ideal job...', hi: 'अपनी आदर्श नौकरी का वर्णन करें...', bn: 'আপনার আদর্শ চাকরি বর্ণনা করুন...' },
+  // Chat bot — Government Jobs Assistant
+  'chat.title': { en: 'TrueJobs सरकारी सहायक', hi: 'TrueJobs सरकारी सहायक', bn: 'TrueJobs সরকারি সহায়ক' },
+  'chat.subtitle': { en: 'Government Jobs Assistant', hi: 'सरकारी नौकरी सहायक', bn: 'সরকারি চাকরি সহায়ক' },
+  'chat.placeholder': { en: 'Ask about govt jobs, exams...', hi: 'सरकारी नौकरी के बारे में पूछें...', bn: 'সরকারি চাকরি সম্পর্কে জিজ্ঞাসা করুন...' },
   'chat.tryThese': { en: 'Try these:', hi: 'ये आज़माएं:', bn: 'এগুলি চেষ্টা করুন:' },
-  'chat.hint': { en: 'Try: "Find React developer jobs in Bangalore"', hi: 'आज़माएं: "बैंगलोर में React डेवलपर नौकरियाँ खोजें"', bn: 'চেষ্টা করুন: "ব্যাঙ্গালোরে React ডেভেলপার চাকরি খুঁজুন"' },
-  'chat.tooltipTitle': { en: 'AI Job Search Assistant', hi: 'AI नौकरी खोज सहायक', bn: 'AI চাকরি খোঁজার সহায়ক' },
-  'chat.tooltipDesc': { en: 'Find your perfect job with AI-powered matching', hi: 'AI-संचालित मिलान के साथ अपनी सही नौकरी खोजें', bn: 'AI-চালিত ম্যাচিং দিয়ে আপনার নিখুঁত চাকরি খুঁজুন' },
-  'chat.greeting': { en: "Hi! 👋 I'm TrueJobs AI, your personal job search assistant. Tell me what kind of job you're looking for - your skills, preferred location, experience level, or salary expectations - and I'll find the best matches for you!", hi: "नमस्ते! 👋 मैं TrueJobs AI हूं, आपका व्यक्तिगत नौकरी खोज सहायक। मुझे बताएं कि आप किस तरह की नौकरी ढूंढ रहे हैं - आपके कौशल, पसंदीदा स्थान, अनुभव स्तर, या वेतन अपेक्षाएं - और मैं आपके लिए सबसे अच्छे मिलान ढूंढूंगा!", bn: "হাই! 👋 আমি TrueJobs AI, আপনার ব্যক্তিগত চাকরি খোঁজার সহায়ক। আমাকে বলুন আপনি কী ধরনের চাকরি খুঁজছেন - আপনার দক্ষতা, পছন্দের অবস্থান, অভিজ্ঞতার স্তর, বা বেতন প্রত্যাশা - এবং আমি আপনার জন্য সেরা ম্যাচ খুঁজে দেব!" },
+  'chat.hint': { en: 'Try: "SSC CGL eligibility kya hai?"', hi: 'आज़माएं: "SSC CGL eligibility kya hai?"', bn: 'চেষ্টা করুন: "SSC CGL eligibility kya hai?"' },
+  'chat.tooltipTitle': { en: 'Sarkari Jobs AI Assistant', hi: 'सरकारी नौकरी AI सहायक', bn: 'সরকারি চাকরি AI সহায়ক' },
+  'chat.tooltipDesc': { en: 'Get info on govt jobs, exams, admit cards, results', hi: 'सरकारी नौकरी, परीक्षा, एडमिट कार्ड, रिज़ल्ट की जानकारी पाएं', bn: 'সরকারি চাকরি, পরীক্ষা, অ্যাডমিট কার্ড, রেজাল্টের তথ্য পান' },
+  'chat.greeting': { en: "Hi! 👋 I'm the TrueJobs Sarkari Jobs Assistant. Ask me about government jobs, exams, eligibility, admit cards, results, syllabus, and more!", hi: "नमस्ते! 👋 मैं TrueJobs सरकारी नौकरी सहायक हूं। सरकारी नौकरी, परीक्षा, पात्रता, एडमिट कार्ड, रिज़ल्ट, सिलेबस के बारे में पूछें!", bn: "হাই! 👋 আমি TrueJobs সরকারি চাকরি সহায়ক। সরকারি চাকরি, পরীক্ষা, যোগ্যতা, অ্যাডমিট কার্ড, রেজাল্ট, সিলেবাস সম্পর্কে জিজ্ঞাসা করুন!" },
 
   // Language names
   'language.english': { en: 'English', hi: 'अंग्रेज़ी', bn: 'ইংরেজি' },

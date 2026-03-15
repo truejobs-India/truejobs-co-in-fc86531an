@@ -26,6 +26,7 @@ import {
   Shield,
   Globe,
   Download,
+  MessageSquare,
 } from 'lucide-react';
 import { RestrictedDomainsManager } from '@/components/admin/RestrictedDomainsManager';
 import { EmploymentNewsManager } from '@/components/admin/EmploymentNewsManager';
@@ -54,6 +55,8 @@ import { SEORoutePolicyDashboard } from '@/components/admin/seo-policy/SEORouteP
 import { VertexAITestPanel } from '@/components/admin/VertexAITestPanel';
 import { CustomPagesManager } from '@/components/admin/CustomPagesManager';
 import { PdfResourcesManager } from '@/components/admin/PdfResourcesManager';
+import { ChatbotSettingsManager } from '@/components/admin/ChatbotSettingsManager';
+import { ChatbotAnalytics } from '@/components/admin/ChatbotAnalytics';
 import { useNavigate } from 'react-router-dom';
 
 type DrilldownView = 
@@ -334,6 +337,10 @@ function AdminDashboardInner() {
                   <Sparkles className="h-4 w-4" />
                   <span className="hidden sm:inline">AI Test</span>
                 </TabsTrigger>
+                <TabsTrigger value="chatbot" className="flex items-center gap-2">
+                  <MessageSquare className="h-4 w-4" />
+                  <span className="hidden sm:inline">Chatbot</span>
+                </TabsTrigger>
               </TabsList>
 
               <TabsContent value="users">
@@ -413,6 +420,11 @@ function AdminDashboardInner() {
 
               <TabsContent value="ai-test">
                 <VertexAITestPanel />
+              </TabsContent>
+
+              <TabsContent value="chatbot" className="space-y-6">
+                <ChatbotSettingsManager />
+                <ChatbotAnalytics />
               </TabsContent>
             </Tabs>
           </>

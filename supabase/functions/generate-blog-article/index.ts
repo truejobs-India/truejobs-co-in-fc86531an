@@ -646,6 +646,18 @@ No markdown code blocks. Return ONLY the JSON object.`;
       .replace(/(^-|-$)/g, '')
       .substring(0, 120);
 
+    // Normalize category to match DB constraint
+    const VALID_CATEGORIES = [
+      'Job Search', 'Career Advice', 'Resume', 'Interview', 'HR & Recruitment',
+      'Hiring Trends', 'AI in Recruitment', 'Results & Admit Cards', 'Exam Preparation',
+      'Sarkari Naukri Basics', 'Career Guides & Tips', 'Job Information', 'Government Jobs',
+      'Syllabus', 'Current Affairs', 'Admit Cards', 'Uncategorized',
+    ];
+    const rawCategory = parsed.category || category || 'Career Advice';
+    const normalizedCategory = VALID_CATEGORIES.find(c => c.toLowerCase() === rawCategory.toLowerCase().trim())
+      || VALID_CATEGORIES.find(c => rawCategory.toLowerCase().includes(c.toLowerCase()))
+      || 'Career Advice';
+
     return new Response(JSON.stringify({
       title: parsed.title,
       slug,
@@ -653,7 +665,7 @@ No markdown code blocks. Return ONLY the JSON object.`;
       metaTitle: parsed.metaTitle || parsed.title.substring(0, 60),
       metaDescription: parsed.metaDescription || '',
       excerpt: parsed.excerpt || '',
-      category: parsed.category || category || 'Career Advice',
+      category: normalizedCategory,
       tags: Array.isArray(parsed.tags) ? parsed.tags : [],
       primaryKeyword: parsed.primaryKeyword || '',
       secondaryKeywords: Array.isArray(parsed.secondaryKeywords) ? parsed.secondaryKeywords : [],

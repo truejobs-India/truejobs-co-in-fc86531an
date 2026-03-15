@@ -634,34 +634,34 @@ No markdown code blocks. Return ONLY the JSON object.`;
     try {
       parsed = JSON.parse(cleaned);
     } catch {
-      // Attempt regex extraction of JSON object from truncated response
       console.warn('[generate-blog-article] JSON.parse failed, attempting regex extraction...');
       const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
+      const jsonStr = jsonMatch ? jsonMatch[0] : cleaned;
+
+      // Try direct parse of extracted block
+      try {
+        parsed = JSON.parse(jsonStr);
+      } catch {
+        // Try repair: close open strings/brackets/braces
+        let repaired = jsonStr;
+        const openBraces = (repaired.match(/\{/g) || []).length - (repaired.match(/\}/g) || []).length;
+        const openBrackets = (repaired.match(/\[/g) || []).length - (repaired.match(/\]/g) || []).length;
+        const quoteCount = (repaired.match(/(?<!\\)"/g) || []).length;
+        if (quoteCount % 2 !== 0) repaired += '"';
+        for (let i = 0; i < openBrackets; i++) repaired += ']';
+        for (let i = 0; i < openBraces; i++) repaired += '}';
         try {
-          parsed = JSON.parse(jsonMatch[0]);
+          parsed = JSON.parse(repaired);
+          console.log('[generate-blog-article] Repaired truncated JSON successfully');
         } catch {
-          // Try to repair truncated JSON by closing open strings/objects
-          let repaired = jsonMatch[0];
-          // Count unmatched braces and brackets
-          const openBraces = (repaired.match(/\{/g) || []).length - (repaired.match(/\}/g) || []).length;
-          const openBrackets = (repaired.match(/\[/g) || []).length - (repaired.match(/\]/g) || []).length;
-          // Close any open string
-          const quoteCount = (repaired.match(/(?<!\\)"/g) || []).length;
-          if (quoteCount % 2 !== 0) repaired += '"';
-          // Close brackets and braces
-          for (let i = 0; i < openBrackets; i++) repaired += ']';
-          for (let i = 0; i < openBraces; i++) repaired += '}';
-          try {
-            parsed = JSON.parse(repaired);
-            console.log('[generate-blog-article] Repaired truncated JSON successfully');
-          } catch (e2) {
-            console.error('[generate-blog-article] JSON repair failed:', (e2 as Error).message);
-            return new Response(JSON.stringify({ error: 'Failed to parse AI response (truncated)', raw: cleaned.substring(0, 500) }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+          // Last resort: extract fields individually via regex
+          console.warn('[generate-blog-article] Repair failed, extracting fields via regex...');
+          parsed = extractFieldsFromBrokenJson(jsonStr);
+          if (!parsed) {
+            return new Response(JSON.stringify({ error: 'Failed to parse AI response', raw: cleaned.substring(0, 500) }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
           }
+          console.log('[generate-blog-article] Regex field extraction succeeded');
         }
-      } else {
-        return new Response(JSON.stringify({ error: 'Failed to parse AI response', raw: cleaned.substring(0, 500) }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
     }
 

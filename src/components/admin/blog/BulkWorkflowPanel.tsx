@@ -178,8 +178,8 @@ export function BulkWorkflowPanel({ posts, blogTextModel, onComplete }: BulkWork
                 <>
                   <ReportView report={scanReport} workflowType={workflowType} />
                   <div className="flex gap-2">
-                    <Button size="sm" onClick={handleConfirm} disabled={scanReport.total_pending === 0}>
-                      <Play className="h-3 w-3 mr-1" /> {getConfirmLabel(workflowType, Math.min(scanReport.total_pending, scanReport.max_per_run))}
+                    <Button size="sm" onClick={handleConfirm} disabled={scanReport.total_actionable === 0}>
+                      <Play className="h-3 w-3 mr-1" /> {getConfirmLabel(workflowType, Math.min(scanReport.total_actionable, scanReport.max_per_run))}
                     </Button>
                     <Button size="sm" variant="outline" onClick={reset}>
                       <RotateCcw className="h-3 w-3 mr-1" /> Discard

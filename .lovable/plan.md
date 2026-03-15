@@ -1,316 +1,303 @@
 
 
-# Corrected Final Plan: Downloadable PDF Resources System
+## Phase 5: AI Features + Current Affairs — Implementation Plan
 
-## Changes in This Revision
-
-1. **Removed** `updated_at` trigger from `resource_events` — table is append-only
-2. **Removed** public INSERT policy on `resource_events` — all inserts go through `log_resource_event` RPC (SECURITY DEFINER)
-3. **Added** `review_notes text` column to `pdf_resources`
-
----
-
-## 1. Database Migration
-
-### Table: `pdf_resources`
-
-```sql
-CREATE TABLE public.pdf_resources (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  resource_type text NOT NULL CHECK (resource_type IN ('sample_paper', 'book', 'previous_year_paper')),
-  title text NOT NULL,
-  slug text NOT NULL UNIQUE,
-  download_filename text,
-  file_url text,
-  file_size_bytes bigint,
-  page_count integer,
-  file_hash text,
-  cover_image_url text,
-  featured_image_alt text,
-  content text NOT NULL DEFAULT '',
-  excerpt text,
-  meta_title text,
-  meta_description text,
-  faq_schema jsonb DEFAULT '[]',
-  category text,
-  exam_name text,
-  subject text,
-  language text DEFAULT 'hindi',
-  exam_year integer,
-  edition_year integer,
-  tags text[] DEFAULT '{}',
-  status text DEFAULT 'draft' CHECK (status IN ('draft','generated','ready_for_review','published','archived')),
-  is_featured boolean DEFAULT false,
-  is_trending boolean DEFAULT false,
-  is_published boolean DEFAULT false,
-  is_noindex boolean DEFAULT false,
-  duplicate_approved boolean DEFAULT false,
-  review_notes text,                    -- admin notes during review workflow
-  published_at timestamptz,
-  download_count integer DEFAULT 0,
-  cta_click_count integer DEFAULT 0,
-  final_download_count integer DEFAULT 0,
-  word_count integer DEFAULT 0,
-  reading_time integer DEFAULT 5,
-  ai_model_used text,
-  ai_generated_at timestamptz,
-  image_model_used text,
-  content_hash text,
-  author_id uuid NOT NULL,
-  created_at timestamptz DEFAULT now(),
-  updated_at timestamptz DEFAULT now()
-);
-
-CREATE INDEX idx_pdf_resources_type_status ON pdf_resources(resource_type, status);
-CREATE INDEX idx_pdf_resources_category ON pdf_resources(category);
-CREATE INDEX idx_pdf_resources_slug ON pdf_resources(slug);
-CREATE INDEX idx_pdf_resources_file_hash ON pdf_resources(file_hash);
-CREATE INDEX idx_pdf_resources_content_hash ON pdf_resources(content_hash);
-
-ALTER TABLE public.pdf_resources ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Published resources viewable by everyone"
-  ON public.pdf_resources FOR SELECT USING (is_published = true);
-CREATE POLICY "Admins can manage resources"
-  ON public.pdf_resources FOR ALL TO authenticated
-  USING (public.has_role(auth.uid(), 'admin'::app_role));
-```
-
-### Auto `updated_at` trigger (pdf_resources ONLY)
-
-```sql
-CREATE TRIGGER set_pdf_resources_updated_at
-  BEFORE UPDATE ON public.pdf_resources
-  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
-```
-
-### Table: `resource_events` (append-only, NO updated_at)
-
-```sql
-CREATE TABLE public.resource_events (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  resource_id uuid REFERENCES public.pdf_resources(id) ON DELETE CASCADE NOT NULL,
-  event_type text NOT NULL CHECK (event_type IN (
-    'page_view','cta_click','whatsapp_click','telegram_click','email_submit','final_download'
-  )),
-  user_agent text,
-  referrer text,
-  created_at timestamptz DEFAULT now()
-);
-
-ALTER TABLE public.resource_events ENABLE ROW LEVEL SECURITY;
-
--- NO public INSERT policy. All inserts go through log_resource_event RPC.
--- Only admins can read events for analytics.
-CREATE POLICY "Admins can read events"
-  ON public.resource_events FOR SELECT TO authenticated
-  USING (public.has_role(auth.uid(), 'admin'::app_role));
-```
-
-**No trigger on `resource_events`**. This table is append-only event logging — rows are never updated.
-
-### Secure RPC for event logging
-
-```sql
-CREATE OR REPLACE FUNCTION public.log_resource_event(
-  p_resource_id uuid,
-  p_event_type text,
-  p_user_agent text DEFAULT NULL,
-  p_referrer text DEFAULT NULL
-) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
-BEGIN
-  -- Validate event_type server-side
-  IF p_event_type NOT IN ('page_view','cta_click','whatsapp_click','telegram_click','email_submit','final_download') THEN
-    RAISE EXCEPTION 'Invalid event type: %', p_event_type;
-  END IF;
-
-  -- Validate resource exists
-  IF NOT EXISTS (SELECT 1 FROM pdf_resources WHERE id = p_resource_id AND is_published = true) THEN
-    RETURN; -- silently ignore events for non-existent/unpublished resources
-  END IF;
-
-  -- Insert event
-  INSERT INTO resource_events (resource_id, event_type, user_agent, referrer)
-  VALUES (p_resource_id, p_event_type, LEFT(p_user_agent, 500), LEFT(p_referrer, 500));
-
-  -- Update aggregate counters
-  IF p_event_type = 'cta_click' THEN
-    UPDATE pdf_resources SET cta_click_count = cta_click_count + 1 WHERE id = p_resource_id;
-  ELSIF p_event_type = 'final_download' THEN
-    UPDATE pdf_resources SET final_download_count = final_download_count + 1, download_count = download_count + 1 WHERE id = p_resource_id;
-  END IF;
-END; $$;
-```
-
-**Security improvements over previous plan:**
-- No public INSERT policy on `resource_events` — the RPC function uses SECURITY DEFINER to bypass RLS
-- Server-side validation of `event_type` against allowlist
-- Server-side validation that resource exists and is published
-- Input truncation (`LEFT(…, 500)`) to prevent oversized payloads
-- Silent ignore for invalid resource IDs (no error leak)
-
-**Client-side usage**: `supabase.rpc('log_resource_event', { p_resource_id, p_event_type, p_user_agent, p_referrer })`
-
-This works for anonymous/unauthenticated users because `log_resource_event` is SECURITY DEFINER — it executes with the function owner's privileges, bypassing RLS. The anon key is sufficient to call RPCs.
-
-### Storage paths
+### Architecture
 
 ```
-pdfs/sample-papers/{slug}.pdf
-pdfs/books/{slug}.pdf
-pdfs/previous-year-papers/{slug}.pdf
-resource-covers/sample-papers/{slug}.webp
-resource-covers/books/{slug}.webp
-resource-covers/previous-year-papers/{slug}.webp
+Frontend (React)
+    ↓ supabase.functions.invoke() with auth token
+Edge Function (Deno)
+    ↓ JWT validated via getClaims()
+    ↓ DB queries via Supabase client
+AWS Bedrock (SigV4 signing)
+    ↓
+Mistral Models
+    ├─ mistral.mixtral-8x7b-instruct-v0:1  → Question generation
+    └─ mistral.mistral-large-2402-v1:0      → Answer evaluation + Reports
 ```
 
-Use existing `blog-assets` bucket (public).
+Reuses existing `callBedrockConverse()` + SigV4 signing from `enrich-job-descriptions/index.ts`.
 
 ---
 
-## 2. Route Strategy (hub prefix, collision-safe)
+### Batch 1: Database + Current Affairs (5B)
 
+**Migration — 5 tables:**
+
+1. `current_affairs`: id, date, slug, title, content, category, tags (text[]), source_url, created_at
+2. `daily_quiz_questions`: id, date, question_text, options (jsonb), correct_option_id, explanation, category, difficulty_level, created_at
+   - RLS: public SELECT, admin ALL via `has_role()`
+3. `ai_interview_sessions`: id, user_id, exam_type, interview_mode, subject_area, candidate_profile (jsonb), questions_count, overall_score, timer_seconds (nullable), status (default 'in_progress'), created_at, updated_at
+4. `ai_interview_messages`: id, session_id (FK), board_member, question, answer, score, knowledge_score, communication_score, confidence_score, structure_score, relevance_score, feedback, question_order, created_at
+5. `ai_interview_reports`: id, session_id (FK), user_id, exam_type, mode, report_json (jsonb), overall_score, knowledge_score, communication_score, confidence_score, structure_score, presence_score, strengths (text[]), improvements (text[]), recommended_topics (text[]), created_at
+   - RLS on 3-5: users CRUD own rows, admin SELECT all
+
+**Frontend — `/current-affairs`:** Date picker, category tabs, CA cards, 10-question daily quiz, monthly PDF download, JSON-LD.
+
+**Admin — `CurrentAffairsManager`:** CRUD + bulk add in AdminDashboard.
+
+---
+
+### Batch 2: AI Interview Edge Function (5A — Backend)
+
+**Edge function: `ai-interview`**
+- `verify_jwt = false` in config.toml but validates JWT in code via `getClaims()` — returns 401 if unauthenticated
+- Models: Mixtral 8x7B for questions, Mistral Large for evaluation + reports
+- Actions: `start_interview`, `next_question`, `evaluate_answer`, `generate_report`
+- Queries `current_affairs` for question context
+- DB filtering before any AI call
+
+---
+
+### Batch 3: AI Interview Frontend (5A — UI)
+
+**`/ai-interview`:** Step 1 exam type → Step 2 mode → Step 3 profile → Timer config (60/90/120s/unlimited) → Chat interface with board member labels → Post-interview report with recharts + PDF download + save.
+
+**`/dashboard/interview-history`:**
+- Paginated table (20/page) with next/previous
+- Progress tracking: score trend, skill radar, subject-wise bar charts
+- Interview comparison: side-by-side skill table
+- **AI progress analysis:** Button that sends **max 5** most recent session summaries (scores + metadata only, not full Q&A) to Bedrock (Mistral Large) for textual insights. Hard cap enforced server-side in the edge function — reject requests exceeding 5 sessions.
+
+Voice-ready architecture: input via `onSubmit(text: string)` for future speech-to-text.
+
+---
+
+### Batch 4: AI Exam Matcher (5C)
+
+**Edge function: `ai-exam-matcher`** (public, no auth)
+- Step 1: DB filter `govt_exams` by age/qualification/category (SQL WHERE)
+- Step 2: Send filtered list (max ~30) to Mixtral 8x7B for ranking
+
+**`/ai-exam-matcher`:** Multi-step form → loading animation → sorted result cards with match %, reasons, "View Details" link.
+
+---
+
+### Batch 5: Tools Page + Polish
+
+- Add "AI-Powered Tools" and "Exam Preparation" sections to Tools.tsx
+- Cross-links from Sarkari Jobs and Govt Exam Detail pages
+
+---
+
+## Phase 6 Addendum — SEO & Feature Enhancements
+
+### 1. Telegram Bot (Replaces Widget)
+
+- **Edge function: `telegram-bot-webhook`** — handles `/start`, `/subscribe`, `/unsubscribe`, `/categories`, `/state`, `/qualification`
+- **Edge function: `send-telegram-alerts`** — triggered on new job/admit card/result/deadline
+- **Database:** `telegram_subscribers` table (`id`, `telegram_user_id` bigint unique, `categories` jsonb, `qualification` text, `state` text, `is_active` boolean default true, `created_at`). RLS: service_role ALL.
+- **Frontend:** Update `TelegramAlertWidget.tsx` to link to bot URL (stored in `app_settings`)
+- **Secret required:** `TELEGRAM_BOT_TOKEN`
+
+---
+
+### 2. Programmatic SEO — Complete Combinations
+
+New `GovtProgrammaticPage.tsx` (lazy-loaded). Slug patterns resolved via DB queries:
+
+| Pattern | Example | DB Query |
+|---------|---------|----------|
+| `{dept}-jobs` | `/ssc-jobs` | `WHERE exam_category ILIKE '%ssc%'` |
+| `govt-jobs-{state}` | `/govt-jobs-bihar` | `WHERE states @> '{bihar}'` |
+| `govt-jobs-{city}` | `/govt-jobs-patna` | Predefined city-to-state map |
+| `{qual}-govt-jobs` | `/graduate-govt-jobs` | `WHERE qualification_tags @> '{graduate}'` |
+| `{dept}-jobs-{state}` | `/ssc-jobs-bihar` | Combined filters |
+| `{dept}-{qual}-jobs` | `/ssc-graduate-jobs` | Combined filters |
+| `govt-jobs-{state}-{qual}` | `/govt-jobs-up-graduate` | Combined filters |
+| `{dept}-jobs-{city}` | `/ssc-jobs-delhi` | Combined filters |
+
+Page only renders if >= 1 matching exam exists. Falls through to NotFound otherwise.
+
+---
+
+### 3. Auto-Generated SEO Intro Content
+
+Template-driven `generateSEOIntro(filters)` utility producing 300+ word HTML intros + 3-5 FAQs + FAQ JSON-LD + internal links per programmatic page.
+
+---
+
+### 4. Deadline-Based SEO Pages
+
+New `GovtDeadlinePage.tsx` (lazy-loaded). Slug patterns:
+
+- `govt-jobs-last-date-today` / `tomorrow` / `this-week` / `this-month`
+- `govt-jobs-last-date-{month}-{year}` (e.g., `govt-jobs-last-date-july-2026`)
+
+Queries `govt_exams.application_end` relative to current date. Badges: "Closing Today", "Closing Tomorrow", "Closing This Week".
+
+---
+
+### 5. Search Query Capture
+
+Wire existing `upsert_search_query` RPC into `Jobs.tsx`, `SarkariJobs.tsx`. Add "Search Insights" (top 50 queries) to admin panel.
+
+---
+
+### 6. Internal Linking Enforcement
+
+- **`QuickLinksBlock.tsx`** — standardized links grid on all govt exam detail pages
+- **`ContextualLinks.tsx`** — "More {department} Jobs", "More Jobs in {state}", "More {qualification} Jobs"
+- **`RelatedExams.tsx`** — 4-6 similar exams by `exam_category` or `qualification_tags`
+
+All integrated into `GovtExamDetail.tsx`.
+
+---
+
+### 7. Discovery Page — `/all-sarkari-jobs`
+
+Sections: A-Z index, department grouping, year grouping, qualification grouping, latest jobs, closing soon, upcoming exams, latest results, latest admit cards. Auto-updates on new entries.
+
+---
+
+### 8. Job Freshness Signals
+
+In `GovtExamDetail.tsx`: "Last Updated" display, badges (Updated Today, Recently Updated, Closing Soon, Closing Tomorrow), `datePublished`/`dateModified` in JSON-LD schema.
+
+---
+
+### 9. Prerender Verification
+
+Add `GovtProgrammaticPage` and `GovtDeadlinePage` to `SEOCacheBuilder` for static HTML generation. Verify structured data in cached HTML.
+
+---
+
+### 10. Execution Order
+
+| Batch | Additions |
+|-------|-----------|
+| Batch 3 (Alerts) | Telegram bot, `telegram_subscribers` table |
+| Batch 4 (Programmatic SEO) | Complete combinations, auto-generated intros, deadline pages |
+| Batch 5 (Discovery) | `/all-sarkari-jobs`, freshness badges |
+| Batch 6 (Internal Linking) | QuickLinksBlock, ContextualLinks, RelatedExams |
+| Batch 7 (Sitemap) | Deadline pages + programmatic slugs in sitemaps, prerender cache |
+| Any batch | Search query capture wiring |
+
+---
+
+## Selection-Based SEO Pages (Without Exam)
+
+### Database
+- `selection_type` text column added to `govt_exams` (values: `written_exam`, `interview`, `merit`, `direct_recruitment`, `skill_test`)
+- Index: `idx_govt_exams_selection_type`
+
+### Components
+- **`GovtSelectionPage.tsx`** — renders selection-based programmatic pages with DB-driven listings, 300+ word intro, FAQ schema, internal links
+- **`selectionPageData.ts`** — slug parser (`parseSelectionSlug`) + config builder (`buildSelectionPageConfig`) + SEO intro generator + FAQ generator
+
+### Slug Patterns (in SEOLandingResolver)
+| Pattern | Example |
+|---------|---------|
+| `govt-jobs-without-exam` | Main page |
+| `{qual}-govt-jobs-without-exam` | `/10th-pass-govt-jobs-without-exam` |
+| `{dept}-jobs-without-exam` | `/railway-jobs-without-exam` |
+| `govt-jobs-without-exam-{state}` | `/govt-jobs-without-exam-bihar` |
+
+### Query Logic
+All pages filter `govt_exams WHERE selection_type IN ('interview','merit','direct_recruitment')` + optional dept/qual/state filters. Page only renders if >= 1 result.
+
+### Sitemap & Prerender
+Add to `sitemap-combinations.xml` and `seo_page_cache` in future batches.
+
+---
+
+## Phase C: Exam Authority Pages (SEO Content Hub)
+
+### Architecture
+- `src/data/examAuthority/` — typed config registry with `Map<string, ExamAuthorityConfig>` for O(1) slug lookup
+- `src/pages/govt/ExamAuthorityPage.tsx` — renders all authority page types (notification, syllabus, exam-pattern, eligibility, salary)
+- Resolved via `SEOLandingResolver.tsx` Step 0 (before all other SEO pages)
+
+### Batch 1 (Complete): SSC CGL — 5 pages
+| Slug | Type | Meta Title |
+|------|------|-----------|
+| `ssc-cgl-2026-notification` | notification | SSC CGL 2026 Notification – Dates, Eligibility, Apply |
+| `ssc-cgl-2026-syllabus` | syllabus | SSC CGL Syllabus 2026 – Complete Topic-wise Guide |
+| `ssc-cgl-2026-exam-pattern` | exam-pattern | SSC CGL Exam Pattern 2026 – Tier 1 & 2 Details |
+| `ssc-cgl-2026-eligibility` | eligibility | SSC CGL Eligibility 2026 – Age, Qualification |
+| `ssc-cgl-2026-salary` | salary | SSC CGL Salary 2026 – Pay Scale, In-Hand, Perks |
+
+### Phase C Complete ✅
+- 80 authority pages across 16 exam clusters (SSC, Railway, Banking, Defence/UPSC)
+- 16 Exam Cluster Hub pages (`/{exam}-hub`) with subtopic cards + FAQs
+- 16 Previous Year Paper pages (`/{exam}-previous-year-paper`) with year-wise tables
+- 3 enrichment sections on notification pages: Admit Card, Cutoff Table, Result
+- PopularExamsBlock on SarkariJobs, LatestGovtJobs, GovtExamDetail
+- SEOCacheBuilder updated with hub + PYP loops (sections 13, 14)
+- Dynamic sitemap includes all 32 new slugs
+
+---
+
+## Phase D: Programmatic Pages (Planned)
+
+### Objective
+Generate programmatic SEO pages from database fields for long-tail traffic capture.
+
+### Planned Page Types
+1. **State + Qualification combos** — `/govt-jobs-{state}-{qualification}` (e.g. `/govt-jobs-uttar-pradesh-graduation`)
+2. **Department landing pages** — `/{dept}-jobs` with live listings from DB
+3. **Monthly deadline pages** — `/govt-jobs-last-date-{month}-{year}`
+4. **Exam calendar pages** — `/govt-exam-calendar-{month}-{year}`
+
+### Prerequisites
+- Phase C complete ✅
+- Minimum 50 active govt_exams rows in database
+- State/qualification taxonomy finalized
+
+### Implementation Notes
+- Reuse SEOLandingResolver pattern with new step priorities
+- Each page type needs 300+ word intro + FAQ schema
+- Thin-content guard: only render if ≥1 matching listing exists
+
+---
+
+## Phase E: Calculator Tie-ins, Guide System, Internal Linking, Outreach Assets
+
+### E-3: Long-Form Guide Generation via External Gemini API
+
+#### Architecture
+- **Single source of truth**: Guide metadata (slugs, prompts, tags, internal links) lives ONLY in the edge function `generate-guide-content/index.ts`. No separate `src/data/guidesMetadata.ts` file. The edge function owns the config array and uses it directly for generation + insertion.
+- **Storage**: Existing `blog_posts` table + `/blog/:slug` route. No new tables or routes.
+- **Model**: External Gemini API (`gemini-2.5-flash`) via `GEMINI_API_KEY` secret.
+- **Category**: `'Career Advice'` (already allowed by DB).
+
+#### Validation Rules (enforced before DB insert)
+Before inserting into `blog_posts`, the edge function MUST validate Gemini output:
+
+1. **meta_title**: ≤60 characters. If over, truncate at last word boundary + "…"
+2. **meta_description**: 140–155 characters. If under 140, pad with " | TrueJobs". If over 155, truncate at last word boundary + "…"
+3. **FAQ count**: Must contain 5–7 FAQs. If fewer than 5 or more than 7, re-extract or trim to exactly 5.
+4. **Internal link URLs**: Each `href` must start with `/` and match a known route pattern (e.g., `/ssc-cgl-2026-notification`, `/govt-salary-calculator`, `/sarkari-jobs`). Reject any absolute URLs or broken paths. Log warnings for unrecognized paths but still insert.
+5. **Word count**: Must be ≥1,800 words. If under, log warning but still insert as draft for manual expansion.
+6. **Content structure**: Must contain at least 3 H2 headings. If not, log warning.
+
+#### 10 Guide Slugs
+All published under `/blog/`:
+1. `ssc-cgl-preparation-guide`
+2. `govt-jobs-after-12th-guide`
+3. `upsc-vs-ssc-guide`
+4. `railway-jobs-guide`
+5. `govt-salary-calculation-guide`
+6. `govt-jobs-by-stream-guide`
+7. `nda-preparation-guide`
+8. `sbi-po-vs-ibps-po-guide`
+9. `govt-jobs-bihar-guide`
+10. `agniveer-complete-guide`
+
+#### Flow
 ```
-/sample-papers                              → SamplePapers listing
-/sample-papers/hub/:hubSlug                 → ResourceHub
-/sample-papers/:slug                        → ResourceDetail
-/sample-papers/:slug/download               → ResourceDownload
-
-/books                                      → Books listing
-/books/hub/:hubSlug                         → ResourceHub
-/books/:slug                                → ResourceDetail
-/books/:slug/download                       → ResourceDownload
-
-/previous-year-papers                       → PreviousYearPapers listing
-/previous-year-papers/hub/:hubSlug          → ResourceHub
-/previous-year-papers/:slug                 → ResourceDetail
-/previous-year-papers/:slug/download        → ResourceDownload
+POST /functions/v1/generate-guide-content { slug: "all" | "<specific-slug>" }
+  → Loop guide configs (single source array in edge function)
+  → Call Gemini API with detailed prompt per guide
+  → Parse + validate response (meta title, meta desc, FAQs, links, word count)
+  → Fix/truncate fields that fail validation
+  → Insert into blog_posts as draft (status: 'draft', is_published: false)
+  → Return report: { generated: [...], skipped: [...], validation_warnings: [...], errors: [...] }
 ```
 
-Reserved slug validation and hub registry in `src/lib/resourceHubs.ts`.
-
----
-
-## 3. Status Workflow — No Auto-Publish
-
-```
-draft → generated → ready_for_review → published → archived
-```
-
-AI generation sets status to `generated` only. Publishing requires explicit admin action after quality checks. Admin can use `review_notes` to annotate resources during any status.
-
----
-
-## 4. Publish Quality Checks
-
-Blocking: word_count >= 1000, title, file_url, slug unique + not reserved, no unresolved file_hash duplicate.
-Warning: meta_title <= 60 chars, meta_description 120-160 chars, cover_image_url present, category set, faq_schema >= 3 items, no content_hash similarity.
-
----
-
-## 5. Duplicate Detection
-
-- File hash (SHA-256 client-side) stored in `file_hash`
-- Content hash (first 500 chars normalized) stored in `content_hash`
-- Title/metadata overlap check on save
-- `duplicate_approved` field for admin override
-
----
-
-## 6. Noindex Rules
-
-`noindex` if ANY: `is_published = false`, `is_noindex = true`, `status != 'published'`, `word_count < 500`, `meta_title` empty, `file_url` empty, unresolved file_hash duplicate without `duplicate_approved`.
-
----
-
-## 7. Canonical Strategy
-
-- Detail pages: self-canonical
-- Hub pages: self-canonical
-- Listing with query params matching a hub: canonical to hub URL
-- Download interstitial: `noindex, nofollow`
-
----
-
-## 8. Download Flow (unchanged)
-
-Step 1: Detail page "Download PDF" button → navigates to `/:type/:slug/download`, logs `cta_click` via RPC.
-Step 2: Interstitial with TrueJobs branding, subscription CTAs, benefits, trust content (~300 words).
-Step 3: Final "Download PDF Now" button → triggers download with clean filename (`download_filename || slug.pdf`), logs `final_download` via RPC.
-
-Error handling: redirect to listing if resource not found/unpublished, show "File unavailable" if `file_url` missing, fallback filename from slug.
-
----
-
-## 9. Image Fallback
-
-If AI image generation fails: toast error, `cover_image_url = null`, public pages show category-based default from static map. Admin can always manually upload.
-
----
-
-## 10. AI Content Similarity Safeguards
-
-Prompt includes slug, year, subject, language for variation. Content hash compared post-generation. Admin warned if similar. No auto-publish ensures review.
-
----
-
-## 11. Edge Function: `generate-resource-content`
-
-Same `callAI` dispatcher as `generate-custom-page`. Input includes all metadata fields + slug for variation. Output: content, excerpt, meta fields, FAQs, content_hash. Sets `status = 'generated'` only.
-
----
-
-## 12. Admin: `PdfResourcesManager.tsx`
-
-Follows `CustomPagesManager.tsx` pattern. All fields manually editable including `review_notes`. Tab toggle for 3 resource types. PDF upload with auto-extraction (size, pages, hash). AI model selectors. Status workflow buttons. Quality checklist. Duplicate warnings. Analytics summary per resource.
-
----
-
-## 13. Sitemap
-
-Add `resources` type to `dynamic-sitemap`. Include only published, non-noindex, word_count >= 500 resources + listing pages + hub pages. Exclude download interstitials.
-
----
-
-## 14. Internal Linking
-
-Detail pages: related resources (same category+type), related exam pages, related blog guides, related tools.
-Hub/listing pages: top downloads, latest uploads, trending, exam/subject nav chips, cross-type links.
-
----
-
-## 15. Files Summary
-
-| File | Action |
-|------|--------|
-| **DB migration** | CREATE `pdf_resources` + `resource_events` + RLS + trigger (pdf_resources only) + `log_resource_event` RPC + indexes |
-| `supabase/functions/generate-resource-content/index.ts` | CREATE |
-| `supabase/functions/dynamic-sitemap/index.ts` | MODIFY — add `resources` sitemap type |
-| `src/lib/resourceHubs.ts` | CREATE — hub registry + reserved slugs |
-| `src/components/admin/PdfResourcesManager.tsx` | CREATE |
-| `src/pages/admin/AdminDashboard.tsx` | MODIFY — add Resources tab |
-| `src/pages/resources/SamplePapers.tsx` | CREATE |
-| `src/pages/resources/Books.tsx` | CREATE |
-| `src/pages/resources/PreviousYearPapers.tsx` | CREATE |
-| `src/pages/resources/ResourceHub.tsx` | CREATE |
-| `src/pages/resources/ResourceDetail.tsx` | CREATE |
-| `src/pages/resources/ResourceDownload.tsx` | CREATE |
-| `src/components/resources/ResourceCard.tsx` | CREATE |
-| `src/components/resources/RelatedResources.tsx` | CREATE |
-| `src/components/resources/ResourceSubscribeCTA.tsx` | CREATE |
-| `src/components/resources/ResourceSEO.tsx` | CREATE |
-| `src/App.tsx` | MODIFY — add 12 routes before `/:slug` catch-all |
-| `public/images/defaults/` | CREATE — default cover images |
-
-### Implementation Sequence
-
-1. Database migration (table + RLS + trigger on pdf_resources only + RPC function)
-2. Edge function `generate-resource-content`
-3. Hub registry + reserved slugs
-4. Admin `PdfResourcesManager` + dashboard tab
-5. Shared components
-6. Public pages (listings, hub, detail, download)
-7. Routes in App.tsx
-8. Sitemap integration
-9. Default cover images
-
+#### Files
+| Action | File |
+|--------|------|
+| CREATE | `supabase/functions/generate-guide-content/index.ts` |
+| MODIFY | `supabase/config.toml` — add `[functions.generate-guide-content]` |

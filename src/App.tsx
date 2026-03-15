@@ -60,6 +60,14 @@ const Blog = lazy(() => import("./pages/blog/Blog"));
 const BlogCategory = lazy(() => import("./pages/blog/BlogCategory"));
 const BlogPost = lazy(() => import("./pages/blog/BlogPost"));
 
+// Resources
+const SamplePapers = lazy(() => import("./pages/resources/SamplePapers"));
+const Books = lazy(() => import("./pages/resources/Books"));
+const PreviousYearPapers = lazy(() => import("./pages/resources/PreviousYearPapers"));
+const ResourceHub = lazy(() => import("./pages/resources/ResourceHub"));
+const ResourceDetail = lazy(() => import("./pages/resources/ResourceDetail"));
+const ResourceDownload = lazy(() => import("./pages/resources/ResourceDownload"));
+
 // Tools (heavy – jspdf)
 const Tools = lazy(() => import("./pages/tools/Tools"));
 const ResumeChecker = lazy(() => import("./pages/tools/ResumeChecker"));
@@ -134,6 +142,20 @@ const App = () => (
                 <Route path="/jobs/employment-news" element={<EmploymentNewsJobs />} />
                 <Route path="/jobs/employment-news/:slug" element={<EmploymentNewsJobDetail />} />
                 <Route path="/:slug" element={<SEOLandingResolver />} />
+                {/* Resources */}
+                <Route path="/sample-papers" element={<SamplePapers />} />
+                <Route path="/sample-papers/hub/:hubSlug" element={<ResourceHub />} />
+                <Route path="/sample-papers/:slug/download" element={<ResourceDownload />} />
+                <Route path="/sample-papers/:slug" element={<ResourceDetail />} />
+                <Route path="/books" element={<Books />} />
+                <Route path="/books/hub/:hubSlug" element={<ResourceHub />} />
+                <Route path="/books/:slug/download" element={<ResourceDownload />} />
+                <Route path="/books/:slug" element={<ResourceDetail />} />
+                <Route path="/previous-year-papers" element={<PreviousYearPapers />} />
+                <Route path="/previous-year-papers/hub/:hubSlug" element={<ResourceHub />} />
+                <Route path="/previous-year-papers/:slug/download" element={<ResourceDownload />} />
+                <Route path="/previous-year-papers/:slug" element={<ResourceDetail />} />
+
                 <Route path="/companies" element={<Companies />} />
                 <Route path="/companies/:slug" element={<CompanyDetail />} />
                 <Route path="/offline" element={<Offline />} />

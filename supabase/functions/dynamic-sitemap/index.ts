@@ -52,6 +52,7 @@ Deno.serve(async (req) => {
       case 'blog': return await generateBlogSitemap(supabase, now);
       case 'seo': return await generateSEOSitemap(supabase, now);
       case 'pages': return await generatePagesSitemap(supabase, now);
+      case 'resources': return await generateResourcesSitemap(supabase, now);
       case 'index': return await generateSitemapIndex(supabase, now);
       default: return await generateSitemapIndex(supabase, now);
     }
@@ -78,6 +79,7 @@ async function generateSitemapIndex(supabase: any, now: string): Promise<Respons
   <sitemap><loc>${SITE_URL}/sitemap-jobs.xml</loc><lastmod>${latestJob.data?.updated_at ? new Date(latestJob.data.updated_at).toISOString() : now}</lastmod></sitemap>
   <sitemap><loc>${SITE_URL}/sitemap-blog.xml</loc><lastmod>${latestBlog.data?.updated_at ? new Date(latestBlog.data.updated_at).toISOString() : now}</lastmod></sitemap>
   <sitemap><loc>${SITE_URL}/sitemap-seo.xml</loc><lastmod>${now}</lastmod></sitemap>
+  <sitemap><loc>${SITE_URL}/sitemap-resources.xml</loc><lastmod>${now}</lastmod></sitemap>
 </sitemapindex>`;
   console.log('Generated sitemap index');
   return new Response(xml, { headers: corsHeaders });
@@ -221,5 +223,59 @@ async function generateSEOSitemap(supabase: any, now: string): Promise<Response>
   }
   xml += `</urlset>`;
   console.log(`SEO sitemap: ${pages.length} URLs (all cache-backed)`);
+  return new Response(xml, { headers: corsHeaders });
+}
+
+// ─── Resources (PDF resources + hubs) ────────────────────────────────────────
+async function generateResourcesSitemap(supabase: any, now: string): Promise<Response> {
+  const resources = await fetchAllRows(
+    supabase, 'pdf_resources',
+    'slug, resource_type, updated_at, published_at, is_noindex, word_count, file_url',
+    (q: any) => q.eq('is_published', true).eq('status', 'published').eq('is_noindex', false).gte('word_count', 500).not('file_url', 'is', null).not('slug', 'is', null),
+    'published_at'
+  );
+
+  const typePathMap: Record<string, string> = {
+    sample_paper: 'sample-papers',
+    book: 'books',
+    previous_year_paper: 'previous-year-papers',
+  };
+
+  // Static listing pages
+  const staticPages = [
+    { loc: '/sample-papers', cf: 'daily', pr: '0.7' },
+    { loc: '/books', cf: 'daily', pr: '0.7' },
+    { loc: '/previous-year-papers', cf: 'daily', pr: '0.7' },
+  ];
+
+  // Hub pages
+  const hubPages = [
+    '/sample-papers/hub/ssc', '/sample-papers/hub/railway', '/sample-papers/hub/banking',
+    '/sample-papers/hub/upsc', '/sample-papers/hub/defence', '/sample-papers/hub/state-psc',
+    '/books/hub/reasoning', '/books/hub/quant', '/books/hub/general-awareness',
+    '/books/hub/english', '/books/hub/general-science',
+    '/previous-year-papers/hub/ssc-cgl', '/previous-year-papers/hub/ssc-chsl',
+    '/previous-year-papers/hub/rrb-ntpc', '/previous-year-papers/hub/railway',
+    '/previous-year-papers/hub/ssc', '/previous-year-papers/hub/banking',
+  ];
+
+  let xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <!-- Resources Sitemap – ${staticPages.length} listings + ${hubPages.length} hubs + ${resources.length} resources | Generated: ${now} -->\n`;
+
+  for (const p of staticPages) {
+    xml += `  <url><loc>${SITE_URL}${p.loc}</loc><lastmod>${now}</lastmod><changefreq>${p.cf}</changefreq><priority>${p.pr}</priority></url>\n`;
+  }
+  for (const hub of hubPages) {
+    xml += `  <url><loc>${SITE_URL}${hub}</loc><lastmod>${now}</lastmod><changefreq>weekly</changefreq><priority>0.7</priority></url>\n`;
+  }
+  for (const r of resources) {
+    if (!r.slug || !r.resource_type) continue;
+    const typePath = typePathMap[r.resource_type] || 'sample-papers';
+    const lm = new Date(r.updated_at || r.published_at).toISOString();
+    xml += `  <url><loc>${SITE_URL}/${typePath}/${escapeXml(r.slug)}</loc><lastmod>${lm}</lastmod><changefreq>monthly</changefreq><priority>0.6</priority></url>\n`;
+  }
+  xml += `</urlset>`;
+  console.log(`Resources sitemap: ${staticPages.length} listings + ${hubPages.length} hubs + ${resources.length} resources`);
   return new Response(xml, { headers: corsHeaders });
 }

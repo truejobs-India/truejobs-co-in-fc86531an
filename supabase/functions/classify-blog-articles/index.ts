@@ -135,24 +135,42 @@ ${contentSection}
 
     const userPrompt = `Classify these ${articles.length} articles for the "${workflow_type}" workflow.\n\n${articlesSummary}\n\nReturn a JSON array of ${articles.length} verdict objects. ONLY output valid JSON, no markdown.`;
 
-    const geminiRes = await fetch(GEMINI_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [
-          { role: 'user', parts: [{ text: systemPrompt + '\n\n' + userPrompt }] }
-        ],
-        generationConfig: {
-          temperature: 0.1,
-          maxOutputTokens: 16384,
-          responseMimeType: 'application/json',
-        },
-      }),
+    // Retry with exponential backoff for 429 rate limits
+    let geminiRes: Response | null = null;
+    const maxRetries = 3;
+    const requestBody = JSON.stringify({
+      contents: [
+        { role: 'user', parts: [{ text: systemPrompt + '\n\n' + userPrompt }] }
+      ],
+      generationConfig: {
+        temperature: 0.1,
+        maxOutputTokens: 16384,
+        responseMimeType: 'application/json',
+      },
     });
 
-    if (!geminiRes.ok) {
-      const errText = await geminiRes.text();
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      geminiRes = await fetch(GEMINI_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: requestBody,
+      });
+      if (geminiRes.status === 429 && attempt < maxRetries - 1) {
+        const backoffMs = (attempt + 1) * 5000;
+        console.warn(`[classify-blog-articles] 429 rate limit, retrying in ${backoffMs}ms (attempt ${attempt + 1}/${maxRetries})`);
+        await geminiRes.text(); // consume body
+        await new Promise(r => setTimeout(r, backoffMs));
+        continue;
+      }
+      break;
+    }
+
+    if (!geminiRes || !geminiRes.ok) {
+      const errText = geminiRes ? await geminiRes.text() : 'No response';
       console.error('Gemini API error:', errText);
+      if (geminiRes?.status === 429) {
+        return new Response(JSON.stringify({ error: 'Gemini API rate limit exceeded. Please wait a moment and try again.' }), { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
       return new Response(JSON.stringify({ error: 'AI classification failed', detail: errText.substring(0, 200) }), { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 

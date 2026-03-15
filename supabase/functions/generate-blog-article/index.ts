@@ -512,13 +512,14 @@ async function callMistral(prompt: string, systemPrompt?: string): Promise<strin
 }
 
 // ── Model dispatcher ──
-async function callAI(model: string, prompt: string): Promise<string> {
+async function callAI(model: string, prompt: string, wordLimit = 1500): Promise<string> {
   switch (model) {
     case 'gemini': return callGemini(prompt, GEMINI_SYSTEM_PROMPT, 8192, 0.65);
     case 'lovable-gemini': return callLovableGemini(prompt);
     case 'openai': return callOpenAI(prompt);
     case 'groq': return callGroq(prompt);
-    case 'claude': return callClaude(prompt);
+    case 'claude-sonnet':
+    case 'claude': return callClaude(prompt, wordLimit);
     case 'mistral': return callMistral(prompt, MISTRAL_SYSTEM_PROMPT);
     case 'vertex-flash': {
       const { callVertexGemini } = await import('../_shared/vertex-ai.ts');

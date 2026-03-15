@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -105,6 +105,8 @@ function splitIntoChunks(text: string): string[] {
 
 export function EmploymentNewsManager() {
   const { toast } = useToast();
+  const toastRef = useRef(toast);
+  toastRef.current = toast;
   const [view, setView] = useState<'upload' | 'pipeline'>('pipeline');
 
   // Upload state
@@ -213,14 +215,14 @@ export function EmploymentNewsManager() {
     const { data, count, error } = await query;
     if (error) {
       console.error('Fetch jobs error:', error);
-      toast({ title: 'Error', description: 'Failed to load jobs', variant: 'destructive' });
+      toastRef.current({ title: 'Error', description: 'Failed to load jobs', variant: 'destructive' });
     } else {
       setJobs((data || []) as EmpNewsJob[]);
       setTotalCount(count || 0);
     }
     setIsLoadingJobs(false);
     setIsRefetching(false);
-  }, [statusFilter, jobTypeFilter, batchFilter, categoryFilter, stateFilter, searchQuery, currentPage, perPage, toast]);
+  }, [statusFilter, jobTypeFilter, batchFilter, categoryFilter, stateFilter, searchQuery, currentPage, perPage]);
 
   useEffect(() => {
     fetchStats();

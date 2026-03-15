@@ -572,6 +572,7 @@ async function callAI(model: string, prompt: string): Promise<any> {
       rawText = await callMistralRaw(prompt);
       break;
     }
+    case 'claude-sonnet':
     case 'claude': {
       rawText = await callClaudeRaw(prompt);
       break;

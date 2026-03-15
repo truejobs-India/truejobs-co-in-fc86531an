@@ -560,6 +560,7 @@ export function useBulkBlogWorkflow() {
           });
 
           if (error) throw error;
+          if (data?.error) throw new Error(data.error);
 
           const aiVerdicts = data?.verdicts || [];
           for (let j = 0; j < batch.length; j++) {

@@ -19,7 +19,7 @@ const corsHeaders = {
 // ═══════════════════════════════════════════════════════════════
 
 const IMAGEN_MODEL = Deno.env.get('VERTEX_IMAGEN_MODEL') || 'imagen-4.0-generate-preview-06-06';
-const GEMINI_IMAGE_MODEL = 'google/gemini-2.5-flash-image';
+const GEMINI_IMAGE_MODEL = Deno.env.get('VERTEX_GEMINI_IMAGE_MODEL') || 'gemini-2.5-flash-preview-image-generation';
 const IMAGEN_TIMEOUT_MS = 60_000;
 
 const ASPECT_RATIOS: Record<string, string> = {
@@ -158,7 +158,7 @@ function buildInlineImagePrompt(body: any): string {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// GEMINI FLASH IMAGE — via Lovable AI Gateway
+// GEMINI FLASH IMAGE — via Vertex AI (direct)
 // ═══════════════════════════════════════════════════════════════
 
 async function generateViaGeminiFlashImage(
@@ -168,149 +168,120 @@ async function generateViaGeminiFlashImage(
   adminClient: any,
   startMs: number,
 ): Promise<Response> {
-  const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
-  if (!lovableApiKey) {
-    return new Response(JSON.stringify({
-      success: false,
-      error: 'LOVABLE_API_KEY not configured — required for Gemini Flash Image',
-      model: GEMINI_IMAGE_MODEL,
-    }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-  }
-
-  console.log(`[gemini-flash-image] slug=${slug} model=${GEMINI_IMAGE_MODEL} purpose=${body.purpose || 'unspecified'}`);
-
-  const gatewayResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${lovableApiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: GEMINI_IMAGE_MODEL,
-      messages: [{ role: 'user', content: imagePrompt }],
-      modalities: ['image', 'text'],
-    }),
-  });
-
-  if (!gatewayResponse.ok) {
-    const errText = await gatewayResponse.text();
-    console.error(`[gemini-flash-image] Gateway error [${gatewayResponse.status}]: ${errText.substring(0, 300)}`);
-    if (gatewayResponse.status === 429) {
-      return new Response(JSON.stringify({ success: false, error: 'Rate limit exceeded, please try again later.', model: GEMINI_IMAGE_MODEL }),
-        { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-    }
-    if (gatewayResponse.status === 402) {
-      return new Response(JSON.stringify({ success: false, error: 'Payment required, please add funds to your workspace.', model: GEMINI_IMAGE_MODEL }),
-        { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-    }
-    return new Response(JSON.stringify({ success: false, error: `AI gateway error: ${errText.substring(0, 200)}`, model: GEMINI_IMAGE_MODEL }),
+  const projectId = Deno.env.get('GCP_PROJECT_ID');
+  const location = Deno.env.get('GCP_LOCATION') || 'us-central1';
+  if (!projectId) {
+    return new Response(JSON.stringify({ success: false, error: 'GCP_PROJECT_ID not configured', model: GEMINI_IMAGE_MODEL }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 
-  const rawText = await gatewayResponse.text();
-  if (!rawText || rawText.trim().length === 0) {
-    return new Response(JSON.stringify({ success: false, error: 'AI gateway returned empty response', model: GEMINI_IMAGE_MODEL }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-  }
+  const purpose = body.purpose || 'cover';
+  console.log(`[gemini-flash-image] slug=${slug} model=${GEMINI_IMAGE_MODEL} purpose=${purpose} via=vertex-ai-direct`);
 
-  let data: any;
+  let accessToken: string;
   try {
-    data = JSON.parse(rawText);
-  } catch {
-    console.error('[gemini-flash-image] Invalid JSON from gateway:', rawText.substring(0, 500));
-    return new Response(JSON.stringify({ success: false, error: 'AI gateway returned invalid JSON', model: GEMINI_IMAGE_MODEL }),
+    accessToken = await getVertexAccessToken();
+  } catch (e: any) {
+    return new Response(JSON.stringify({ success: false, error: `Auth failed: ${e.message}`, model: GEMINI_IMAGE_MODEL }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 
-  const choice = data.choices?.[0]?.message;
-  console.log('[gemini-flash-image] Response shape:', JSON.stringify({
-    hasImages: !!choice?.images?.length,
-    imageCount: choice?.images?.length || 0,
-    hasContent: !!choice?.content,
-  }));
+  const url = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${GEMINI_IMAGE_MODEL}:generateContent`;
 
-  // Extract image base64
-  let imageBase64 = '';
-  let mimeType = 'image/png';
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), IMAGEN_TIMEOUT_MS);
 
-  if (choice?.images?.length > 0) {
-    for (const img of choice.images) {
-      const imgUrl = img?.image_url?.url || img?.url || '';
-      if (imgUrl.startsWith('data:')) {
-        const match = imgUrl.match(/^data:(image\/\w+);base64,(.+)$/s);
-        if (match) {
-          mimeType = match[1];
-          imageBase64 = match[2];
-          break;
-        }
-      } else if (imgUrl.startsWith('http')) {
-        const imgResp = await fetch(imgUrl);
-        if (imgResp.ok) {
-          const arrBuf = await imgResp.arrayBuffer();
-          const bytes = new Uint8Array(arrBuf);
-          let binary = '';
-          for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-          imageBase64 = btoa(binary);
-          mimeType = imgResp.headers.get('content-type') || 'image/png';
-          break;
-        }
+  try {
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: imagePrompt }] }],
+        generationConfig: {
+          responseModalities: ['TEXT', 'IMAGE'],
+          temperature: 1.0,
+          maxOutputTokens: 8192,
+        },
+      }),
+    });
+
+    if (!resp.ok) {
+      const errText = await resp.text();
+      console.error(`[gemini-flash-image] Vertex error [${resp.status}]: ${errText.substring(0, 300)}`);
+      return new Response(JSON.stringify({ success: false, error: `Vertex AI error (${resp.status}): ${errText.substring(0, 200)}`, model: GEMINI_IMAGE_MODEL }),
+        { status: resp.status >= 400 && resp.status < 500 ? resp.status : 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    const data = await resp.json();
+    const parts = data?.candidates?.[0]?.content?.parts || [];
+
+    // Extract image and text from response parts
+    let imageBase64 = '';
+    let mimeType = 'image/png';
+    let altText = body.title || body.topic || `Blog image for ${slug}`;
+
+    for (const part of parts) {
+      if (part.inlineData?.data) {
+        imageBase64 = part.inlineData.data;
+        mimeType = part.inlineData.mimeType || 'image/png';
+      } else if (part.text && part.text.trim().length > 10 && part.text.trim().length < 200) {
+        altText = part.text.trim();
       }
     }
-  }
 
-  if (!imageBase64) {
+    if (!imageBase64) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'No image data returned from Gemini. The prompt may have been filtered.',
+        model: GEMINI_IMAGE_MODEL,
+      }), { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    // Upload to storage
+    const ext = mimeType.includes('jpeg') ? 'jpg' : 'png';
+    const filePath = `covers/${slug}-gemini-flash.${ext}`;
+    const imageBytes = Uint8Array.from(atob(imageBase64), c => c.charCodeAt(0));
+    const blob = new Blob([imageBytes], { type: mimeType });
+
+    const { error: uploadError } = await adminClient.storage
+      .from('blog-assets')
+      .upload(filePath, blob, { contentType: mimeType, upsert: true });
+
+    if (uploadError) {
+      console.error('[gemini-flash-image] Upload error:', uploadError);
+      return new Response(JSON.stringify({ success: false, error: 'Failed to upload generated image', model: GEMINI_IMAGE_MODEL }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    const { data: urlData } = adminClient.storage.from('blog-assets').getPublicUrl(filePath);
+    const elapsed = Date.now() - startMs;
+    console.log(`[gemini-flash-image] completed in ${elapsed}ms via Vertex AI`);
+
     return new Response(JSON.stringify({
-      success: false,
-      error: 'No image data returned from Gemini Flash Image. The prompt may have been filtered.',
+      success: true,
+      data: {
+        images: [{
+          url: urlData.publicUrl,
+          path: filePath,
+          altText,
+          mimeType,
+          width: 1024,
+          height: 1024,
+        }],
+        promptUsed: imagePrompt,
+      },
       model: GEMINI_IMAGE_MODEL,
-    }), { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      action: 'generate-image',
+      purpose,
+      elapsedMs: elapsed,
+    }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  } finally {
+    clearTimeout(timer);
   }
-
-  // Extract alt text from text content
-  let altText = body.title || body.topic || `Blog image for ${slug}`;
-  if (choice?.content) {
-    const text = typeof choice.content === 'string' ? choice.content.trim() : '';
-    if (text.length > 10 && text.length < 200) altText = text;
-  }
-
-  // Upload to storage
-  const ext = mimeType.includes('jpeg') ? 'jpg' : 'png';
-  const filePath = `covers/${slug}-gemini-flash.${ext}`;
-  const imageBytes = Uint8Array.from(atob(imageBase64), c => c.charCodeAt(0));
-  const blob = new Blob([imageBytes], { type: mimeType });
-
-  const { error: uploadError } = await adminClient.storage
-    .from('blog-assets')
-    .upload(filePath, blob, { contentType: mimeType, upsert: true });
-
-  if (uploadError) {
-    console.error('[gemini-flash-image] Upload error:', uploadError);
-    return new Response(JSON.stringify({ success: false, error: 'Failed to upload generated image', model: GEMINI_IMAGE_MODEL }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-  }
-
-  const { data: urlData } = adminClient.storage.from('blog-assets').getPublicUrl(filePath);
-  const elapsed = Date.now() - startMs;
-  console.log(`[gemini-flash-image] completed in ${elapsed}ms`);
-
-  return new Response(JSON.stringify({
-    success: true,
-    data: {
-      images: [{
-        url: urlData.publicUrl,
-        path: filePath,
-        altText,
-        mimeType,
-        width: 1024,
-        height: 1024,
-      }],
-      promptUsed: imagePrompt,
-    },
-    model: GEMINI_IMAGE_MODEL,
-    action: 'generate-image',
-    purpose: body.purpose || 'cover',
-    elapsedMs: elapsed,
-  }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 }
 
 // ═══════════════════════════════════════════════════════════════

@@ -709,8 +709,8 @@ Deno.serve(async (req: Request) => {
       messages.unshift(...historyMessages);
     }
 
-    // Call Mistral Large via Bedrock
-    const region = Deno.env.get('AWS_REGION') || 'us-west-2';
+    // Call Mistral Large via Bedrock (us-west-2 hardcoded — matching other edge functions)
+    const region = 'us-west-2';
     const modelId = 'mistral.mistral-large-2407-v1:0';
     const bedrockHost = `bedrock-runtime.${region}.amazonaws.com`;
     const bedrockPath = `model/${modelId}/converse`;

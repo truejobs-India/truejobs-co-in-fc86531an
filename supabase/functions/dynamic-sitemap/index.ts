@@ -79,6 +79,7 @@ async function generateSitemapIndex(supabase: any, now: string): Promise<Respons
   <sitemap><loc>${SITE_URL}/sitemap-jobs.xml</loc><lastmod>${latestJob.data?.updated_at ? new Date(latestJob.data.updated_at).toISOString() : now}</lastmod></sitemap>
   <sitemap><loc>${SITE_URL}/sitemap-blog.xml</loc><lastmod>${latestBlog.data?.updated_at ? new Date(latestBlog.data.updated_at).toISOString() : now}</lastmod></sitemap>
   <sitemap><loc>${SITE_URL}/sitemap-seo.xml</loc><lastmod>${now}</lastmod></sitemap>
+  <sitemap><loc>${SITE_URL}/sitemap-resources.xml</loc><lastmod>${now}</lastmod></sitemap>
 </sitemapindex>`;
   console.log('Generated sitemap index');
   return new Response(xml, { headers: corsHeaders });

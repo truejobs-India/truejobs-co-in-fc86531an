@@ -48,6 +48,7 @@ import { BlogComplianceChecklist } from './blog/BlogComplianceChecklist';
 import { BlogPolicyWarnings } from './blog/BlogPolicyWarnings';
 import { Checkbox } from '@/components/ui/checkbox';
 import { BlogAITools } from './blog/BlogAITools';
+import { normalizeBlogCategory, VALID_BLOG_CATEGORIES } from '@/lib/blogCategoryUtils';
 import { BulkWorkflowPanel } from './blog/BulkWorkflowPanel';
 import { SeoMetadataWorkflowPanel } from './blog/SeoMetadataWorkflowPanel';
 import { BlogScoreBreakdown } from './blog/BlogScoreBreakdown';

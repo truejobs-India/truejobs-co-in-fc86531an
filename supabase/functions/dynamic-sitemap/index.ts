@@ -52,6 +52,7 @@ Deno.serve(async (req) => {
       case 'blog': return await generateBlogSitemap(supabase, now);
       case 'seo': return await generateSEOSitemap(supabase, now);
       case 'pages': return await generatePagesSitemap(supabase, now);
+      case 'resources': return await generateResourcesSitemap(supabase, now);
       case 'index': return await generateSitemapIndex(supabase, now);
       default: return await generateSitemapIndex(supabase, now);
     }

@@ -86,7 +86,7 @@ Deno.serve(async (req) => {
   try {
     const { articles, workflow_type, ai_model } = await req.json() as {
       articles: ArticleDigest[];
-      workflow_type: 'fix' | 'enrich';
+      workflow_type: 'fix' | 'enrich' | 'publish';
       ai_model?: string;
     };
 
@@ -107,7 +107,14 @@ Deno.serve(async (req) => {
     const geminiModel = MODEL_MAP[modelKey] || 'gemini-2.5-flash';
     const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${GEMINI_API_KEY}`;
 
-    const systemPrompt = workflow_type === 'fix' ? buildFixClassificationPrompt() : buildEnrichClassificationPrompt();
+    let systemPrompt: string;
+    if (workflow_type === 'publish') {
+      systemPrompt = buildPublishClassificationPrompt();
+    } else if (workflow_type === 'fix') {
+      systemPrompt = buildFixClassificationPrompt();
+    } else {
+      systemPrompt = buildEnrichClassificationPrompt();
+    }
 
     const articlesSummary = articles.map((a, i) => {
       const contentSection = a.full_plain_text
@@ -186,8 +193,8 @@ ${contentSection}
         }
       }
 
-      // Enforce: published + strong scores → skip or manual_review
-      if (article && article.is_published &&
+      // For fix/enrich: published + strong scores → skip or manual_review
+      if (workflow_type !== 'publish' && article && article.is_published &&
           article.heuristic_scores.quality_score >= 75 &&
           article.heuristic_scores.seo_score >= 75) {
         if (result.verdict === 'needs_action' && result.action_type !== 'minimal_safe_edit') {
@@ -277,6 +284,40 @@ Return JSON array where each element has:
   "requires_manual_review": true/false,
   "preserve_elements": ["title", "intro", "existing-sections"],
   "missing_elements": ["faq_section", "internal_links", "conclusion"],
+  "ranking_risk": "low" | "medium" | "high"
+}`;
+}
+
+function buildPublishClassificationPrompt(): string {
+  return `You are an expert blog content quality evaluator. These articles have passed basic structural and compliance checks but are BORDERLINE candidates for bulk publishing. Your job is to determine whether each article is genuinely ready to be published on a live website.
+
+For each article, evaluate:
+1. Is the content meaningfully complete and useful for readers? Does it provide genuine value?
+2. Does it read like real, helpful content — or is it AI-generated padding, fluff, or filler?
+3. Is the content safe and appropriate for a public-facing website?
+4. Would publishing this article reflect well on the website's quality and credibility?
+
+IMPORTANT RULES:
+- Be CONSERVATIVE. When in doubt, set verdict to "manual_review". Under-publishing is better than publishing weak content.
+- "needs_action" means the article IS genuinely ready to publish. Only use this for articles you're confident about (>= 70%).
+- "manual_review" means you're uncertain or the article has quality concerns that need human judgment.
+- "skip" means the article is clearly NOT ready for publishing.
+- Look for signs of low-quality AI content: repetitive phrasing, generic statements, lack of specific details, padding words.
+- A publish-ready article should have a clear topic, useful information, proper structure, and read naturally.
+- Do NOT recommend content changes — only evaluate publish readiness. The action_type for publish-ready articles should be "skip" (no content changes needed).
+
+Return JSON array where each element has:
+{
+  "slug": "article-slug",
+  "verdict": "needs_action" | "skip" | "manual_review",
+  "confidence": 0.0-1.0,
+  "reasons": ["reason1", "reason2"],
+  "severity": "minor" | "moderate" | "major",
+  "action_type": "skip",
+  "safe_to_bulk_edit": true/false,
+  "requires_manual_review": true/false,
+  "preserve_elements": [],
+  "missing_elements": [],
   "ranking_risk": "low" | "medium" | "high"
 }`;
 }

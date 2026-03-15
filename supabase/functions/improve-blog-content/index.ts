@@ -680,6 +680,8 @@ No markdown code blocks.`;
     return new Response(JSON.stringify({ ...parsed, actualProvider, actualModelId }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   } catch (err) {
     console.error('improve-blog-content error:', err);
-    return new Response(JSON.stringify({ error: err instanceof Error ? err.message : 'Unknown error' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    const msg = err instanceof Error ? err.message : 'Unknown error';
+    const status = typeof msg === 'string' && msg.toLowerCase().includes('timeout') ? 504 : 500;
+    return new Response(JSON.stringify({ error: msg }), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 });

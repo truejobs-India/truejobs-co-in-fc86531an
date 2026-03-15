@@ -177,9 +177,9 @@ async function callClaude(prompt: string, maxTokens: number): Promise<string> {
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured');
 
-  // Cap input to ~12k chars to prevent timeouts on huge articles
-  const cappedPrompt = prompt.length > 12_000
-    ? prompt.substring(0, 12_000) + '\n\n[Content truncated for processing — work with the above portion.]'
+  // Cap input to keep latency under the platform execution limit (Claude slows down on huge prompts).
+  const cappedPrompt = prompt.length > 8_000
+    ? prompt.substring(0, 8_000) + '\n\n[Content truncated for processing — work with the above portion.]'
     : prompt;
 
   const controller = new AbortController();

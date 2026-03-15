@@ -246,6 +246,11 @@ export function BulkWorkflowPanel({ posts, blogTextModel, onComplete }: BulkWork
                 )}
               </div>
 
+              {/* Enhanced completion stats for enrich workflow */}
+              {isEnrichWorkflow && executionResults.length > 0 && (
+                <EnrichCompletionStats results={executionResults} />
+              )}
+
               {executionResults.length > 0 && (
                 <ExecutionResultsView results={executionResults} cappedRemaining={progress?.capped_remaining || 0} isEnrichWorkflow={isEnrichWorkflow} />
               )}

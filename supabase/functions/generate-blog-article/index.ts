@@ -619,7 +619,7 @@ Return a JSON object with these fields:
 - metaTitle: SEO meta title under 60 characters
 - metaDescription: SEO meta description, 140-155 characters
 - excerpt: 1-2 sentence summary for listings
-- category: suggested category (use provided category if given, or suggest one from: Career Advice, Government Jobs, Exam Preparation, Results & Cutoffs, Admit Cards, Syllabus, Current Affairs)
+- category: suggested category (use provided category if given, or suggest one from: Career Advice, Job Search, Resume, Interview, HR & Recruitment, Hiring Trends, AI in Recruitment, Results & Admit Cards, Exam Preparation, Sarkari Naukri Basics, Career Guides & Tips, Job Information, Government Jobs, Syllabus, Current Affairs, Admit Cards, Uncategorized)
 - tags: array of 3-6 relevant tags
 
 Format: {"title": "...", "slug": "...", "content": "...", "metaTitle": "...", "metaDescription": "...", "excerpt": "...", "category": "...", "tags": [...]}

@@ -237,7 +237,7 @@ async function verifyAdmin(req: Request): Promise<{ userId: string } | Response>
 // ═══════════════════════════════════════════════════════════════
 
 // ── 1. Gemini (direct API) — supports optional system instruction ──
-async function callGemini(prompt: string, systemPrompt?: string, maxTokens = 32000, temperature = 0.5): Promise<string> {
+async function callGemini(prompt: string, systemPrompt?: string, maxTokens = 32000, temperature = 0.5, modelName = 'gemini-2.5-flash'): Promise<string> {
   const apiKey = Deno.env.get('GEMINI_API_KEY');
   if (!apiKey) throw new Error('GEMINI_API_KEY not configured');
 
@@ -246,12 +246,12 @@ async function callGemini(prompt: string, systemPrompt?: string, maxTokens = 320
     generationConfig: { maxOutputTokens: maxTokens, temperature },
   };
 
-  // Add system instruction if provided
   if (systemPrompt) {
     requestBody.systemInstruction = { parts: [{ text: systemPrompt }] };
   }
 
-  const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+  console.log(`[callGemini] model=${modelName} maxTokens=${maxTokens}`);
+  const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(requestBody),
@@ -259,6 +259,7 @@ async function callGemini(prompt: string, systemPrompt?: string, maxTokens = 320
   if (!resp.ok) throw new Error(`Gemini API error ${resp.status}`);
   const data = await resp.json();
   const candidate = data?.candidates?.[0];
+  console.log(`[callGemini] finishReason=${candidate?.finishReason}`);
   if (candidate?.finishReason === 'MAX_TOKENS') throw new Error('AI response truncated (MAX_TOKENS). Try shorter target word count.');
   return candidate?.content?.parts?.[0]?.text || '';
 }
@@ -514,8 +515,8 @@ async function callMistral(prompt: string, systemPrompt?: string): Promise<strin
 async function callAI(model: string, prompt: string, wordLimit = 1500): Promise<string> {
   console.log(`[generate-blog-article] model_requested=${model} wordLimit=${wordLimit}`);
   switch (model) {
-    case 'gemini': case 'gemini-flash': return callGemini(prompt, GEMINI_SYSTEM_PROMPT, 8192, 0.65);
-    case 'gemini-pro': return callGemini(prompt, GEMINI_SYSTEM_PROMPT, 16384, 0.5);
+    case 'gemini': case 'gemini-flash': return callGemini(prompt, GEMINI_SYSTEM_PROMPT, 16384, 0.65, 'gemini-2.5-flash');
+    case 'gemini-pro': return callGemini(prompt, GEMINI_SYSTEM_PROMPT, 32768, 0.5, 'gemini-2.5-pro');
     case 'lovable-gemini': return callLovableGemini(prompt);
     case 'openai': case 'gpt5': case 'gpt5-mini': return callOpenAI(prompt);
     case 'groq': return callGroq(prompt);
@@ -633,7 +634,35 @@ No markdown code blocks. Return ONLY the JSON object.`;
     try {
       parsed = JSON.parse(cleaned);
     } catch {
-      return new Response(JSON.stringify({ error: 'Failed to parse AI response', raw: cleaned.substring(0, 500) }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      // Attempt regex extraction of JSON object from truncated response
+      console.warn('[generate-blog-article] JSON.parse failed, attempting regex extraction...');
+      const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          parsed = JSON.parse(jsonMatch[0]);
+        } catch {
+          // Try to repair truncated JSON by closing open strings/objects
+          let repaired = jsonMatch[0];
+          // Count unmatched braces and brackets
+          const openBraces = (repaired.match(/\{/g) || []).length - (repaired.match(/\}/g) || []).length;
+          const openBrackets = (repaired.match(/\[/g) || []).length - (repaired.match(/\]/g) || []).length;
+          // Close any open string
+          const quoteCount = (repaired.match(/(?<!\\)"/g) || []).length;
+          if (quoteCount % 2 !== 0) repaired += '"';
+          // Close brackets and braces
+          for (let i = 0; i < openBrackets; i++) repaired += ']';
+          for (let i = 0; i < openBraces; i++) repaired += '}';
+          try {
+            parsed = JSON.parse(repaired);
+            console.log('[generate-blog-article] Repaired truncated JSON successfully');
+          } catch (e2) {
+            console.error('[generate-blog-article] JSON repair failed:', (e2 as Error).message);
+            return new Response(JSON.stringify({ error: 'Failed to parse AI response (truncated)', raw: cleaned.substring(0, 500) }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+          }
+        }
+      } else {
+        return new Response(JSON.stringify({ error: 'Failed to parse AI response', raw: cleaned.substring(0, 500) }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
     }
 
     if (!parsed.title || !parsed.content) {

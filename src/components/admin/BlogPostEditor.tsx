@@ -298,6 +298,8 @@ export function BlogPostEditor() {
     meta_description: formData.meta_description.trim() || null,
     author_name: formData.author_name.trim() || null,
     canonical_url: formData.canonical_url.trim() || null,
+    category: normalizeBlogCategory(formData.category),
+    tags: formData.tags || [],
     author_id: user!.id,
     ai_fixed_at: null, // Clear AI fixed status on manual save
   });

@@ -406,6 +406,10 @@ function AdminDashboardInner() {
                 <CustomPagesManager />
               </TabsContent>
 
+              <TabsContent value="resources">
+                <PdfResourcesManager />
+              </TabsContent>
+
               <TabsContent value="ai-test">
                 <VertexAITestPanel />
               </TabsContent>

@@ -142,6 +142,20 @@ const App = () => (
                 <Route path="/jobs/employment-news" element={<EmploymentNewsJobs />} />
                 <Route path="/jobs/employment-news/:slug" element={<EmploymentNewsJobDetail />} />
                 <Route path="/:slug" element={<SEOLandingResolver />} />
+                {/* Resources */}
+                <Route path="/sample-papers" element={<SamplePapers />} />
+                <Route path="/sample-papers/hub/:hubSlug" element={<ResourceHub />} />
+                <Route path="/sample-papers/:slug/download" element={<ResourceDownload />} />
+                <Route path="/sample-papers/:slug" element={<ResourceDetail />} />
+                <Route path="/books" element={<Books />} />
+                <Route path="/books/hub/:hubSlug" element={<ResourceHub />} />
+                <Route path="/books/:slug/download" element={<ResourceDownload />} />
+                <Route path="/books/:slug" element={<ResourceDetail />} />
+                <Route path="/previous-year-papers" element={<PreviousYearPapers />} />
+                <Route path="/previous-year-papers/hub/:hubSlug" element={<ResourceHub />} />
+                <Route path="/previous-year-papers/:slug/download" element={<ResourceDownload />} />
+                <Route path="/previous-year-papers/:slug" element={<ResourceDetail />} />
+
                 <Route path="/companies" element={<Companies />} />
                 <Route path="/companies/:slug" element={<CompanyDetail />} />
                 <Route path="/offline" element={<Offline />} />

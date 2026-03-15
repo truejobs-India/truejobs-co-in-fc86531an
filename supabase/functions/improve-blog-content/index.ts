@@ -311,15 +311,36 @@ No markdown code blocks.`;
       return new Response(JSON.stringify({ error: 'Invalid action. Use "structure", "rewrite-section", "generate-intro", "generate-conclusion", or "enrich-article"' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    const resp = await fetch(`${geminiUrl}?key=${geminiApiKey}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { maxOutputTokens: maxTokens, temperature: 0.4 },
-      }),
-    });
-    if (!resp.ok) throw new Error(`Gemini API error ${resp.status}`);
+    // Retry with exponential backoff for 429 rate limits (up to 3 attempts)
+    let resp: Response | null = null;
+    const maxRetries = 3;
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      resp = await fetch(`${geminiUrl}?key=${geminiApiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { maxOutputTokens: maxTokens, temperature: 0.4 },
+        }),
+      });
+      if (resp.status === 429 && attempt < maxRetries - 1) {
+        const backoffMs = (attempt + 1) * 5000; // 5s, 10s
+        console.warn(`[improve-blog-content] 429 rate limit, retrying in ${backoffMs}ms (attempt ${attempt + 1}/${maxRetries})`);
+        await new Promise(r => setTimeout(r, backoffMs));
+        continue;
+      }
+      break;
+    }
+    if (!resp || !resp.ok) {
+      const status = resp?.status || 500;
+      if (status === 429) {
+        return new Response(
+          JSON.stringify({ error: 'Gemini API rate limit exceeded. Please wait a moment and try again.' }),
+          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      throw new Error(`Gemini API error ${status}`);
+    }
     const data = await resp.json();
     const finishReason = data?.candidates?.[0]?.finishReason || '';
     const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';

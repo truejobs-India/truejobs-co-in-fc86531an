@@ -1587,15 +1587,24 @@ function buildReport(verdicts: ArticleVerdict[], maxPerRun: number): ScanReport 
     }
   }
 
-  const totalPending = categories.minimal_safe_edit.length + categories.targeted_fix.length + categories.deeper_enrichment.length;
+  const allActionable = [
+    ...categories.minimal_safe_edit,
+    ...categories.targeted_fix,
+    ...categories.deeper_enrichment,
+  ];
+  const safeCount = allActionable.filter(v => v.safe_to_bulk_edit).length;
+  const unsafeCount = allActionable.filter(v => !v.safe_to_bulk_edit).length;
+  const totalPending = allActionable.length;
 
   return {
     total_scanned: verdicts.length,
     total_pending: totalPending + categories.deferred_by_cap.length,
+    total_actionable: safeCount,
+    unsafe_count: unsafeCount,
     max_per_run: maxPerRun,
     capped_remaining: categories.deferred_by_cap.length,
     categories,
-    estimated_api_calls: totalPending,
+    estimated_api_calls: safeCount,
   };
 }
 

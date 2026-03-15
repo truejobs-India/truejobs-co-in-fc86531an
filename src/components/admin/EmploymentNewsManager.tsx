@@ -756,7 +756,7 @@ export function EmploymentNewsManager() {
                   <SelectItem value="gemini">Gemini 2.5 Flash</SelectItem>
                   <SelectItem value="lovable-gemini">Lovable Gemini</SelectItem>
                   <SelectItem value="mistral">Mistral 7B (Bedrock)</SelectItem>
-                  <SelectItem value="claude">Claude Sonnet 4.6 (Bedrock)</SelectItem>
+                  <SelectItem value="claude-sonnet">Claude Sonnet 4.6 (API)</SelectItem>
                   <SelectItem value="vertex-flash">Gemini 2.5 Flash (From API)</SelectItem>
                   <SelectItem value="vertex-pro">Gemini 2.5 Pro (From API)</SelectItem>
                 </SelectContent>

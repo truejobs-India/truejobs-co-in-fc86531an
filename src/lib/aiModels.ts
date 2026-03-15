@@ -70,7 +70,7 @@ export const AI_MODELS: readonly AiModelDef[] = [
     label: 'Claude Sonnet 4.6',
     desc: 'Highest quality · ~90s/page · Best for important pages',
     speed: 90,
-    source: 'built-in',
+    source: 'external-api',
     provider: 'Anthropic',
     capabilities: ['text', 'text-premium'],
   },

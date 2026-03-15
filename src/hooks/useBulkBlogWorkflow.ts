@@ -52,6 +52,8 @@ export interface PublishChecks {
 export interface ScanReport {
   total_scanned: number;
   total_pending: number;
+  total_actionable: number; // safe_to_bulk_edit only
+  unsafe_count: number; // in actionable categories but safe_to_bulk_edit=false
   max_per_run: number;
   capped_remaining: number;
   workflow_type?: WorkflowType;
@@ -597,6 +599,8 @@ export function useBulkBlogWorkflow() {
     const report: ScanReport = {
       total_scanned: posts.length,
       total_pending: readyToPublish.length,
+      total_actionable: readyToPublish.length,
+      unsafe_count: 0,
       max_per_run: maxPerRun,
       capped_remaining: deferredByCap.length,
       workflow_type: 'publish',
@@ -651,6 +655,8 @@ export function useBulkBlogWorkflow() {
     const report: ScanReport = {
       total_scanned: readyToPublish.length + notReadyFixes.length + notReadyEnrichment.length + notReadyRequirements.length + manualReview.length + alreadyPublished.length,
       total_pending: readyToPublish.length,
+      total_actionable: readyToPublish.length,
+      unsafe_count: 0,
       max_per_run: maxPerRun,
       capped_remaining: 0,
       workflow_type: 'publish',
@@ -1585,15 +1591,24 @@ function buildReport(verdicts: ArticleVerdict[], maxPerRun: number): ScanReport 
     }
   }
 
-  const totalPending = categories.minimal_safe_edit.length + categories.targeted_fix.length + categories.deeper_enrichment.length;
+  const allActionable = [
+    ...categories.minimal_safe_edit,
+    ...categories.targeted_fix,
+    ...categories.deeper_enrichment,
+  ];
+  const safeCount = allActionable.filter(v => v.safe_to_bulk_edit).length;
+  const unsafeCount = allActionable.filter(v => !v.safe_to_bulk_edit).length;
+  const totalPending = allActionable.length;
 
   return {
     total_scanned: verdicts.length,
     total_pending: totalPending + categories.deferred_by_cap.length,
+    total_actionable: safeCount,
+    unsafe_count: unsafeCount,
     max_per_run: maxPerRun,
     capped_remaining: categories.deferred_by_cap.length,
     categories,
-    estimated_api_calls: totalPending,
+    estimated_api_calls: safeCount,
   };
 }
 

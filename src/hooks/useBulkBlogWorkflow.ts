@@ -158,7 +158,13 @@ export interface EnrichReadiness {
   failing: string[];
 }
 
-export function checkEnrichReadiness(post: any): EnrichReadiness {
+// Categories where FAQs are naturally expected
+const FAQ_REQUIRED_CATEGORIES = new Set([
+  'Sarkari Naukri Basics', 'Exam Preparation', 'Career Advice', 'Job Search',
+  'Government Jobs', 'Sarkari Result', 'Admit Card',
+]);
+
+export function checkEnrichReadiness(post: any, categoryOverride?: string): EnrichReadiness {
   const meta = blogPostToMetadata(post);
   const failing: string[] = [];
   if (meta.wordCount < 1200) failing.push(`Word count ${meta.wordCount} < 1200`);
@@ -166,7 +172,14 @@ export function checkEnrichReadiness(post: any): EnrichReadiness {
   if (!meta.hasConclusion) failing.push('Missing conclusion');
   const h2Count = (meta.headings || []).filter((h: any) => h.level === 2).length;
   if (h2Count < 3) failing.push(`Only ${h2Count} H2 headings (need ≥ 3)`);
-  if ((meta.faqCount || 0) === 0) failing.push('No FAQs');
+
+  // Topic-aware FAQ requirement
+  const category = categoryOverride || post.category || '';
+  const faqRequired = FAQ_REQUIRED_CATEGORIES.has(category);
+  if ((meta.faqCount || 0) === 0 && faqRequired) {
+    failing.push('No FAQs');
+  }
+
   if ((meta.internalLinks?.length || 0) === 0) failing.push('No internal links');
   return { passes: failing.length === 0, failing };
 }

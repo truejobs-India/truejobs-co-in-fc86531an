@@ -1826,6 +1826,144 @@ export type Database = {
         }
         Relationships: []
       }
+      pdf_resources: {
+        Row: {
+          ai_generated_at: string | null
+          ai_model_used: string | null
+          author_id: string
+          category: string | null
+          content: string
+          content_hash: string | null
+          cover_image_url: string | null
+          created_at: string | null
+          cta_click_count: number | null
+          download_count: number | null
+          download_filename: string | null
+          duplicate_approved: boolean | null
+          edition_year: number | null
+          exam_name: string | null
+          exam_year: number | null
+          excerpt: string | null
+          faq_schema: Json | null
+          featured_image_alt: string | null
+          file_hash: string | null
+          file_size_bytes: number | null
+          file_url: string | null
+          final_download_count: number | null
+          id: string
+          image_model_used: string | null
+          is_featured: boolean | null
+          is_noindex: boolean | null
+          is_published: boolean | null
+          is_trending: boolean | null
+          language: string | null
+          meta_description: string | null
+          meta_title: string | null
+          page_count: number | null
+          published_at: string | null
+          reading_time: number | null
+          resource_type: string
+          review_notes: string | null
+          slug: string
+          status: string | null
+          subject: string | null
+          tags: string[] | null
+          title: string
+          updated_at: string | null
+          word_count: number | null
+        }
+        Insert: {
+          ai_generated_at?: string | null
+          ai_model_used?: string | null
+          author_id: string
+          category?: string | null
+          content?: string
+          content_hash?: string | null
+          cover_image_url?: string | null
+          created_at?: string | null
+          cta_click_count?: number | null
+          download_count?: number | null
+          download_filename?: string | null
+          duplicate_approved?: boolean | null
+          edition_year?: number | null
+          exam_name?: string | null
+          exam_year?: number | null
+          excerpt?: string | null
+          faq_schema?: Json | null
+          featured_image_alt?: string | null
+          file_hash?: string | null
+          file_size_bytes?: number | null
+          file_url?: string | null
+          final_download_count?: number | null
+          id?: string
+          image_model_used?: string | null
+          is_featured?: boolean | null
+          is_noindex?: boolean | null
+          is_published?: boolean | null
+          is_trending?: boolean | null
+          language?: string | null
+          meta_description?: string | null
+          meta_title?: string | null
+          page_count?: number | null
+          published_at?: string | null
+          reading_time?: number | null
+          resource_type: string
+          review_notes?: string | null
+          slug: string
+          status?: string | null
+          subject?: string | null
+          tags?: string[] | null
+          title: string
+          updated_at?: string | null
+          word_count?: number | null
+        }
+        Update: {
+          ai_generated_at?: string | null
+          ai_model_used?: string | null
+          author_id?: string
+          category?: string | null
+          content?: string
+          content_hash?: string | null
+          cover_image_url?: string | null
+          created_at?: string | null
+          cta_click_count?: number | null
+          download_count?: number | null
+          download_filename?: string | null
+          duplicate_approved?: boolean | null
+          edition_year?: number | null
+          exam_name?: string | null
+          exam_year?: number | null
+          excerpt?: string | null
+          faq_schema?: Json | null
+          featured_image_alt?: string | null
+          file_hash?: string | null
+          file_size_bytes?: number | null
+          file_url?: string | null
+          final_download_count?: number | null
+          id?: string
+          image_model_used?: string | null
+          is_featured?: boolean | null
+          is_noindex?: boolean | null
+          is_published?: boolean | null
+          is_trending?: boolean | null
+          language?: string | null
+          meta_description?: string | null
+          meta_title?: string | null
+          page_count?: number | null
+          published_at?: string | null
+          reading_time?: number | null
+          resource_type?: string
+          review_notes?: string | null
+          slug?: string
+          status?: string | null
+          subject?: string | null
+          tags?: string[] | null
+          title?: string
+          updated_at?: string | null
+          word_count?: number | null
+        }
+        Relationships: []
+      }
       poll_options: {
         Row: {
           created_at: string
@@ -2022,6 +2160,41 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      resource_events: {
+        Row: {
+          created_at: string | null
+          event_type: string
+          id: string
+          referrer: string | null
+          resource_id: string
+          user_agent: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          event_type: string
+          id?: string
+          referrer?: string | null
+          resource_id: string
+          user_agent?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          event_type?: string
+          id?: string
+          referrer?: string | null
+          resource_id?: string
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "resource_events_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "pdf_resources"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       restricted_domains: {
         Row: {
@@ -2596,6 +2769,15 @@ export type Database = {
           p_status: string
         }
         Returns: number
+      }
+      log_resource_event: {
+        Args: {
+          p_event_type: string
+          p_referrer?: string
+          p_resource_id: string
+          p_user_agent?: string
+        }
+        Returns: undefined
       }
       publish_enrichment_version: {
         Args: { p_page_slug: string; p_version: number }

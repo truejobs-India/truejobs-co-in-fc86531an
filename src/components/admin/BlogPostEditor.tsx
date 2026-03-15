@@ -902,6 +902,7 @@ export function BlogPostEditor() {
                   category={undefined}
                   tags={undefined}
                   currentImageUrl={formData.cover_image_url || undefined}
+                  imageModel={blogImageModel}
                   onImageGenerated={(url, alt) => handleFormChange({ cover_image_url: url, featured_image_alt: alt })}
                 />
                 <div className="space-y-1">

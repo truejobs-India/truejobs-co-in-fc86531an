@@ -48,6 +48,7 @@ import { BlogComplianceChecklist } from './blog/BlogComplianceChecklist';
 import { BlogPolicyWarnings } from './blog/BlogPolicyWarnings';
 import { Checkbox } from '@/components/ui/checkbox';
 import { BlogAITools } from './blog/BlogAITools';
+import { BulkWorkflowPanel } from './blog/BulkWorkflowPanel';
 import { BlogScoreBreakdown } from './blog/BlogScoreBreakdown';
 import { VertexAITools } from './blog/VertexAITools';
 import { AiModelSelector } from '@/components/admin/AiModelSelector';

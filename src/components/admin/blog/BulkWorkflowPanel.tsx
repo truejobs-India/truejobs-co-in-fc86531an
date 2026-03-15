@@ -136,7 +136,9 @@ export function BulkWorkflowPanel({ posts, blogTextModel, onComplete }: BulkWork
               </div>
               <Progress value={(scanProgress.done / scanProgress.total) * 100} className="h-2" />
               <p className="text-xs text-muted-foreground">
-                {scanProgress.done}/{scanProgress.total} — {scanProgress.detail}
+                {scanProgress.stage === 2
+                  ? `${scanProgress.done}/${scanProgress.total} borderline articles — ${scanProgress.detail}`
+                  : `${scanProgress.done}/${scanProgress.total} — ${scanProgress.detail}`}
               </p>
             </div>
           )}

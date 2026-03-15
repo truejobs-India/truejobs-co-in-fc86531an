@@ -144,6 +144,13 @@ export function EmploymentNewsManager() {
   const [isScanningUnenriched, setIsScanningUnenriched] = useState(false);
   const [unenrichedCount, setUnenrichedCount] = useState<number | null>(null);
   const [isPublishingAll, setIsPublishingAll] = useState(false);
+  const [isCheckingUnpublished, setIsCheckingUnpublished] = useState(false);
+  const [unpublishedReport, setUnpublishedReport] = useState<{
+    pending: EmpNewsJob[];
+    enriched: EmpNewsJob[];
+    rejected: EmpNewsJob[];
+    failed: EmpNewsJob[];
+  } | null>(null);
   const [editErrors, setEditErrors] = useState<Record<string, string>>({});
   // AI Model selection for enrichment (persisted in localStorage)
   const [enrichAiModel, setEnrichAiModel] = useState<string>(() => {
@@ -535,6 +542,29 @@ export function EmploymentNewsManager() {
     }
   };
 
+  const checkUnpublishedJobs = async () => {
+    setIsCheckingUnpublished(true);
+    try {
+      const [pendingRes, enrichedRes, rejectedRes, failedRes] = await Promise.all([
+        supabase.from('employment_news_jobs').select('*').eq('status', 'pending').order('created_at', { ascending: false }).limit(500),
+        supabase.from('employment_news_jobs').select('*').eq('status', 'enriched').order('created_at', { ascending: false }).limit(500),
+        supabase.from('employment_news_jobs').select('*').eq('status', 'rejected').order('created_at', { ascending: false }).limit(500),
+        supabase.from('employment_news_jobs').select('*').eq('status', 'enrichment_failed').order('created_at', { ascending: false }).limit(500),
+      ]);
+      setUnpublishedReport({
+        pending: (pendingRes.data || []) as EmpNewsJob[],
+        enriched: (enrichedRes.data || []) as EmpNewsJob[],
+        rejected: (rejectedRes.data || []) as EmpNewsJob[],
+        failed: (failedRes.data || []) as EmpNewsJob[],
+      });
+    } catch (err) {
+      console.error('Check unpublished error:', err);
+      toastRef.current({ title: 'Error', description: 'Failed to fetch unpublished jobs', variant: 'destructive' });
+    } finally {
+      setIsCheckingUnpublished(false);
+    }
+  };
+
   const saveEdit = async () => {
     if (!editJob) return;
     const errors: Record<string, string> = {};
@@ -817,6 +847,11 @@ export function EmploymentNewsManager() {
                 Retry Failed ({stats.failed})
               </Button>
             )}
+            <div className="border-l h-6 mx-1" />
+            <Button size="sm" variant="outline" onClick={checkUnpublishedJobs} disabled={isCheckingUnpublished}>
+              {isCheckingUnpublished ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Eye className="h-3 w-3 mr-1" />}
+              Check All Not Published
+            </Button>
           </div>
 
           {/* Table */}
@@ -1232,6 +1267,73 @@ export function EmploymentNewsManager() {
               <Progress value={(enrichProgress.current / enrichProgress.total) * 100} />
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Unpublished Report Dialog */}
+      <Dialog open={!!unpublishedReport} onOpenChange={(open) => !open && setUnpublishedReport(null)}>
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>All Not Published Jobs Report</DialogTitle>
+          </DialogHeader>
+          {unpublishedReport && (() => {
+            const total = unpublishedReport.pending.length + unpublishedReport.enriched.length + unpublishedReport.rejected.length + unpublishedReport.failed.length;
+            const sections = [
+              { label: 'Pending (Not Enriched)', jobs: unpublishedReport.pending, color: 'text-muted-foreground' },
+              { label: 'Enriched (Ready to Publish)', jobs: unpublishedReport.enriched, color: 'text-blue-600' },
+              { label: 'Rejected', jobs: unpublishedReport.rejected, color: 'text-destructive' },
+              { label: 'Enrichment Failed', jobs: unpublishedReport.failed, color: 'text-orange-600' },
+            ];
+            return (
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Total not-published jobs: <span className="font-bold text-foreground">{total}</span>
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {sections.map(s => (
+                    <Card key={s.label} className="p-3">
+                      <p className="text-xs text-muted-foreground">{s.label}</p>
+                      <p className={`text-2xl font-bold ${s.color}`}>{s.jobs.length}</p>
+                    </Card>
+                  ))}
+                </div>
+                {sections.filter(s => s.jobs.length > 0).map(s => (
+                  <div key={s.label}>
+                    <h3 className={`text-sm font-semibold mb-2 ${s.color}`}>{s.label} ({s.jobs.length})</h3>
+                    <div className="border rounded-md overflow-auto max-h-48">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="text-xs">Organisation</TableHead>
+                            <TableHead className="text-xs">Post</TableHead>
+                            <TableHead className="text-xs">Category</TableHead>
+                            <TableHead className="text-xs">Created</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {s.jobs.slice(0, 50).map(job => (
+                            <TableRow key={job.id}>
+                              <TableCell className="text-xs truncate max-w-[150px]">{job.org_name || '—'}</TableCell>
+                              <TableCell className="text-xs truncate max-w-[150px]">{job.post || '—'}</TableCell>
+                              <TableCell className="text-xs">{job.job_category || '—'}</TableCell>
+                              <TableCell className="text-xs">{new Date(job.created_at).toLocaleDateString()}</TableCell>
+                            </TableRow>
+                          ))}
+                          {s.jobs.length > 50 && (
+                            <TableRow>
+                              <TableCell colSpan={4} className="text-xs text-center text-muted-foreground">
+                                ...and {s.jobs.length - 50} more
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
         </DialogContent>
       </Dialog>
     </div>

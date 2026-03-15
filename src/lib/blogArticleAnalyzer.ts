@@ -499,6 +499,6 @@ export function blogPostToMetadata(post: {
     authorName: post.author_name || undefined,
     headings,
     hasIntro: detectIntro(post.content || ''),
-    hasConclusion: detectConclusion(headings),
+    hasConclusion: detectConclusionFromContent(post.content || ''),
   };
 }

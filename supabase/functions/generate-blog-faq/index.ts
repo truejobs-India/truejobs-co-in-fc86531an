@@ -175,18 +175,20 @@ async function callMistral(prompt: string): Promise<string> {
 }
 
 function callAI(model: string, prompt: string): Promise<string> {
+  console.log(`[generate-blog-faq] model_requested=${model}`);
   switch (model) {
-    case 'gemini': return callGemini(prompt);
+    case 'gemini': case 'gemini-flash': return callGemini(prompt);
     case 'lovable-gemini': return callLovableGemini(prompt);
-    case 'openai': return callOpenAI(prompt);
+    case 'openai': case 'gpt5': case 'gpt5-mini': return callOpenAI(prompt);
     case 'groq': return callGroq(prompt);
-    case 'claude': return callClaude(prompt);
+    case 'claude-sonnet': case 'claude': return callClaude(prompt);
     case 'mistral': return callMistral(prompt);
     case 'vertex-flash':
       return import('../_shared/vertex-ai.ts').then(m => m.callVertexGemini('gemini-2.5-flash', prompt, 60_000));
     case 'vertex-pro':
       return import('../_shared/vertex-ai.ts').then(m => m.callVertexGemini('gemini-2.5-pro', prompt, 120_000));
-    default: return callGemini(prompt);
+    default:
+      throw new Error(`Unsupported AI model: "${model}". Supported: gemini, mistral, claude-sonnet, openai, groq, lovable-gemini, vertex-flash, vertex-pro`);
   }
 }
 

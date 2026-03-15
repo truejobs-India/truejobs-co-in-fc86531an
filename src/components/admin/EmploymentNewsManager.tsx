@@ -565,6 +565,7 @@ export function EmploymentNewsManager() {
     }
   };
 
+  const saveEdit = async () => {
     if (!editJob) return;
     const errors: Record<string, string> = {};
 

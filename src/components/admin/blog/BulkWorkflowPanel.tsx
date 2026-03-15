@@ -284,7 +284,7 @@ function ReportView({ report, workflowType }: { report: ScanReport; workflowType
   return (
     <div className="space-y-3">
       <div className="text-xs font-medium text-muted-foreground">{label} Scan Report</div>
-      <div className="grid grid-cols-4 gap-2 text-xs">
+      <div className={`grid ${report.unsafe_count > 0 ? 'grid-cols-5' : 'grid-cols-4'} gap-2 text-xs`}>
         <div className="bg-muted rounded p-2 text-center">
           <div className="font-semibold text-base">{report.total_scanned}</div>
           <div className="text-muted-foreground">Scanned</div>
@@ -294,14 +294,25 @@ function ReportView({ report, workflowType }: { report: ScanReport; workflowType
           <div className="text-muted-foreground">Pending</div>
         </div>
         <div className="bg-muted rounded p-2 text-center">
-          <div className="font-semibold text-base">{Math.min(report.total_pending, report.max_per_run)}</div>
+          <div className="font-semibold text-base text-primary">{Math.min(report.total_actionable, report.max_per_run)}</div>
           <div className="text-muted-foreground">This Run</div>
         </div>
+        {report.unsafe_count > 0 && (
+          <div className="bg-muted rounded p-2 text-center">
+            <div className="font-semibold text-base text-amber-600">{report.unsafe_count}</div>
+            <div className="text-muted-foreground">Unsafe (excluded)</div>
+          </div>
+        )}
         <div className="bg-muted rounded p-2 text-center">
           <div className="font-semibold text-base">{report.capped_remaining}</div>
           <div className="text-muted-foreground">Deferred</div>
         </div>
       </div>
+      {report.unsafe_count > 0 && (
+        <p className="text-xs text-amber-600">
+          {report.unsafe_count} article{report.unsafe_count > 1 ? 's' : ''} marked as not safe for bulk edit (e.g. ranking protection) — excluded from this run.
+        </p>
+      )}
 
       <div className="space-y-1">
         {categoryCards.filter(c => c.items.length > 0).map(cat => (

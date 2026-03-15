@@ -1112,13 +1112,9 @@ export function BlogPostEditor() {
                 <Select value={bulkCategory || ''} onValueChange={(v) => setBulkCategory(v || null)}>
                   <SelectTrigger className="w-[180px] h-8 text-xs"><SelectValue placeholder="Auto-detect" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Career Advice">Career Advice</SelectItem>
-                    <SelectItem value="Government Jobs">Government Jobs</SelectItem>
-                    <SelectItem value="Exam Preparation">Exam Preparation</SelectItem>
-                    <SelectItem value="Results & Cutoffs">Results & Cutoffs</SelectItem>
-                    <SelectItem value="Admit Cards">Admit Cards</SelectItem>
-                    <SelectItem value="Syllabus">Syllabus</SelectItem>
-                    <SelectItem value="Current Affairs">Current Affairs</SelectItem>
+                    {VALID_BLOG_CATEGORIES.filter(c => c !== 'Uncategorized').map(cat => (
+                      <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

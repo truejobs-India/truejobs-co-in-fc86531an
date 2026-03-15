@@ -599,6 +599,8 @@ export function useBulkBlogWorkflow() {
     const report: ScanReport = {
       total_scanned: posts.length,
       total_pending: readyToPublish.length,
+      total_actionable: readyToPublish.length,
+      unsafe_count: 0,
       max_per_run: maxPerRun,
       capped_remaining: deferredByCap.length,
       workflow_type: 'publish',

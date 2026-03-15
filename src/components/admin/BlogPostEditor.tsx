@@ -84,6 +84,7 @@ interface BlogPost {
   canonical_url: string | null;
   author_name: string | null;
   ai_fixed_at: string | null;
+  article_images: any;
 }
 
 const POSTS_PER_PAGE = 20;

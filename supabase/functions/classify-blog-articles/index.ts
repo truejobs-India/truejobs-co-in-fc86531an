@@ -496,6 +496,8 @@ async function classifyWithResilience(
   const meta: BatchMeta = { total: articles.length, classified_ok: 0, fallback_half_batch: 0, fallback_individual: 0, failed_to_manual_review: 0 };
   const results = new Map<string, ClassificationVerdict>();
 
+  let fullBatchError = '';
+
   // Try full batch
   try {
     const userPrompt = buildUserPrompt(articles, workflowType);
@@ -508,13 +510,14 @@ async function classifyWithResilience(
     console.log(`[classify] FULL_BATCH_OK parsed=${verdicts.length} matched=${results.size}`);
     return { verdicts: results, meta };
   } catch (fullErr: any) {
-    console.error(`[classify] FULL_BATCH_FAILED count=${articles.length} error="${fullErr.message?.substring(0, 150)}"`);
+    fullBatchError = fullErr.message?.substring(0, 150) || 'unknown';
+    console.error(`[classify] FULL_BATCH_FAILED count=${articles.length} error="${fullBatchError}"`);
   }
 
   // If only 1 article, no point splitting
   if (articles.length === 1) {
     const slug = articles[0].slug;
-    results.set(slug, makeDefaultVerdict(slug, `AI classification failed: ${(fullErr as any)?.message?.substring(0, 100) || 'unknown'}`));
+    results.set(slug, makeDefaultVerdict(slug, `AI classification failed: ${fullBatchError}`));
     meta.failed_to_manual_review = 1;
     console.log(`[classify] SINGLE_ARTICLE_FAILED slug=${slug}`);
     return { verdicts: results, meta };

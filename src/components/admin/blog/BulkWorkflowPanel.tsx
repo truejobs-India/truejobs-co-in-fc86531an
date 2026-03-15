@@ -593,3 +593,50 @@ function ResultGroup({ label, color, results, bgClass, showFailingCriteria }: {
     </div>
   );
 }
+
+// ── Enrich Completion Stats ──
+function EnrichCompletionStats({ results }: { results: ExecutionResult[] }) {
+  // Parse word count deltas from reason strings like "Enriched: 800 → 1500 words"
+  const wordDeltas: number[] = [];
+  let pass2Count = 0;
+  let stubCount = 0;
+  const failingCriteriaMap: Record<string, number> = {};
+
+  for (const r of results) {
+    if (r.reason?.includes('[Pass 2 Pro]')) pass2Count++;
+    if (r.reason?.includes('stub') || r.reason?.includes('SHRUNK')) stubCount++;
+
+    const match = r.reason?.match(/(\d+)\s*→\s*(\d+)\s*words/);
+    if (match) {
+      wordDeltas.push(parseInt(match[2]) - parseInt(match[1]));
+    }
+
+    if (r.failing_criteria) {
+      for (const c of r.failing_criteria) {
+        const key = c.replace(/\d+/g, '#').trim();
+        failingCriteriaMap[key] = (failingCriteriaMap[key] || 0) + 1;
+      }
+    }
+  }
+
+  const avgDelta = wordDeltas.length > 0 ? Math.round(wordDeltas.reduce((a, b) => a + b, 0) / wordDeltas.length) : 0;
+  const topFailures = Object.entries(failingCriteriaMap)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3);
+
+  return (
+    <div className="bg-muted/50 rounded p-2 space-y-1 text-xs">
+      <div className="font-medium text-muted-foreground">Enrichment Stats</div>
+      <div className="flex flex-wrap gap-x-4 gap-y-0.5">
+        <span>Avg word Δ: <strong className={avgDelta > 0 ? 'text-green-600' : 'text-destructive'}>{avgDelta > 0 ? '+' : ''}{avgDelta}</strong></span>
+        {pass2Count > 0 && <span>Pass 2 (Pro): <strong>{pass2Count}</strong></span>}
+        {stubCount > 0 && <span>Stub rebuilds: <strong>{stubCount}</strong></span>}
+      </div>
+      {topFailures.length > 0 && (
+        <div className="text-muted-foreground">
+          Top remaining failures: {topFailures.map(([k, v]) => `${k} (${v})`).join(' · ')}
+        </div>
+      )}
+    </div>
+  );
+}

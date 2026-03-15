@@ -120,6 +120,8 @@ export function BlogPostEditor() {
   const [bulkTopics, setBulkTopics] = useState('');
   const [bulkCategory, setBulkCategory] = useState<string | null>(null);
   const [bulkWordCount, setBulkWordCount] = useState(1500);
+  const [duplicateCheckResults, setDuplicateCheckResults] = useState<{ topic: string; matchedTitle: string; matchedSlug: string }[]>([]);
+  const [isCheckingDuplicates, setIsCheckingDuplicates] = useState(false);
   const [bulkResults, setBulkResults] = useState<{ topic: string; status: 'queued' | 'generating' | 'success' | 'failed'; articleId?: string; error?: string }[]>([]);
   const [isBulkGenerating, setIsBulkGenerating] = useState(false);
   const bulkGenerateAbortRef = useRef(false);
@@ -1100,11 +1102,116 @@ export function BlogPostEditor() {
               <Label className="text-xs">Topics (one per line)</Label>
               <Textarea
                 value={bulkTopics}
-                onChange={(e) => setBulkTopics(e.target.value)}
+                onChange={(e) => { setBulkTopics(e.target.value); setDuplicateCheckResults([]); }}
                 placeholder={"SSC CGL 2026 Notification Details\nRailway Group D Vacancy Update\nUPSC Civil Services Preparation Tips"}
                 rows={4}
                 className="text-xs"
               />
+              {/* Duplicate checker */}
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs"
+                  disabled={isCheckingDuplicates || !bulkTopics.trim()}
+                  onClick={async () => {
+                    const topics = bulkTopics.split('\n').map(t => t.trim()).filter(Boolean);
+                    if (topics.length === 0) return;
+                    setIsCheckingDuplicates(true);
+                    setDuplicateCheckResults([]);
+                    try {
+                      const { data: existingPosts } = await supabase
+                        .from('blog_posts')
+                        .select('title, slug');
+                      if (!existingPosts || existingPosts.length === 0) {
+                        toast({ title: 'No duplicates found', description: 'All topics are new.' });
+                        setIsCheckingDuplicates(false);
+                        return;
+                      }
+                      const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
+                      const matches: { topic: string; matchedTitle: string; matchedSlug: string }[] = [];
+                      for (const topic of topics) {
+                        const normTopic = normalize(topic);
+                        const topicWords = normTopic.split(' ').filter(w => w.length > 2);
+                        for (const post of existingPosts) {
+                          const normTitle = normalize(post.title);
+                          // Exact or near-exact match
+                          if (normTopic === normTitle) {
+                            matches.push({ topic, matchedTitle: post.title, matchedSlug: post.slug });
+                            break;
+                          }
+                          // Word overlap >= 60%
+                          const titleWords = normTitle.split(' ').filter(w => w.length > 2);
+                          const overlap = topicWords.filter(w => titleWords.includes(w)).length;
+                          const similarity = topicWords.length > 0 ? overlap / Math.max(topicWords.length, titleWords.length) : 0;
+                          if (similarity >= 0.6) {
+                            matches.push({ topic, matchedTitle: post.title, matchedSlug: post.slug });
+                            break;
+                          }
+                        }
+                      }
+                      setDuplicateCheckResults(matches);
+                      if (matches.length === 0) {
+                        toast({ title: 'No duplicates found', description: 'All topics are new.' });
+                      } else {
+                        toast({ title: `${matches.length} duplicate(s) found`, description: 'Review and remove them below.', variant: 'destructive' });
+                      }
+                    } catch (err) {
+                      toast({ title: 'Check failed', variant: 'destructive' });
+                    }
+                    setIsCheckingDuplicates(false);
+                  }}
+                >
+                  {isCheckingDuplicates ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Search className="h-3 w-3 mr-1" />}
+                  Check Duplicates
+                </Button>
+                {duplicateCheckResults.length > 0 && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="destructive"
+                    className="h-7 text-xs"
+                    onClick={() => {
+                      const dupeTopics = new Set(duplicateCheckResults.map(d => d.topic));
+                      const filtered = bulkTopics.split('\n').filter(line => !dupeTopics.has(line.trim())).join('\n');
+                      setBulkTopics(filtered);
+                      toast({ title: `${dupeTopics.size} duplicate topic(s) removed` });
+                      setDuplicateCheckResults([]);
+                    }}
+                  >
+                    <Trash2 className="h-3 w-3 mr-1" />
+                    Remove All Duplicates ({duplicateCheckResults.length})
+                  </Button>
+                )}
+              </div>
+              {duplicateCheckResults.length > 0 && (
+                <div className="border rounded-md p-2 space-y-1 max-h-40 overflow-y-auto bg-destructive/5">
+                  <p className="text-[10px] font-medium text-destructive">Existing articles found:</p>
+                  {duplicateCheckResults.map((d, i) => (
+                    <div key={i} className="flex items-center justify-between gap-2 text-[11px]">
+                      <div className="flex-1 min-w-0">
+                        <span className="font-medium truncate block">{d.topic}</span>
+                        <span className="text-muted-foreground truncate block">↳ matches: {d.matchedTitle}</span>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 text-[10px] text-destructive hover:text-destructive shrink-0"
+                        onClick={() => {
+                          const filtered = bulkTopics.split('\n').filter(line => line.trim() !== d.topic).join('\n');
+                          setBulkTopics(filtered);
+                          setDuplicateCheckResults(prev => prev.filter((_, idx) => idx !== i));
+                          toast({ title: 'Topic removed' });
+                        }}
+                      >
+                        <X className="h-3 w-3 mr-0.5" />Remove
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="flex gap-3 items-end flex-wrap">
               <div className="space-y-1">

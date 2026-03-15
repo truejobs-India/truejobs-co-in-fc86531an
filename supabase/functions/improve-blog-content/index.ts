@@ -331,15 +331,56 @@ No markdown code blocks.`;
       }
       break;
     }
+    // Fallback to Lovable AI Gateway if Gemini fails with 429
     if (!resp || !resp.ok) {
       const status = resp?.status || 500;
       if (status === 429) {
-        return new Response(
-          JSON.stringify({ error: 'Gemini API rate limit exceeded. Please wait a moment and try again.' }),
-          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        console.warn('[improve-blog-content] Gemini quota exhausted, falling back to Lovable AI Gateway');
+        const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
+        if (lovableApiKey) {
+          try {
+            const fallbackResp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${lovableApiKey}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                model: 'google/gemini-2.5-flash',
+                messages: [{ role: 'user', content: prompt }],
+                max_tokens: maxTokens,
+                temperature: 0.4,
+              }),
+            });
+            if (fallbackResp.ok) {
+              const fallbackData = await fallbackResp.json();
+              const fallbackText = fallbackData?.choices?.[0]?.message?.content || '';
+              // Wrap in Gemini-compatible structure for downstream parsing
+              const data = { candidates: [{ content: { parts: [{ text: fallbackText }] }, finishReason: 'STOP' }] };
+              resp = new Response(JSON.stringify(data), { status: 200 });
+            } else {
+              console.error('[improve-blog-content] Lovable AI Gateway also failed:', fallbackResp.status);
+              return new Response(
+                JSON.stringify({ error: 'AI rate limit exceeded on all providers. Please wait and try again.' }),
+                { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+              );
+            }
+          } catch (fallbackErr) {
+            console.error('[improve-blog-content] Lovable AI Gateway error:', fallbackErr);
+            return new Response(
+              JSON.stringify({ error: 'AI rate limit exceeded on all providers. Please wait and try again.' }),
+              { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+        } else {
+          return new Response(
+            JSON.stringify({ error: 'Gemini API rate limit exceeded. Please wait a moment and try again.' }),
+            { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+      } else {
+        throw new Error(`Gemini API error ${status}`);
       }
-      throw new Error(`Gemini API error ${status}`);
     }
     const data = await resp.json();
     const finishReason = data?.candidates?.[0]?.finishReason || '';

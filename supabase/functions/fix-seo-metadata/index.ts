@@ -173,16 +173,63 @@ Return ONLY valid JSON (no markdown) with this exact structure:
 
         const geminiData = await geminiRes.json();
         const rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        const finishReason = geminiData?.candidates?.[0]?.finishReason || '';
 
+        // If empty or blocked, retry once without responseMimeType
         let aiResult: any;
-        try {
-          const cleaned = rawText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-          aiResult = JSON.parse(cleaned);
-        } catch {
-          console.error(`Parse error for ${article.slug}:`, rawText.substring(0, 300));
+        let parsed = false;
+
+        if (rawText) {
+          try {
+            const cleaned = rawText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+            aiResult = JSON.parse(cleaned);
+            parsed = true;
+          } catch {
+            // Try to extract partial JSON
+            const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+              try {
+                aiResult = JSON.parse(jsonMatch[0]);
+                parsed = true;
+              } catch { /* fall through to retry */ }
+            }
+          }
+        }
+
+        // Retry once without responseMimeType if parse failed or empty
+        if (!parsed) {
+          console.warn(`Parse failed for ${article.slug} (finishReason: ${finishReason}), retrying without responseMimeType...`);
+          await new Promise(r => setTimeout(r, 2000));
+          const retryRes = await fetch(`${GEMINI_URL}?key=${GEMINI_API_KEY}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: prompt + '\n\nIMPORTANT: Return ONLY the JSON object, no markdown fences, no extra text.' }] }],
+              generationConfig: { temperature: 0.2, maxOutputTokens: 1500 },
+            }),
+          });
+          if (retryRes.ok) {
+            const retryData = await retryRes.json();
+            const retryText = retryData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+            if (retryText) {
+              try {
+                const cleaned = retryText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+                const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+                aiResult = JSON.parse(jsonMatch ? jsonMatch[0] : cleaned);
+                parsed = true;
+              } catch {
+                console.error(`Retry parse also failed for ${article.slug}:`, retryText.substring(0, 300));
+              }
+            }
+          } else {
+            await retryRes.text();
+          }
+        }
+
+        if (!parsed) {
           results.push({
             id: article.id, slug: article.slug, status: 'failed',
-            reason: 'Failed to parse AI response', changes: {}, ai_summary: '',
+            reason: `Failed to parse AI response (finishReason: ${finishReason})`, changes: {}, ai_summary: '',
           });
           continue;
         }

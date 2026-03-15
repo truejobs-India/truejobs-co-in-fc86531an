@@ -370,27 +370,121 @@ async function awsSigV4Fetch(host: string, rawPath: string, body: string, region
   });
 }
 
-// ── 5. Claude (Anthropic Direct API) ──
-async function callClaude(prompt: string): Promise<string> {
+// ── 5. Claude Sonnet 4.6 (Anthropic Messages API) ──
+const CLAUDE_SYSTEM_PROMPT = `You are a senior SEO content writer for a professional publishing website.
+
+Your job is to write original, helpful, high-quality, human-readable articles that are optimized for search engines and safe for Google AdSense monetization.
+
+You must follow these rules strictly:
+
+1. SEO requirements
+- Write a strong clear H1 title
+- Use a logical heading hierarchy with H2 and H3 where useful
+- Naturally cover the primary topic and closely related subtopics
+- Avoid keyword stuffing
+- Make the content comprehensive, useful, and well-structured
+- Include a suggested SEO title
+- Include a suggested meta description
+- Include a suggested URL slug
+- Include internal linking opportunities as a short list of suggested anchor ideas
+- Use clear paragraphs, strong readability, and helpful section flow
+
+2. AdSense and content quality requirements
+- Produce original content with real informational value
+- Do not write thin content
+- Do not write vague filler content
+- Do not use prohibited, unsafe, deceptive, or policy-risky content
+- Avoid sensational claims and misleading statements
+- Keep the content suitable for a general content website
+- Make the article useful, trustworthy, and readable
+
+3. Word count control
+- Target the requested word count as closely as practical
+- Do not significantly undershoot the requested word count
+- Do not add fluff just to reach the target
+- Expand with useful depth, examples, explanations, and structured sections only where relevant
+
+4. Output requirements
+Return the output as a valid JSON object with these exact fields:
+- title: article H1 title (compelling, SEO-friendly, under 80 chars)
+- slug: URL-friendly slug (lowercase, hyphens, no trailing hyphens)
+- content: the full article as HTML (do NOT include the H1 title in content — it is stored separately). Use H2/H3 for sections, <p> for paragraphs, <ul>/<ol> for lists, <table> for tabular data, <strong> for bold
+- metaTitle: SEO meta title under 60 characters
+- metaDescription: SEO meta description, 140-155 characters
+- excerpt: 1-2 sentence summary for listings
+- category: suggested category
+- tags: array of 3-6 relevant tags
+- primaryKeyword: the main keyword targeted
+- secondaryKeywords: array of 3-5 LSI/long-tail keywords
+- suggestedInternalLinks: array of 2-3 related topic titles to link to
+
+Return ONLY the JSON object. No markdown code blocks. No extra text.
+
+5. Article content requirements
+- The article must be complete and publication-ready
+- The article body must use proper headings and readable paragraphs
+- The article should feel natural and written for humans first
+- Do not include fake citations unless explicitly requested
+- Do not include placeholder text
+- Do not mention that you are an AI`;
+
+async function callClaude(prompt: string, wordLimit: number): Promise<string> {
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured');
-  const resp = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 4096,
-      temperature: 0.7,
-      messages: [{ role: 'user', content: prompt }],
-    }),
-  });
-  if (!resp.ok) throw new Error(`Anthropic API error ${resp.status}: ${await resp.text()}`);
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 140_000);
+
+  let resp: Response;
+  try {
+    resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: Math.max(4096, Math.min(Math.ceil(wordLimit * 2.5), 8192)),
+        system: CLAUDE_SYSTEM_PROMPT,
+        messages: [
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+      }),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new Error('Claude API timeout after 140 seconds');
+    }
+    throw err;
+  }
+  clearTimeout(timeoutId);
+
+  if (!resp.ok) {
+    const errBody = await resp.text().catch(() => 'unknown');
+    console.error(`Anthropic API error [${resp.status}]:`, errBody);
+    if (resp.status === 429) throw new Error('Anthropic rate limit exceeded. Please wait and try again.');
+    if (resp.status === 401) throw new Error('Anthropic API key is invalid or expired.');
+    throw new Error(`Anthropic API error ${resp.status}: ${errBody.substring(0, 200)}`);
+  }
+
   const data = await resp.json();
-  return data?.content?.[0]?.text || '';
+  if (!data?.content || !Array.isArray(data.content)) {
+    console.error('Unexpected Anthropic response shape:', JSON.stringify(data).substring(0, 500));
+    throw new Error('Unexpected response format from Anthropic API');
+  }
+
+  const textBlocks = data.content.filter((b: any) => b.type === 'text');
+  const text = textBlocks.map((b: any) => b.text).join('');
+  if (!text.trim()) throw new Error('Anthropic returned empty text output');
+
+  return text;
 }
 
 // ── 6. Mistral (AWS Bedrock Converse) — Enhanced with system prompt ──

@@ -1642,6 +1642,7 @@ export function BlogPostEditor() {
                   <TableHead>Quality</TableHead>
                   <TableHead>SEO</TableHead>
                   <TableHead>Cover</TableHead>
+                  <TableHead>Inline</TableHead>
                   <TableHead>Updated</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>

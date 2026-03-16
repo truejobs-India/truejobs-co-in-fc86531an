@@ -255,6 +255,38 @@ export function CustomPagesManager() {
     toast({ title: newPub ? 'Published!' : 'Unpublished' }); loadPages();
   };
 
+  // ── Per-row AI actions ──
+  const fixSinglePage = async (p: CustomPage) => {
+    setRowActionLoading(prev => ({ ...prev, [p.id]: 'fix' }));
+    try {
+      const result = await pageWorkflow.fixPage(p, aiModel);
+      if (result.status === 'fixed') toast({ title: `Fixed: ${p.title}`, description: result.reason });
+      else if (result.status === 'skipped') toast({ title: 'No fixes needed', description: result.reason });
+      else toast({ title: 'Fix failed', description: result.reason, variant: 'destructive' });
+      loadPages();
+    } finally { setRowActionLoading(prev => { const n = { ...prev }; delete n[p.id]; return n; }); }
+  };
+
+  const enrichSinglePage = async (p: CustomPage) => {
+    setRowActionLoading(prev => ({ ...prev, [p.id]: 'enrich' }));
+    try {
+      const result = await pageWorkflow.enrichPage(p, aiModel);
+      if (result.status === 'enriched') toast({ title: `Enriched: ${p.title}`, description: result.reason });
+      else toast({ title: 'Enrich failed', description: result.reason, variant: 'destructive' });
+      loadPages();
+    } finally { setRowActionLoading(prev => { const n = { ...prev }; delete n[p.id]; return n; }); }
+  };
+
+  const publishSinglePage = async (p: CustomPage) => {
+    setRowActionLoading(prev => ({ ...prev, [p.id]: 'publish' }));
+    try {
+      const result = await pageWorkflow.publishPage(p);
+      if (result.status === 'published') toast({ title: `Published: ${p.title}` });
+      else toast({ title: 'Publish skipped', description: result.reason, variant: 'destructive' });
+      loadPages();
+    } finally { setRowActionLoading(prev => { const n = { ...prev }; delete n[p.id]; return n; }); }
+  };
+
   // ── AI: Generate single ──
   const handleGenerate = async () => {
     if (!generateTopic.trim()) return;

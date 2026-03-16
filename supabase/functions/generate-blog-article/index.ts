@@ -542,44 +542,48 @@ async function callAI(model: string, prompt: string, wordLimit = 1500): Promise<
 // ═══════════════════════════════════════════════════════════════
 
 function extractStringField(json: string, field: string): string {
-  // Match "field": "value" where value may contain unescaped quotes from HTML
-  // Strategy: find the field key, then scan forward to find the value boundary
+  // Match "field": "value" — handles unescaped quotes inside HTML content
   const keyPattern = new RegExp(`"${field}"\\s*:\\s*"`);
   const match = keyPattern.exec(json);
   if (!match) return '';
 
   const valueStart = match.index + match[0].length;
-  // Scan forward to find the closing quote followed by , or } or another key
-  // This handles unescaped quotes inside HTML content
-  const closingPatterns = [
-    /"\s*,\s*"/,   // ", "nextField
-    /"\s*,\s*\[/,  // ", [
-    /"\s*\}\s*$/,  // "} at end
-    /"\s*\}/,      // "}
-  ];
+  const sub = json.substring(valueStart);
 
-  let bestEnd = -1;
-  for (const pat of closingPatterns) {
-    const sub = json.substring(valueStart);
-    // Search from the end backward to find the LAST valid closing pattern
+  // For long fields like "content", find the LAST boundary (greedy).
+  // For short fields like "title", "slug", etc., find the FIRST boundary
+  // that looks like the end of a JSON string value.
+  const isLongField = field === 'content';
+
+  // Pattern: closing quote followed by comma+key, comma+bracket, or closing brace
+  // We look for `",` followed by a new key `"`, or `"]`, or `"}`
+  const boundaryPattern = /"\s*,\s*"|"\s*,\s*\[|"\s*\}|"\s*\]\s*\}/g;
+
+  if (isLongField) {
+    // For content: find the last boundary (content is the longest value)
     let lastIdx = -1;
-    let searchFrom = 0;
     let m;
-    while ((m = pat.exec(sub.substring(searchFrom))) !== null) {
-      lastIdx = searchFrom + m.index;
-      searchFrom = lastIdx + 1;
+    while ((m = boundaryPattern.exec(sub)) !== null) {
+      lastIdx = m.index;
     }
-    if (lastIdx !== -1 && (bestEnd === -1 || lastIdx > bestEnd)) {
-      bestEnd = lastIdx;
+    if (lastIdx === -1) return sub.replace(/["}\]\s]+$/, '');
+    return sub.substring(0, lastIdx);
+  } else {
+    // For short fields: find the FIRST boundary that gives a reasonable-length value
+    // For title/slug/excerpt etc., the value should be < 1000 chars
+    const MAX_SHORT_FIELD = field === 'excerpt' || field === 'metaDescription' ? 2000 : 500;
+    let m;
+    while ((m = boundaryPattern.exec(sub)) !== null) {
+      if (m.index <= MAX_SHORT_FIELD || m.index < sub.length * 0.5) {
+        return sub.substring(0, m.index);
+      }
     }
+    // Fallback: take up to MAX_SHORT_FIELD chars
+    const fallback = sub.substring(0, MAX_SHORT_FIELD);
+    const lastQuote = fallback.lastIndexOf('"');
+    if (lastQuote > 0) return fallback.substring(0, lastQuote);
+    return fallback.replace(/["}\]\s]+$/, '');
   }
-
-  if (bestEnd === -1) {
-    // Fallback: take everything up to end, stripping trailing junk
-    return json.substring(valueStart).replace(/["}\]\s]+$/, '');
-  }
-
-  return json.substring(valueStart, valueStart + bestEnd);
 }
 
 function extractArrayField(json: string, field: string): string[] {

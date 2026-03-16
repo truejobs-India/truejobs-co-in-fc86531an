@@ -340,6 +340,87 @@ export type Database = {
         }
         Relationships: []
       }
+      board_result_batch_rows: {
+        Row: {
+          batch_id: string
+          board_abbr: string
+          board_name: string
+          created_at: string
+          error_message: string | null
+          generated_page_id: string | null
+          generation_status: string
+          id: string
+          is_valid: boolean
+          official_board_url: string
+          qa_notes: string[] | null
+          result_url: string
+          row_index: number
+          seo_intro_text: string | null
+          slug: string
+          state_ut: string
+          updated_at: string
+          validation_errors: string[] | null
+          variant: string
+        }
+        Insert: {
+          batch_id: string
+          board_abbr?: string
+          board_name: string
+          created_at?: string
+          error_message?: string | null
+          generated_page_id?: string | null
+          generation_status?: string
+          id?: string
+          is_valid?: boolean
+          official_board_url?: string
+          qa_notes?: string[] | null
+          result_url?: string
+          row_index: number
+          seo_intro_text?: string | null
+          slug: string
+          state_ut: string
+          updated_at?: string
+          validation_errors?: string[] | null
+          variant?: string
+        }
+        Update: {
+          batch_id?: string
+          board_abbr?: string
+          board_name?: string
+          created_at?: string
+          error_message?: string | null
+          generated_page_id?: string | null
+          generation_status?: string
+          id?: string
+          is_valid?: boolean
+          official_board_url?: string
+          qa_notes?: string[] | null
+          result_url?: string
+          row_index?: number
+          seo_intro_text?: string | null
+          slug?: string
+          state_ut?: string
+          updated_at?: string
+          validation_errors?: string[] | null
+          variant?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "board_result_batch_rows_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "import_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "board_result_batch_rows_generated_page_id_fkey"
+            columns: ["generated_page_id"]
+            isOneToOne: false
+            referencedRelation: "custom_pages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       campaign_enrollments: {
         Row: {
           created_at: string

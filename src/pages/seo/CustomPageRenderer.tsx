@@ -25,6 +25,14 @@ interface CustomPageData {
   cover_image_url: string | null;
   featured_image_alt: string | null;
   canonical_url: string | null;
+  updated_at: string | null;
+  // Board result fields
+  state_ut: string | null;
+  board_name: string | null;
+  result_url: string | null;
+  official_board_url: string | null;
+  result_variant: string | null;
+  internal_links: any;
 }
 
 export async function isCustomPageSlug(slug: string): Promise<boolean> {

@@ -983,6 +983,7 @@ export function BoardResultGenerator() {
                               )
                             ) : '—'}
                           </TableCell>
+                          <TableCell className="text-center">
                             {issueCount > 0 ? (
                               <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setExpandedRow(isExpanded ? null : realIdx)}>
                                 <span className="text-xs text-amber-600 font-bold">{issueCount}</span>

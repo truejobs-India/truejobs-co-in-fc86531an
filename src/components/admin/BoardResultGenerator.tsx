@@ -385,6 +385,7 @@ export function BoardResultGenerator() {
     } as any).eq('id', batch.id);
 
     setIsRunning(false);
+    setIsStopping(false);
     setPhase('qa');
     setSelectedRows(new Set());
     toast({ title: 'Generation complete', description: `${completedCount} success, ${failedCount} failed` });

@@ -862,6 +862,9 @@ export function BoardResultGenerator() {
 
           {phase !== 'upload' && !isRunning && (
             <>
+              <Button variant="outline" size="sm" onClick={restoreFromDb}>
+                <RotateCcw className="h-3.5 w-3.5 mr-1" /> Restore from DB
+              </Button>
               {storedFileUrl && (
                 <Button variant="outline" size="sm" onClick={downloadFile}>
                   <ExternalLink className="h-3 w-3 mr-1" /> Download File

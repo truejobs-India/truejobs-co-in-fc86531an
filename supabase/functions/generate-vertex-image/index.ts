@@ -194,28 +194,43 @@ async function generateViaGeminiFlashImage(
   const timer = setTimeout(() => controller.abort(), IMAGEN_TIMEOUT_MS);
 
   try {
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      signal: controller.signal,
-      body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: imagePrompt }] }],
-        generationConfig: {
-          responseModalities: ['TEXT', 'IMAGE'],
-          temperature: 1.0,
-          maxOutputTokens: 8192,
+    let resp: Response | null = null;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      if (attempt > 0) {
+        const delay = RETRY_BASE_MS * Math.pow(2, attempt - 1);
+        console.log(`[gemini-flash-image] 429 retry ${attempt}/${MAX_RETRIES} after ${delay}ms`);
+        await new Promise(r => setTimeout(r, delay));
+      }
+      resp = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
         },
-      }),
-    });
+        signal: controller.signal,
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: imagePrompt }] }],
+          generationConfig: {
+            responseModalities: ['TEXT', 'IMAGE'],
+            temperature: 1.0,
+            maxOutputTokens: 8192,
+          },
+        }),
+      });
+      if (resp.status !== 429) break;
+      if (attempt === MAX_RETRIES) {
+        const errText = await resp.text();
+        console.error(`[gemini-flash-image] 429 exhausted retries: ${errText.substring(0, 200)}`);
+        return new Response(JSON.stringify({ success: false, error: `Rate limited after ${MAX_RETRIES} retries. Please try again in a few minutes.`, model: GEMINI_IMAGE_MODEL }),
+          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+    }
 
-    if (!resp.ok) {
-      const errText = await resp.text();
-      console.error(`[gemini-flash-image] Vertex error [${resp.status}]: ${errText.substring(0, 300)}`);
-      return new Response(JSON.stringify({ success: false, error: `Vertex AI error (${resp.status}): ${errText.substring(0, 200)}`, model: GEMINI_IMAGE_MODEL }),
-        { status: resp.status >= 400 && resp.status < 500 ? resp.status : 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    if (!resp!.ok) {
+      const errText = await resp!.text();
+      console.error(`[gemini-flash-image] Vertex error [${resp!.status}]: ${errText.substring(0, 300)}`);
+      return new Response(JSON.stringify({ success: false, error: `Vertex AI error (${resp!.status}): ${errText.substring(0, 200)}`, model: GEMINI_IMAGE_MODEL }),
+        { status: resp!.status >= 400 && resp!.status < 500 ? resp!.status : 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     const data = await resp.json();

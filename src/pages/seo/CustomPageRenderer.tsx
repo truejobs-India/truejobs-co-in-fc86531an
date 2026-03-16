@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Calendar, Clock, Tag, ExternalLink } from 'lucide-react';
 import { Helmet } from 'react-helmet-async';
 import NotFound from '../NotFound';
+import { PremiumResultLanding } from '@/pages/board-results/PremiumResultLanding';
 
 interface CustomPageData {
   title: string;

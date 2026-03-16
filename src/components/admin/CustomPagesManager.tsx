@@ -680,6 +680,7 @@ export function CustomPagesManager() {
       {viewMode === 'ai-workflows' && (
         <div className="space-y-4">
           <BulkPageWorkflow
+            pageTypeFilter="landing"
             title="Custom Pages — Bulk AI Workflows"
             onPagesChanged={loadPages}
           />

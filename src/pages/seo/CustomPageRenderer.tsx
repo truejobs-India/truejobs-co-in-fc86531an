@@ -55,7 +55,7 @@ export default function CustomPageRenderer() {
 
     supabase
       .from('custom_pages')
-      .select('title, slug, content, excerpt, meta_title, meta_description, category, tags, faq_schema, word_count, reading_time, page_type, published_at, cover_image_url, featured_image_alt, canonical_url')
+      .select('title, slug, content, excerpt, meta_title, meta_description, category, tags, faq_schema, word_count, reading_time, page_type, published_at, cover_image_url, featured_image_alt, canonical_url, updated_at, state_ut, board_name, result_url, official_board_url, result_variant, internal_links')
       .eq('slug', slug)
       .eq('is_published', true)
       .single()

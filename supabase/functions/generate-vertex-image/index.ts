@@ -397,7 +397,20 @@ async function generateViaImagen(
     const mimeType = prediction.mimeType || 'image/png';
 
     if (!base64Data) {
-      console.warn(`[vertex-imagen] prediction ${i} has no image data`);
+      console.warn(`[vertex-imagen] prediction ${i} has no image data (likely safety-filtered)`);
+      continue;
+    }
+
+    // Decode and validate image bytes
+    let imageBytes: Uint8Array;
+    try {
+      imageBytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+      if (imageBytes.length < 100) {
+        console.warn(`[vertex-imagen] prediction ${i} has suspiciously small image (${imageBytes.length} bytes)`);
+        continue;
+      }
+    } catch (decodeErr) {
+      console.error(`[vertex-imagen] prediction ${i} base64 decode failed:`, decodeErr);
       continue;
     }
 

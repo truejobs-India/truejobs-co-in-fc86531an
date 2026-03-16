@@ -701,8 +701,20 @@ export function BoardResultGenerator() {
               </>
             )}
             {phase === 'generating' && isRunning && (
-              <Button variant="destructive" onClick={() => { abortRef.current = true; }}>
-                <Square className="h-4 w-4 mr-1" /> Stop
+              <Button
+                variant="destructive"
+                disabled={isStopping}
+                onClick={() => {
+                  abortRef.current = true;
+                  setIsStopping(true);
+                  toast({ title: 'Stopping…', description: 'Will stop after the current page finishes generating.' });
+                }}
+              >
+                {isStopping ? (
+                  <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Stopping…</>
+                ) : (
+                  <><Square className="h-4 w-4 mr-1" /> Stop</>
+                )}
               </Button>
             )}
             {phase === 'qa' && (

@@ -672,6 +672,7 @@ export function BoardResultGenerator() {
         </div>
         <div className="flex gap-2 items-center flex-wrap">
           <AiModelSelector value={aiModel} onValueChange={setAiModel} capability="text" triggerClassName="w-[180px]" />
+          <AiModelSelector value={imageModel} onValueChange={setImageModel} capability="image" triggerClassName="w-[180px]" size="sm" />
           
           {/* Word Length Selector */}
           <div className="flex items-center gap-1">

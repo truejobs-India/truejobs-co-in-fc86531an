@@ -242,8 +242,13 @@ export function CustomPagesManager() {
     setSaving(false);
   };
 
-  const deletePage = async (id: string) => {
-    if (!confirm('Delete this page?')) return;
+  const deletePage = async (id: string, pageType?: string | null) => {
+    // Safety: prevent accidental deletion of board result pages from Custom Pages view
+    if (pageType === 'result-landing') {
+      toast({ title: 'Cannot delete board result page from here', description: 'Manage board result pages in the Board Results tab', variant: 'destructive' });
+      return;
+    }
+    if (!confirm('Delete this page? This action cannot be undone.')) return;
     await supabase.from('custom_pages').delete().eq('id', id);
     toast({ title: 'Page deleted' }); loadPages();
   };

@@ -242,8 +242,11 @@ async function generateViaGeminiFlashImage(
     }
 
     // Upload to storage
+    const isInlineFallback = (body.purpose === 'inline');
     const ext = mimeType.includes('jpeg') ? 'jpg' : 'png';
-    const filePath = `covers/${slug}-gemini-flash.${ext}`;
+    const pathPrefix = isInlineFallback ? 'inline' : 'covers';
+    const slotSuffix = isInlineFallback && body.slotNumber ? `-slot${body.slotNumber}` : '';
+    const filePath = `${pathPrefix}/${slug}-gemini-flash${slotSuffix}.${ext}`;
     const imageBytes = Uint8Array.from(atob(imageBase64), c => c.charCodeAt(0));
     const blob = new Blob([imageBytes], { type: mimeType });
 
@@ -447,11 +450,22 @@ serve(async (req) => {
     }
 
     if (purpose === 'inline') {
-      // Inline images ALWAYS use Imagen via Vertex AI
+      // Inline images: try Imagen first, fallback to Gemini Flash Image on quota/failure
       const imagePrompt = buildInlineImagePrompt(body);
       const aspectRatio = '4:3'; // Enforced for inline
       console.log(`[generate-vertex-image] ENFORCED: purpose=inline → vertex-imagen, slot=${body.slotNumber}`);
-      return await generateViaImagen(body, slug, imagePrompt, 1, aspectRatio, adminClient, startMs);
+      try {
+        const imagenResult = await generateViaImagen(body, slug, imagePrompt, 1, aspectRatio, adminClient, startMs);
+        const resultBody = await imagenResult.clone().json();
+        if (resultBody.success) return imagenResult;
+        // Imagen failed (empty predictions, upload failures, etc.) — fallback
+        console.warn(`[generate-vertex-image] Imagen failed for inline (${resultBody.error}), falling back to Gemini Flash Image`);
+      } catch (imagenErr: any) {
+        console.warn(`[generate-vertex-image] Imagen threw for inline (${imagenErr.message}), falling back to Gemini Flash Image`);
+      }
+      // Fallback: use Gemini Flash Image for inline
+      console.log(`[generate-vertex-image] FALLBACK: purpose=inline → gemini-flash-image, slot=${body.slotNumber}`);
+      return await generateViaGeminiFlashImage({ ...body, purpose: 'inline' }, slug, imagePrompt, adminClient, startMs);
     }
 
     // ── Backward-compatible model-based routing (no purpose specified) ──

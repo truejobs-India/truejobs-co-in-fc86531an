@@ -70,6 +70,7 @@ export function BoardResultGenerator() {
   const [batchRows, setBatchRows] = useState<BatchRow[]>([]);
   const [batchId, setBatchId] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
+  const [isStopping, setIsStopping] = useState(false);
   const abortRef = useRef(false);
   const [fileName, setFileName] = useState('');
   const [conflictDialog, setConflictDialog] = useState<{ index: number; info: ConflictInfo } | null>(null);

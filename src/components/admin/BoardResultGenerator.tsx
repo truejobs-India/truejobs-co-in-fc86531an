@@ -862,6 +862,12 @@ export function BoardResultGenerator() {
               className="hidden"
               onChange={handleFileUpload}
             />
+            <div className="border-t border-border pt-4 mt-2 w-full flex flex-col items-center gap-2">
+              <p className="text-xs text-muted-foreground">Or restore previously generated pages from database</p>
+              <Button variant="outline" size="sm" onClick={restoreFromDb} disabled={isRunning}>
+                <RotateCcw className="h-3.5 w-3.5 mr-1" /> Restore from Database
+              </Button>
+            </div>
           </CardContent>
         </Card>
       )}

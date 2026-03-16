@@ -11,8 +11,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
 import { AiModelSelector } from '@/components/admin/AiModelSelector';
+import { BulkPageWorkflow } from '@/components/admin/BulkPageWorkflow';
 import { getModelDef, getModelSpeed } from '@/lib/aiModels';
 import { scoreCustomPage, scoreColor, scoreBgColor, type QualityBreakdown } from '@/lib/pageQualityScorer';
+import { usePageAiWorkflow } from '@/hooks/usePageAiWorkflow';
 import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -20,7 +22,7 @@ import {
   Plus, Sparkles, Loader2, Pencil, Trash2, Search,
   ChevronLeft, ChevronRight, CheckCircle, XCircle,
   Globe, Copy, Square, Wand2, Clock, RotateCcw,
-  BarChart3, FileText, Zap, Eye, FileSpreadsheet
+  BarChart3, FileText, Zap, Eye, FileSpreadsheet, Wrench,
 } from 'lucide-react';
 import { BoardResultGenerator } from './BoardResultGenerator';
 

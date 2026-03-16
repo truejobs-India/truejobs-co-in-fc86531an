@@ -21,6 +21,8 @@ const corsHeaders = {
 const IMAGEN_MODEL = Deno.env.get('VERTEX_IMAGEN_MODEL') || 'imagen-4.0-generate-preview-06-06';
 const GEMINI_IMAGE_MODEL = Deno.env.get('VERTEX_GEMINI_IMAGE_MODEL') || 'gemini-2.5-flash-image';
 const IMAGEN_TIMEOUT_MS = 60_000;
+const MAX_RETRIES = 3;
+const RETRY_BASE_MS = 2000; // 2s, 4s, 8s exponential backoff
 
 const ASPECT_RATIOS: Record<string, string> = {
   '1:1': '1:1',

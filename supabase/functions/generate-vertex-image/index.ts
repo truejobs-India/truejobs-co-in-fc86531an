@@ -353,7 +353,7 @@ async function generateViaImagen(
             sampleCount: imageCount,
             aspectRatio,
             personGeneration: 'dont_allow',
-            safetySetting: 'block_some',
+            safetySetting: 'block_few',
             addWatermark: false,
           },
         }),
@@ -444,16 +444,17 @@ async function generateViaImagen(
   }
 
   if (!images.length) {
-    // Check if all predictions were safety-filtered (no image data)
     const hadImageData = predictions.some(p => p.bytesBase64Encoded);
-    const errorMsg = hadImageData
-      ? 'Images generated but all uploads to storage failed. Check storage bucket permissions.'
-      : 'Image generation was filtered by safety settings. Try a different prompt or topic.';
-    return new Response(JSON.stringify({
-      success: false,
-      error: errorMsg,
-      model: IMAGEN_MODEL,
-    }), { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    if (hadImageData) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Images generated but all uploads to storage failed. Check storage bucket permissions.',
+        model: IMAGEN_MODEL,
+      }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+    // Safety-filtered: fallback to Gemini Flash Image
+    console.log(`[vertex-imagen] Safety-filtered, falling back to Gemini Flash Image for slug=${slug}`);
+    return await generateViaGeminiFlashImage(body, slug, imagePrompt, adminClient, startMs);
   }
 
   const elapsed = Date.now() - startMs;

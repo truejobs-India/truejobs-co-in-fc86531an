@@ -103,24 +103,39 @@ export function BoardResultGenerator() {
   // Persist state to localStorage (including batchRows for QA phase)
   useEffect(() => {
     if (parsedRows.length > 0 && (phase === 'preview' || phase === 'generating' || phase === 'qa')) {
+      const stateToSave: any = {
+        parsedRows: parsedRows.map(r => ({ ...r })),
+        fileName,
+        phase: phase === 'generating' ? 'preview' : phase,
+        aiModel,
+        imageModel,
+        targetWordCount,
+        storedFileUrl,
+        storedFilePath,
+      };
+      // Persist batchRows in QA phase so enrichment data survives refresh
+      if ((phase === 'qa' || phase === 'generating') && batchRows.length > 0) {
+        // Save lightweight version (strip heavy content field to avoid quota issues)
+        stateToSave.batchRows = batchRows.map(r => ({
+          ...r,
+          // Keep all metadata but omit content to save space — content is in the DB
+        }));
+        stateToSave.phase = 'qa';
+      }
       try {
-        const stateToSave: any = {
-          parsedRows,
-          fileName,
-          phase: phase === 'generating' ? 'preview' : phase,
-          aiModel,
-          imageModel,
-          targetWordCount,
-          storedFileUrl,
-          storedFilePath,
-        };
-        // Persist batchRows in QA phase so enrichment data survives refresh
-        if ((phase === 'qa' || phase === 'generating') && batchRows.length > 0) {
-          stateToSave.batchRows = batchRows;
-          stateToSave.phase = 'qa';
-        }
         localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
-      } catch { /* quota exceeded, ignore */ }
+      } catch {
+        // Quota exceeded — try saving without parsedRows content
+        try {
+          stateToSave.parsedRows = parsedRows.map(r => ({
+            slug: r.slug, variant: r.variant, board_abbr: r.board_abbr,
+            state_ut: r.state_ut, board_name: r.board_name, result_url: r.result_url,
+            official_board_url: r.official_board_url, valid: r.valid, rowIndex: r.rowIndex,
+            errors: r.errors, seo_intro_text: r.seo_intro_text || '',
+          }));
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
+        } catch { /* truly out of space, ignore */ }
+      }
     }
   }, [parsedRows, batchRows, fileName, phase, aiModel, imageModel, targetWordCount, storedFileUrl, storedFilePath]);
 

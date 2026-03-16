@@ -165,6 +165,8 @@ export function CustomPagesManager() {
   const loadPages = useCallback(async () => {
     setLoading(true);
     let query = supabase.from('custom_pages').select('*', { count: 'exact' });
+    // CRITICAL: Only show non-board-result pages in Custom Pages list
+    query = query.neq('page_type', 'result-landing');
     if (search) query = query.or(`title.ilike.%${search}%,slug.ilike.%${search}%`);
     if (statusFilter !== 'all') query = query.eq('status', statusFilter);
     query = query.order('created_at', { ascending: false }).range(pageNum * PAGE_SIZE, (pageNum + 1) * PAGE_SIZE - 1);
@@ -240,8 +242,13 @@ export function CustomPagesManager() {
     setSaving(false);
   };
 
-  const deletePage = async (id: string) => {
-    if (!confirm('Delete this page?')) return;
+  const deletePage = async (id: string, pageType?: string | null) => {
+    // Safety: prevent accidental deletion of board result pages from Custom Pages view
+    if (pageType === 'result-landing') {
+      toast({ title: 'Cannot delete board result page from here', description: 'Manage board result pages in the Board Results tab', variant: 'destructive' });
+      return;
+    }
+    if (!confirm('Delete this page? This action cannot be undone.')) return;
     await supabase.from('custom_pages').delete().eq('id', id);
     toast({ title: 'Page deleted' }); loadPages();
   };
@@ -673,6 +680,7 @@ export function CustomPagesManager() {
       {viewMode === 'ai-workflows' && (
         <div className="space-y-4">
           <BulkPageWorkflow
+            pageTypeFilter="landing"
             title="Custom Pages — Bulk AI Workflows"
             onPagesChanged={loadPages}
           />
@@ -805,7 +813,7 @@ export function CustomPagesManager() {
                                 <XCircle className="h-3.5 w-3.5 text-destructive" />
                               </Button>
                             )}
-                            <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => deletePage(p.id)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
+                            <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => deletePage(p.id, p.page_type)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
                           </div>
                         </TableCell>
                       </TableRow>

@@ -75,6 +75,7 @@ export function BoardResultGenerator() {
   const [conflictDialog, setConflictDialog] = useState<{ index: number; info: ConflictInfo } | null>(null);
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
   const [filter, setFilter] = useState<'all' | 'conflicts' | 'failed' | 'low-quality'>('all');
+  const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
 
   // ── File Upload & Parse ──
   const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {

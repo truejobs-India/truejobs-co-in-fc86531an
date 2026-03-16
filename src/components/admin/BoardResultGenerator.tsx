@@ -429,14 +429,20 @@ export function BoardResultGenerator() {
         if ((d.section_count || 0) < 10) qaIssues.push(`Only ${d.section_count} sections (need ≥10)`);
 
         completedCount++;
+        const rowObj = rows[i];
         setBatchRows(prev => prev.map((r, idx) =>
           idx === i ? { ...r, status: 'success', pageId: inserted?.id, quality, qa_notes: qaIssues } : r
         ));
+        // ★ Update row status in DB
+        await updateRowStatusInDb(currentBatchId, rowObj.rowIndex, 'success', inserted?.id);
       } catch (e: any) {
         failedCount++;
+        const rowObj = rows[i];
         setBatchRows(prev => prev.map((r, idx) =>
           idx === i ? { ...r, status: 'failed', error: e.message } : r
         ));
+        // ★ Update row status in DB
+        await updateRowStatusInDb(currentBatchId, rowObj.rowIndex, 'failed', undefined, e.message);
       }
 
       await supabase.from('import_batches').update({
@@ -446,7 +452,7 @@ export function BoardResultGenerator() {
     }
 
     return { completedCount, failedCount };
-  }, [aiModel, user, targetWordCount]);
+  }, [aiModel, user, targetWordCount, updateRowStatusInDb]);
 
   // ── Persist all rows to DB immediately ──
   const persistRowsToDb = useCallback(async (batchIdVal: string, rows: BatchRow[]) => {

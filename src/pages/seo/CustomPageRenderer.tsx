@@ -123,6 +123,7 @@ export default function CustomPageRenderer() {
         {page.cover_image_url && <meta property="og:image" content={page.cover_image_url} />}
         <script type="application/ld+json">{JSON.stringify(webPageSchema)}</script>
         {faqSchema && <script type="application/ld+json">{JSON.stringify(faqSchema)}</script>}
+        {breadcrumbSchema && <script type="application/ld+json">{JSON.stringify(breadcrumbSchema)}</script>}
       </Helmet>
 
       <article className="container mx-auto max-w-4xl px-4 py-8">

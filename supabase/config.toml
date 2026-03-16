@@ -95,3 +95,6 @@ verify_jwt = false
 
 [functions.govt-jobs-assistant]
 verify_jwt = false
+
+[functions.generate-board-result-image]
+verify_jwt = false

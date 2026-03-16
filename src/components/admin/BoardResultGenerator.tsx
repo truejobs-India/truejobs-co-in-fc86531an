@@ -216,51 +216,20 @@ export function BoardResultGenerator() {
     });
   }, []);
 
-  // ── Start batch generation ──
-  const startGeneration = useCallback(async () => {
-    if (!user) return;
-    abortRef.current = false;
-    setIsRunning(true);
-
-    // Create batch
-    const { data: batch, error: batchErr } = await supabase
-      .from('import_batches')
-      .insert({
-        source_file_name: fileName,
-        total_rows: parsedRows.filter(r => r.valid).length,
-        started_by: user.id,
-        status: 'in_progress',
-      } as any)
-      .select('id')
-      .single();
-
-    if (batchErr || !batch) {
-      toast({ title: 'Failed to create batch', description: batchErr?.message, variant: 'destructive' });
-      setIsRunning(false);
-      return;
-    }
-    setBatchId(batch.id);
-
-    // Check conflicts
-    const bRows = await checkConflicts(parsedRows);
-    setBatchRows(bRows);
-    setPhase('generating');
-
-    // Build internal link map
-    const validRows = bRows.filter(r => r.valid);
+  // ── Core generation logic for a set of row indices ──
+  const generateRows = useCallback(async (rowIndices: number[], rows: BatchRow[], currentBatchId: string) => {
+    const validRows = rows.filter(r => r.valid);
     const linkMap = buildInternalLinkMap(validRows);
+    let completedCount = rows.filter(r => r.status === 'success').length;
+    let failedCount = rows.filter(r => r.status === 'failed').length;
 
-    let completedCount = 0;
-    let failedCount = 0;
-
-    for (let i = 0; i < bRows.length; i++) {
+    for (const i of rowIndices) {
       if (abortRef.current) break;
-      if (bRows[i].status === 'skipped') continue;
 
       setBatchRows(prev => prev.map((r, idx) => idx === i ? { ...r, status: 'generating' } : r));
 
       try {
-        const row = bRows[i];
+        const row = rows[i];
         const siblingLinks = linkMap.get(row.slug) || [];
         const sibSlugs = siblingLinks.map(l => l.slug);
 
@@ -300,13 +269,13 @@ export function BoardResultGenerator() {
           status: 'draft',
           ai_model_used: aiModel,
           ai_generated_at: new Date().toISOString(),
-          author_id: user.id,
+          author_id: user!.id,
           state_ut: row.state_ut,
           board_name: row.board_name,
           result_url: row.result_url,
           official_board_url: row.official_board_url,
           result_variant: row.variant,
-          import_batch_id: batch.id,
+          import_batch_id: currentBatchId,
           source_row_index: row.rowIndex,
           generation_metadata: {
             current: { model: aiModel, generated_at: new Date().toISOString(), sections_present: d.sections_present || [] },
@@ -321,7 +290,6 @@ export function BoardResultGenerator() {
           },
         };
 
-        // Upsert: if same batch+row exists, update
         const { data: inserted, error: insertErr } = await supabase
           .from('custom_pages')
           .upsert(pagePayload as any, { onConflict: 'slug' })
@@ -336,7 +304,6 @@ export function BoardResultGenerator() {
           faq_schema: d.faq_items, tags: d.suggested_tags,
         });
 
-        // QA checks
         const qaIssues: string[] = [...row.qa_notes];
         const targetWc = getTargetWordCount(row.variant);
         if ((d.word_count || 0) < targetWc * 0.7) qaIssues.push(`Word count ${d.word_count} below target ${targetWc}`);
@@ -358,14 +325,56 @@ export function BoardResultGenerator() {
         ));
       }
 
-      // Update batch counters
       await supabase.from('import_batches').update({
         completed_count: completedCount,
         failed_count: failedCount,
-      } as any).eq('id', batch.id);
+      } as any).eq('id', currentBatchId);
     }
 
-    // Mark batch complete
+    return { completedCount, failedCount };
+  }, [aiModel, user]);
+
+  // ── Start batch generation ──
+  const startGeneration = useCallback(async (onlySelected = false) => {
+    if (!user) return;
+    abortRef.current = false;
+    setIsRunning(true);
+
+    // Create batch
+    const rowsToUse = onlySelected
+      ? parsedRows.filter((_, i) => selectedRows.has(i) && parsedRows[i].valid)
+      : parsedRows.filter(r => r.valid);
+
+    const { data: batch, error: batchErr } = await supabase
+      .from('import_batches')
+      .insert({
+        source_file_name: fileName,
+        total_rows: rowsToUse.length,
+        started_by: user.id,
+        status: 'in_progress',
+      } as any)
+      .select('id')
+      .single();
+
+    if (batchErr || !batch) {
+      toast({ title: 'Failed to create batch', description: batchErr?.message, variant: 'destructive' });
+      setIsRunning(false);
+      return;
+    }
+    setBatchId(batch.id);
+
+    // Check conflicts
+    const bRows = await checkConflicts(parsedRows);
+    setBatchRows(bRows);
+    setPhase('generating');
+
+    // Determine which indices to generate
+    const indicesToGenerate = onlySelected
+      ? Array.from(selectedRows).filter(i => bRows[i]?.valid && bRows[i]?.status !== 'skipped').sort((a, b) => a - b)
+      : bRows.map((r, i) => ({ r, i })).filter(({ r }) => r.status === 'queued').map(({ i }) => i);
+
+    const { completedCount, failedCount } = await generateRows(indicesToGenerate, bRows, batch.id);
+
     await supabase.from('import_batches').update({
       status: abortRef.current ? 'failed' : 'completed',
       completed_at: new Date().toISOString(),
@@ -375,8 +384,49 @@ export function BoardResultGenerator() {
 
     setIsRunning(false);
     setPhase('qa');
-    toast({ title: 'Batch generation complete', description: `${completedCount} success, ${failedCount} failed` });
-  }, [parsedRows, user, aiModel, fileName, checkConflicts, toast]);
+    setSelectedRows(new Set());
+    toast({ title: 'Generation complete', description: `${completedCount} success, ${failedCount} failed` });
+  }, [parsedRows, user, aiModel, fileName, checkConflicts, toast, generateRows, selectedRows]);
+
+  // ── Retry all failed rows ──
+  const retryAllFailed = useCallback(async () => {
+    if (!user || !batchId) return;
+    const failedIndices = batchRows
+      .map((r, i) => ({ r, i }))
+      .filter(({ r }) => r.status === 'failed')
+      .map(({ i }) => i);
+
+    if (failedIndices.length === 0) {
+      toast({ title: 'No failed pages to retry' });
+      return;
+    }
+
+    abortRef.current = false;
+    setIsRunning(true);
+    setPhase('generating');
+
+    // Reset failed rows to queued
+    setBatchRows(prev => prev.map((r, i) =>
+      failedIndices.includes(i) ? { ...r, status: 'queued', error: undefined } : r
+    ));
+
+    const currentRows = batchRows.map((r, i) =>
+      failedIndices.includes(i) ? { ...r, status: 'queued' as const, error: undefined } : r
+    );
+
+    const { completedCount, failedCount } = await generateRows(failedIndices, currentRows, batchId);
+
+    await supabase.from('import_batches').update({
+      status: 'completed',
+      completed_at: new Date().toISOString(),
+      completed_count: completedCount,
+      failed_count: failedCount,
+    } as any).eq('id', batchId);
+
+    setIsRunning(false);
+    setPhase('qa');
+    toast({ title: 'Retry complete', description: `${completedCount} success, ${failedCount} still failed` });
+  }, [batchRows, batchId, user, generateRows, toast]);
 
   // ── Resolve conflict ──
   const resolveConflict = async (index: number, action: 'updated' | 'skipped') => {

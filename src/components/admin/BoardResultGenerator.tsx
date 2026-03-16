@@ -895,10 +895,30 @@ export function BoardResultGenerator() {
 
           {/* Controls */}
           <div className="flex gap-2 items-center flex-wrap">
+            {/* Select All / Deselect All */}
+            {(phase === 'preview' || phase === 'qa') && (
+              <div className="flex gap-1">
+                <Button
+                  variant="outline" size="sm"
+                  onClick={() => {
+                    const allValid = (phase === 'qa' ? batchRows : parsedRows).filter(r => r.valid).map(r => r.rowIndex);
+                    setSelectedRows(new Set(allValid));
+                  }}
+                >
+                  Select All ({(phase === 'qa' ? batchRows : parsedRows).filter(r => r.valid).length})
+                </Button>
+                {selectedRows.size > 0 && (
+                  <Button variant="ghost" size="sm" onClick={() => setSelectedRows(new Set())}>
+                    Deselect All
+                  </Button>
+                )}
+              </div>
+            )}
+
             {phase === 'preview' && (
               <>
                 <Button onClick={() => startGeneration(false)} disabled={validCount === 0}>
-                  <Zap className="h-4 w-4 mr-1" /> Generate {validCount} Pages
+                  <Zap className="h-4 w-4 mr-1" /> Generate All ({validCount})
                 </Button>
                 {selectedRows.size > 0 && (
                   <Button variant="outline" onClick={() => startGeneration(true)}>
@@ -932,6 +952,11 @@ export function BoardResultGenerator() {
                 {failed > 0 && (
                   <Button variant="outline" onClick={retryAllFailed} disabled={isRunning}>
                     <RotateCcw className="h-4 w-4 mr-1" /> Retry {failed} Failed
+                  </Button>
+                )}
+                {selectedRows.size > 0 && (
+                  <Button variant="outline" onClick={bulkGenerateImages}>
+                    🖼️ Generate Images ({selectedRows.size})
                   </Button>
                 )}
               </>

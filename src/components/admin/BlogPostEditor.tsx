@@ -148,6 +148,22 @@ export function BlogPostEditor() {
     try { localStorage.setItem('blog_image_ai_model', v); } catch {}
   }, []);
 
+  // Image model selectors (separate for cover and inline)
+  const [coverImageModel, setCoverImageModel] = useState<string>(() => {
+    try { return localStorage.getItem('blog_cover_image_model') || 'gemini-flash-image'; } catch { return 'gemini-flash-image'; }
+  });
+  const [inlineImageModel, setInlineImageModel] = useState<string>(() => {
+    try { return localStorage.getItem('blog_inline_image_model') || 'vertex-imagen'; } catch { return 'vertex-imagen'; }
+  });
+  const handleCoverImageModelChange = useCallback((v: string) => {
+    setCoverImageModel(v);
+    try { localStorage.setItem('blog_cover_image_model', v); } catch {}
+  }, []);
+  const handleInlineImageModelChange = useCallback((v: string) => {
+    setInlineImageModel(v);
+    try { localStorage.setItem('blog_inline_image_model', v); } catch {}
+  }, []);
+
   // Bulk cover image generation state
   const [isBulkCoverRunning, setIsBulkCoverRunning] = useState(false);
   const [bulkCoverProgress, setBulkCoverProgress] = useState<{ total: number; done: number; failed: number; current: string } | null>(null);

@@ -733,6 +733,63 @@ export function BoardResultGenerator() {
     }
   };
 
+  // ── Restore generated pages from database ──
+  const restoreFromDb = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('custom_pages')
+        .select('id, slug, title, state_ut, board_name, result_variant, result_url, official_board_url, word_count, content, meta_title, meta_description, excerpt, faq_schema, tags, is_published, status, qa_notes, ai_generated_at, cover_image_url')
+        .eq('page_type', 'result-landing')
+        .order('created_at', { ascending: false })
+        .limit(200);
+
+      if (error) throw error;
+      if (!data || data.length === 0) {
+        toast({ title: 'No board result pages found in database', variant: 'destructive' });
+        return;
+      }
+
+      const restored: BatchRow[] = data.map((p: any, i: number) => {
+        const quality = scoreCustomPage({
+          content: p.content || '',
+          meta_title: p.meta_title,
+          meta_description: p.meta_description,
+          excerpt: p.excerpt,
+          faq_schema: p.faq_schema,
+          tags: p.tags,
+        });
+
+        const hasContent = p.content && p.content.length > 100;
+
+        return {
+          state_ut: p.state_ut || '',
+          board_name: p.board_name || '',
+          result_url: p.result_url || '',
+          official_board_url: p.official_board_url || '',
+          seo_intro_text: '',
+          slug: p.slug,
+          variant: p.result_variant || 'main',
+          board_abbr: extractBoardAbbr(p.board_name || ''),
+          valid: true,
+          errors: [],
+          rowIndex: i,
+          status: hasContent ? 'success' as const : 'failed' as const,
+          pageId: p.id,
+          quality,
+          qa_notes: Array.isArray(p.qa_notes) ? p.qa_notes : [],
+        };
+      });
+
+      setBatchRows(restored);
+      setParsedRows(restored);
+      setFileName('Restored from database');
+      setPhase('qa');
+      toast({ title: `Restored ${restored.length} board result pages from database` });
+    } catch (e: any) {
+      toast({ title: 'Restore failed', description: e.message, variant: 'destructive' });
+    }
+  }, [toast]);
+
   // ── Stats ──
   const validCount = parsedRows.filter(r => r.valid).length;
   const invalidCount = parsedRows.filter(r => !r.valid).length;
@@ -862,6 +919,12 @@ export function BoardResultGenerator() {
               className="hidden"
               onChange={handleFileUpload}
             />
+            <div className="border-t border-border pt-4 mt-2 w-full flex flex-col items-center gap-2">
+              <p className="text-xs text-muted-foreground">Or restore previously generated pages from database</p>
+              <Button variant="outline" size="sm" onClick={restoreFromDb} disabled={isRunning}>
+                <RotateCcw className="h-3.5 w-3.5 mr-1" /> Restore from Database
+              </Button>
+            </div>
           </CardContent>
         </Card>
       )}

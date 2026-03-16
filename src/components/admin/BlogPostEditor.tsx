@@ -1342,28 +1342,52 @@ export function BlogPostEditor() {
         <Button variant="outline" size="sm" onClick={handleCheckDuplicateSlugs}>
           <AlertTriangle className="h-4 w-4 mr-1" />Check Duplicate Slugs
         </Button>
-        <Button variant="outline" size="sm" onClick={handleBulkGenerateCoverImages} disabled={isBulkCoverRunning}>
-          {isBulkCoverRunning ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <ImageIcon className="h-4 w-4 mr-1" />}
-          {isBulkCoverRunning
-            ? `Generating… ${bulkCoverProgress ? `${bulkCoverProgress.done}/${bulkCoverProgress.total}` : ''}`
-            : 'Generate Missing Cover Images'}
-        </Button>
-        {isBulkCoverRunning && (
-          <Button variant="destructive" size="sm" onClick={() => { bulkCoverAbortRef.current = true; }}>
-            <Square className="h-4 w-4 mr-1" />Stop
+        {/* Cover Image: model selector + generate button */}
+        <div className="flex items-center gap-1">
+          <Select value={coverImageModel} onValueChange={handleCoverImageModelChange}>
+            <SelectTrigger className="h-8 w-[140px] text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="gemini-flash-image">Gemini Flash</SelectItem>
+              <SelectItem value="vertex-imagen">Vertex Imagen</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button variant="outline" size="sm" onClick={handleBulkGenerateCoverImages} disabled={isBulkCoverRunning}>
+            {isBulkCoverRunning ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <ImageIcon className="h-4 w-4 mr-1" />}
+            {isBulkCoverRunning
+              ? `Generating… ${bulkCoverProgress ? `${bulkCoverProgress.done}/${bulkCoverProgress.total}` : ''}`
+              : 'Cover Images'}
           </Button>
-        )}
-        <Button variant="outline" size="sm" onClick={handleBulkGenerateInlineImages} disabled={isBulkInlineRunning}>
-          {isBulkInlineRunning ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <ImageIcon className="h-4 w-4 mr-1" />}
-          {isBulkInlineRunning
-            ? `In-Between… ${bulkInlineProgress ? `${bulkInlineProgress.done}/${bulkInlineProgress.total}` : ''}`
-            : 'Generate Pending In-Between Images'}
-        </Button>
-        {isBulkInlineRunning && (
-          <Button variant="destructive" size="sm" onClick={() => { bulkInlineAbortRef.current = true; }}>
-            <Square className="h-4 w-4 mr-1" />Stop
+          {isBulkCoverRunning && (
+            <Button variant="destructive" size="sm" onClick={() => { bulkCoverAbortRef.current = true; }}>
+              <Square className="h-4 w-4 mr-1" />Stop
+            </Button>
+          )}
+        </div>
+        {/* Inline Image: model selector + generate button */}
+        <div className="flex items-center gap-1">
+          <Select value={inlineImageModel} onValueChange={handleInlineImageModelChange}>
+            <SelectTrigger className="h-8 w-[140px] text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="vertex-imagen">Vertex Imagen</SelectItem>
+              <SelectItem value="gemini-flash-image">Gemini Flash</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button variant="outline" size="sm" onClick={handleBulkGenerateInlineImages} disabled={isBulkInlineRunning}>
+            {isBulkInlineRunning ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <ImageIcon className="h-4 w-4 mr-1" />}
+            {isBulkInlineRunning
+              ? `In-Between… ${bulkInlineProgress ? `${bulkInlineProgress.done}/${bulkInlineProgress.total}` : ''}`
+              : 'In-Between Images'}
           </Button>
-        )}
+          {isBulkInlineRunning && (
+            <Button variant="destructive" size="sm" onClick={() => { bulkInlineAbortRef.current = true; }}>
+              <Square className="h-4 w-4 mr-1" />Stop
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* ── Bulk Article Generator ── */}

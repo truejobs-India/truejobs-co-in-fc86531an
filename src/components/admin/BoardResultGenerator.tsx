@@ -1030,7 +1030,7 @@ export function BoardResultGenerator() {
                             bRow.quality && bRow.quality.score < 65 ? 'bg-orange-50/50 dark:bg-orange-950/10' : ''
                           }
                         >
-                          {phase === 'preview' && (
+                          {(phase === 'preview' || phase === 'qa') && (
                             <TableCell>
                               <Checkbox
                                 disabled={!row.valid}

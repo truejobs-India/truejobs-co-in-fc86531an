@@ -51,6 +51,9 @@ function buildImagePrompt(pageType: string, context: {
     case 'result-landing':
       return `${base} Scene: A single Indian student (young woman or young man, around 18 years old) checking ${context.board_name || 'board exam'} ${context.variant === 'class-10' ? 'Class 10' : context.variant === 'class-12' ? 'Class 12' : ''} results on a laptop in a calm, modern Indian home setting. Expression is focused and hopeful. Clean, uncluttered background. Photojournalistic editorial style. Medium close-up composition suitable for a result page hero.`;
 
+    case 'board-logo':
+      return `Clean, professional, minimal logo design for the ${context.board_name || 'Board of Education'} (${context.state_ut || 'India'}). Official government education board emblem style. Simple geometric shapes, clean lines, professional colors (navy blue, gold, dark green). Centered composition on a solid white background. No photographic elements, no text, no watermarks. Suitable as a small icon or badge on a website.`;
+
     default:
       return `${base} Scene: Indian students in a modern educational setting checking exam results online. Aspirational, clean, trustworthy. Editorial photography style.`;
   }

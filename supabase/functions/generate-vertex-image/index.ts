@@ -441,31 +441,28 @@ serve(async (req) => {
 
     console.log(`[generate-vertex-image] Routing: purpose=${purpose || 'none'}, model=${body.model || 'none'}, slug=${slug}`);
 
-    // ── Purpose-based enforced routing ──
+    // ── Purpose-based routing (respects model from request body) ──
     if (purpose === 'cover') {
-      // Cover images ALWAYS use Gemini Flash Image
+      const selectedCoverModel = body.model || 'gemini-flash-image';
       const imagePrompt = buildCoverImagePrompt(body);
-      console.log(`[generate-vertex-image] ENFORCED: purpose=cover → gemini-flash-image`);
+      console.log(`[generate-vertex-image] purpose=cover → ${selectedCoverModel}`);
+      if (selectedCoverModel === 'vertex-imagen') {
+        const aspectRatio = ASPECT_RATIOS[body.aspectRatio || '16:9'] || '16:9';
+        return await generateViaImagen(body, slug, imagePrompt, 1, aspectRatio, adminClient, startMs);
+      }
       return await generateViaGeminiFlashImage(body, slug, imagePrompt, adminClient, startMs);
     }
 
     if (purpose === 'inline') {
-      // Inline images: try Imagen first, fallback to Gemini Flash Image on quota/failure
+      // Inline images: use model from request body, default to Imagen
+      const selectedInlineModel = body.model || 'vertex-imagen';
       const imagePrompt = buildInlineImagePrompt(body);
       const aspectRatio = '4:3'; // Enforced for inline
-      console.log(`[generate-vertex-image] ENFORCED: purpose=inline → vertex-imagen, slot=${body.slotNumber}`);
-      try {
-        const imagenResult = await generateViaImagen(body, slug, imagePrompt, 1, aspectRatio, adminClient, startMs);
-        const resultBody = await imagenResult.clone().json();
-        if (resultBody.success) return imagenResult;
-        // Imagen failed (empty predictions, upload failures, etc.) — fallback
-        console.warn(`[generate-vertex-image] Imagen failed for inline (${resultBody.error}), falling back to Gemini Flash Image`);
-      } catch (imagenErr: any) {
-        console.warn(`[generate-vertex-image] Imagen threw for inline (${imagenErr.message}), falling back to Gemini Flash Image`);
+      console.log(`[generate-vertex-image] ENFORCED: purpose=inline → ${selectedInlineModel}, slot=${body.slotNumber}`);
+      if (selectedInlineModel === 'gemini-flash-image') {
+        return await generateViaGeminiFlashImage({ ...body, purpose: 'inline' }, slug, imagePrompt, adminClient, startMs);
       }
-      // Fallback: use Gemini Flash Image for inline
-      console.log(`[generate-vertex-image] FALLBACK: purpose=inline → gemini-flash-image, slot=${body.slotNumber}`);
-      return await generateViaGeminiFlashImage({ ...body, purpose: 'inline' }, slug, imagePrompt, adminClient, startMs);
+      return await generateViaImagen(body, slug, imagePrompt, 1, aspectRatio, adminClient, startMs);
     }
 
     // ── Backward-compatible model-based routing (no purpose specified) ──

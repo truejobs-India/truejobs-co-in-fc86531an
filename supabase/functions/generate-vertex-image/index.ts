@@ -397,7 +397,20 @@ async function generateViaImagen(
     const mimeType = prediction.mimeType || 'image/png';
 
     if (!base64Data) {
-      console.warn(`[vertex-imagen] prediction ${i} has no image data`);
+      console.warn(`[vertex-imagen] prediction ${i} has no image data (likely safety-filtered)`);
+      continue;
+    }
+
+    // Decode and validate image bytes
+    let imageBytes: Uint8Array;
+    try {
+      imageBytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+      if (imageBytes.length < 100) {
+        console.warn(`[vertex-imagen] prediction ${i} has suspiciously small image (${imageBytes.length} bytes)`);
+        continue;
+      }
+    } catch (decodeErr) {
+      console.error(`[vertex-imagen] prediction ${i} base64 decode failed:`, decodeErr);
       continue;
     }
 
@@ -407,7 +420,6 @@ async function generateViaImagen(
       : (predictions.length > 1 ? `-${i + 1}` : '');
     const filePath = `${pathPrefix}/${slug}-vertex${suffix}.${ext}`;
 
-    const imageBytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
     const blob = new Blob([imageBytes], { type: mimeType });
 
     const { error: uploadError } = await adminClient.storage
@@ -432,11 +444,16 @@ async function generateViaImagen(
   }
 
   if (!images.length) {
+    // Check if all predictions were safety-filtered (no image data)
+    const hadImageData = predictions.some(p => p.bytesBase64Encoded);
+    const errorMsg = hadImageData
+      ? 'Images generated but all uploads to storage failed. Check storage bucket permissions.'
+      : 'Image generation was filtered by safety settings. Try a different prompt or topic.';
     return new Response(JSON.stringify({
       success: false,
-      error: 'Images generated but all uploads failed',
+      error: errorMsg,
       model: IMAGEN_MODEL,
-    }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }), { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 
   const elapsed = Date.now() - startMs;

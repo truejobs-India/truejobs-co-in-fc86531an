@@ -602,11 +602,25 @@ export function BoardResultGenerator() {
         </div>
         <div className="flex gap-2 items-center">
           <AiModelSelector value={aiModel} onValueChange={setAiModel} capability="text" triggerClassName="w-[180px]" />
-          {phase !== 'upload' && (
-            <Button variant="outline" size="sm" onClick={() => { setPhase('upload'); setParsedRows([]); setBatchRows([]); setBatchId(null); setFileName(''); }}>
-              Reset
-            </Button>
+          {phase !== 'upload' && !isRunning && (
+            <Label htmlFor="xlsx-reupload" className="cursor-pointer">
+              <Button asChild variant="outline" size="sm">
+                <span><Upload className="h-3 w-3 mr-1" /> Upload New File</span>
+              </Button>
+            </Label>
           )}
+          <Input
+            id="xlsx-reupload"
+            type="file"
+            accept=".xlsx,.csv,.xls"
+            className="hidden"
+            onChange={(e) => {
+              handleFileUpload(e);
+              setBatchRows([]);
+              setBatchId(null);
+              setSelectedRows(new Set());
+            }}
+          />
         </div>
       </div>
 

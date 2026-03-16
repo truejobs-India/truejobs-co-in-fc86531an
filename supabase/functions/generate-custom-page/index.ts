@@ -578,6 +578,32 @@ Rules:
       });
     }
 
+    // ── Generate board result page ──
+    if (action === 'generate-result') {
+      const { state_ut, board_name, board_abbr, result_url, official_board_url, seo_intro, variant, target_word_count, sibling_slugs } = body;
+      if (!state_ut || !board_name) return new Response(JSON.stringify({ error: 'state_ut and board_name required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+
+      const prompt = generateResultPagePrompt({
+        state_ut,
+        board_name,
+        board_abbr: board_abbr || board_name,
+        result_url: result_url || '',
+        official_board_url: official_board_url || '',
+        seo_intro: seo_intro || '',
+        variant: variant || 'main',
+        target_word_count: target_word_count || 2000,
+        sibling_slugs: sibling_slugs || [],
+      });
+
+      console.log(`[generate-custom-page] generate-result action, model=${model}, board=${board_abbr}, variant=${variant}`);
+      const raw = await callAI(model, prompt);
+      const parsed = parseAIResponse(raw);
+
+      return new Response(JSON.stringify({ success: true, data: parsed, model, action }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     // ── Validate bulk topics ──
     if (action === 'validate-bulk') {
       const { topics } = body;

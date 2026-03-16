@@ -769,6 +769,22 @@ export function BoardResultGenerator() {
                             bRow.quality && bRow.quality.score < 65 ? 'bg-orange-50/50 dark:bg-orange-950/10' : ''
                           }
                         >
+                          {phase === 'preview' && (
+                            <TableCell>
+                              <Checkbox
+                                disabled={!row.valid}
+                                checked={selectedRows.has(row.rowIndex)}
+                                onCheckedChange={(checked) => {
+                                  setSelectedRows(prev => {
+                                    const next = new Set(prev);
+                                    if (checked) next.add(row.rowIndex);
+                                    else next.delete(row.rowIndex);
+                                    return next;
+                                  });
+                                }}
+                              />
+                            </TableCell>
+                          )}
                           <TableCell className="text-xs text-muted-foreground">{row.rowIndex + 1}</TableCell>
                           <TableCell className="text-sm">{row.state_ut}</TableCell>
                           <TableCell className="text-sm max-w-[200px] truncate" title={row.board_name}>{row.board_name}</TableCell>

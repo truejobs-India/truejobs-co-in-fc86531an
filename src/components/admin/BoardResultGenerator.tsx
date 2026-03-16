@@ -645,7 +645,7 @@ export function BoardResultGenerator() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All ({displayRows.length})</SelectItem>
+                  <SelectItem value="all">All ({filteredRows.length})</SelectItem>
                   <SelectItem value="conflicts">Conflicts ({conflicts})</SelectItem>
                   <SelectItem value="failed">Failed ({failed})</SelectItem>
                   <SelectItem value="low-quality">Low Quality ({lowQuality})</SelectItem>

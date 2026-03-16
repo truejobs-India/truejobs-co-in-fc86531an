@@ -703,7 +703,7 @@ export function BoardResultGenerator() {
                             {bRow.status === 'queued' && <span className="text-muted-foreground text-xs">—</span>}
                             {bRow.status === 'generating' && <Loader2 className="h-4 w-4 animate-spin text-primary mx-auto" />}
                             {bRow.status === 'success' && <CheckCircle className="h-4 w-4 text-emerald-600 mx-auto" />}
-                            {bRow.status === 'failed' && <XCircle className="h-4 w-4 text-destructive mx-auto" title={bRow.error} />}
+                            {bRow.status === 'failed' && <XCircle className="h-4 w-4 text-destructive mx-auto" />}
                             {bRow.status === 'skipped' && <span className="text-xs text-muted-foreground">skip</span>}
                           </TableCell>
                           <TableCell className="text-center text-xs">

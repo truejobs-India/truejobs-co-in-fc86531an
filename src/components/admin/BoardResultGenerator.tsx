@@ -95,6 +95,8 @@ export function BoardResultGenerator() {
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
   const [targetWordCount, setTargetWordCount] = useState<number | null>(initial.current?.targetWordCount || null);
   const [imageGenLoading, setImageGenLoading] = useState<Set<number>>(new Set());
+  const [storedFileUrl, setStoredFileUrl] = useState<string | null>(initial.current?.storedFileUrl || null);
+  const [storedFilePath, setStoredFilePath] = useState<string | null>(initial.current?.storedFilePath || null);
 
   // Persist parsed rows, fileName, phase, word count, and image model to localStorage
   useEffect(() => {

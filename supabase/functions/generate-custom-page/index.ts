@@ -50,7 +50,19 @@ async function callGroq(prompt: string): Promise<string> {
 }
 
 async function callMistral(prompt: string): Promise<string> {
-  return callLovableGemini(prompt);
+  const apiKey = Deno.env.get('LOVABLE_API_KEY');
+  if (!apiKey) throw new Error('LOVABLE_API_KEY not configured');
+  const resp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: 'google/gemini-2.5-flash', messages: [{ role: 'user', content: prompt }], temperature: 0.6, max_tokens: 8192 }),
+  });
+  if (!resp.ok) {
+    const errText = await resp.text();
+    throw new Error(`Mistral/Gateway error (${resp.status}): ${errText.substring(0, 300)}`);
+  }
+  const data = await resp.json();
+  return data?.choices?.[0]?.message?.content || '';
 }
 
 async function callClaude(prompt: string): Promise<string> {
@@ -82,15 +94,50 @@ async function callLovableGemini(prompt: string): Promise<string> {
   return data?.choices?.[0]?.message?.content || '';
 }
 
-async function callOpenAI(prompt: string): Promise<string> {
+async function callOpenAI(prompt: string, model = 'gpt-4o'): Promise<string> {
   const apiKey = Deno.env.get('OPENAI_API_KEY');
   if (!apiKey) throw new Error('OPENAI_API_KEY not configured');
   const resp = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: 'gpt-4o', messages: [{ role: 'user', content: prompt }], temperature: 0.6, max_tokens: 8192 }),
+    body: JSON.stringify({ model, messages: [{ role: 'user', content: prompt }], temperature: 0.6, max_tokens: 8192 }),
   });
-  if (!resp.ok) throw new Error(`OpenAI error: ${resp.status}`);
+  if (!resp.ok) {
+    const errText = await resp.text();
+    throw new Error(`OpenAI error (${resp.status}): ${errText.substring(0, 300)}`);
+  }
+  const data = await resp.json();
+  return data?.choices?.[0]?.message?.content || '';
+}
+
+async function callGeminiPro(prompt: string): Promise<string> {
+  const apiKey = Deno.env.get('LOVABLE_API_KEY');
+  if (!apiKey) throw new Error('LOVABLE_API_KEY not configured');
+  const resp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: 'google/gemini-2.5-pro', messages: [{ role: 'user', content: prompt }], temperature: 0.6, max_tokens: 8192 }),
+  });
+  if (!resp.ok) {
+    const errText = await resp.text();
+    throw new Error(`Gemini Pro/Gateway error (${resp.status}): ${errText.substring(0, 300)}`);
+  }
+  const data = await resp.json();
+  return data?.choices?.[0]?.message?.content || '';
+}
+
+async function callGpt5Mini(prompt: string): Promise<string> {
+  const apiKey = Deno.env.get('LOVABLE_API_KEY');
+  if (!apiKey) throw new Error('LOVABLE_API_KEY not configured');
+  const resp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: 'openai/gpt-5-mini', messages: [{ role: 'user', content: prompt }], temperature: 0.6, max_tokens: 8192 }),
+  });
+  if (!resp.ok) {
+    const errText = await resp.text();
+    throw new Error(`GPT-5 Mini/Gateway error (${resp.status}): ${errText.substring(0, 300)}`);
+  }
   const data = await resp.json();
   return data?.choices?.[0]?.message?.content || '';
 }
@@ -116,11 +163,13 @@ async function callVertexPro(prompt: string): Promise<string> {
 async function callAI(model: string, prompt: string): Promise<string> {
   switch (model) {
     case 'gemini': case 'gemini-flash': return callGemini(prompt);
+    case 'gemini-pro': return callGeminiPro(prompt);
     case 'groq': return callGroq(prompt);
     case 'claude': case 'claude-sonnet': return callClaude(prompt);
     case 'mistral': return callMistral(prompt);
     case 'lovable-gemini': return callLovableGemini(prompt);
     case 'openai': case 'gpt5': return callOpenAI(prompt);
+    case 'gpt5-mini': return callGpt5Mini(prompt);
     case 'vertex-flash': return callVertexFlash(prompt);
     case 'vertex-pro': return callVertexPro(prompt);
     default: return callGemini(prompt);

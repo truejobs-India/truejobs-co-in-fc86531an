@@ -961,7 +961,28 @@ export function BoardResultGenerator() {
                               </span>
                             ) : '—'}
                           </TableCell>
-                          <TableCell className="text-center">
+                          <TableCell className="text-center text-xs">
+                            {bRow.quality ? (
+                              <span className={bRow.quality.wordCount >= 1000 ? 'text-emerald-600' : 'text-amber-600'}>
+                                {bRow.quality.wordCount.toLocaleString()}
+                              </span>
+                            ) : '—'}
+                          </TableCell>
+                          <TableCell className="text-center text-xs">
+                            {bRow.status === 'success' ? (
+                              imageGenLoading.has(realIdx) ? (
+                                <Loader2 className="h-3 w-3 animate-spin mx-auto text-primary" />
+                              ) : (
+                                <Button
+                                  variant="ghost" size="icon" className="h-6 w-6"
+                                  title="Generate hero image"
+                                  onClick={() => generateImageForPage(realIdx)}
+                                >
+                                  🖼️
+                                </Button>
+                              )
+                            ) : '—'}
+                          </TableCell>
                             {issueCount > 0 ? (
                               <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setExpandedRow(isExpanded ? null : realIdx)}>
                                 <span className="text-xs text-amber-600 font-bold">{issueCount}</span>

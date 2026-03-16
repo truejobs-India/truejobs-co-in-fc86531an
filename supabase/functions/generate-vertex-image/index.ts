@@ -420,7 +420,6 @@ async function generateViaImagen(
       : (predictions.length > 1 ? `-${i + 1}` : '');
     const filePath = `${pathPrefix}/${slug}-vertex${suffix}.${ext}`;
 
-    const imageBytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
     const blob = new Blob([imageBytes], { type: mimeType });
 
     const { error: uploadError } = await adminClient.storage

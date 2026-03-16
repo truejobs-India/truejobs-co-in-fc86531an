@@ -109,30 +109,46 @@ export async function callVertexGemini(
 
   console.log(`[vertex-ai] model=${model} timeout=${timeoutMs}ms maxTokens=${generationConfig.maxOutputTokens} mimeType=${generationConfig.responseMimeType || 'text/plain'} promptLen=${prompt.length}`);
 
-  try {
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig,
-      }),
-      signal: controller.signal,
-    });
+  const maxRetries = 3;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-    if (!resp.ok) {
-      const errText = await resp.text();
-      throw new Error(`Vertex AI error (${resp.status}): ${errText.substring(0, 500)}`);
+    try {
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          generationConfig,
+        }),
+        signal: controller.signal,
+      });
+
+      if (resp.status === 429 && attempt < maxRetries) {
+        clearTimeout(timer);
+        const wait = Math.min(2000 * Math.pow(2, attempt), 30000) + Math.random() * 1000;
+        console.log(`[vertex-ai] 429 rate limited, retry ${attempt + 1}/${maxRetries} after ${Math.round(wait)}ms`);
+        await new Promise(r => setTimeout(r, wait));
+        continue;
+      }
+
+      if (!resp.ok) {
+        const errText = await resp.text();
+        throw new Error(`Vertex AI error (${resp.status}): ${errText.substring(0, 500)}`);
+      }
+
+      const data = await resp.json();
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      console.log(`[vertex-ai] model=${model} responseLen=${text.length}`);
+      return text;
+    } finally {
+      clearTimeout(timer);
     }
-
-    const data = await resp.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    console.log(`[vertex-ai] model=${model} responseLen=${text.length}`);
-    return text;
-  } finally {
-    clearTimeout(timer);
   }
+
+  throw new Error('Vertex AI: max retries exceeded (429)');
 }

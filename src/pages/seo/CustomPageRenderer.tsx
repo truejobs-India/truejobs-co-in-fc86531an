@@ -165,6 +165,32 @@ export default function CustomPageRenderer() {
         {/* Title */}
         <h1 className="text-3xl font-bold text-foreground mb-4">{page.title}</h1>
 
+        {/* Result landing CTA buttons */}
+        {isResultLanding && (page.result_url || page.official_board_url) && (
+          <div className="flex flex-wrap gap-3 mb-6">
+            {page.result_url && (
+              <a
+                href={page.result_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition-colors"
+              >
+                <ExternalLink className="h-4 w-4" /> Check Result Now
+              </a>
+            )}
+            {page.official_board_url && (
+              <a
+                href={page.official_board_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-5 py-2.5 border border-border rounded-lg font-medium hover:bg-muted transition-colors text-foreground"
+              >
+                <ExternalLink className="h-4 w-4" /> Official Board Website
+              </a>
+            )}
+          </div>
+        )}
+
         {/* Meta row */}
         <div className="flex flex-wrap gap-3 items-center text-sm text-muted-foreground mb-6">
           {page.published_at && (
@@ -173,11 +199,17 @@ export default function CustomPageRenderer() {
               {new Date(page.published_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
             </span>
           )}
+          {isResultLanding && page.updated_at && (
+            <span className="flex items-center gap-1 text-xs">
+              Updated: {new Date(page.updated_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+            </span>
+          )}
           <span className="flex items-center gap-1">
             <Clock className="h-3.5 w-3.5" />
             {page.reading_time || Math.ceil((page.word_count || 300) / 200)} min read
           </span>
-          <Badge variant="outline" className="text-xs">{page.page_type}</Badge>
+          {page.result_variant && <Badge variant="outline" className="text-xs capitalize">{page.result_variant.replace(/-/g, ' ')}</Badge>}
+          {!isResultLanding && <Badge variant="outline" className="text-xs">{page.page_type}</Badge>}
         </div>
 
         {/* Tags */}
@@ -215,6 +247,34 @@ export default function CustomPageRenderer() {
               ))}
             </div>
           </section>
+        )}
+
+        {/* Related Results (for result-landing pages) */}
+        {isResultLanding && internalLinks.length > 0 && (
+          <section className="mt-10">
+            <h2 className="text-2xl font-bold text-foreground mb-4">Related Results</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {internalLinks.map((link: any, i: number) => (
+                <a
+                  key={i}
+                  href={`/${link.slug}`}
+                  className="flex items-center gap-2 p-3 border rounded-lg hover:bg-muted/50 transition-colors text-sm"
+                >
+                  <ExternalLink className="h-3.5 w-3.5 text-primary shrink-0" />
+                  <span className="text-foreground">{link.title}</span>
+                </a>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Disclaimer for result-landing pages */}
+        {isResultLanding && (
+          <div className="mt-8 p-4 bg-muted/50 rounded-lg text-xs text-muted-foreground">
+            <strong>Disclaimer:</strong> The information on this page is for informational purposes only.
+            For official and latest information, please visit the official board website.
+            TrueJobs is not responsible for any discrepancy in the information provided.
+          </div>
         )}
       </article>
     </Layout>

@@ -142,8 +142,24 @@ export async function callVertexGemini(
       }
 
       const data = await resp.json();
-      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-      console.log(`[vertex-ai] model=${model} responseLen=${text.length}`);
+      const candidate = data?.candidates?.[0];
+      const finishReason = candidate?.finishReason;
+      const text = candidate?.content?.parts?.[0]?.text || '';
+      console.log(`[vertex-ai] model=${model} responseLen=${text.length} finishReason=${finishReason}`);
+
+      // Empty response with retries remaining — retry (model sometimes returns empty on overload)
+      if (!text && attempt < maxRetries) {
+        clearTimeout(timer);
+        const wait = 3000 + Math.random() * 2000;
+        console.log(`[vertex-ai] Empty response (finishReason=${finishReason}), retry ${attempt + 1}/${maxRetries} after ${Math.round(wait)}ms`);
+        await new Promise(r => setTimeout(r, wait));
+        continue;
+      }
+
+      if (!text) {
+        throw new Error(`Vertex AI returned empty response (finishReason=${finishReason}, blockReason=${data?.promptFeedback?.blockReason || 'none'})`);
+      }
+
       return text;
     } finally {
       clearTimeout(timer);

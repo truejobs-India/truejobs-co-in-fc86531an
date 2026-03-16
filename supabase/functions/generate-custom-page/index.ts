@@ -69,12 +69,15 @@ async function callClaude(prompt: string): Promise<string> {
 async function callLovableGemini(prompt: string): Promise<string> {
   const apiKey = Deno.env.get('LOVABLE_API_KEY');
   if (!apiKey) throw new Error('LOVABLE_API_KEY not configured');
-  const resp = await fetch('https://api.lovable.dev/v1/chat/completions', {
+  const resp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ model: 'google/gemini-2.5-flash', messages: [{ role: 'user', content: prompt }], temperature: 0.6, max_tokens: 8192 }),
   });
-  if (!resp.ok) throw new Error(`Lovable Gemini error: ${resp.status}`);
+  if (!resp.ok) {
+    const errText = await resp.text();
+    throw new Error(`Lovable Gemini error (${resp.status}): ${errText.substring(0, 300)}`);
+  }
   const data = await resp.json();
   return data?.choices?.[0]?.message?.content || '';
 }

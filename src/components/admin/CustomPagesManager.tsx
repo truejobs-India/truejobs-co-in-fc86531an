@@ -668,6 +668,23 @@ export function CustomPagesManager() {
       )}
 
       {/* ═══════════════════════════════════════════════════════════ */}
+      {/* AI WORKFLOWS VIEW */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {viewMode === 'ai-workflows' && (
+        <div className="space-y-4">
+          <BulkPageWorkflow
+            title="Custom Pages — Bulk AI Workflows"
+            onPagesChanged={loadPages}
+          />
+          <BulkPageWorkflow
+            pageTypeFilter="result-landing"
+            title="Board Result Pages — Bulk AI Workflows"
+            onPagesChanged={loadPages}
+          />
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════ */}
       {/* BOARD RESULTS VIEW */}
       {/* ═══════════════════════════════════════════════════════════ */}
       {viewMode === 'board-results' && <BoardResultGenerator />}

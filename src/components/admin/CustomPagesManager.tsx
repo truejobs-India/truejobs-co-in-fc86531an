@@ -456,6 +456,9 @@ export function CustomPagesManager() {
           <Button variant={viewMode === 'bulk' ? 'default' : 'outline'} size="sm" onClick={() => setViewMode('bulk')}>
             <Zap className="h-4 w-4 mr-1" /> Bulk Generate
           </Button>
+          <Button variant={viewMode === 'board-results' ? 'default' : 'outline'} size="sm" onClick={() => setViewMode('board-results')}>
+            <FileSpreadsheet className="h-4 w-4 mr-1" /> Board Results
+          </Button>
           <Button size="sm" onClick={() => openEditor()}>
             <Plus className="h-4 w-4 mr-1" /> New Page
           </Button>

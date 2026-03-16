@@ -1,0 +1,881 @@
+/**
+ * BoardResultGenerator — Admin UI for XLSX-driven board result page generation.
+ * Handles: upload, validation, conflict detection, batch generation, QA, publish, hub pages.
+ */
+import { useState, useRef, useCallback, useEffect } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { AiModelSelector } from '@/components/admin/AiModelSelector';
+import { getModelSpeed } from '@/lib/aiModels';
+import { scoreCustomPage, type QualityBreakdown } from '@/lib/pageQualityScorer';
+import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
+import {
+  generateSlug, extractBoardAbbr, mapVariant, getTargetWordCount,
+  autoSelectSamples, buildInternalLinkMap, buildConflictNote,
+  buildConflictResolvedNote, parseConflictNote, type BoardResultRow,
+  type ConflictInfo,
+} from '@/lib/boardResultUtils';
+import * as XLSX from 'xlsx';
+import {
+  Upload, Loader2, CheckCircle, XCircle, AlertTriangle, Eye,
+  FileSpreadsheet, Zap, RotateCcw, Globe, ChevronDown, ChevronUp,
+  ExternalLink, Square,
+} from 'lucide-react';
+
+// ═══════════════════════════════════════════════════════════════
+// Types
+// ═══════════════════════════════════════════════════════════════
+
+interface ParsedRow extends BoardResultRow {
+  slug: string;
+  variant: string;
+  board_abbr: string;
+  valid: boolean;
+  errors: string[];
+  rowIndex: number;
+}
+
+interface BatchRow extends ParsedRow {
+  status: 'queued' | 'generating' | 'success' | 'failed' | 'skipped';
+  error?: string;
+  pageId?: string;
+  quality?: QualityBreakdown;
+  qa_notes: string[];
+  conflictInfo?: ConflictInfo;
+}
+
+type Phase = 'upload' | 'preview' | 'generating' | 'qa';
+
+// ═══════════════════════════════════════════════════════════════
+// Component
+// ═══════════════════════════════════════════════════════════════
+
+export function BoardResultGenerator() {
+  const { toast } = useToast();
+  const { user } = useAuth();
+
+  const [phase, setPhase] = useState<Phase>('upload');
+  const [aiModel, setAiModel] = useState('gemini-flash');
+  const [parsedRows, setParsedRows] = useState<ParsedRow[]>([]);
+  const [batchRows, setBatchRows] = useState<BatchRow[]>([]);
+  const [batchId, setBatchId] = useState<string | null>(null);
+  const [isRunning, setIsRunning] = useState(false);
+  const abortRef = useRef(false);
+  const [fileName, setFileName] = useState('');
+  const [conflictDialog, setConflictDialog] = useState<{ index: number; info: ConflictInfo } | null>(null);
+  const [expandedRow, setExpandedRow] = useState<number | null>(null);
+  const [filter, setFilter] = useState<'all' | 'conflicts' | 'failed' | 'low-quality'>('all');
+
+  // ── File Upload & Parse ──
+  const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setFileName(file.name);
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const data = new Uint8Array(evt.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json<Record<string, string>>(sheet);
+
+        const rows: ParsedRow[] = json.map((row, i) => {
+          const errors: string[] = [];
+          const state_ut = (row['state_ut'] || row['State/UT'] || row['state'] || '').trim();
+          const board_name = (row['board_name'] || row['Board Name'] || row['board'] || '').trim();
+          const result_url = (row['result_url'] || row['Result URL'] || '').trim();
+          const official_board_url = (row['official_board_url'] || row['Official Board URL'] || '').trim();
+          const seo_intro_text = (row['seo_intro_text'] || row['SEO Intro'] || '').trim();
+
+          if (!state_ut) errors.push('Missing state_ut');
+          if (!board_name) errors.push('Missing board_name');
+          if (!result_url) errors.push('Missing result_url');
+          else if (!/^https?:\/\//.test(result_url)) errors.push('Invalid result_url (must start with http)');
+          if (!official_board_url) errors.push('Missing official_board_url');
+          else if (!/^https?:\/\//.test(official_board_url)) errors.push('Invalid official_board_url');
+
+          const variant = mapVariant(board_name);
+          const board_abbr = extractBoardAbbr(board_name);
+          const slug = state_ut && board_name ? generateSlug(state_ut, board_name) : '';
+
+          return {
+            state_ut, board_name, result_url, official_board_url, seo_intro_text,
+            slug, variant, board_abbr,
+            valid: errors.length === 0,
+            errors,
+            rowIndex: i,
+          };
+        });
+
+        // Check intra-file duplicate slugs
+        const slugCounts = new Map<string, number[]>();
+        rows.forEach((r, i) => {
+          if (r.slug) {
+            const existing = slugCounts.get(r.slug) || [];
+            existing.push(i);
+            slugCounts.set(r.slug, existing);
+          }
+        });
+        slugCounts.forEach((indices, slug) => {
+          if (indices.length > 1) {
+            indices.forEach(i => {
+              rows[i].errors.push(`Duplicate slug "${slug}" in rows ${indices.map(x => x + 1).join(', ')}`);
+              rows[i].valid = false;
+            });
+          }
+        });
+
+        setParsedRows(rows);
+        setPhase('preview');
+        toast({ title: `Parsed ${rows.length} rows from ${file.name}` });
+      } catch (err: any) {
+        toast({ title: 'Parse error', description: err.message, variant: 'destructive' });
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }, [toast]);
+
+  // ── Cross-batch conflict detection ──
+  const checkConflicts = useCallback(async (rows: ParsedRow[]): Promise<BatchRow[]> => {
+    // Query existing pages with matching page_type
+    const slugs = rows.filter(r => r.valid).map(r => r.slug);
+    const { data: existingPages } = await supabase
+      .from('custom_pages')
+      .select('id, slug, title, state_ut, board_name, result_variant, import_batch_id')
+      .in('slug', slugs);
+
+    const existingBySlug = new Map<string, any>();
+    (existingPages || []).forEach(p => existingBySlug.set(p.slug, p));
+
+    // Also check by state_ut + board_name + result_variant
+    const { data: matchByFields } = await supabase
+      .from('custom_pages')
+      .select('id, slug, title, state_ut, board_name, result_variant, import_batch_id')
+      .not('state_ut', 'is', null)
+      .not('result_variant', 'is', null);
+
+    const fieldMatchMap = new Map<string, any>();
+    (matchByFields || []).forEach(p => {
+      const key = `${p.state_ut}|${p.board_name}|${p.result_variant}`;
+      fieldMatchMap.set(key, p);
+    });
+
+    return rows.map(r => {
+      const qa_notes: string[] = [];
+      let conflictInfo: ConflictInfo | undefined;
+
+      if (r.valid) {
+        // Check slug collision
+        const existing = existingBySlug.get(r.slug);
+        if (existing) {
+          conflictInfo = {
+            existing_page_id: existing.id,
+            existing_slug: existing.slug,
+            existing_batch: existing.import_batch_id || '',
+            existing_title: existing.title,
+            match_type: 'slug',
+            new_slug: r.slug,
+          };
+          qa_notes.push(buildConflictNote(conflictInfo));
+        } else {
+          // Check field match
+          const fieldKey = `${r.state_ut}|${r.board_name}|${r.variant}`;
+          const fieldMatch = fieldMatchMap.get(fieldKey);
+          if (fieldMatch) {
+            conflictInfo = {
+              existing_page_id: fieldMatch.id,
+              existing_slug: fieldMatch.slug,
+              existing_batch: fieldMatch.import_batch_id || '',
+              existing_title: fieldMatch.title,
+              match_type: 'state_ut+board_name+result_variant',
+              new_slug: r.slug,
+            };
+            qa_notes.push(buildConflictNote(conflictInfo));
+          }
+        }
+      }
+
+      return {
+        ...r,
+        status: r.valid ? 'queued' as const : 'skipped' as const,
+        qa_notes,
+        conflictInfo,
+      };
+    });
+  }, []);
+
+  // ── Start batch generation ──
+  const startGeneration = useCallback(async () => {
+    if (!user) return;
+    abortRef.current = false;
+    setIsRunning(true);
+
+    // Create batch
+    const { data: batch, error: batchErr } = await supabase
+      .from('import_batches')
+      .insert({
+        source_file_name: fileName,
+        total_rows: parsedRows.filter(r => r.valid).length,
+        started_by: user.id,
+        status: 'in_progress',
+      } as any)
+      .select('id')
+      .single();
+
+    if (batchErr || !batch) {
+      toast({ title: 'Failed to create batch', description: batchErr?.message, variant: 'destructive' });
+      setIsRunning(false);
+      return;
+    }
+    setBatchId(batch.id);
+
+    // Check conflicts
+    const bRows = await checkConflicts(parsedRows);
+    setBatchRows(bRows);
+    setPhase('generating');
+
+    // Build internal link map
+    const validRows = bRows.filter(r => r.valid);
+    const linkMap = buildInternalLinkMap(validRows);
+
+    let completedCount = 0;
+    let failedCount = 0;
+
+    for (let i = 0; i < bRows.length; i++) {
+      if (abortRef.current) break;
+      if (bRows[i].status === 'skipped') continue;
+
+      setBatchRows(prev => prev.map((r, idx) => idx === i ? { ...r, status: 'generating' } : r));
+
+      try {
+        const row = bRows[i];
+        const siblingLinks = linkMap.get(row.slug) || [];
+        const sibSlugs = siblingLinks.map(l => l.slug);
+
+        const { data, error } = await supabase.functions.invoke('generate-custom-page', {
+          body: {
+            action: 'generate-result',
+            state_ut: row.state_ut,
+            board_name: row.board_name,
+            board_abbr: row.board_abbr,
+            result_url: row.result_url,
+            official_board_url: row.official_board_url,
+            seo_intro: row.seo_intro_text || '',
+            variant: row.variant,
+            target_word_count: getTargetWordCount(row.variant),
+            sibling_slugs: sibSlugs,
+            aiModel,
+          },
+        });
+
+        if (error) throw new Error(error.message);
+        if (!data?.success) throw new Error(data?.error || 'Generation failed');
+
+        const d = data.data;
+        const pagePayload = {
+          title: d.title || row.board_name,
+          slug: row.slug,
+          content: d.content || '',
+          excerpt: d.excerpt || null,
+          meta_title: d.meta_title || null,
+          meta_description: d.meta_description || null,
+          category: 'Board Results',
+          tags: d.suggested_tags || [],
+          faq_schema: d.faq_items || [],
+          word_count: d.word_count || 0,
+          reading_time: Math.ceil((d.word_count || 300) / 200),
+          page_type: 'result-landing',
+          status: 'draft',
+          ai_model_used: aiModel,
+          ai_generated_at: new Date().toISOString(),
+          author_id: user.id,
+          state_ut: row.state_ut,
+          board_name: row.board_name,
+          result_url: row.result_url,
+          official_board_url: row.official_board_url,
+          result_variant: row.variant,
+          import_batch_id: batch.id,
+          source_row_index: row.rowIndex,
+          generation_metadata: {
+            current: { model: aiModel, generated_at: new Date().toISOString(), sections_present: d.sections_present || [] },
+            history: [],
+          },
+          qa_notes: row.qa_notes,
+          internal_links: siblingLinks,
+          source_payload: {
+            state_ut: row.state_ut, board_name: row.board_name,
+            result_url: row.result_url, official_board_url: row.official_board_url,
+            seo_intro_text: row.seo_intro_text,
+          },
+        };
+
+        // Upsert: if same batch+row exists, update
+        const { data: inserted, error: insertErr } = await supabase
+          .from('custom_pages')
+          .upsert(pagePayload as any, { onConflict: 'slug' })
+          .select('id')
+          .single();
+
+        if (insertErr) throw new Error(insertErr.message);
+
+        const quality = scoreCustomPage({
+          content: d.content || '', meta_title: d.meta_title,
+          meta_description: d.meta_description, excerpt: d.excerpt,
+          faq_schema: d.faq_items, tags: d.suggested_tags,
+        });
+
+        // QA checks
+        const qaIssues: string[] = [...row.qa_notes];
+        const targetWc = getTargetWordCount(row.variant);
+        if ((d.word_count || 0) < targetWc * 0.7) qaIssues.push(`Word count ${d.word_count} below target ${targetWc}`);
+        if ((d.faq_items || []).length < 8) qaIssues.push(`Only ${(d.faq_items || []).length} FAQs (need ≥8)`);
+        if (!d.has_disclaimer) qaIssues.push('Missing disclaimer section');
+        if (!d.has_cta) qaIssues.push('Missing CTA section');
+        if ((d.meta_title || '').length > 60) qaIssues.push('Meta title > 60 chars');
+        if ((d.meta_description || '').length > 160) qaIssues.push('Meta description > 160 chars');
+        if ((d.section_count || 0) < 10) qaIssues.push(`Only ${d.section_count} sections (need ≥10)`);
+
+        completedCount++;
+        setBatchRows(prev => prev.map((r, idx) =>
+          idx === i ? { ...r, status: 'success', pageId: inserted?.id, quality, qa_notes: qaIssues } : r
+        ));
+      } catch (e: any) {
+        failedCount++;
+        setBatchRows(prev => prev.map((r, idx) =>
+          idx === i ? { ...r, status: 'failed', error: e.message } : r
+        ));
+      }
+
+      // Update batch counters
+      await supabase.from('import_batches').update({
+        completed_count: completedCount,
+        failed_count: failedCount,
+      } as any).eq('id', batch.id);
+    }
+
+    // Mark batch complete
+    await supabase.from('import_batches').update({
+      status: abortRef.current ? 'failed' : 'completed',
+      completed_at: new Date().toISOString(),
+      completed_count: completedCount,
+      failed_count: failedCount,
+    } as any).eq('id', batch.id);
+
+    setIsRunning(false);
+    setPhase('qa');
+    toast({ title: 'Batch generation complete', description: `${completedCount} success, ${failedCount} failed` });
+  }, [parsedRows, user, aiModel, fileName, checkConflicts, toast]);
+
+  // ── Resolve conflict ──
+  const resolveConflict = async (index: number, action: 'updated' | 'skipped') => {
+    const row = batchRows[index];
+    if (!row.conflictInfo) return;
+
+    const resolvedNote = buildConflictResolvedNote(action, row.conflictInfo.existing_slug);
+    const newNotes = row.qa_notes
+      .filter(n => !n.startsWith('POSSIBLE_CONFLICT'))
+      .concat(resolvedNote);
+
+    if (action === 'skipped') {
+      setBatchRows(prev => prev.map((r, idx) =>
+        idx === index ? { ...r, status: 'skipped', qa_notes: newNotes, conflictInfo: undefined } : r
+      ));
+    } else {
+      // Mark for update: will overwrite the existing page
+      setBatchRows(prev => prev.map((r, idx) =>
+        idx === index ? { ...r, qa_notes: newNotes, conflictInfo: undefined } : r
+      ));
+    }
+
+    // Update in DB if page exists
+    if (row.pageId) {
+      await supabase.from('custom_pages').update({ qa_notes: newNotes } as any).eq('id', row.pageId);
+    }
+
+    setConflictDialog(null);
+    toast({ title: `Conflict ${action}` });
+  };
+
+  // ── Publish single page ──
+  const publishPage = async (index: number) => {
+    const row = batchRows[index];
+    if (!row.pageId) return;
+
+    // Validate publish requirements
+    const hasSlugConflict = row.qa_notes.some(n => n.includes('SLUG_CONFLICT'));
+    const hasUnresolvedConflict = row.qa_notes.some(n => n.startsWith('POSSIBLE_CONFLICT'));
+
+    if (hasSlugConflict) {
+      toast({ title: 'Cannot publish', description: 'Slug conflict must be resolved first', variant: 'destructive' });
+      return;
+    }
+    if (hasUnresolvedConflict) {
+      toast({ title: 'Cannot publish', description: 'Review and resolve the conflict flag first', variant: 'destructive' });
+      return;
+    }
+    if (!row.slug || !row.board_name || !row.state_ut || !row.result_url || !row.official_board_url) {
+      toast({ title: 'Cannot publish', description: 'Missing required fields', variant: 'destructive' });
+      return;
+    }
+
+    await supabase.from('custom_pages').update({
+      is_published: true, status: 'published', published_at: new Date().toISOString(),
+    } as any).eq('id', row.pageId);
+
+    // Update batch published count
+    if (batchId) {
+      const pubCount = batchRows.filter((r, i) => (i === index || r.status === 'success') && r.pageId).length;
+      await supabase.from('import_batches').update({ published_count: pubCount } as any).eq('id', batchId);
+    }
+
+    setBatchRows(prev => prev.map((r, i) =>
+      i === index ? { ...r, status: 'success' } : r
+    ));
+    toast({ title: `Published: ${row.board_name}` });
+  };
+
+  // ── Publish all valid ──
+  const publishAllValid = async () => {
+    const publishable = batchRows.filter((r, i) =>
+      r.status === 'success' && r.pageId &&
+      !r.qa_notes.some(n => n.startsWith('POSSIBLE_CONFLICT')) &&
+      r.slug && r.board_name && r.state_ut && r.result_url && r.official_board_url
+    );
+
+    for (const row of publishable) {
+      await supabase.from('custom_pages').update({
+        is_published: true, status: 'published', published_at: new Date().toISOString(),
+      } as any).eq('id', row.pageId);
+    }
+
+    toast({ title: `Published ${publishable.length} pages` });
+  };
+
+  // ── Re-generate single ──
+  const reGenerate = async (index: number) => {
+    const row = batchRows[index];
+    if (!row.pageId) return;
+
+    setBatchRows(prev => prev.map((r, i) => i === index ? { ...r, status: 'generating' } : r));
+
+    try {
+      const validRows = batchRows.filter(r => r.valid);
+      const linkMap = buildInternalLinkMap(validRows);
+      const siblingLinks = linkMap.get(row.slug) || [];
+
+      const { data, error } = await supabase.functions.invoke('generate-custom-page', {
+        body: {
+          action: 'generate-result',
+          state_ut: row.state_ut, board_name: row.board_name,
+          board_abbr: row.board_abbr, result_url: row.result_url,
+          official_board_url: row.official_board_url,
+          seo_intro: row.seo_intro_text || '',
+          variant: row.variant,
+          target_word_count: getTargetWordCount(row.variant),
+          sibling_slugs: siblingLinks.map(l => l.slug),
+          aiModel,
+        },
+      });
+
+      if (error) throw new Error(error.message);
+      if (!data?.success) throw new Error(data?.error || 'Failed');
+
+      const d = data.data;
+      await supabase.from('custom_pages').update({
+        content: d.content || '', excerpt: d.excerpt || null,
+        meta_title: d.meta_title || null, meta_description: d.meta_description || null,
+        faq_schema: d.faq_items || [], word_count: d.word_count || 0,
+        ai_model_used: aiModel, ai_generated_at: new Date().toISOString(),
+      } as any).eq('id', row.pageId);
+
+      const quality = scoreCustomPage({
+        content: d.content || '', meta_title: d.meta_title,
+        meta_description: d.meta_description, excerpt: d.excerpt,
+        faq_schema: d.faq_items, tags: d.suggested_tags,
+      });
+
+      setBatchRows(prev => prev.map((r, i) =>
+        i === index ? { ...r, status: 'success', quality } : r
+      ));
+      toast({ title: `Re-generated: ${row.board_name}` });
+    } catch (e: any) {
+      setBatchRows(prev => prev.map((r, i) =>
+        i === index ? { ...r, status: 'failed', error: e.message } : r
+      ));
+      toast({ title: 'Re-generation failed', description: e.message, variant: 'destructive' });
+    }
+  };
+
+  // ── Stats ──
+  const validCount = parsedRows.filter(r => r.valid).length;
+  const invalidCount = parsedRows.filter(r => !r.valid).length;
+  const completed = batchRows.filter(r => r.status === 'success').length;
+  const failed = batchRows.filter(r => r.status === 'failed').length;
+  const conflicts = batchRows.filter(r => r.qa_notes.some(n => n.startsWith('POSSIBLE_CONFLICT'))).length;
+  const lowQuality = batchRows.filter(r => r.quality && r.quality.score < 65).length;
+  const progress = batchRows.length > 0 ? ((completed + failed + batchRows.filter(r => r.status === 'skipped').length) / batchRows.length) * 100 : 0;
+
+  // ── Filtered rows ──
+  const displayRows = batchRows.length > 0 ? batchRows : parsedRows.map(r => ({ ...r, status: r.valid ? 'queued' as const : 'skipped' as const, qa_notes: [] as string[] }));
+  const filteredRows = filter === 'all' ? displayRows :
+    filter === 'conflicts' ? displayRows.filter(r => r.qa_notes?.some(n => n.startsWith('POSSIBLE_CONFLICT'))) :
+    filter === 'failed' ? displayRows.filter(r => r.status === 'failed') :
+    displayRows.filter(r => 'quality' in r && r.quality && r.quality.score < 65);
+
+  // ═══════════════════════════════════════════════════════════════
+  // RENDER
+  // ═══════════════════════════════════════════════════════════════
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <h3 className="text-lg font-semibold flex items-center gap-2">
+            <FileSpreadsheet className="h-5 w-5" /> Board Result Pages
+          </h3>
+          <p className="text-sm text-muted-foreground">
+            Upload XLSX to generate SEO-optimized board result landing pages
+          </p>
+        </div>
+        <div className="flex gap-2 items-center">
+          <AiModelSelector value={aiModel} onValueChange={setAiModel} capability="text" triggerClassName="w-[180px]" />
+          {phase !== 'upload' && (
+            <Button variant="outline" size="sm" onClick={() => { setPhase('upload'); setParsedRows([]); setBatchRows([]); setBatchId(null); setFileName(''); }}>
+              Reset
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* ── UPLOAD PHASE ── */}
+      {phase === 'upload' && (
+        <Card>
+          <CardContent className="py-12 flex flex-col items-center gap-4">
+            <Upload className="h-12 w-12 text-muted-foreground" />
+            <div className="text-center">
+              <p className="font-medium">Upload Board Result Dataset</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                XLSX or CSV with columns: state_ut, board_name, result_url, official_board_url, seo_intro_text
+              </p>
+            </div>
+            <Label htmlFor="xlsx-upload" className="cursor-pointer">
+              <Button asChild variant="default">
+                <span><FileSpreadsheet className="h-4 w-4 mr-2" /> Select File</span>
+              </Button>
+            </Label>
+            <Input
+              id="xlsx-upload"
+              type="file"
+              accept=".xlsx,.csv,.xls"
+              className="hidden"
+              onChange={handleFileUpload}
+            />
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── PREVIEW / QA PHASE ── */}
+      {(phase === 'preview' || phase === 'generating' || phase === 'qa') && (
+        <>
+          {/* Stats bar */}
+          <div className="flex flex-wrap gap-3 items-center">
+            <Badge variant="outline" className="text-xs">{fileName}</Badge>
+            <Badge className="bg-emerald-500/20 text-emerald-700 border-emerald-300 text-xs">
+              {validCount} valid
+            </Badge>
+            {invalidCount > 0 && (
+              <Badge variant="destructive" className="text-xs">{invalidCount} invalid</Badge>
+            )}
+            {conflicts > 0 && (
+              <Badge className="bg-amber-500/20 text-amber-700 border-amber-300 text-xs">
+                ⚠ {conflicts} conflicts
+              </Badge>
+            )}
+            {lowQuality > 0 && (
+              <Badge className="bg-orange-500/20 text-orange-700 border-orange-300 text-xs">
+                {lowQuality} low quality
+              </Badge>
+            )}
+            {completed > 0 && (
+              <Badge className="bg-emerald-500/20 text-emerald-700 text-xs">✓ {completed} generated</Badge>
+            )}
+            {failed > 0 && (
+              <Badge variant="destructive" className="text-xs">✗ {failed} failed</Badge>
+            )}
+          </div>
+
+          {/* Progress bar */}
+          {(phase === 'generating' || phase === 'qa') && batchRows.length > 0 && (
+            <Progress value={progress} className="h-2" />
+          )}
+
+          {/* Controls */}
+          <div className="flex gap-2 items-center flex-wrap">
+            {phase === 'preview' && (
+              <Button onClick={startGeneration} disabled={validCount === 0}>
+                <Zap className="h-4 w-4 mr-1" /> Generate {validCount} Pages
+              </Button>
+            )}
+            {phase === 'generating' && isRunning && (
+              <Button variant="destructive" onClick={() => { abortRef.current = true; }}>
+                <Square className="h-4 w-4 mr-1" /> Stop
+              </Button>
+            )}
+            {phase === 'qa' && (
+              <>
+                <Button onClick={publishAllValid} disabled={completed === 0}>
+                  <Globe className="h-4 w-4 mr-1" /> Publish All Valid
+                </Button>
+              </>
+            )}
+
+            <div className="ml-auto">
+              <Select value={filter} onValueChange={v => setFilter(v as any)}>
+                <SelectTrigger className="w-[140px] h-8 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All ({displayRows.length})</SelectItem>
+                  <SelectItem value="conflicts">Conflicts ({conflicts})</SelectItem>
+                  <SelectItem value="failed">Failed ({failed})</SelectItem>
+                  <SelectItem value="low-quality">Low Quality ({lowQuality})</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* Table */}
+          <Card>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-8">#</TableHead>
+                    <TableHead>State</TableHead>
+                    <TableHead>Board</TableHead>
+                    <TableHead className="w-20">Variant</TableHead>
+                    <TableHead className="w-36">Slug</TableHead>
+                    <TableHead className="w-16 text-center">Status</TableHead>
+                    <TableHead className="w-16 text-center">Score</TableHead>
+                    <TableHead className="w-12 text-center">Issues</TableHead>
+                    <TableHead className="text-right w-28">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredRows.map((row, displayIdx) => {
+                    const realIdx = displayRows.indexOf(row);
+                    const hasConflict = row.qa_notes?.some(n => n.startsWith('POSSIBLE_CONFLICT'));
+                    const conflictData = hasConflict ? parseConflictNote(row.qa_notes.find(n => n.startsWith('POSSIBLE_CONFLICT'))!) : null;
+                    const isExpanded = expandedRow === realIdx;
+                    const bRow = row as BatchRow;
+                    const issueCount = (row.qa_notes?.filter(n => !n.startsWith('CONFLICT_RESOLVED')).length || 0) + (row.errors?.length || 0);
+
+                    return (
+                      <>
+                        <TableRow
+                          key={realIdx}
+                          className={
+                            hasConflict ? 'bg-amber-50/50 dark:bg-amber-950/10' :
+                            !row.valid ? 'bg-destructive/5' :
+                            bRow.quality && bRow.quality.score < 65 ? 'bg-orange-50/50 dark:bg-orange-950/10' : ''
+                          }
+                        >
+                          <TableCell className="text-xs text-muted-foreground">{row.rowIndex + 1}</TableCell>
+                          <TableCell className="text-sm">{row.state_ut}</TableCell>
+                          <TableCell className="text-sm max-w-[200px] truncate" title={row.board_name}>{row.board_name}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className="text-[10px]">{row.variant}</Badge>
+                          </TableCell>
+                          <TableCell className="text-xs font-mono text-muted-foreground truncate max-w-[140px]" title={row.slug}>
+                            /{row.slug}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {bRow.status === 'queued' && <span className="text-muted-foreground text-xs">—</span>}
+                            {bRow.status === 'generating' && <Loader2 className="h-4 w-4 animate-spin text-primary mx-auto" />}
+                            {bRow.status === 'success' && <CheckCircle className="h-4 w-4 text-emerald-600 mx-auto" />}
+                            {bRow.status === 'failed' && <XCircle className="h-4 w-4 text-destructive mx-auto" title={bRow.error} />}
+                            {bRow.status === 'skipped' && <span className="text-xs text-muted-foreground">skip</span>}
+                          </TableCell>
+                          <TableCell className="text-center text-xs">
+                            {bRow.quality ? (
+                              <span className={bRow.quality.score >= 65 ? 'text-emerald-600 font-bold' : 'text-amber-600 font-bold'}>
+                                {bRow.quality.score}
+                              </span>
+                            ) : '—'}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {issueCount > 0 ? (
+                              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setExpandedRow(isExpanded ? null : realIdx)}>
+                                <span className="text-xs text-amber-600 font-bold">{issueCount}</span>
+                                {isExpanded ? <ChevronUp className="h-3 w-3 ml-0.5" /> : <ChevronDown className="h-3 w-3 ml-0.5" />}
+                              </Button>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">0</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              {hasConflict && conflictData && (
+                                <Button
+                                  size="sm" variant="outline"
+                                  className="h-7 text-xs text-amber-600 border-amber-300"
+                                  onClick={() => setConflictDialog({ index: realIdx, info: conflictData })}
+                                >
+                                  <AlertTriangle className="h-3 w-3 mr-1" /> Review
+                                </Button>
+                              )}
+                              {bRow.status === 'success' && bRow.pageId && (
+                                <>
+                                  <Button size="icon" variant="ghost" className="h-7 w-7"
+                                    onClick={() => window.open(`/${row.slug}`, '_blank')}>
+                                    <Eye className="h-3.5 w-3.5" />
+                                  </Button>
+                                  <Button
+                                    size="sm" variant="outline"
+                                    className="h-7 text-xs text-emerald-600 border-emerald-300"
+                                    onClick={() => publishPage(realIdx)}
+                                  >
+                                    <Globe className="h-3 w-3 mr-1" /> Pub
+                                  </Button>
+                                </>
+                              )}
+                              {(bRow.status === 'failed' || (bRow.quality && bRow.quality.score < 65)) && bRow.pageId && (
+                                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => reGenerate(realIdx)}>
+                                  <RotateCcw className="h-3 w-3 mr-1" /> Retry
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+
+                        {/* Expanded issues row */}
+                        {isExpanded && (
+                          <TableRow key={`${realIdx}-issues`}>
+                            <TableCell colSpan={9} className="bg-muted/30 py-2 px-4">
+                              <div className="space-y-1 text-xs">
+                                {row.errors?.map((err, ei) => (
+                                  <div key={`e-${ei}`} className="flex items-start gap-1.5 text-destructive">
+                                    <XCircle className="h-3 w-3 mt-0.5 shrink-0" />
+                                    <span>{err}</span>
+                                  </div>
+                                ))}
+                                {row.qa_notes?.filter(n => !n.startsWith('CONFLICT_RESOLVED')).map((note, ni) => {
+                                  const parsed = parseConflictNote(note);
+                                  if (parsed) {
+                                    return (
+                                      <div key={`n-${ni}`} className="flex items-start gap-1.5 text-amber-700 bg-amber-50 dark:bg-amber-950/20 rounded p-2">
+                                        <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
+                                        <div>
+                                          <span className="font-medium">Possible Conflict: </span>
+                                          A page with matching {parsed.match_type.replace(/\+/g, ' + ')} already exists.
+                                          <div className="mt-1 text-muted-foreground">
+                                            Existing: <span className="font-mono">/{parsed.existing_slug}</span> — "{parsed.existing_title}"
+                                            {parsed.existing_batch && <span> (batch: {parsed.existing_batch.slice(0, 8)}…)</span>}
+                                          </div>
+                                          <div className="text-muted-foreground">
+                                            New: <span className="font-mono">/{parsed.new_slug}</span>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  }
+                                  return (
+                                    <div key={`n-${ni}`} className="flex items-start gap-1.5 text-amber-600">
+                                      <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
+                                      <span>{note}</span>
+                                    </div>
+                                  );
+                                })}
+                                {bRow.status === 'failed' && bRow.error && (
+                                  <div className="flex items-start gap-1.5 text-destructive">
+                                    <XCircle className="h-3 w-3 mt-0.5 shrink-0" />
+                                    <span>Generation error: {bRow.error}</span>
+                                  </div>
+                                )}
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </>
+      )}
+
+      {/* ── CONFLICT REVIEW DIALOG ── */}
+      <Dialog open={!!conflictDialog} onOpenChange={v => { if (!v) setConflictDialog(null); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-600" /> Possible Conflict
+            </DialogTitle>
+          </DialogHeader>
+
+          {conflictDialog && (
+            <div className="space-y-4">
+              <div className="space-y-2 text-sm">
+                <p className="text-muted-foreground">
+                  A page with matching <span className="font-medium text-foreground">{conflictDialog.info.match_type.replace(/\+/g, ' + ')}</span> already exists from a different import batch.
+                </p>
+
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-xs text-muted-foreground">Existing Page</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-1 text-sm">
+                    <div><span className="text-muted-foreground">Title:</span> {conflictDialog.info.existing_title}</div>
+                    <div><span className="text-muted-foreground">Slug:</span> <span className="font-mono text-xs">/{conflictDialog.info.existing_slug}</span></div>
+                    <div><span className="text-muted-foreground">Batch:</span> {conflictDialog.info.existing_batch ? conflictDialog.info.existing_batch.slice(0, 8) + '…' : 'N/A'}</div>
+                    <div><span className="text-muted-foreground">Page ID:</span> <span className="font-mono text-xs">{conflictDialog.info.existing_page_id.slice(0, 8)}…</span></div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-xs text-muted-foreground">New Row</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-1 text-sm">
+                    <div><span className="text-muted-foreground">New Slug:</span> <span className="font-mono text-xs">/{conflictDialog.info.new_slug}</span></div>
+                    <div><span className="text-muted-foreground">Source Row:</span> #{batchRows[conflictDialog.index]?.rowIndex + 1}</div>
+                    <div><span className="text-muted-foreground">Board:</span> {batchRows[conflictDialog.index]?.board_name}</div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <div className="flex gap-2">
+                <Button
+                  className="flex-1"
+                  onClick={() => resolveConflict(conflictDialog.index, 'updated')}
+                >
+                  <RotateCcw className="h-4 w-4 mr-1" /> Update Existing Page
+                </Button>
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => resolveConflict(conflictDialog.index, 'skipped')}
+                >
+                  Skip This Row
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

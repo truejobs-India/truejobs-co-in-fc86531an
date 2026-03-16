@@ -64,19 +64,49 @@ export function BoardResultGenerator() {
   const { toast } = useToast();
   const { user } = useAuth();
 
-  const [phase, setPhase] = useState<Phase>('upload');
-  const [aiModel, setAiModel] = useState('gemini-flash');
-  const [parsedRows, setParsedRows] = useState<ParsedRow[]>([]);
+  const STORAGE_KEY = 'board-result-generator-state';
+
+  // Restore persisted state on mount
+  const restored = useRef(false);
+  const getInitialState = () => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) return JSON.parse(saved);
+    } catch { /* ignore */ }
+    return null;
+  };
+  const initial = useRef(getInitialState());
+
+  const [phase, setPhase] = useState<Phase>(initial.current?.phase === 'preview' ? 'preview' : 'upload');
+  const [aiModel, setAiModel] = useState(initial.current?.aiModel || 'gemini-flash');
+  const [parsedRows, setParsedRows] = useState<ParsedRow[]>(initial.current?.parsedRows || []);
   const [batchRows, setBatchRows] = useState<BatchRow[]>([]);
   const [batchId, setBatchId] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [isStopping, setIsStopping] = useState(false);
   const abortRef = useRef(false);
-  const [fileName, setFileName] = useState('');
+  const [fileName, setFileName] = useState(initial.current?.fileName || '');
   const [conflictDialog, setConflictDialog] = useState<{ index: number; info: ConflictInfo } | null>(null);
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
   const [filter, setFilter] = useState<'all' | 'conflicts' | 'failed' | 'low-quality'>('all');
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
+  const [targetWordCount, setTargetWordCount] = useState<number | null>(initial.current?.targetWordCount || null);
+
+  // Persist parsed rows, fileName, phase, and word count to localStorage
+  useEffect(() => {
+    if (parsedRows.length > 0 && (phase === 'preview' || phase === 'generating' || phase === 'qa')) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+          parsedRows,
+          fileName,
+          phase: phase === 'generating' ? 'preview' : phase === 'qa' ? 'preview' : phase,
+          aiModel,
+          targetWordCount,
+        }));
+      } catch { /* quota exceeded, ignore */ }
+    }
+  }, [parsedRows, fileName, phase, aiModel, targetWordCount]);
 
   // ── File Upload & Parse ──
   const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {

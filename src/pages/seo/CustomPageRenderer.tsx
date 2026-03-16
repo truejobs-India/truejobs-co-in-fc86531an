@@ -92,7 +92,23 @@ export default function CustomPageRenderer() {
     url: pageUrl,
     publisher: { '@type': 'Organization', name: 'TrueJobs', url: siteUrl },
     ...(page.published_at ? { datePublished: page.published_at } : {}),
+    ...(page.updated_at ? { dateModified: page.updated_at } : {}),
   };
+
+  const isResultLanding = page.page_type === 'result-landing';
+  const internalLinks: Array<{ slug: string; title: string; type: string }> = Array.isArray(page.internal_links) ? page.internal_links : [];
+
+  // BreadcrumbList schema for result pages
+  const breadcrumbSchema = isResultLanding ? {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'Home', item: siteUrl },
+      { '@type': 'ListItem', position: 2, name: 'Results', item: `${siteUrl}/results` },
+      ...(page.state_ut ? [{ '@type': 'ListItem', position: 3, name: page.state_ut, item: `${siteUrl}/${page.state_ut.toLowerCase().replace(/\s+/g, '-')}-results` }] : []),
+      { '@type': 'ListItem', position: page.state_ut ? 4 : 3, name: page.title },
+    ],
+  } : null;
 
   return (
     <Layout>

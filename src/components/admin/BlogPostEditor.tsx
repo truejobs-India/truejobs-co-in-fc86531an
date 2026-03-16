@@ -501,9 +501,9 @@ export function BlogPostEditor() {
         }
         setBulkCoverProgress({ total, done, failed, current: post.title });
         try {
-          // ENFORCED: Always use gemini-flash-image for cover images
+          // Use selected cover image model
           const { data: imgData, error: imgError } = await supabase.functions.invoke('generate-vertex-image', {
-            body: { slug: post.slug, title: post.title, category: post.category || 'General', tags: post.tags || [], model: 'gemini-flash-image', purpose: 'cover', imageCount: 1, aspectRatio: '16:9' },
+            body: { slug: post.slug, title: post.title, category: post.category || 'General', tags: post.tags || [], model: coverImageModel, purpose: 'cover', imageCount: 1, aspectRatio: '16:9' },
           });
           if (imgError || !imgData?.data?.images?.[0]?.url) {
             console.warn(`Cover image failed for "${post.title}":`, imgError?.message || imgData?.error || 'No image returned');

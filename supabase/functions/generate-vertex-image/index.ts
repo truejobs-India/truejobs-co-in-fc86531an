@@ -333,31 +333,45 @@ async function generateViaImagen(
 
   let predictions: any[];
   try {
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      signal: controller.signal,
-      body: JSON.stringify({
-        instances: [{ prompt: imagePrompt }],
-        parameters: {
-          sampleCount: imageCount,
-          aspectRatio,
-          personGeneration: 'dont_allow',
-          safetySetting: 'block_some',
-          addWatermark: false,
+    let resp: Response | null = null;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      if (attempt > 0) {
+        const delay = RETRY_BASE_MS * Math.pow(2, attempt - 1);
+        console.log(`[vertex-imagen] 429 retry ${attempt}/${MAX_RETRIES} after ${delay}ms`);
+        await new Promise(r => setTimeout(r, delay));
+      }
+      resp = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
         },
-      }),
-    });
-
-    if (!resp.ok) {
-      const errText = await resp.text();
-      throw new Error(`Imagen API error (${resp.status}): ${errText.substring(0, 500)}`);
+        signal: controller.signal,
+        body: JSON.stringify({
+          instances: [{ prompt: imagePrompt }],
+          parameters: {
+            sampleCount: imageCount,
+            aspectRatio,
+            personGeneration: 'dont_allow',
+            safetySetting: 'block_some',
+            addWatermark: false,
+          },
+        }),
+      });
+      if (resp.status !== 429) break;
+      if (attempt === MAX_RETRIES) {
+        const errText = await resp.text();
+        return new Response(JSON.stringify({ success: false, error: `Rate limited after ${MAX_RETRIES} retries. Please try again in a few minutes.`, model: IMAGEN_MODEL }),
+          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
     }
 
-    const data = await resp.json();
+    if (!resp!.ok) {
+      const errText = await resp!.text();
+      throw new Error(`Imagen API error (${resp!.status}): ${errText.substring(0, 500)}`);
+    }
+
+    const data = await resp!.json();
     predictions = data.predictions || [];
   } finally {
     clearTimeout(timer);

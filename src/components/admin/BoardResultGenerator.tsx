@@ -856,7 +856,7 @@ export function BoardResultGenerator() {
                         {/* Expanded issues row */}
                         {isExpanded && (
                           <TableRow key={`${realIdx}-issues`}>
-                            <TableCell colSpan={9} className="bg-muted/30 py-2 px-4">
+                            <TableCell colSpan={phase === 'preview' ? 11 : 10} className="bg-muted/30 py-2 px-4">
                               <div className="space-y-1 text-xs">
                                 {row.errors?.map((err, ei) => (
                                   <div key={`e-${ei}`} className="flex items-start gap-1.5 text-destructive">

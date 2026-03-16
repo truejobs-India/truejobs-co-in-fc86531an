@@ -330,6 +330,43 @@ export function BoardResultGenerator() {
     });
   }, []);
 
+  // ── Persist all rows to DB immediately ──
+  const persistRowsToDb = useCallback(async (batchIdVal: string, rows: BatchRow[]) => {
+    const rowsToInsert = rows.map(r => ({
+      batch_id: batchIdVal,
+      row_index: r.rowIndex,
+      state_ut: r.state_ut,
+      board_name: r.board_name,
+      result_url: r.result_url || '',
+      official_board_url: r.official_board_url || '',
+      seo_intro_text: r.seo_intro_text || '',
+      slug: r.slug,
+      variant: r.variant,
+      board_abbr: r.board_abbr,
+      is_valid: r.valid,
+      validation_errors: r.errors || [],
+      generation_status: r.valid ? 'queued' : 'skipped',
+      qa_notes: r.qa_notes || [],
+    }));
+    for (let i = 0; i < rowsToInsert.length; i += 50) {
+      const chunk = rowsToInsert.slice(i, i + 50);
+      await supabase.from('board_result_batch_rows' as any).insert(chunk as any);
+    }
+  }, []);
+
+  // ── Update single row status in DB ──
+  const updateRowStatusInDb = useCallback(async (batchIdVal: string, rowIndex: number, status: string, pageId?: string, error?: string) => {
+    await supabase.from('board_result_batch_rows' as any)
+      .update({
+        generation_status: status,
+        generated_page_id: pageId || null,
+        error_message: error || null,
+        updated_at: new Date().toISOString(),
+      } as any)
+      .eq('batch_id', batchIdVal)
+      .eq('row_index', rowIndex);
+  }, []);
+
   // ── Core generation logic for a set of row indices ──
   const generateRows = useCallback(async (rowIndices: number[], rows: BatchRow[], currentBatchId: string) => {
     const validRows = rows.filter(r => r.valid);

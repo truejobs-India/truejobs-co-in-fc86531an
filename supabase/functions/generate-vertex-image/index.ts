@@ -353,7 +353,7 @@ async function generateViaImagen(
             sampleCount: imageCount,
             aspectRatio,
             personGeneration: 'dont_allow',
-            safetySetting: 'block_some',
+            safetySetting: 'block_few',
             addWatermark: false,
           },
         }),

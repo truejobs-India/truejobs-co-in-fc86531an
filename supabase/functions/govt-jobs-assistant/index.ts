@@ -693,21 +693,51 @@ Deno.serve(async (req: Request) => {
     // Build system prompt
     const systemPrompt = buildSystemPrompt(retrievedItems, retrievalStatus, language);
 
-    // Build conversation messages
-    const messages: Array<{ role: string; content: Array<{ text: string }> }> = [
-      { role: 'user', content: [{ text: systemPrompt + '\n\nUser question: ' + cleanMessage }] }
-    ];
+    // Build conversation messages for Bedrock Converse API
+    // CRITICAL: Bedrock Mistral requires the conversation to START with a 'user' message
+    // and alternate user/assistant roles. System prompt must be embedded in the first user message.
+    const messages: Array<{ role: string; content: Array<{ text: string }> }> = [];
 
     // Add conversation history (last 6 messages max)
     if (Array.isArray(conversationHistory) && conversationHistory.length > 0) {
       const recentHistory = conversationHistory.slice(-6);
-      // Prepend history before the current user message
-      const historyMessages = recentHistory.map((m: { role: string; content: string }) => ({
-        role: m.role === 'assistant' ? 'assistant' : 'user',
-        content: [{ text: m.content.slice(0, 500) }],
-      }));
-      messages.unshift(...historyMessages);
+      for (const m of recentHistory) {
+        const role = m.role === 'assistant' ? 'assistant' : 'user';
+        messages.push({ role, content: [{ text: m.content.slice(0, 500) }] });
+      }
     }
+
+    // Ensure conversation starts with a user message — drop leading assistant messages
+    while (messages.length > 0 && messages[0].role === 'assistant') {
+      messages.shift();
+    }
+
+    // Ensure no consecutive same-role messages (Bedrock requires alternating roles)
+    const cleaned: typeof messages = [];
+    for (const msg of messages) {
+      if (cleaned.length > 0 && cleaned[cleaned.length - 1].role === msg.role) {
+        // Merge consecutive same-role messages
+        cleaned[cleaned.length - 1].content[0].text += '\n' + msg.content[0].text;
+      } else {
+        cleaned.push(msg);
+      }
+    }
+
+    // Add the current user message with system prompt embedded
+    const currentUserMsg = systemPrompt + '\n\nUser question: ' + cleanMessage;
+    if (cleaned.length > 0 && cleaned[cleaned.length - 1].role === 'user') {
+      // Last message is user, we need to add assistant placeholder then our user message
+      // Or just append to avoid consecutive user messages issue
+      cleaned.push({ role: 'assistant', content: [{ text: 'I understand. Let me help you with your question.' }] });
+    }
+    cleaned.push({ role: 'user', content: [{ text: currentUserMsg }] });
+
+    // Final safety: ensure first message is user
+    if (cleaned.length > 0 && cleaned[0].role !== 'user') {
+      cleaned.unshift({ role: 'user', content: [{ text: 'Hello' }] });
+    }
+
+    const finalMessages = cleaned;
 
     // Call Mistral Large via Bedrock (us-west-2 hardcoded — matching other edge functions)
     const region = 'us-west-2';

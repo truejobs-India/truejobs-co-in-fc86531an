@@ -673,7 +673,7 @@ export function BlogPostEditor() {
     setPerArticleLoading(prev => ({ ...prev, [post.id]: 'cover' }));
     try {
       const { data: imgData, error: imgError } = await supabase.functions.invoke('generate-vertex-image', {
-        body: { slug: post.slug, title: post.title, category: post.category || 'General', tags: post.tags || [], model: 'gemini-flash-image', purpose: 'cover', imageCount: 1, aspectRatio: '16:9' },
+        body: { slug: post.slug, title: post.title, category: post.category || 'General', tags: post.tags || [], model: coverImageModel, purpose: 'cover', imageCount: 1, aspectRatio: '16:9' },
       });
       if (imgError || !imgData?.data?.images?.[0]?.url) {
         throw new Error(imgError?.message || imgData?.error || 'No image returned');

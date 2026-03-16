@@ -674,9 +674,16 @@ export function BoardResultGenerator() {
           {/* Controls */}
           <div className="flex gap-2 items-center flex-wrap">
             {phase === 'preview' && (
-              <Button onClick={startGeneration} disabled={validCount === 0}>
-                <Zap className="h-4 w-4 mr-1" /> Generate {validCount} Pages
-              </Button>
+              <>
+                <Button onClick={() => startGeneration(false)} disabled={validCount === 0}>
+                  <Zap className="h-4 w-4 mr-1" /> Generate {validCount} Pages
+                </Button>
+                {selectedRows.size > 0 && (
+                  <Button variant="outline" onClick={() => startGeneration(true)}>
+                    <Zap className="h-4 w-4 mr-1" /> Generate {selectedRows.size} Selected
+                  </Button>
+                )}
+              </>
             )}
             {phase === 'generating' && isRunning && (
               <Button variant="destructive" onClick={() => { abortRef.current = true; }}>
@@ -688,6 +695,11 @@ export function BoardResultGenerator() {
                 <Button onClick={publishAllValid} disabled={completed === 0}>
                   <Globe className="h-4 w-4 mr-1" /> Publish All Valid
                 </Button>
+                {failed > 0 && (
+                  <Button variant="outline" onClick={retryAllFailed} disabled={isRunning}>
+                    <RotateCcw className="h-4 w-4 mr-1" /> Retry {failed} Failed
+                  </Button>
+                )}
               </>
             )}
 
@@ -712,6 +724,21 @@ export function BoardResultGenerator() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    {phase === 'preview' && (
+                      <TableHead className="w-8">
+                        <Checkbox
+                          checked={parsedRows.filter(r => r.valid).length > 0 && parsedRows.filter(r => r.valid).every((_, i) => selectedRows.has(parsedRows.indexOf(parsedRows.filter(r => r.valid)[i])))}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              const validIndices = parsedRows.map((r, i) => r.valid ? i : -1).filter(i => i >= 0);
+                              setSelectedRows(new Set(validIndices));
+                            } else {
+                              setSelectedRows(new Set());
+                            }
+                          }}
+                        />
+                      </TableHead>
+                    )}
                     <TableHead className="w-8">#</TableHead>
                     <TableHead>State</TableHead>
                     <TableHead>Board</TableHead>

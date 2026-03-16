@@ -551,7 +551,7 @@ export function BoardResultGenerator() {
     setPhase('qa');
     setSelectedRows(new Set());
     toast({ title: 'Generation complete', description: `${completedCount} success, ${failedCount} failed` });
-  }, [parsedRows, user, aiModel, fileName, checkConflicts, toast, generateRows, selectedRows]);
+  }, [parsedRows, user, aiModel, fileName, checkConflicts, toast, generateRows, selectedRows, persistRowsToDb]);
 
   // ── Remove a single row from parsed list ──
   const removeRow = useCallback((rowIndex: number) => {

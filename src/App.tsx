@@ -17,6 +17,8 @@ import NotFound from "./pages/NotFound";
 
 // SEO resolver – lazy-loaded to avoid bundling ~5000 lines of config data for all users
 const SEOLandingResolver = lazy(() => import("./pages/seo/SEOLandingResolver"));
+const BoardResultStatePage = lazy(() => import("./pages/board-results/BoardResultStatePage"));
+const BoardResultBoardPage = lazy(() => import("./pages/board-results/BoardResultBoardPage"));
 
 // Lazy-loaded routes (code-split)
 const Login = lazy(() => import("./pages/auth/Login"));

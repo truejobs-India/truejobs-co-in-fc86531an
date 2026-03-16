@@ -163,11 +163,13 @@ async function callVertexPro(prompt: string): Promise<string> {
 async function callAI(model: string, prompt: string): Promise<string> {
   switch (model) {
     case 'gemini': case 'gemini-flash': return callGemini(prompt);
+    case 'gemini-pro': return callGeminiPro(prompt);
     case 'groq': return callGroq(prompt);
     case 'claude': case 'claude-sonnet': return callClaude(prompt);
     case 'mistral': return callMistral(prompt);
     case 'lovable-gemini': return callLovableGemini(prompt);
     case 'openai': case 'gpt5': return callOpenAI(prompt);
+    case 'gpt5-mini': return callGpt5Mini(prompt);
     case 'vertex-flash': return callVertexFlash(prompt);
     case 'vertex-pro': return callVertexPro(prompt);
     default: return callGemini(prompt);

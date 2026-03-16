@@ -70,6 +70,7 @@ export function BoardResultGenerator() {
   const [batchRows, setBatchRows] = useState<BatchRow[]>([]);
   const [batchId, setBatchId] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
+  const [isStopping, setIsStopping] = useState(false);
   const abortRef = useRef(false);
   const [fileName, setFileName] = useState('');
   const [conflictDialog, setConflictDialog] = useState<{ index: number; info: ConflictInfo } | null>(null);
@@ -338,6 +339,7 @@ export function BoardResultGenerator() {
   const startGeneration = useCallback(async (onlySelected = false) => {
     if (!user) return;
     abortRef.current = false;
+    setIsStopping(false);
     setIsRunning(true);
 
     // Create batch
@@ -383,6 +385,7 @@ export function BoardResultGenerator() {
     } as any).eq('id', batch.id);
 
     setIsRunning(false);
+    setIsStopping(false);
     setPhase('qa');
     setSelectedRows(new Set());
     toast({ title: 'Generation complete', description: `${completedCount} success, ${failedCount} failed` });
@@ -402,6 +405,7 @@ export function BoardResultGenerator() {
     }
 
     abortRef.current = false;
+    setIsStopping(false);
     setIsRunning(true);
     setPhase('generating');
 
@@ -601,11 +605,25 @@ export function BoardResultGenerator() {
         </div>
         <div className="flex gap-2 items-center">
           <AiModelSelector value={aiModel} onValueChange={setAiModel} capability="text" triggerClassName="w-[180px]" />
-          {phase !== 'upload' && (
-            <Button variant="outline" size="sm" onClick={() => { setPhase('upload'); setParsedRows([]); setBatchRows([]); setBatchId(null); setFileName(''); }}>
-              Reset
-            </Button>
+          {phase !== 'upload' && !isRunning && (
+            <Label htmlFor="xlsx-reupload" className="cursor-pointer">
+              <Button asChild variant="outline" size="sm">
+                <span><Upload className="h-3 w-3 mr-1" /> Upload New File</span>
+              </Button>
+            </Label>
           )}
+          <Input
+            id="xlsx-reupload"
+            type="file"
+            accept=".xlsx,.csv,.xls"
+            className="hidden"
+            onChange={(e) => {
+              handleFileUpload(e);
+              setBatchRows([]);
+              setBatchId(null);
+              setSelectedRows(new Set());
+            }}
+          />
         </div>
       </div>
 
@@ -686,8 +704,20 @@ export function BoardResultGenerator() {
               </>
             )}
             {phase === 'generating' && isRunning && (
-              <Button variant="destructive" onClick={() => { abortRef.current = true; }}>
-                <Square className="h-4 w-4 mr-1" /> Stop
+              <Button
+                variant="destructive"
+                disabled={isStopping}
+                onClick={() => {
+                  abortRef.current = true;
+                  setIsStopping(true);
+                  toast({ title: 'Stopping…', description: 'Will stop after the current page finishes generating.' });
+                }}
+              >
+                {isStopping ? (
+                  <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Stopping…</>
+                ) : (
+                  <><Square className="h-4 w-4 mr-1" /> Stop</>
+                )}
               </Button>
             )}
             {phase === 'qa' && (

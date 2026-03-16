@@ -518,11 +518,12 @@ async function generateViaImagen(
   const timer = setTimeout(() => controller.abort(), IMAGEN_TIMEOUT_MS);
 
   let predictions: any[];
+  let last429Response: Response | null = null;
   try {
     let resp: Response | null = null;
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       if (attempt > 0) {
-        const delay = RETRY_BASE_MS * Math.pow(2, attempt - 1);
+        const delay = getRetryDelayFromResponse(last429Response ?? resp!, attempt);
         console.log(`[vertex-imagen] 429 retry ${attempt}/${MAX_RETRIES} after ${delay}ms`);
         await new Promise(r => setTimeout(r, delay));
       }
@@ -545,10 +546,11 @@ async function generateViaImagen(
         }),
       });
       if (resp.status !== 429) break;
+      last429Response = resp;
       if (attempt === MAX_RETRIES) {
         const errText = await resp.text();
-        return new Response(JSON.stringify({ success: false, error: `Rate limited after ${MAX_RETRIES} retries. Please try again in a few minutes.`, model: IMAGEN_MODEL }),
-          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        console.error(`[vertex-imagen] 429 exhausted retries: ${errText.substring(0, 200)}`);
+        return await generateViaLovableGatewayImage(body, slug, imagePrompt, adminClient, startMs, 'imagen-429');
       }
     }
 

@@ -748,7 +748,7 @@ export function BoardResultGenerator() {
     }
   };
 
-  // ── Restore generated pages from database ──
+  // ── Restore generated pages from database + any un-generated rows from localStorage ──
   const restoreFromDb = useCallback(async () => {
     try {
       const { data, error } = await supabase
@@ -756,15 +756,14 @@ export function BoardResultGenerator() {
         .select('id, slug, title, state_ut, board_name, result_variant, result_url, official_board_url, word_count, content, meta_title, meta_description, excerpt, faq_schema, tags, is_published, status, qa_notes, ai_generated_at, cover_image_url')
         .eq('page_type', 'result-landing')
         .order('created_at', { ascending: false })
-        .limit(200);
+        .limit(500);
 
       if (error) throw error;
-      if (!data || data.length === 0) {
-        toast({ title: 'No board result pages found in database', variant: 'destructive' });
-        return;
-      }
 
-      const restored: BatchRow[] = data.map((p: any, i: number) => {
+      // Build BatchRows from DB pages
+      const dbSlugs = new Set<string>();
+      const restoredFromDb: BatchRow[] = (data || []).map((p: any, i: number) => {
+        dbSlugs.add(p.slug);
         const quality = scoreCustomPage({
           content: p.content || '',
           meta_title: p.meta_title,
@@ -773,9 +772,7 @@ export function BoardResultGenerator() {
           faq_schema: p.faq_schema,
           tags: p.tags,
         });
-
         const hasContent = p.content && p.content.length > 100;
-
         return {
           state_ut: p.state_ut || '',
           board_name: p.board_name || '',
@@ -795,11 +792,43 @@ export function BoardResultGenerator() {
         };
       });
 
-      setBatchRows(restored);
-      setParsedRows(restored);
+      // Also check localStorage for un-generated rows (from original Excel upload)
+      let ungenerated: BatchRow[] = [];
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          const savedRows: ParsedRow[] = parsed.parsedRows || [];
+          // Find rows that exist in localStorage but NOT in DB
+          ungenerated = savedRows
+            .filter(r => r.valid && !dbSlugs.has(r.slug))
+            .map((r, i) => ({
+              ...r,
+              status: 'queued' as const,
+              qa_notes: [],
+              rowIndex: restoredFromDb.length + i,
+            }));
+        }
+      } catch { /* ignore */ }
+
+      const allRows = [...restoredFromDb, ...ungenerated];
+
+      if (allRows.length === 0) {
+        toast({ title: 'No board result pages found', description: 'Upload an Excel file to get started', variant: 'destructive' });
+        return;
+      }
+
+      setBatchRows(allRows);
+      setParsedRows(allRows);
       setFileName('Restored from database');
       setPhase('qa');
-      toast({ title: `Restored ${restored.length} board result pages from database` });
+
+      const dbCount = restoredFromDb.length;
+      const queuedCount = ungenerated.length;
+      toast({
+        title: `Restored ${allRows.length} pages`,
+        description: `${dbCount} from database (${restoredFromDb.filter(r => r.status === 'success').length} with content), ${queuedCount} still queued for generation`,
+      });
     } catch (e: any) {
       toast({ title: 'Restore failed', description: e.message, variant: 'destructive' });
     }

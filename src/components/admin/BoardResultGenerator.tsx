@@ -80,6 +80,7 @@ export function BoardResultGenerator() {
 
   const [phase, setPhase] = useState<Phase>(initial.current?.phase === 'preview' ? 'preview' : 'upload');
   const [aiModel, setAiModel] = useState(initial.current?.aiModel || 'gemini-flash');
+  const [imageModel, setImageModel] = useState(initial.current?.imageModel || 'gemini-flash-image');
   const [parsedRows, setParsedRows] = useState<ParsedRow[]>(initial.current?.parsedRows || []);
   const [batchRows, setBatchRows] = useState<BatchRow[]>([]);
   const [batchId, setBatchId] = useState<string | null>(null);
@@ -92,6 +93,7 @@ export function BoardResultGenerator() {
   const [filter, setFilter] = useState<'all' | 'conflicts' | 'failed' | 'low-quality'>('all');
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
   const [targetWordCount, setTargetWordCount] = useState<number | null>(initial.current?.targetWordCount || null);
+  const [imageGenLoading, setImageGenLoading] = useState<Set<number>>(new Set());
 
   // Persist parsed rows, fileName, phase, and word count to localStorage
   useEffect(() => {

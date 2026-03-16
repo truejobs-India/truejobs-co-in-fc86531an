@@ -95,8 +95,10 @@ export function BoardResultGenerator() {
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
   const [targetWordCount, setTargetWordCount] = useState<number | null>(initial.current?.targetWordCount || null);
   const [imageGenLoading, setImageGenLoading] = useState<Set<number>>(new Set());
+  const [storedFileUrl, setStoredFileUrl] = useState<string | null>(initial.current?.storedFileUrl || null);
+  const [storedFilePath, setStoredFilePath] = useState<string | null>(initial.current?.storedFilePath || null);
 
-  // Persist parsed rows, fileName, phase, word count, and image model to localStorage
+  // Persist parsed rows, fileName, phase, word count, image model, and file URL to localStorage
   useEffect(() => {
     if (parsedRows.length > 0 && (phase === 'preview' || phase === 'generating' || phase === 'qa')) {
       try {
@@ -107,10 +109,12 @@ export function BoardResultGenerator() {
           aiModel,
           imageModel,
           targetWordCount,
+          storedFileUrl,
+          storedFilePath,
         }));
       } catch { /* quota exceeded, ignore */ }
     }
-  }, [parsedRows, fileName, phase, aiModel, imageModel, targetWordCount]);
+  }, [parsedRows, fileName, phase, aiModel, imageModel, targetWordCount, storedFileUrl, storedFilePath]);
 
   // ── Generate image for a page ──
   const generateImageForPage = useCallback(async (index: number) => {
@@ -151,6 +155,21 @@ export function BoardResultGenerator() {
     const file = e.target.files?.[0];
     if (!file) return;
     setFileName(file.name);
+
+    // Upload file to storage for persistence
+    const uploadToStorage = async (f: File) => {
+      try {
+        const filePath = `board-result-files/${Date.now()}-${f.name}`;
+        const { error: uploadErr } = await supabase.storage
+          .from('blog-assets')
+          .upload(filePath, f, { contentType: f.type, upsert: true });
+        if (!uploadErr) {
+          const { data: urlData } = supabase.storage.from('blog-assets').getPublicUrl(filePath);
+          setStoredFileUrl(urlData.publicUrl);
+          setStoredFilePath(filePath);
+        }
+      } catch { /* ignore storage errors */ }
+    };
 
     const reader = new FileReader();
     reader.onload = (evt) => {
@@ -209,6 +228,9 @@ export function BoardResultGenerator() {
         setParsedRows(rows);
         setPhase('preview');
         toast({ title: `Parsed ${rows.length} rows from ${file.name}` });
+
+        // Upload to storage in background
+        uploadToStorage(file);
       } catch (err: any) {
         toast({ title: 'Parse error', description: err.message, variant: 'destructive' });
       }
@@ -458,6 +480,69 @@ export function BoardResultGenerator() {
     setSelectedRows(new Set());
     toast({ title: 'Generation complete', description: `${completedCount} success, ${failedCount} failed` });
   }, [parsedRows, user, aiModel, fileName, checkConflicts, toast, generateRows, selectedRows]);
+
+  // ── Remove a single row from parsed list ──
+  const removeRow = useCallback((rowIndex: number) => {
+    setParsedRows(prev => {
+      const updated = prev.filter(r => r.rowIndex !== rowIndex);
+      // Also remove from batchRows if present
+      setBatchRows(bRows => bRows.filter(r => r.rowIndex !== rowIndex));
+      setSelectedRows(sel => {
+        const next = new Set(sel);
+        next.delete(rowIndex);
+        return next;
+      });
+      if (updated.length === 0) {
+        setPhase('upload');
+        localStorage.removeItem(STORAGE_KEY);
+      }
+      return updated;
+    });
+    toast({ title: 'Row removed' });
+  }, [toast]);
+
+  // ── Download stored file ──
+  const downloadFile = useCallback(() => {
+    if (storedFileUrl) {
+      window.open(storedFileUrl, '_blank');
+    }
+  }, [storedFileUrl]);
+
+  // ── Remove stored file from storage ──
+  const removeStoredFile = useCallback(async () => {
+    if (storedFilePath) {
+      await supabase.storage.from('blog-assets').remove([storedFilePath]);
+    }
+    setStoredFileUrl(null);
+    setStoredFilePath(null);
+    localStorage.removeItem(STORAGE_KEY);
+    setParsedRows([]);
+    setBatchRows([]);
+    setBatchId(null);
+    setFileName('');
+    setPhase('upload');
+    setSelectedRows(new Set());
+    setTargetWordCount(null);
+    toast({ title: 'File removed' });
+  }, [storedFilePath, toast]);
+
+  // ── Bulk generate images for selected rows ──
+  const bulkGenerateImages = useCallback(async () => {
+    const indices = Array.from(selectedRows).filter(i => {
+      const row = batchRows[i];
+      return row?.status === 'success' && row?.pageId;
+    });
+    if (indices.length === 0) {
+      toast({ title: 'No eligible pages selected', description: 'Select generated pages first', variant: 'destructive' });
+      return;
+    }
+    toast({ title: `Generating images for ${indices.length} pages…` });
+    for (const idx of indices) {
+      if (abortRef.current) break;
+      await generateImageForPage(idx);
+    }
+    toast({ title: `Bulk image generation complete` });
+  }, [selectedRows, batchRows, generateImageForPage, toast]);
 
   // ── Retry all failed rows ──
   const retryAllFailed = useCallback(async () => {
@@ -712,26 +797,22 @@ export function BoardResultGenerator() {
 
           {phase !== 'upload' && !isRunning && (
             <>
+              {storedFileUrl && (
+                <Button variant="outline" size="sm" onClick={downloadFile}>
+                  <ExternalLink className="h-3 w-3 mr-1" /> Download File
+                </Button>
+              )}
               <Label htmlFor="xlsx-reupload" className="cursor-pointer">
                 <Button asChild variant="outline" size="sm">
                   <span><Upload className="h-3 w-3 mr-1" /> Upload New File</span>
                 </Button>
               </Label>
               <Button
-                variant="ghost"
+                variant="destructive"
                 size="sm"
-                onClick={() => {
-                  localStorage.removeItem(STORAGE_KEY);
-                  setParsedRows([]);
-                  setBatchRows([]);
-                  setBatchId(null);
-                  setFileName('');
-                  setPhase('upload');
-                  setSelectedRows(new Set());
-                  setTargetWordCount(null);
-                }}
+                onClick={removeStoredFile}
               >
-                <XCircle className="h-3 w-3 mr-1" /> Clear
+                <XCircle className="h-3 w-3 mr-1" /> Remove File
               </Button>
             </>
           )}
@@ -814,10 +895,30 @@ export function BoardResultGenerator() {
 
           {/* Controls */}
           <div className="flex gap-2 items-center flex-wrap">
+            {/* Select All / Deselect All */}
+            {(phase === 'preview' || phase === 'qa') && (
+              <div className="flex gap-1">
+                <Button
+                  variant="outline" size="sm"
+                  onClick={() => {
+                    const allValid = (phase === 'qa' ? batchRows : parsedRows).filter(r => r.valid).map(r => r.rowIndex);
+                    setSelectedRows(new Set(allValid));
+                  }}
+                >
+                  Select All ({(phase === 'qa' ? batchRows : parsedRows).filter(r => r.valid).length})
+                </Button>
+                {selectedRows.size > 0 && (
+                  <Button variant="ghost" size="sm" onClick={() => setSelectedRows(new Set())}>
+                    Deselect All
+                  </Button>
+                )}
+              </div>
+            )}
+
             {phase === 'preview' && (
               <>
                 <Button onClick={() => startGeneration(false)} disabled={validCount === 0}>
-                  <Zap className="h-4 w-4 mr-1" /> Generate {validCount} Pages
+                  <Zap className="h-4 w-4 mr-1" /> Generate All ({validCount})
                 </Button>
                 {selectedRows.size > 0 && (
                   <Button variant="outline" onClick={() => startGeneration(true)}>
@@ -853,6 +954,11 @@ export function BoardResultGenerator() {
                     <RotateCcw className="h-4 w-4 mr-1" /> Retry {failed} Failed
                   </Button>
                 )}
+                {selectedRows.size > 0 && (
+                  <Button variant="outline" onClick={bulkGenerateImages}>
+                    🖼️ Generate Images ({selectedRows.size})
+                  </Button>
+                )}
               </>
             )}
 
@@ -877,13 +983,14 @@ export function BoardResultGenerator() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    {phase === 'preview' && (
+                    {(phase === 'preview' || phase === 'qa') && (
                       <TableHead className="w-8">
                         <Checkbox
-                          checked={selectedRows.size > 0 && parsedRows.filter(r => r.valid).every(r => selectedRows.has(r.rowIndex))}
+                          checked={selectedRows.size > 0 && (phase === 'qa' ? batchRows : parsedRows).filter(r => r.valid).every(r => selectedRows.has(r.rowIndex))}
                           onCheckedChange={(checked) => {
+                            const source = phase === 'qa' ? batchRows : parsedRows;
                             if (checked) {
-                              setSelectedRows(new Set(parsedRows.filter(r => r.valid).map(r => r.rowIndex)));
+                              setSelectedRows(new Set(source.filter(r => r.valid).map(r => r.rowIndex)));
                             } else {
                               setSelectedRows(new Set());
                             }
@@ -901,7 +1008,7 @@ export function BoardResultGenerator() {
                     <TableHead className="w-14 text-center">Words</TableHead>
                     <TableHead className="w-10 text-center">Img</TableHead>
                     <TableHead className="w-12 text-center">Issues</TableHead>
-                    <TableHead className="text-right w-32">Actions</TableHead>
+                    <TableHead className="text-right w-36">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -923,7 +1030,7 @@ export function BoardResultGenerator() {
                             bRow.quality && bRow.quality.score < 65 ? 'bg-orange-50/50 dark:bg-orange-950/10' : ''
                           }
                         >
-                          {phase === 'preview' && (
+                          {(phase === 'preview' || phase === 'qa') && (
                             <TableCell>
                               <Checkbox
                                 disabled={!row.valid}
@@ -1005,24 +1112,32 @@ export function BoardResultGenerator() {
                                   <AlertTriangle className="h-3 w-3 mr-1" /> Review
                                 </Button>
                               )}
+                              {/* Preview page in browser (works even if not published) */}
+                              {row.slug && (
+                                <Button size="icon" variant="ghost" className="h-7 w-7" title="Preview page"
+                                  onClick={() => window.open(`/${row.slug}`, '_blank')}>
+                                  <Eye className="h-3.5 w-3.5" />
+                                </Button>
+                              )}
                               {bRow.status === 'success' && bRow.pageId && (
-                                <>
-                                  <Button size="icon" variant="ghost" className="h-7 w-7"
-                                    onClick={() => window.open(`/${row.slug}`, '_blank')}>
-                                    <Eye className="h-3.5 w-3.5" />
-                                  </Button>
-                                  <Button
-                                    size="sm" variant="outline"
-                                    className="h-7 text-xs text-emerald-600 border-emerald-300"
-                                    onClick={() => publishPage(realIdx)}
-                                  >
-                                    <Globe className="h-3 w-3 mr-1" /> Pub
-                                  </Button>
-                                </>
+                                <Button
+                                  size="sm" variant="outline"
+                                  className="h-7 text-xs text-emerald-600 border-emerald-300"
+                                  onClick={() => publishPage(realIdx)}
+                                >
+                                  <Globe className="h-3 w-3 mr-1" /> Pub
+                                </Button>
                               )}
                               {(bRow.status === 'failed' || (bRow.quality && bRow.quality.score < 65)) && bRow.pageId && (
                                 <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => reGenerate(realIdx)}>
                                   <RotateCcw className="h-3 w-3 mr-1" /> Retry
+                                </Button>
+                              )}
+                              {/* Delete row from list */}
+                              {phase === 'preview' && (
+                                <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" title="Remove row"
+                                  onClick={() => removeRow(row.rowIndex)}>
+                                  <XCircle className="h-3.5 w-3.5" />
                                 </Button>
                               )}
                             </div>

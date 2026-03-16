@@ -712,7 +712,7 @@ export function BlogPostEditor() {
         } else {
           const ctx = getContextForSlot(updatedContent, 1, post.title, post.category);
           const { data: imgData, error: imgError } = await supabase.functions.invoke('generate-vertex-image', {
-            body: { slug: post.slug, title: post.title, category: post.category || 'General', tags: post.tags || [], model: 'vertex-imagen', purpose: 'inline', slotNumber: 1, contextSnippet: ctx.nearbyText, nearbyHeading: ctx.nearbyHeading },
+            body: { slug: post.slug, title: post.title, category: post.category || 'General', tags: post.tags || [], model: inlineImageModel, purpose: 'inline', slotNumber: 1, contextSnippet: ctx.nearbyText, nearbyHeading: ctx.nearbyHeading },
           });
           if (!imgError && imgData?.data?.images?.[0]?.url) {
             const imgUrl = imgData.data.images[0].url;

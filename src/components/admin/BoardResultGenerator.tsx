@@ -727,11 +727,10 @@ export function BoardResultGenerator() {
                     {phase === 'preview' && (
                       <TableHead className="w-8">
                         <Checkbox
-                          checked={parsedRows.filter(r => r.valid).length > 0 && parsedRows.filter(r => r.valid).every((_, i) => selectedRows.has(parsedRows.indexOf(parsedRows.filter(r => r.valid)[i])))}
+                          checked={selectedRows.size > 0 && parsedRows.filter(r => r.valid).every(r => selectedRows.has(r.rowIndex))}
                           onCheckedChange={(checked) => {
                             if (checked) {
-                              const validIndices = parsedRows.map((r, i) => r.valid ? i : -1).filter(i => i >= 0);
-                              setSelectedRows(new Set(validIndices));
+                              setSelectedRows(new Set(parsedRows.filter(r => r.valid).map(r => r.rowIndex)));
                             } else {
                               setSelectedRows(new Set());
                             }

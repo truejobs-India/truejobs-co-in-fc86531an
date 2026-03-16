@@ -1112,24 +1112,32 @@ export function BoardResultGenerator() {
                                   <AlertTriangle className="h-3 w-3 mr-1" /> Review
                                 </Button>
                               )}
+                              {/* Preview page in browser (works even if not published) */}
+                              {row.slug && (
+                                <Button size="icon" variant="ghost" className="h-7 w-7" title="Preview page"
+                                  onClick={() => window.open(`/${row.slug}`, '_blank')}>
+                                  <Eye className="h-3.5 w-3.5" />
+                                </Button>
+                              )}
                               {bRow.status === 'success' && bRow.pageId && (
-                                <>
-                                  <Button size="icon" variant="ghost" className="h-7 w-7"
-                                    onClick={() => window.open(`/${row.slug}`, '_blank')}>
-                                    <Eye className="h-3.5 w-3.5" />
-                                  </Button>
-                                  <Button
-                                    size="sm" variant="outline"
-                                    className="h-7 text-xs text-emerald-600 border-emerald-300"
-                                    onClick={() => publishPage(realIdx)}
-                                  >
-                                    <Globe className="h-3 w-3 mr-1" /> Pub
-                                  </Button>
-                                </>
+                                <Button
+                                  size="sm" variant="outline"
+                                  className="h-7 text-xs text-emerald-600 border-emerald-300"
+                                  onClick={() => publishPage(realIdx)}
+                                >
+                                  <Globe className="h-3 w-3 mr-1" /> Pub
+                                </Button>
                               )}
                               {(bRow.status === 'failed' || (bRow.quality && bRow.quality.score < 65)) && bRow.pageId && (
                                 <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => reGenerate(realIdx)}>
                                   <RotateCcw className="h-3 w-3 mr-1" /> Retry
+                                </Button>
+                              )}
+                              {/* Delete row from list */}
+                              {phase === 'preview' && (
+                                <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" title="Remove row"
+                                  onClick={() => removeRow(row.rowIndex)}>
+                                  <XCircle className="h-3.5 w-3.5" />
                                 </Button>
                               )}
                             </div>

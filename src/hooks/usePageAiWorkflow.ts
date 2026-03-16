@@ -201,7 +201,7 @@ export function usePageAiWorkflow() {
       }
 
       if (Object.keys(updatePayload).length > 0) {
-        updatePayload.ai_fixed_at = new Date().toISOString();
+        updatePayload.updated_at = new Date().toISOString();
         await supabase.from('custom_pages').update(updatePayload).eq('id', page.id);
         return { id: page.id, slug: page.slug, status: 'fixed', reason: `Fixed ${Object.keys(changes).join(', ')}`, changes };
       }

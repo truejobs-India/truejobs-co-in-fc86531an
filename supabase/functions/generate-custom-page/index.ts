@@ -528,7 +528,7 @@ Rules:
     // ── Enrich page content ──
     if (action === 'enrich') {
       const { title, slug, content, meta_title, meta_description, excerpt, category, tags, faq_schema, word_count: currentWc } = body;
-      if (!title || !content) return new Response(JSON.stringify({ error: 'title and content required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      if (!title) return new Response(JSON.stringify({ error: 'title required for enrich' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
       const enrichPrompt = `You are an expert SEO content writer for TrueJobs.co.in, a leading Indian government job & education portal.
 
@@ -571,6 +571,32 @@ Rules:
 
       console.log(`[generate-custom-page] enrich action, model=${model}, slug=${slug}, currentWc=${currentWc}`);
       const raw = await callAI(model, enrichPrompt);
+      const parsed = parseAIResponse(raw);
+
+      return new Response(JSON.stringify({ success: true, data: parsed, model, action }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // ── Generate board result page ──
+    if (action === 'generate-result') {
+      const { state_ut, board_name, board_abbr, result_url, official_board_url, seo_intro, variant, target_word_count, sibling_slugs } = body;
+      if (!state_ut || !board_name) return new Response(JSON.stringify({ error: 'state_ut and board_name required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+
+      const prompt = generateResultPagePrompt({
+        state_ut,
+        board_name,
+        board_abbr: board_abbr || board_name,
+        result_url: result_url || '',
+        official_board_url: official_board_url || '',
+        seo_intro: seo_intro || '',
+        variant: variant || 'main',
+        target_word_count: target_word_count || 2000,
+        sibling_slugs: sibling_slugs || [],
+      });
+
+      console.log(`[generate-custom-page] generate-result action, model=${model}, board=${board_abbr}, variant=${variant}`);
+      const raw = await callAI(model, prompt);
       const parsed = parseAIResponse(raw);
 
       return new Response(JSON.stringify({ success: true, data: parsed, model, action }), {

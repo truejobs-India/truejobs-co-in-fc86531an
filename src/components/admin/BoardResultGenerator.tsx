@@ -405,6 +405,7 @@ export function BoardResultGenerator() {
     }
 
     abortRef.current = false;
+    setIsStopping(false);
     setIsRunning(true);
     setPhase('generating');
 

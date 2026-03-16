@@ -20,6 +20,7 @@ const corsHeaders = {
 
 const IMAGEN_MODEL = Deno.env.get('VERTEX_IMAGEN_MODEL') || 'imagen-4.0-generate-preview-06-06';
 const GEMINI_IMAGE_MODEL = Deno.env.get('VERTEX_GEMINI_IMAGE_MODEL') || 'gemini-2.5-flash-image';
+const LOVABLE_GATEWAY_IMAGE_MODEL = 'google/gemini-3.1-flash-image-preview';
 const IMAGEN_TIMEOUT_MS = 60_000;
 const MAX_RETRIES = 3;
 const RETRY_BASE_MS = 2000; // 2s, 4s, 8s exponential backoff
@@ -160,6 +161,48 @@ function buildInlineImagePrompt(body: any): string {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// SHARED HELPERS
+// ═══════════════════════════════════════════════════════════════
+
+function getRetryDelayFromResponse(resp: Response, attempt: number): number {
+  const retryAfterHeader = resp.headers.get('retry-after');
+  const retryAfterSeconds = retryAfterHeader ? Number(retryAfterHeader) : NaN;
+  if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0) {
+    return Math.min(retryAfterSeconds * 1000, 30_000);
+  }
+  return RETRY_BASE_MS * Math.pow(2, attempt - 1);
+}
+
+function uploadGeneratedImage(params: {
+  adminClient: any;
+  imageBase64: string;
+  mimeType: string;
+  filePath: string;
+}): Promise<{ publicUrl: string } | Response> {
+  const { adminClient, imageBase64, mimeType, filePath } = params;
+
+  return (async () => {
+    const imageBytes = Uint8Array.from(atob(imageBase64), c => c.charCodeAt(0));
+    const blob = new Blob([imageBytes], { type: mimeType });
+
+    const { error: uploadError } = await adminClient.storage
+      .from('blog-assets')
+      .upload(filePath, blob, { contentType: mimeType, upsert: true });
+
+    if (uploadError) {
+      console.error(`[image-upload] upload error for ${filePath}:`, uploadError);
+      return new Response(JSON.stringify({ success: false, error: 'Failed to upload generated image', detail: uploadError.message }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const { data: urlData } = adminClient.storage.from('blog-assets').getPublicUrl(filePath);
+    return { publicUrl: urlData.publicUrl };
+  })();
+}
+
+// ═══════════════════════════════════════════════════════════════
 // GEMINI FLASH IMAGE — via Vertex AI (direct)
 // ═══════════════════════════════════════════════════════════════
 
@@ -197,7 +240,7 @@ async function generateViaGeminiFlashImage(
     let resp: Response | null = null;
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       if (attempt > 0) {
-        const delay = RETRY_BASE_MS * Math.pow(2, attempt - 1);
+        const delay = getRetryDelayFromResponse(resp!, attempt);
         console.log(`[gemini-flash-image] 429 retry ${attempt}/${MAX_RETRIES} after ${delay}ms`);
         await new Promise(r => setTimeout(r, delay));
       }
@@ -221,14 +264,16 @@ async function generateViaGeminiFlashImage(
       if (attempt === MAX_RETRIES) {
         const errText = await resp.text();
         console.error(`[gemini-flash-image] 429 exhausted retries: ${errText.substring(0, 200)}`);
-        return new Response(JSON.stringify({ success: false, error: `Rate limited after ${MAX_RETRIES} retries. Please try again in a few minutes.`, model: GEMINI_IMAGE_MODEL }),
-          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        return await generateViaLovableGatewayImage(body, slug, imagePrompt, adminClient, startMs, 'vertex-429');
       }
     }
 
     if (!resp!.ok) {
       const errText = await resp!.text();
       console.error(`[gemini-flash-image] Vertex error [${resp!.status}]: ${errText.substring(0, 300)}`);
+      if (resp!.status === 429) {
+        return await generateViaLovableGatewayImage(body, slug, imagePrompt, adminClient, startMs, 'vertex-429');
+      }
       return new Response(JSON.stringify({ success: false, error: `Vertex AI error (${resp!.status}): ${errText.substring(0, 200)}`, model: GEMINI_IMAGE_MODEL }),
         { status: resp!.status >= 400 && resp!.status < 500 ? resp!.status : 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
@@ -236,7 +281,6 @@ async function generateViaGeminiFlashImage(
     const data = await resp!.json();
     const parts = data?.candidates?.[0]?.content?.parts || [];
 
-    // Extract image and text from response parts
     let imageBase64 = '';
     let mimeType = 'image/png';
     let altText = body.title || body.topic || `Blog image for ${slug}`;
@@ -258,26 +302,15 @@ async function generateViaGeminiFlashImage(
       }), { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    // Upload to storage
-    const isInlineFallback = (body.purpose === 'inline');
+    const isInlineFallback = body.purpose === 'inline';
     const ext = mimeType.includes('jpeg') ? 'jpg' : 'png';
     const pathPrefix = isInlineFallback ? 'inline' : 'covers';
     const slotSuffix = isInlineFallback && body.slotNumber ? `-slot${body.slotNumber}` : '';
     const filePath = `${pathPrefix}/${slug}-gemini-flash${slotSuffix}.${ext}`;
-    const imageBytes = Uint8Array.from(atob(imageBase64), c => c.charCodeAt(0));
-    const blob = new Blob([imageBytes], { type: mimeType });
 
-    const { error: uploadError } = await adminClient.storage
-      .from('blog-assets')
-      .upload(filePath, blob, { contentType: mimeType, upsert: true });
+    const uploadResult = await uploadGeneratedImage({ adminClient, imageBase64, mimeType, filePath });
+    if (uploadResult instanceof Response) return uploadResult;
 
-    if (uploadError) {
-      console.error('[gemini-flash-image] Upload error:', uploadError);
-      return new Response(JSON.stringify({ success: false, error: 'Failed to upload generated image', model: GEMINI_IMAGE_MODEL }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-    }
-
-    const { data: urlData } = adminClient.storage.from('blog-assets').getPublicUrl(filePath);
     const elapsed = Date.now() - startMs;
     console.log(`[gemini-flash-image] completed in ${elapsed}ms via Vertex AI`);
 
@@ -285,7 +318,7 @@ async function generateViaGeminiFlashImage(
       success: true,
       data: {
         images: [{
-          url: urlData.publicUrl,
+          url: uploadResult.publicUrl,
           path: filePath,
           altText,
           mimeType,
@@ -303,6 +336,159 @@ async function generateViaGeminiFlashImage(
     clearTimeout(timer);
   }
 }
+
+// ═══════════════════════════════════════════════════════════════
+// LOVABLE GATEWAY IMAGE FALLBACK
+// ═══════════════════════════════════════════════════════════════
+
+async function generateViaLovableGatewayImage(
+  body: any,
+  slug: string,
+  imagePrompt: string,
+  adminClient: any,
+  startMs: number,
+  fallbackReason: string,
+): Promise<Response> {
+  const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
+  if (!lovableApiKey) {
+    return new Response(JSON.stringify({
+      success: false,
+      error: `Rate limited after ${MAX_RETRIES} retries and no secondary image provider is configured.`,
+      model: GEMINI_IMAGE_MODEL,
+    }), { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  }
+
+  console.log(`[lovable-gateway-image] fallback=${fallbackReason} slug=${slug} model=${LOVABLE_GATEWAY_IMAGE_MODEL}`);
+
+  const gatewayResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${lovableApiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: LOVABLE_GATEWAY_IMAGE_MODEL,
+      messages: [{ role: 'user', content: imagePrompt }],
+      modalities: ['image', 'text'],
+    }),
+  });
+
+  if (!gatewayResponse.ok) {
+    const errText = await gatewayResponse.text();
+    console.error(`[lovable-gateway-image] error [${gatewayResponse.status}]: ${errText.substring(0, 300)}`);
+    return new Response(JSON.stringify({
+      success: false,
+      error: gatewayResponse.status === 429
+        ? 'Image generation is temporarily busy across providers. Please try again in a few minutes.'
+        : `Secondary image provider failed (${gatewayResponse.status}).`,
+      model: LOVABLE_GATEWAY_IMAGE_MODEL,
+      fallbackReason,
+    }), {
+      status: gatewayResponse.status === 429 ? 429 : 502,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  const rawText = await gatewayResponse.text();
+  if (!rawText?.trim()) {
+    return new Response(JSON.stringify({
+      success: false,
+      error: 'Secondary image provider returned an empty response.',
+      model: LOVABLE_GATEWAY_IMAGE_MODEL,
+      fallbackReason,
+    }), { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  }
+
+  let data: any;
+  try {
+    data = JSON.parse(rawText);
+  } catch {
+    console.error('[lovable-gateway-image] invalid JSON response:', rawText.substring(0, 300));
+    return new Response(JSON.stringify({
+      success: false,
+      error: 'Secondary image provider returned invalid data.',
+      model: LOVABLE_GATEWAY_IMAGE_MODEL,
+      fallbackReason,
+    }), { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  }
+
+  const choice = data.choices?.[0]?.message;
+  let imageBase64 = '';
+  let mimeType = 'image/png';
+  let altText = body.title || body.topic || `Blog image for ${slug}`;
+
+  if (choice?.images?.length > 0) {
+    for (const img of choice.images) {
+      const imgUrl = img?.image_url?.url || img?.url || '';
+      if (imgUrl.startsWith('data:')) {
+        const match = imgUrl.match(/^data:(image\/\w+);base64,(.+)$/s);
+        if (match) {
+          mimeType = match[1];
+          imageBase64 = match[2];
+          break;
+        }
+      } else if (imgUrl.startsWith('http')) {
+        const imgResp = await fetch(imgUrl);
+        if (imgResp.ok) {
+          const arrBuf = await imgResp.arrayBuffer();
+          const bytes = new Uint8Array(arrBuf);
+          let binary = '';
+          for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+          imageBase64 = btoa(binary);
+          mimeType = imgResp.headers.get('content-type') || 'image/png';
+          break;
+        }
+      }
+    }
+  }
+
+  if (choice?.content) {
+    const text = typeof choice.content === 'string' ? choice.content.trim() : '';
+    if (text.length > 10 && text.length < 200) altText = text;
+  }
+
+  if (!imageBase64) {
+    return new Response(JSON.stringify({
+      success: false,
+      error: 'Secondary image provider did not return usable image data.',
+      model: LOVABLE_GATEWAY_IMAGE_MODEL,
+      fallbackReason,
+    }), { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  }
+
+  const isInline = body.purpose === 'inline';
+  const ext = mimeType.includes('jpeg') ? 'jpg' : 'png';
+  const pathPrefix = isInline ? 'inline' : 'covers';
+  const slotSuffix = isInline && body.slotNumber ? `-slot${body.slotNumber}` : '';
+  const filePath = `${pathPrefix}/${slug}-gateway${slotSuffix}.${ext}`;
+
+  const uploadResult = await uploadGeneratedImage({ adminClient, imageBase64, mimeType, filePath });
+  if (uploadResult instanceof Response) return uploadResult;
+
+  const elapsed = Date.now() - startMs;
+  console.log(`[lovable-gateway-image] completed in ${elapsed}ms via fallback=${fallbackReason}`);
+
+  return new Response(JSON.stringify({
+    success: true,
+    data: {
+      images: [{
+        url: uploadResult.publicUrl,
+        path: filePath,
+        altText,
+        mimeType,
+        width: 1024,
+        height: 1024,
+      }],
+      promptUsed: imagePrompt,
+    },
+    model: LOVABLE_GATEWAY_IMAGE_MODEL,
+    action: 'generate-image',
+    purpose: body.purpose || 'cover',
+    elapsedMs: elapsed,
+    fallbackReason,
+  }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+}
+
 
 // ═══════════════════════════════════════════════════════════════
 // IMAGEN — via Vertex AI
@@ -332,11 +518,12 @@ async function generateViaImagen(
   const timer = setTimeout(() => controller.abort(), IMAGEN_TIMEOUT_MS);
 
   let predictions: any[];
+  let last429Response: Response | null = null;
   try {
     let resp: Response | null = null;
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       if (attempt > 0) {
-        const delay = RETRY_BASE_MS * Math.pow(2, attempt - 1);
+        const delay = getRetryDelayFromResponse(last429Response ?? resp!, attempt);
         console.log(`[vertex-imagen] 429 retry ${attempt}/${MAX_RETRIES} after ${delay}ms`);
         await new Promise(r => setTimeout(r, delay));
       }
@@ -359,10 +546,11 @@ async function generateViaImagen(
         }),
       });
       if (resp.status !== 429) break;
+      last429Response = resp;
       if (attempt === MAX_RETRIES) {
         const errText = await resp.text();
-        return new Response(JSON.stringify({ success: false, error: `Rate limited after ${MAX_RETRIES} retries. Please try again in a few minutes.`, model: IMAGEN_MODEL }),
-          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        console.error(`[vertex-imagen] 429 exhausted retries: ${errText.substring(0, 200)}`);
+        return await generateViaLovableGatewayImage(body, slug, imagePrompt, adminClient, startMs, 'imagen-429');
       }
     }
 

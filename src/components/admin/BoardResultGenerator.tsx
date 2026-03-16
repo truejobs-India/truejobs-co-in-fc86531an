@@ -64,19 +64,49 @@ export function BoardResultGenerator() {
   const { toast } = useToast();
   const { user } = useAuth();
 
-  const [phase, setPhase] = useState<Phase>('upload');
-  const [aiModel, setAiModel] = useState('gemini-flash');
-  const [parsedRows, setParsedRows] = useState<ParsedRow[]>([]);
+  const STORAGE_KEY = 'board-result-generator-state';
+
+  // Restore persisted state on mount
+  const restored = useRef(false);
+  const getInitialState = () => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) return JSON.parse(saved);
+    } catch { /* ignore */ }
+    return null;
+  };
+  const initial = useRef(getInitialState());
+
+  const [phase, setPhase] = useState<Phase>(initial.current?.phase === 'preview' ? 'preview' : 'upload');
+  const [aiModel, setAiModel] = useState(initial.current?.aiModel || 'gemini-flash');
+  const [parsedRows, setParsedRows] = useState<ParsedRow[]>(initial.current?.parsedRows || []);
   const [batchRows, setBatchRows] = useState<BatchRow[]>([]);
   const [batchId, setBatchId] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [isStopping, setIsStopping] = useState(false);
   const abortRef = useRef(false);
-  const [fileName, setFileName] = useState('');
+  const [fileName, setFileName] = useState(initial.current?.fileName || '');
   const [conflictDialog, setConflictDialog] = useState<{ index: number; info: ConflictInfo } | null>(null);
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
   const [filter, setFilter] = useState<'all' | 'conflicts' | 'failed' | 'low-quality'>('all');
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
+  const [targetWordCount, setTargetWordCount] = useState<number | null>(initial.current?.targetWordCount || null);
+
+  // Persist parsed rows, fileName, phase, and word count to localStorage
+  useEffect(() => {
+    if (parsedRows.length > 0 && (phase === 'preview' || phase === 'generating' || phase === 'qa')) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+          parsedRows,
+          fileName,
+          phase: phase === 'generating' ? 'preview' : phase === 'qa' ? 'preview' : phase,
+          aiModel,
+          targetWordCount,
+        }));
+      } catch { /* quota exceeded, ignore */ }
+    }
+  }, [parsedRows, fileName, phase, aiModel, targetWordCount]);
 
   // ── File Upload & Parse ──
   const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -244,7 +274,7 @@ export function BoardResultGenerator() {
             official_board_url: row.official_board_url,
             seo_intro: row.seo_intro_text || '',
             variant: row.variant,
-            target_word_count: getTargetWordCount(row.variant),
+            target_word_count: targetWordCount || getTargetWordCount(row.variant),
             sibling_slugs: sibSlugs,
             aiModel,
           },
@@ -333,7 +363,7 @@ export function BoardResultGenerator() {
     }
 
     return { completedCount, failedCount };
-  }, [aiModel, user]);
+  }, [aiModel, user, targetWordCount]);
 
   // ── Start batch generation ──
   const startGeneration = useCallback(async (onlySelected = false) => {
@@ -537,7 +567,7 @@ export function BoardResultGenerator() {
           official_board_url: row.official_board_url,
           seo_intro: row.seo_intro_text || '',
           variant: row.variant,
-          target_word_count: getTargetWordCount(row.variant),
+          target_word_count: targetWordCount || getTargetWordCount(row.variant),
           sibling_slugs: siblingLinks.map(l => l.slug),
           aiModel,
         },
@@ -603,14 +633,68 @@ export function BoardResultGenerator() {
             Upload XLSX to generate SEO-optimized board result landing pages
           </p>
         </div>
-        <div className="flex gap-2 items-center">
+        <div className="flex gap-2 items-center flex-wrap">
           <AiModelSelector value={aiModel} onValueChange={setAiModel} capability="text" triggerClassName="w-[180px]" />
+          
+          {/* Word Length Selector */}
+          <div className="flex items-center gap-1">
+            <Select
+              value={targetWordCount ? (![800, 1000, 1200, 1500, 1800, 2000, 2500].includes(targetWordCount) ? 'custom' : String(targetWordCount)) : 'auto'}
+              onValueChange={(v) => setTargetWordCount(v === 'auto' ? null : v === 'custom' ? 1500 : Number(v))}
+            >
+              <SelectTrigger className="w-[150px] h-9 text-xs">
+                <SelectValue placeholder="Word Count" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="auto">Auto (by variant)</SelectItem>
+                <SelectItem value="800">800 words</SelectItem>
+                <SelectItem value="1000">1,000 words</SelectItem>
+                <SelectItem value="1200">1,200 words</SelectItem>
+                <SelectItem value="1500">1,500 words</SelectItem>
+                <SelectItem value="1800">1,800 words</SelectItem>
+                <SelectItem value="2000">2,000 words</SelectItem>
+                <SelectItem value="2500">2,500 words</SelectItem>
+                <SelectItem value="custom">Custom…</SelectItem>
+              </SelectContent>
+            </Select>
+            {targetWordCount && ![800, 1000, 1200, 1500, 1800, 2000, 2500].includes(targetWordCount) && (
+              <Input
+                type="number"
+                min={500}
+                max={5000}
+                step={100}
+                value={targetWordCount}
+                onChange={(e) => setTargetWordCount(Number(e.target.value) || null)}
+                className="w-[90px] h-9 text-xs"
+                placeholder="Words"
+              />
+            )}
+          </div>
+
           {phase !== 'upload' && !isRunning && (
-            <Label htmlFor="xlsx-reupload" className="cursor-pointer">
-              <Button asChild variant="outline" size="sm">
-                <span><Upload className="h-3 w-3 mr-1" /> Upload New File</span>
+            <>
+              <Label htmlFor="xlsx-reupload" className="cursor-pointer">
+                <Button asChild variant="outline" size="sm">
+                  <span><Upload className="h-3 w-3 mr-1" /> Upload New File</span>
+                </Button>
+              </Label>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  localStorage.removeItem(STORAGE_KEY);
+                  setParsedRows([]);
+                  setBatchRows([]);
+                  setBatchId(null);
+                  setFileName('');
+                  setPhase('upload');
+                  setSelectedRows(new Set());
+                  setTargetWordCount(null);
+                }}
+              >
+                <XCircle className="h-3 w-3 mr-1" /> Clear
               </Button>
-            </Label>
+            </>
           )}
           <Input
             id="xlsx-reupload"

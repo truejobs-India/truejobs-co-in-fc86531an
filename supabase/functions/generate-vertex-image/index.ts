@@ -441,11 +441,15 @@ serve(async (req) => {
 
     console.log(`[generate-vertex-image] Routing: purpose=${purpose || 'none'}, model=${body.model || 'none'}, slug=${slug}`);
 
-    // ── Purpose-based enforced routing ──
+    // ── Purpose-based routing (respects model from request body) ──
     if (purpose === 'cover') {
-      // Cover images ALWAYS use Gemini Flash Image
+      const selectedCoverModel = body.model || 'gemini-flash-image';
       const imagePrompt = buildCoverImagePrompt(body);
-      console.log(`[generate-vertex-image] ENFORCED: purpose=cover → gemini-flash-image`);
+      console.log(`[generate-vertex-image] purpose=cover → ${selectedCoverModel}`);
+      if (selectedCoverModel === 'vertex-imagen') {
+        const aspectRatio = ASPECT_RATIOS[body.aspectRatio || '16:9'] || '16:9';
+        return await generateViaImagen(body, slug, imagePrompt, 1, aspectRatio, adminClient, startMs);
+      }
       return await generateViaGeminiFlashImage(body, slug, imagePrompt, adminClient, startMs);
     }
 

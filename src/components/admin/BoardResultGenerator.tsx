@@ -79,11 +79,13 @@ export function BoardResultGenerator() {
   };
   const initial = useRef(getInitialState());
 
-  const [phase, setPhase] = useState<Phase>(initial.current?.phase === 'preview' ? 'preview' : 'upload');
+  const [phase, setPhase] = useState<Phase>(
+    initial.current?.phase === 'qa' ? 'qa' : initial.current?.phase === 'preview' ? 'preview' : 'upload'
+  );
   const [aiModel, setAiModel] = useState(initial.current?.aiModel || 'gemini-flash');
   const [imageModel, setImageModel] = useState(initial.current?.imageModel || 'gemini-flash-image');
   const [parsedRows, setParsedRows] = useState<ParsedRow[]>(initial.current?.parsedRows || []);
-  const [batchRows, setBatchRows] = useState<BatchRow[]>([]);
+  const [batchRows, setBatchRows] = useState<BatchRow[]>(initial.current?.batchRows || []);
   const [batchId, setBatchId] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [isStopping, setIsStopping] = useState(false);

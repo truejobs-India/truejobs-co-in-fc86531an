@@ -896,9 +896,11 @@ export function BoardResultGenerator() {
                     <TableHead className="w-20">Variant</TableHead>
                     <TableHead className="w-36">Slug</TableHead>
                     <TableHead className="w-16 text-center">Status</TableHead>
-                    <TableHead className="w-16 text-center">Score</TableHead>
+                    <TableHead className="w-14 text-center">Score</TableHead>
+                    <TableHead className="w-14 text-center">Words</TableHead>
+                    <TableHead className="w-10 text-center">Img</TableHead>
                     <TableHead className="w-12 text-center">Issues</TableHead>
-                    <TableHead className="text-right w-28">Actions</TableHead>
+                    <TableHead className="text-right w-32">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>

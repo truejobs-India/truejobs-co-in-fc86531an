@@ -673,7 +673,7 @@ export function BoardResultGenerator() {
                 </TableHeader>
                 <TableBody>
                   {filteredRows.map((row, displayIdx) => {
-                    const realIdx = displayRows.indexOf(row);
+                    const realIdx = batchRows.indexOf(row) >= 0 ? batchRows.indexOf(row) : displayIdx;
                     const hasConflict = row.qa_notes?.some(n => n.startsWith('POSSIBLE_CONFLICT'));
                     const conflictData = hasConflict ? parseConflictNote(row.qa_notes.find(n => n.startsWith('POSSIBLE_CONFLICT'))!) : null;
                     const isExpanded = expandedRow === realIdx;

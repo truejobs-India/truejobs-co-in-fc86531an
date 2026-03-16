@@ -673,6 +673,7 @@ export type Database = {
           ai_generated_at: string | null
           ai_model_used: string | null
           author_id: string
+          board_name: string | null
           canonical_url: string | null
           category: string | null
           content: string
@@ -681,16 +682,26 @@ export type Database = {
           excerpt: string | null
           faq_schema: Json | null
           featured_image_alt: string | null
+          generation_metadata: Json | null
           id: string
+          import_batch_id: string | null
+          internal_links: Json | null
           is_published: boolean | null
           language: string | null
           meta_description: string | null
           meta_title: string | null
+          official_board_url: string | null
           page_type: string | null
           published_at: string | null
+          qa_notes: string[] | null
           reading_time: number | null
+          result_url: string | null
+          result_variant: string | null
           schema_json: string | null
           slug: string
+          source_payload: Json | null
+          source_row_index: number | null
+          state_ut: string | null
           status: string | null
           tags: string[] | null
           title: string
@@ -701,6 +712,7 @@ export type Database = {
           ai_generated_at?: string | null
           ai_model_used?: string | null
           author_id: string
+          board_name?: string | null
           canonical_url?: string | null
           category?: string | null
           content?: string
@@ -709,16 +721,26 @@ export type Database = {
           excerpt?: string | null
           faq_schema?: Json | null
           featured_image_alt?: string | null
+          generation_metadata?: Json | null
           id?: string
+          import_batch_id?: string | null
+          internal_links?: Json | null
           is_published?: boolean | null
           language?: string | null
           meta_description?: string | null
           meta_title?: string | null
+          official_board_url?: string | null
           page_type?: string | null
           published_at?: string | null
+          qa_notes?: string[] | null
           reading_time?: number | null
+          result_url?: string | null
+          result_variant?: string | null
           schema_json?: string | null
           slug: string
+          source_payload?: Json | null
+          source_row_index?: number | null
+          state_ut?: string | null
           status?: string | null
           tags?: string[] | null
           title: string
@@ -729,6 +751,7 @@ export type Database = {
           ai_generated_at?: string | null
           ai_model_used?: string | null
           author_id?: string
+          board_name?: string | null
           canonical_url?: string | null
           category?: string | null
           content?: string
@@ -737,23 +760,41 @@ export type Database = {
           excerpt?: string | null
           faq_schema?: Json | null
           featured_image_alt?: string | null
+          generation_metadata?: Json | null
           id?: string
+          import_batch_id?: string | null
+          internal_links?: Json | null
           is_published?: boolean | null
           language?: string | null
           meta_description?: string | null
           meta_title?: string | null
+          official_board_url?: string | null
           page_type?: string | null
           published_at?: string | null
+          qa_notes?: string[] | null
           reading_time?: number | null
+          result_url?: string | null
+          result_variant?: string | null
           schema_json?: string | null
           slug?: string
+          source_payload?: Json | null
+          source_row_index?: number | null
+          state_ut?: string | null
           status?: string | null
           tags?: string[] | null
           title?: string
           updated_at?: string
           word_count?: number | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "custom_pages_import_batch_id_fkey"
+            columns: ["import_batch_id"]
+            isOneToOne: false
+            referencedRelation: "import_batches"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       education: {
         Row: {
@@ -1381,6 +1422,48 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      import_batches: {
+        Row: {
+          completed_at: string | null
+          completed_count: number
+          created_at: string
+          failed_count: number
+          id: string
+          published_count: number
+          source_file_name: string
+          started_by: string
+          status: string
+          total_rows: number
+          updated_at: string
+        }
+        Insert: {
+          completed_at?: string | null
+          completed_count?: number
+          created_at?: string
+          failed_count?: number
+          id?: string
+          published_count?: number
+          source_file_name: string
+          started_by: string
+          status?: string
+          total_rows?: number
+          updated_at?: string
+        }
+        Update: {
+          completed_at?: string | null
+          completed_count?: number
+          created_at?: string
+          failed_count?: number
+          id?: string
+          published_count?: number
+          source_file_name?: string
+          started_by?: string
+          status?: string
+          total_rows?: number
+          updated_at?: string
+        }
+        Relationships: []
       }
       job_posting_drafts: {
         Row: {

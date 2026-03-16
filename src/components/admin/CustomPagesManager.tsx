@@ -20,8 +20,9 @@ import {
   Plus, Sparkles, Loader2, Pencil, Trash2, Search,
   ChevronLeft, ChevronRight, CheckCircle, XCircle,
   Globe, Copy, Square, Wand2, Clock, RotateCcw,
-  BarChart3, FileText, Zap, Eye
+  BarChart3, FileText, Zap, Eye, FileSpreadsheet
 } from 'lucide-react';
+import { BoardResultGenerator } from './BoardResultGenerator';
 
 // ═══════════════════════════════════════════════════════════════
 // Types
@@ -127,8 +128,8 @@ export function CustomPagesManager() {
   const [total, setTotal] = useState(0);
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
-  // View mode: 'list' or 'bulk'
-  const [viewMode, setViewMode] = useState<'list' | 'bulk'>('list');
+  // View mode: 'list', 'bulk', or 'board-results'
+  const [viewMode, setViewMode] = useState<'list' | 'bulk' | 'board-results'>('list');
 
   // Editor state
   const [editorOpen, setEditorOpen] = useState(false);
@@ -455,6 +456,9 @@ export function CustomPagesManager() {
           <Button variant={viewMode === 'bulk' ? 'default' : 'outline'} size="sm" onClick={() => setViewMode('bulk')}>
             <Zap className="h-4 w-4 mr-1" /> Bulk Generate
           </Button>
+          <Button variant={viewMode === 'board-results' ? 'default' : 'outline'} size="sm" onClick={() => setViewMode('board-results')}>
+            <FileSpreadsheet className="h-4 w-4 mr-1" /> Board Results
+          </Button>
           <Button size="sm" onClick={() => openEditor()}>
             <Plus className="h-4 w-4 mr-1" /> New Page
           </Button>
@@ -621,6 +625,11 @@ export function CustomPagesManager() {
           )}
         </div>
       )}
+
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {/* BOARD RESULTS VIEW */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {viewMode === 'board-results' && <BoardResultGenerator />}
 
       {/* ═══════════════════════════════════════════════════════════ */}
       {/* LIST VIEW */}

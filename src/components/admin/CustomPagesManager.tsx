@@ -813,7 +813,7 @@ export function CustomPagesManager() {
                                 <XCircle className="h-3.5 w-3.5 text-destructive" />
                               </Button>
                             )}
-                            <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => deletePage(p.id)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
+                            <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => deletePage(p.id, p.page_type)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
                           </div>
                         </TableCell>
                       </TableRow>

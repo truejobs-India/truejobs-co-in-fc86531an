@@ -242,8 +242,11 @@ async function generateViaGeminiFlashImage(
     }
 
     // Upload to storage
+    const isInlineFallback = (body.purpose === 'inline');
     const ext = mimeType.includes('jpeg') ? 'jpg' : 'png';
-    const filePath = `covers/${slug}-gemini-flash.${ext}`;
+    const pathPrefix = isInlineFallback ? 'inline' : 'covers';
+    const slotSuffix = isInlineFallback && body.slotNumber ? `-slot${body.slotNumber}` : '';
+    const filePath = `${pathPrefix}/${slug}-gemini-flash${slotSuffix}.${ext}`;
     const imageBytes = Uint8Array.from(atob(imageBase64), c => c.charCodeAt(0));
     const blob = new Blob([imageBytes], { type: mimeType });
 

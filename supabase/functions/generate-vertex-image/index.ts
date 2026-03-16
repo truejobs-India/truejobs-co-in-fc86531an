@@ -233,10 +233,7 @@ async function generateViaGeminiFlashImage(
 
   const url = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${GEMINI_IMAGE_MODEL}:generateContent`;
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), IMAGEN_TIMEOUT_MS);
-
-  try {
+  {
     let resp: Response | null = null;
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       if (attempt > 0) {
@@ -244,22 +241,28 @@ async function generateViaGeminiFlashImage(
         console.log(`[gemini-flash-image] 429 retry ${attempt}/${MAX_RETRIES} after ${delay}ms`);
         await new Promise(r => setTimeout(r, delay));
       }
-      resp = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        signal: controller.signal,
-        body: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text: imagePrompt }] }],
-          generationConfig: {
-            responseModalities: ['TEXT', 'IMAGE'],
-            temperature: 1.0,
-            maxOutputTokens: 8192,
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), IMAGEN_TIMEOUT_MS);
+      try {
+        resp = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
           },
-        }),
-      });
+          signal: controller.signal,
+          body: JSON.stringify({
+            contents: [{ role: 'user', parts: [{ text: imagePrompt }] }],
+            generationConfig: {
+              responseModalities: ['TEXT', 'IMAGE'],
+              temperature: 1.0,
+              maxOutputTokens: 8192,
+            },
+          }),
+        });
+      } finally {
+        clearTimeout(timer);
+      }
       if (resp.status !== 429) break;
       if (attempt === MAX_RETRIES) {
         const errText = await resp.text();
@@ -332,8 +335,6 @@ async function generateViaGeminiFlashImage(
       purpose,
       elapsedMs: elapsed,
     }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-  } finally {
-    clearTimeout(timer);
   }
 }
 
@@ -527,12 +528,9 @@ async function generateViaImagen(
 
   const url = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${IMAGEN_MODEL}:predict`;
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), IMAGEN_TIMEOUT_MS);
-
   let predictions: any[];
   let last429Response: Response | null = null;
-  try {
+  {
     let resp: Response | null = null;
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       if (attempt > 0) {
@@ -540,24 +538,30 @@ async function generateViaImagen(
         console.log(`[vertex-imagen] 429 retry ${attempt}/${MAX_RETRIES} after ${delay}ms`);
         await new Promise(r => setTimeout(r, delay));
       }
-      resp = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        signal: controller.signal,
-        body: JSON.stringify({
-          instances: [{ prompt: imagePrompt }],
-          parameters: {
-            sampleCount: imageCount,
-            aspectRatio,
-            personGeneration: 'dont_allow',
-            safetySetting: 'block_few',
-            addWatermark: false,
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), IMAGEN_TIMEOUT_MS);
+      try {
+        resp = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
           },
-        }),
-      });
+          signal: controller.signal,
+          body: JSON.stringify({
+            instances: [{ prompt: imagePrompt }],
+            parameters: {
+              sampleCount: imageCount,
+              aspectRatio,
+              personGeneration: 'dont_allow',
+              safetySetting: 'block_few',
+              addWatermark: false,
+            },
+          }),
+        });
+      } finally {
+        clearTimeout(timer);
+      }
       if (resp.status !== 429) break;
       last429Response = resp;
       if (attempt === MAX_RETRIES) {
@@ -574,8 +578,6 @@ async function generateViaImagen(
 
     const data = await resp!.json();
     predictions = data.predictions || [];
-  } finally {
-    clearTimeout(timer);
   }
 
   if (!predictions.length) {

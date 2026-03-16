@@ -127,8 +127,8 @@ export function CustomPagesManager() {
   const [total, setTotal] = useState(0);
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
-  // View mode: 'list' or 'bulk'
-  const [viewMode, setViewMode] = useState<'list' | 'bulk'>('list');
+  // View mode: 'list', 'bulk', or 'board-results'
+  const [viewMode, setViewMode] = useState<'list' | 'bulk' | 'board-results'>('list');
 
   // Editor state
   const [editorOpen, setEditorOpen] = useState(false);

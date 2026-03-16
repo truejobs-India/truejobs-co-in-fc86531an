@@ -478,26 +478,99 @@ Deno.serve(async (req) => {
       });
     }
 
-    // ── Generate board result page ──
-    if (action === 'generate-result') {
-      const { state_ut, board_name, board_abbr, result_url, official_board_url, seo_intro, variant, target_word_count, sibling_slugs } = body;
-      if (!state_ut || !board_name) {
-        return new Response(JSON.stringify({ error: 'state_ut and board_name required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-      }
+    // ── Fix page metadata (SEO fix) ──
+    if (action === 'fix') {
+      const { title, slug, content, meta_title, meta_description, excerpt, category, tags } = body;
+      if (!title) return new Response(JSON.stringify({ error: 'title required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
-      const prompt = generateResultPagePrompt({
-        state_ut,
-        board_name,
-        board_abbr: board_abbr || '',
-        result_url: result_url || '',
-        official_board_url: official_board_url || '',
-        seo_intro: seo_intro || '',
-        variant: variant || 'main',
-        target_word_count: target_word_count || 1500,
-        sibling_slugs: sibling_slugs || [],
+      const contentSnippet = (content || '').substring(0, 2000);
+      const fixPrompt = `You are an expert SEO specialist for TrueJobs.co.in.
+
+Fix the SEO metadata for this page. Only fix what is broken or missing.
+
+Current page:
+- Title: ${title}
+- Slug: ${slug || 'NOT SET'}
+- Meta Title: ${meta_title || 'NOT SET'} (${(meta_title || '').length} chars)
+- Meta Description: ${meta_description || 'NOT SET'} (${(meta_description || '').length} chars)
+- Excerpt: ${excerpt || 'NOT SET'}
+- Category: ${category || 'NOT SET'}
+- Tags: ${(tags || []).join(', ') || 'NONE'}
+
+Content preview: ${contentSnippet}
+
+Return a JSON object with ONLY the fields that need fixing:
+{
+  "meta_title": "Fixed meta title (40-60 chars)" or null if already good,
+  "meta_description": "Fixed meta description (120-160 chars)" or null if already good,
+  "excerpt": "Fixed excerpt (2-3 sentences)" or null if already good,
+  "slug": "fixed-slug" or null if already good,
+  "suggested_tags": ["tag1", ...] or null if already good,
+  "fix_summary": "Brief summary of what was fixed"
+}
+
+Rules:
+- Do NOT change fields that are already good
+- Meta title: 40-60 chars, include primary keyword
+- Meta description: 120-160 chars, compelling with CTA
+- Slug: lowercase, hyphens only, 3-70 chars
+- Return ONLY valid JSON`;
+
+      console.log(`[generate-custom-page] fix action, model=${model}, slug=${slug}`);
+      const raw = await callAI(model, fixPrompt);
+      const parsed = parseAIResponse(raw);
+
+      return new Response(JSON.stringify({ success: true, data: parsed, model, action }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
+    }
 
-      const raw = await callAI(model, prompt);
+    // ── Enrich page content ──
+    if (action === 'enrich') {
+      const { title, slug, content, meta_title, meta_description, excerpt, category, tags, faq_schema, word_count: currentWc } = body;
+      if (!title || !content) return new Response(JSON.stringify({ error: 'title and content required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+
+      const enrichPrompt = `You are an expert SEO content writer for TrueJobs.co.in, a leading Indian government job & education portal.
+
+Enrich and improve this existing page. Expand thin content, add missing sections, improve structure.
+
+Current page:
+- Title: ${title}
+- Slug: ${slug}
+- Word count: ~${currentWc || 'unknown'}
+- Meta Title: ${meta_title || 'NOT SET'}
+- Meta Description: ${meta_description || 'NOT SET'}
+- Has FAQ: ${Array.isArray(faq_schema) ? faq_schema.length + ' items' : 'No'}
+- Tags: ${(tags || []).join(', ') || 'NONE'}
+
+Current content (may be truncated):
+${(content || '').substring(0, 6000)}
+
+Return a JSON object with the enriched version:
+{
+  "title": "${title}",
+  "meta_title": "Improved meta title (40-60 chars)",
+  "meta_description": "Improved meta description (120-160 chars)",
+  "excerpt": "Improved excerpt",
+  "content": "Full enriched HTML content (target: 1500-2500 words). Keep existing good content, expand thin sections, add missing ones. Use <h2>, <h3>, <p>, <ul>, <ol>, <table>.",
+  "faq_items": [{"question": "...", "answer": "..."}, ...] (5-8 FAQ items),
+  "suggested_tags": ["tag1", "tag2", ...],
+  "word_count": estimated word count,
+  "sections_added": ["section names that were added"],
+  "enrichment_summary": "Brief summary of enrichments made"
+}
+
+Rules:
+- Keep existing good content, don't replace it
+- Add missing H2 sections, lists, tables where appropriate
+- Target 1500-2500 words total
+- Ensure E-E-A-T compliance
+- Add FAQ if missing or thin
+- Use HTML only, no markdown
+- Return ONLY valid JSON`;
+
+      console.log(`[generate-custom-page] enrich action, model=${model}, slug=${slug}, currentWc=${currentWc}`);
+      const raw = await callAI(model, enrichPrompt);
       const parsed = parseAIResponse(raw);
 
       return new Response(JSON.stringify({ success: true, data: parsed, model, action }), {

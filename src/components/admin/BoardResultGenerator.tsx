@@ -100,23 +100,29 @@ export function BoardResultGenerator() {
   const [storedFileUrl, setStoredFileUrl] = useState<string | null>(initial.current?.storedFileUrl || null);
   const [storedFilePath, setStoredFilePath] = useState<string | null>(initial.current?.storedFilePath || null);
 
-  // Persist parsed rows, fileName, phase, word count, image model, and file URL to localStorage
+  // Persist state to localStorage (including batchRows for QA phase)
   useEffect(() => {
     if (parsedRows.length > 0 && (phase === 'preview' || phase === 'generating' || phase === 'qa')) {
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        const stateToSave: any = {
           parsedRows,
           fileName,
-          phase: phase === 'generating' ? 'preview' : phase === 'qa' ? 'preview' : phase,
+          phase: phase === 'generating' ? 'preview' : phase,
           aiModel,
           imageModel,
           targetWordCount,
           storedFileUrl,
           storedFilePath,
-        }));
+        };
+        // Persist batchRows in QA phase so enrichment data survives refresh
+        if ((phase === 'qa' || phase === 'generating') && batchRows.length > 0) {
+          stateToSave.batchRows = batchRows;
+          stateToSave.phase = 'qa';
+        }
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
       } catch { /* quota exceeded, ignore */ }
     }
-  }, [parsedRows, fileName, phase, aiModel, imageModel, targetWordCount, storedFileUrl, storedFilePath]);
+  }, [parsedRows, batchRows, fileName, phase, aiModel, imageModel, targetWordCount, storedFileUrl, storedFilePath]);
 
   // ── Generate image for a page ──
   const generateImageForPage = useCallback(async (index: number) => {

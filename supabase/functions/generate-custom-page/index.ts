@@ -267,13 +267,100 @@ Rules:
 
 function parseAIResponse(raw: string): any {
   const cleaned = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+
+  // Level 1: direct parse
+  try { return JSON.parse(cleaned); } catch { /* continue */ }
+
+  // Level 2: extract outermost JSON block
+  const blockMatch = cleaned.match(/\{[\s\S]*\}/);
+  if (blockMatch) {
+    try { return JSON.parse(blockMatch[0]); } catch { /* continue */ }
+
+    // Level 3: repair unescaped quotes inside string values
+    // The most common issue: HTML content contains unescaped double quotes
+    try {
+      const repaired = repairJsonString(blockMatch[0]);
+      return JSON.parse(repaired);
+    } catch { /* continue */ }
+  }
+
+  // Level 4: field-specific extraction as last resort
   try {
-    return JSON.parse(cleaned);
+    return extractFieldsFromRaw(cleaned);
   } catch {
-    const match = cleaned.match(/\{[\s\S]*\}/);
-    if (match) return JSON.parse(match[0]);
+    console.error('[parseAIResponse] All parse levels failed. Raw length:', raw.length, 'First 500 chars:', raw.substring(0, 500));
     throw new Error('Failed to parse AI response as JSON');
   }
+}
+
+/** Attempt to fix unescaped double quotes inside JSON string values */
+function repairJsonString(jsonStr: string): string {
+  // Strategy: walk through and fix unescaped quotes inside values
+  // Replace common HTML attribute quotes that break JSON
+  let s = jsonStr;
+
+  // Fix unescaped quotes in HTML attributes like class="..." href="..."
+  // by replacing them with single quotes inside content values
+  s = s.replace(
+    /("content"\s*:\s*")([\s\S]*?)("\s*,\s*"(?:faq_items|suggested_tags|word_count|sections_present))/,
+    (_match, prefix, content, suffix) => {
+      // Escape unescaped double quotes in the content value
+      const fixed = content
+        .replace(/\\"/g, '\u0000ESC_QUOTE\u0000') // preserve already-escaped
+        .replace(/"/g, '\\"')                       // escape all remaining
+        .replace(/\u0000ESC_QUOTE\u0000/g, '\\"');  // restore
+      return prefix + fixed + suffix;
+    }
+  );
+
+  // Also fix excerpt field
+  s = s.replace(
+    /("excerpt"\s*:\s*")([\s\S]*?)("\s*,\s*"content")/,
+    (_match, prefix, content, suffix) => {
+      const fixed = content
+        .replace(/\\"/g, '\u0000ESC_QUOTE\u0000')
+        .replace(/"/g, '\\"')
+        .replace(/\u0000ESC_QUOTE\u0000/g, '\\"');
+      return prefix + fixed + suffix;
+    }
+  );
+
+  return s;
+}
+
+/** Last-resort: extract individual fields via regex */
+function extractFieldsFromRaw(raw: string): Record<string, unknown> {
+  const shortField = (name: string): string => {
+    const m = raw.match(new RegExp(`"${name}"\\s*:\\s*"([^"]{0,300})"`));
+    return m?.[1] || '';
+  };
+
+  const title = shortField('title');
+  const slug = shortField('slug');
+  const meta_title = shortField('meta_title');
+  const meta_description = shortField('meta_description');
+  const excerpt = shortField('excerpt');
+
+  // For content, grab the longest match (last "content": "..." block)
+  const contentMatches = [...raw.matchAll(/"content"\s*:\s*"([\s\S]*?)(?:"\s*[,}])/g)];
+  const content = contentMatches.length > 0
+    ? contentMatches[contentMatches.length - 1][1].replace(/\\"/g, '"').replace(/\\n/g, '\n')
+    : '';
+
+  // Extract FAQ items
+  let faq_items: Array<{question: string; answer: string}> = [];
+  const faqMatch = raw.match(/"faq_items"\s*:\s*(\[[\s\S]*?\])\s*[,}]/);
+  if (faqMatch) {
+    try { faq_items = JSON.parse(faqMatch[1]); } catch { /* skip */ }
+  }
+
+  // Word count
+  const wcMatch = raw.match(/"word_count"\s*:\s*(\d+)/);
+  const word_count = wcMatch ? parseInt(wcMatch[1]) : 0;
+
+  if (!title && !content) throw new Error('Could not extract any fields');
+
+  return { title, slug, meta_title, meta_description, excerpt, content, faq_items, word_count, suggested_tags: [], suggested_category: '' };
 }
 
 // ═══════════════════════════════════════════════════════════════

@@ -165,6 +165,8 @@ export function CustomPagesManager() {
   const loadPages = useCallback(async () => {
     setLoading(true);
     let query = supabase.from('custom_pages').select('*', { count: 'exact' });
+    // CRITICAL: Only show non-board-result pages in Custom Pages list
+    query = query.neq('page_type', 'result-landing');
     if (search) query = query.or(`title.ilike.%${search}%,slug.ilike.%${search}%`);
     if (statusFilter !== 'all') query = query.eq('status', statusFilter);
     query = query.order('created_at', { ascending: false }).range(pageNum * PAGE_SIZE, (pageNum + 1) * PAGE_SIZE - 1);

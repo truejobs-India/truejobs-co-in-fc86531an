@@ -95,7 +95,7 @@ export function BoardResultGenerator() {
   const [targetWordCount, setTargetWordCount] = useState<number | null>(initial.current?.targetWordCount || null);
   const [imageGenLoading, setImageGenLoading] = useState<Set<number>>(new Set());
 
-  // Persist parsed rows, fileName, phase, and word count to localStorage
+  // Persist parsed rows, fileName, phase, word count, and image model to localStorage
   useEffect(() => {
     if (parsedRows.length > 0 && (phase === 'preview' || phase === 'generating' || phase === 'qa')) {
       try {
@@ -104,11 +104,46 @@ export function BoardResultGenerator() {
           fileName,
           phase: phase === 'generating' ? 'preview' : phase === 'qa' ? 'preview' : phase,
           aiModel,
+          imageModel,
           targetWordCount,
         }));
       } catch { /* quota exceeded, ignore */ }
     }
-  }, [parsedRows, fileName, phase, aiModel, targetWordCount]);
+  }, [parsedRows, fileName, phase, aiModel, imageModel, targetWordCount]);
+
+  // ── Generate image for a page ──
+  const generateImageForPage = useCallback(async (index: number) => {
+    const row = batchRows[index];
+    if (!row.pageId) return;
+
+    setImageGenLoading(prev => new Set(prev).add(index));
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-board-result-image', {
+        body: {
+          imageModel,
+          pageType: 'result-landing',
+          slug: row.slug,
+          state_ut: row.state_ut,
+          board_name: row.board_name,
+          variant: row.variant,
+        },
+      });
+      if (error) throw new Error(error.message);
+      if (!data?.success) throw new Error(data?.error || 'Image generation failed');
+
+      // Update the page with the cover image
+      await supabase.from('custom_pages').update({
+        cover_image_url: data.imageUrl,
+        featured_image_alt: `${row.board_name} result - ${row.state_ut}`,
+      } as any).eq('id', row.pageId);
+
+      toast({ title: `Image generated`, description: `Model: ${data.model}, ${data.elapsedMs}ms` });
+    } catch (e: any) {
+      toast({ title: 'Image generation failed', description: e.message, variant: 'destructive' });
+    } finally {
+      setImageGenLoading(prev => { const n = new Set(prev); n.delete(index); return n; });
+    }
+  }, [batchRows, imageModel, toast]);
 
   // ── File Upload & Parse ──
   const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {

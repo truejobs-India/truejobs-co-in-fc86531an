@@ -4,7 +4,7 @@ import { Layout } from '@/components/layout/Layout';
 import { supabase } from '@/integrations/supabase/client';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
-import { Calendar, Clock, Tag } from 'lucide-react';
+import { Calendar, Clock, Tag, ExternalLink } from 'lucide-react';
 import { Helmet } from 'react-helmet-async';
 import NotFound from '../NotFound';
 

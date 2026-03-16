@@ -1145,7 +1145,8 @@ export function BoardResultGenerator() {
             </div>
           )}
         </DialogContent>
-      </Dialog>
+      {/* ── HUB PAGE GENERATOR ── */}
+      <HubPageGenerator />
     </div>
   );
 }

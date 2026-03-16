@@ -528,7 +528,7 @@ Rules:
     // ── Enrich page content ──
     if (action === 'enrich') {
       const { title, slug, content, meta_title, meta_description, excerpt, category, tags, faq_schema, word_count: currentWc } = body;
-      if (!title || !content) return new Response(JSON.stringify({ error: 'title and content required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      if (!title) return new Response(JSON.stringify({ error: 'title required for enrich' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
       const enrichPrompt = `You are an expert SEO content writer for TrueJobs.co.in, a leading Indian government job & education portal.
 

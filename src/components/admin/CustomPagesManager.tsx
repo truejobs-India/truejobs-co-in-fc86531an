@@ -20,8 +20,9 @@ import {
   Plus, Sparkles, Loader2, Pencil, Trash2, Search,
   ChevronLeft, ChevronRight, CheckCircle, XCircle,
   Globe, Copy, Square, Wand2, Clock, RotateCcw,
-  BarChart3, FileText, Zap, Eye
+  BarChart3, FileText, Zap, Eye, FileSpreadsheet
 } from 'lucide-react';
+import { BoardResultGenerator } from './BoardResultGenerator';
 
 // ═══════════════════════════════════════════════════════════════
 // Types

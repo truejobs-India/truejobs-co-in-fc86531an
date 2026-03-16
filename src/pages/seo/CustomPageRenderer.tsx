@@ -131,7 +131,19 @@ export default function CustomPageRenderer() {
         <nav className="text-sm text-muted-foreground mb-4">
           <a href="/" className="hover:text-primary">Home</a>
           <span className="mx-2">›</span>
-          {page.category && (
+          {isResultLanding && (
+            <>
+              <span>Results</span>
+              <span className="mx-2">›</span>
+            </>
+          )}
+          {page.state_ut && isResultLanding && (
+            <>
+              <span>{page.state_ut}</span>
+              <span className="mx-2">›</span>
+            </>
+          )}
+          {!isResultLanding && page.category && (
             <>
               <span>{page.category}</span>
               <span className="mx-2">›</span>

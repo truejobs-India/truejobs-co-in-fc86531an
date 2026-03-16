@@ -526,11 +526,10 @@ export function BoardResultGenerator() {
   const progress = batchRows.length > 0 ? ((completed + failed + batchRows.filter(r => r.status === 'skipped').length) / batchRows.length) * 100 : 0;
 
   // ── Filtered rows ──
-  const displayRows = batchRows.length > 0 ? batchRows : parsedRows.map(r => ({ ...r, status: r.valid ? 'queued' as const : 'skipped' as const, qa_notes: [] as string[] }));
-  const filteredRows = filter === 'all' ? displayRows :
-    filter === 'conflicts' ? displayRows.filter(r => r.qa_notes?.some(n => n.startsWith('POSSIBLE_CONFLICT'))) :
-    filter === 'failed' ? displayRows.filter(r => r.status === 'failed') :
-    displayRows.filter(r => 'quality' in r && r.quality && r.quality.score < 65);
+  const filteredRows: BatchRow[] = filter === 'all' ? (batchRows.length > 0 ? batchRows : parsedRows.map(r => ({ ...r, status: r.valid ? 'queued' as const : 'skipped' as const, qa_notes: [] as string[] } as BatchRow))) :
+    filter === 'conflicts' ? batchRows.filter(r => r.qa_notes?.some(n => n.startsWith('POSSIBLE_CONFLICT'))) :
+    filter === 'failed' ? batchRows.filter(r => r.status === 'failed') :
+    batchRows.filter(r => r.quality && r.quality.score < 65);
 
   // ═══════════════════════════════════════════════════════════════
   // RENDER

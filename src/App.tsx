@@ -17,6 +17,8 @@ import NotFound from "./pages/NotFound";
 
 // SEO resolver – lazy-loaded to avoid bundling ~5000 lines of config data for all users
 const SEOLandingResolver = lazy(() => import("./pages/seo/SEOLandingResolver"));
+const BoardResultStatePage = lazy(() => import("./pages/board-results/BoardResultStatePage"));
+const BoardResultBoardPage = lazy(() => import("./pages/board-results/BoardResultBoardPage"));
 
 // Lazy-loaded routes (code-split)
 const Login = lazy(() => import("./pages/auth/Login"));
@@ -141,6 +143,8 @@ const App = () => (
                 <Route path="/latest-govt-jobs" element={<LatestGovtJobs />} />
                 <Route path="/jobs/employment-news" element={<EmploymentNewsJobs />} />
                 <Route path="/jobs/employment-news/:slug" element={<EmploymentNewsJobDetail />} />
+                <Route path="/results/:state/:board" element={<BoardResultBoardPage />} />
+                <Route path="/results/:state" element={<BoardResultStatePage />} />
                 <Route path="/:slug" element={<SEOLandingResolver />} />
                 {/* Resources */}
                 <Route path="/sample-papers" element={<SamplePapers />} />

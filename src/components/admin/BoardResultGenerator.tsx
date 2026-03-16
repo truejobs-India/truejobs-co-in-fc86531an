@@ -80,6 +80,7 @@ export function BoardResultGenerator() {
 
   const [phase, setPhase] = useState<Phase>(initial.current?.phase === 'preview' ? 'preview' : 'upload');
   const [aiModel, setAiModel] = useState(initial.current?.aiModel || 'gemini-flash');
+  const [imageModel, setImageModel] = useState(initial.current?.imageModel || 'gemini-flash-image');
   const [parsedRows, setParsedRows] = useState<ParsedRow[]>(initial.current?.parsedRows || []);
   const [batchRows, setBatchRows] = useState<BatchRow[]>([]);
   const [batchId, setBatchId] = useState<string | null>(null);
@@ -92,8 +93,9 @@ export function BoardResultGenerator() {
   const [filter, setFilter] = useState<'all' | 'conflicts' | 'failed' | 'low-quality'>('all');
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
   const [targetWordCount, setTargetWordCount] = useState<number | null>(initial.current?.targetWordCount || null);
+  const [imageGenLoading, setImageGenLoading] = useState<Set<number>>(new Set());
 
-  // Persist parsed rows, fileName, phase, and word count to localStorage
+  // Persist parsed rows, fileName, phase, word count, and image model to localStorage
   useEffect(() => {
     if (parsedRows.length > 0 && (phase === 'preview' || phase === 'generating' || phase === 'qa')) {
       try {
@@ -102,11 +104,46 @@ export function BoardResultGenerator() {
           fileName,
           phase: phase === 'generating' ? 'preview' : phase === 'qa' ? 'preview' : phase,
           aiModel,
+          imageModel,
           targetWordCount,
         }));
       } catch { /* quota exceeded, ignore */ }
     }
-  }, [parsedRows, fileName, phase, aiModel, targetWordCount]);
+  }, [parsedRows, fileName, phase, aiModel, imageModel, targetWordCount]);
+
+  // ── Generate image for a page ──
+  const generateImageForPage = useCallback(async (index: number) => {
+    const row = batchRows[index];
+    if (!row.pageId) return;
+
+    setImageGenLoading(prev => new Set(prev).add(index));
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-board-result-image', {
+        body: {
+          imageModel,
+          pageType: 'result-landing',
+          slug: row.slug,
+          state_ut: row.state_ut,
+          board_name: row.board_name,
+          variant: row.variant,
+        },
+      });
+      if (error) throw new Error(error.message);
+      if (!data?.success) throw new Error(data?.error || 'Image generation failed');
+
+      // Update the page with the cover image
+      await supabase.from('custom_pages').update({
+        cover_image_url: data.imageUrl,
+        featured_image_alt: `${row.board_name} result - ${row.state_ut}`,
+      } as any).eq('id', row.pageId);
+
+      toast({ title: `Image generated`, description: `Model: ${data.model}, ${data.elapsedMs}ms` });
+    } catch (e: any) {
+      toast({ title: 'Image generation failed', description: e.message, variant: 'destructive' });
+    } finally {
+      setImageGenLoading(prev => { const n = new Set(prev); n.delete(index); return n; });
+    }
+  }, [batchRows, imageModel, toast]);
 
   // ── File Upload & Parse ──
   const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -635,6 +672,7 @@ export function BoardResultGenerator() {
         </div>
         <div className="flex gap-2 items-center flex-wrap">
           <AiModelSelector value={aiModel} onValueChange={setAiModel} capability="text" triggerClassName="w-[180px]" />
+          <AiModelSelector value={imageModel} onValueChange={setImageModel} capability="image" triggerClassName="w-[180px]" size="sm" />
           
           {/* Word Length Selector */}
           <div className="flex items-center gap-1">
@@ -858,9 +896,11 @@ export function BoardResultGenerator() {
                     <TableHead className="w-20">Variant</TableHead>
                     <TableHead className="w-36">Slug</TableHead>
                     <TableHead className="w-16 text-center">Status</TableHead>
-                    <TableHead className="w-16 text-center">Score</TableHead>
+                    <TableHead className="w-14 text-center">Score</TableHead>
+                    <TableHead className="w-14 text-center">Words</TableHead>
+                    <TableHead className="w-10 text-center">Img</TableHead>
                     <TableHead className="w-12 text-center">Issues</TableHead>
-                    <TableHead className="text-right w-28">Actions</TableHead>
+                    <TableHead className="text-right w-32">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -921,6 +961,28 @@ export function BoardResultGenerator() {
                               </span>
                             ) : '—'}
                           </TableCell>
+                          <TableCell className="text-center text-xs">
+                            {bRow.quality ? (
+                              <span className={bRow.quality.wordCount >= 1000 ? 'text-emerald-600' : 'text-amber-600'}>
+                                {bRow.quality.wordCount.toLocaleString()}
+                              </span>
+                            ) : '—'}
+                          </TableCell>
+                          <TableCell className="text-center text-xs">
+                            {bRow.status === 'success' ? (
+                              imageGenLoading.has(realIdx) ? (
+                                <Loader2 className="h-3 w-3 animate-spin mx-auto text-primary" />
+                              ) : (
+                                <Button
+                                  variant="ghost" size="icon" className="h-6 w-6"
+                                  title="Generate hero image"
+                                  onClick={() => generateImageForPage(realIdx)}
+                                >
+                                  🖼️
+                                </Button>
+                              )
+                            ) : '—'}
+                          </TableCell>
                           <TableCell className="text-center">
                             {issueCount > 0 ? (
                               <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setExpandedRow(isExpanded ? null : realIdx)}>
@@ -969,7 +1031,7 @@ export function BoardResultGenerator() {
                         {/* Expanded issues row */}
                         {isExpanded && (
                           <TableRow key={`${realIdx}-issues`}>
-                            <TableCell colSpan={phase === 'preview' ? 11 : 10} className="bg-muted/30 py-2 px-4">
+                            <TableCell colSpan={phase === 'preview' ? 13 : 12} className="bg-muted/30 py-2 px-4">
                               <div className="space-y-1 text-xs">
                                 {row.errors?.map((err, ei) => (
                                   <div key={`e-${ei}`} className="flex items-start gap-1.5 text-destructive">

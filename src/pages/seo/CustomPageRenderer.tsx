@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Calendar, Clock, Tag, ExternalLink } from 'lucide-react';
 import { Helmet } from 'react-helmet-async';
 import NotFound from '../NotFound';
+import { PremiumResultLanding } from '@/pages/board-results/PremiumResultLanding';
 
 interface CustomPageData {
   title: string;
@@ -97,6 +98,27 @@ export default function CustomPageRenderer() {
 
   const isResultLanding = page.page_type === 'result-landing';
   const internalLinks: Array<{ slug: string; title: string; type: string }> = Array.isArray(page.internal_links) ? page.internal_links : [];
+
+  // Use PremiumResultLanding for result pages
+  if (isResultLanding) {
+    return (
+      <Layout>
+        <Helmet>
+          <title>{page.meta_title || page.title} | TrueJobs</title>
+          <meta name="description" content={page.meta_description || page.excerpt || ''} />
+          <link rel="canonical" href={page.canonical_url || pageUrl} />
+          <meta property="og:title" content={page.meta_title || page.title} />
+          <meta property="og:description" content={page.meta_description || page.excerpt || ''} />
+          <meta property="og:url" content={pageUrl} />
+          <meta property="og:type" content="article" />
+          {page.cover_image_url && <meta property="og:image" content={page.cover_image_url} />}
+          <script type="application/ld+json">{JSON.stringify(webPageSchema)}</script>
+          {faqSchema && <script type="application/ld+json">{JSON.stringify(faqSchema)}</script>}
+        </Helmet>
+        <PremiumResultLanding page={page} />
+      </Layout>
+    );
+  }
 
   // BreadcrumbList schema for result pages
   const breadcrumbSchema = isResultLanding ? {

@@ -487,9 +487,12 @@ export function CustomPagesManager() {
           </h3>
           <p className="text-sm text-muted-foreground">Create and manage SEO landing pages with AI</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Button variant={viewMode === 'list' ? 'default' : 'outline'} size="sm" onClick={() => setViewMode('list')}>
             <FileText className="h-4 w-4 mr-1" /> Pages
+          </Button>
+          <Button variant={viewMode === 'ai-workflows' ? 'default' : 'outline'} size="sm" onClick={() => setViewMode('ai-workflows')}>
+            <BarChart3 className="h-4 w-4 mr-1" /> AI Workflows
           </Button>
           <Button variant={viewMode === 'bulk' ? 'default' : 'outline'} size="sm" onClick={() => setViewMode('bulk')}>
             <Zap className="h-4 w-4 mr-1" /> Bulk Generate

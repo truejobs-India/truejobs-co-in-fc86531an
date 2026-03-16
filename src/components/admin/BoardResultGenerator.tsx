@@ -639,8 +639,8 @@ export function BoardResultGenerator() {
           {/* Word Length Selector */}
           <div className="flex items-center gap-1">
             <Select
-              value={targetWordCount ? String(targetWordCount) : 'auto'}
-              onValueChange={(v) => setTargetWordCount(v === 'auto' ? null : Number(v))}
+              value={targetWordCount ? (![800, 1000, 1200, 1500, 1800, 2000, 2500].includes(targetWordCount) ? 'custom' : String(targetWordCount)) : 'auto'}
+              onValueChange={(v) => setTargetWordCount(v === 'auto' ? null : v === 'custom' ? 1500 : Number(v))}
             >
               <SelectTrigger className="w-[150px] h-9 text-xs">
                 <SelectValue placeholder="Word Count" />

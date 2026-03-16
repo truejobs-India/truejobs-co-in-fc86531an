@@ -11,8 +11,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
 import { AiModelSelector } from '@/components/admin/AiModelSelector';
+import { BulkPageWorkflow } from '@/components/admin/BulkPageWorkflow';
 import { getModelDef, getModelSpeed } from '@/lib/aiModels';
 import { scoreCustomPage, scoreColor, scoreBgColor, type QualityBreakdown } from '@/lib/pageQualityScorer';
+import { usePageAiWorkflow } from '@/hooks/usePageAiWorkflow';
 import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -20,7 +22,7 @@ import {
   Plus, Sparkles, Loader2, Pencil, Trash2, Search,
   ChevronLeft, ChevronRight, CheckCircle, XCircle,
   Globe, Copy, Square, Wand2, Clock, RotateCcw,
-  BarChart3, FileText, Zap, Eye, FileSpreadsheet
+  BarChart3, FileText, Zap, Eye, FileSpreadsheet, Wrench,
 } from 'lucide-react';
 import { BoardResultGenerator } from './BoardResultGenerator';
 
@@ -128,8 +130,12 @@ export function CustomPagesManager() {
   const [total, setTotal] = useState(0);
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
-  // View mode: 'list', 'bulk', or 'board-results'
-  const [viewMode, setViewMode] = useState<'list' | 'bulk' | 'board-results'>('list');
+  // View mode: 'list', 'bulk', 'board-results', or 'ai-workflows'
+  const [viewMode, setViewMode] = useState<'list' | 'bulk' | 'board-results' | 'ai-workflows'>('list');
+
+  // Per-row AI action loading state
+  const [rowActionLoading, setRowActionLoading] = useState<Record<string, string>>({});
+  const pageWorkflow = usePageAiWorkflow();
 
   // Editor state
   const [editorOpen, setEditorOpen] = useState(false);
@@ -247,6 +253,38 @@ export function CustomPagesManager() {
       published_at: newPub ? new Date().toISOString() : null,
     } as any).eq('id', p.id);
     toast({ title: newPub ? 'Published!' : 'Unpublished' }); loadPages();
+  };
+
+  // ── Per-row AI actions ──
+  const fixSinglePage = async (p: CustomPage) => {
+    setRowActionLoading(prev => ({ ...prev, [p.id]: 'fix' }));
+    try {
+      const result = await pageWorkflow.fixPage(p, aiModel);
+      if (result.status === 'fixed') toast({ title: `Fixed: ${p.title}`, description: result.reason });
+      else if (result.status === 'skipped') toast({ title: 'No fixes needed', description: result.reason });
+      else toast({ title: 'Fix failed', description: result.reason, variant: 'destructive' });
+      loadPages();
+    } finally { setRowActionLoading(prev => { const n = { ...prev }; delete n[p.id]; return n; }); }
+  };
+
+  const enrichSinglePage = async (p: CustomPage) => {
+    setRowActionLoading(prev => ({ ...prev, [p.id]: 'enrich' }));
+    try {
+      const result = await pageWorkflow.enrichPage(p, aiModel);
+      if (result.status === 'enriched') toast({ title: `Enriched: ${p.title}`, description: result.reason });
+      else toast({ title: 'Enrich failed', description: result.reason, variant: 'destructive' });
+      loadPages();
+    } finally { setRowActionLoading(prev => { const n = { ...prev }; delete n[p.id]; return n; }); }
+  };
+
+  const publishSinglePage = async (p: CustomPage) => {
+    setRowActionLoading(prev => ({ ...prev, [p.id]: 'publish' }));
+    try {
+      const result = await pageWorkflow.publishPage(p);
+      if (result.status === 'published') toast({ title: `Published: ${p.title}` });
+      else toast({ title: 'Publish skipped', description: result.reason, variant: 'destructive' });
+      loadPages();
+    } finally { setRowActionLoading(prev => { const n = { ...prev }; delete n[p.id]; return n; }); }
   };
 
   // ── AI: Generate single ──
@@ -449,9 +487,12 @@ export function CustomPagesManager() {
           </h3>
           <p className="text-sm text-muted-foreground">Create and manage SEO landing pages with AI</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Button variant={viewMode === 'list' ? 'default' : 'outline'} size="sm" onClick={() => setViewMode('list')}>
             <FileText className="h-4 w-4 mr-1" /> Pages
+          </Button>
+          <Button variant={viewMode === 'ai-workflows' ? 'default' : 'outline'} size="sm" onClick={() => setViewMode('ai-workflows')}>
+            <BarChart3 className="h-4 w-4 mr-1" /> AI Workflows
           </Button>
           <Button variant={viewMode === 'bulk' ? 'default' : 'outline'} size="sm" onClick={() => setViewMode('bulk')}>
             <Zap className="h-4 w-4 mr-1" /> Bulk Generate
@@ -627,6 +668,23 @@ export function CustomPagesManager() {
       )}
 
       {/* ═══════════════════════════════════════════════════════════ */}
+      {/* AI WORKFLOWS VIEW */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {viewMode === 'ai-workflows' && (
+        <div className="space-y-4">
+          <BulkPageWorkflow
+            title="Custom Pages — Bulk AI Workflows"
+            onPagesChanged={loadPages}
+          />
+          <BulkPageWorkflow
+            pageTypeFilter="result-landing"
+            title="Board Result Pages — Bulk AI Workflows"
+            onPagesChanged={loadPages}
+          />
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════ */}
       {/* BOARD RESULTS VIEW */}
       {/* ═══════════════════════════════════════════════════════════ */}
       {viewMode === 'board-results' && <BoardResultGenerator />}
@@ -661,40 +719,94 @@ export function CustomPagesManager() {
                   <TableRow>
                     <TableHead>Title</TableHead>
                     <TableHead>Slug</TableHead>
-                    <TableHead className="text-center w-16">Score</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="w-16">Words</TableHead>
-                    <TableHead>AI</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableHead className="text-center w-14">Score</TableHead>
+                    <TableHead className="w-20">Status</TableHead>
+                    <TableHead className="w-14 text-center">Words</TableHead>
+                    <TableHead className="w-14 text-center">Meta</TableHead>
+                    <TableHead className="w-10 text-center">H2s</TableHead>
+                    <TableHead className="w-10 text-center">FAQs</TableHead>
+                    <TableHead className="w-16">Type</TableHead>
+                    <TableHead className="text-right w-[220px]">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {loading ? (
-                    <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
                   ) : pages.length === 0 ? (
-                    <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No pages yet. Click "New Page" or "Bulk Generate".</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">No pages yet. Click "New Page" or "Bulk Generate".</TableCell></TableRow>
                   ) : pages.map(p => {
                     const q = getPageQuality(p);
+                    const loading_action = rowActionLoading[p.id];
+                    const metaOk = !!(p.meta_title && p.meta_description && p.meta_title.length >= 25 && p.meta_title.length <= 65 && p.meta_description.length >= 80);
+                    const slugOk = !!(p.slug && p.slug.length >= 3 && /^[a-z0-9-]+$/.test(p.slug));
                     return (
-                      <TableRow key={p.id} className={q.score < 65 ? 'bg-amber-50/50 dark:bg-amber-950/10' : ''}>
-                        <TableCell className="font-medium max-w-[200px] truncate">{p.title}</TableCell>
-                        <TableCell className="text-xs text-muted-foreground font-mono">/{p.slug}</TableCell>
+                      <TableRow key={p.id} className={q.score < 50 ? 'bg-destructive/5' : q.score < 65 ? 'bg-amber-50/50 dark:bg-amber-950/10' : ''}>
+                        <TableCell className="font-medium max-w-[180px] truncate text-sm">{p.title}</TableCell>
+                        <TableCell className="text-[11px] text-muted-foreground font-mono max-w-[120px] truncate" title={p.slug}>
+                          <span className={slugOk ? '' : 'text-destructive'}>/{p.slug}</span>
+                        </TableCell>
                         <TableCell className="text-center">
                           <QualityIndicator quality={q} compact />
                         </TableCell>
                         <TableCell>{statusBadge(p.status)}</TableCell>
-                        <TableCell className="text-sm">{q.wordCount}</TableCell>
-                        <TableCell>
-                          {p.ai_model_used && (
-                            <Badge variant="outline" className="text-[10px]">{getModelDef(p.ai_model_used)?.label || p.ai_model_used}</Badge>
+                        <TableCell className="text-center text-xs">
+                          <span className={q.wordCount >= 1000 ? 'text-emerald-600' : q.wordCount >= 500 ? 'text-amber-600' : 'text-destructive font-bold'}>
+                            {q.wordCount.toLocaleString()}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {metaOk ? (
+                            <CheckCircle className="h-3.5 w-3.5 text-emerald-600 mx-auto" />
+                          ) : (
+                            <XCircle className="h-3.5 w-3.5 text-destructive mx-auto" />
                           )}
                         </TableCell>
-                        <TableCell className="text-right space-x-1">
-                          <Button size="icon" variant="ghost" onClick={() => openEditor(p)}><Pencil className="h-3.5 w-3.5" /></Button>
-                          <Button size="icon" variant="ghost" onClick={() => togglePublish(p)}>
-                            {p.is_published ? <XCircle className="h-3.5 w-3.5 text-destructive" /> : <CheckCircle className="h-3.5 w-3.5 text-emerald-600" />}
-                          </Button>
-                          <Button size="icon" variant="ghost" onClick={() => deletePage(p.id)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
+                        <TableCell className="text-center text-xs">{q.h2Count}</TableCell>
+                        <TableCell className="text-center text-xs">{q.faqCount}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="text-[9px]">{p.page_type || 'landing'}</Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-0.5">
+                            {/* Fix */}
+                            <Button
+                              size="sm" variant="ghost" className="h-7 px-1.5 text-[10px]"
+                              onClick={() => fixSinglePage(p)}
+                              disabled={!!loading_action}
+                              title="AI Fix metadata"
+                            >
+                              {loading_action === 'fix' ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wrench className="h-3 w-3" />}
+                            </Button>
+                            {/* Enrich */}
+                            <Button
+                              size="sm" variant="ghost" className="h-7 px-1.5 text-[10px]"
+                              onClick={() => enrichSinglePage(p)}
+                              disabled={!!loading_action}
+                              title="AI Enrich content"
+                            >
+                              {loading_action === 'enrich' ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                            </Button>
+                            {/* Publish */}
+                            {!p.is_published && (
+                              <Button
+                                size="sm" variant="ghost" className="h-7 px-1.5 text-[10px] text-emerald-600"
+                                onClick={() => publishSinglePage(p)}
+                                disabled={!!loading_action}
+                                title="Publish"
+                              >
+                                {loading_action === 'publish' ? <Loader2 className="h-3 w-3 animate-spin" /> : <Globe className="h-3 w-3" />}
+                              </Button>
+                            )}
+                            {/* Edit */}
+                            <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEditor(p)}><Pencil className="h-3.5 w-3.5" /></Button>
+                            {/* Unpublish / Delete */}
+                            {p.is_published && (
+                              <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => togglePublish(p)}>
+                                <XCircle className="h-3.5 w-3.5 text-destructive" />
+                              </Button>
+                            )}
+                            <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => deletePage(p.id)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     );

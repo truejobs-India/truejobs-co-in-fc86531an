@@ -746,7 +746,7 @@ Deno.serve(async (req: Request) => {
     const bedrockPath = `model/${modelId}/converse`;
 
     const bedrockBody = JSON.stringify({
-      messages,
+      messages: finalMessages,
       inferenceConfig: {
         maxTokens: 1024,
         temperature: 0.3,

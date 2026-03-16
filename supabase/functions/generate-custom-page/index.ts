@@ -1,6 +1,7 @@
 /**
  * generate-custom-page — AI-powered custom SEO page generation.
- * Supports: generate (full page from topic), improve (fix/optimize existing), bulk (multiple topics).
+ * Supports: generate (full page from topic), improve (fix/optimize existing),
+ *           bulk (multiple topics), generate-result (board result pages).
  */
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -49,11 +50,6 @@ async function callGroq(prompt: string): Promise<string> {
 }
 
 async function callMistral(prompt: string): Promise<string> {
-  const region = Deno.env.get('AWS_REGION') || 'us-west-2';
-  const accessKey = Deno.env.get('AWS_ACCESS_KEY_ID');
-  const secretKey = Deno.env.get('AWS_SECRET_ACCESS_KEY');
-  if (!accessKey || !secretKey) throw new Error('AWS credentials not configured');
-  // Use Lovable Gemini as fallback for simplicity
   return callLovableGemini(prompt);
 }
 
@@ -192,6 +188,94 @@ Return a JSON object with improvements:
 Return ONLY valid JSON, no markdown fences.`;
 }
 
+function generateResultPagePrompt(input: {
+  state_ut: string;
+  board_name: string;
+  board_abbr: string;
+  result_url: string;
+  official_board_url: string;
+  seo_intro: string;
+  variant: string;
+  target_word_count: number;
+  sibling_slugs: string[];
+}): string {
+  const siblingLinks = input.sibling_slugs.length > 0
+    ? `Related pages on TrueJobs: ${input.sibling_slugs.map(s => `/${s}`).join(', ')}`
+    : '';
+
+  return `You are an expert SEO content writer for TrueJobs.co.in, a leading Indian government job & education portal.
+
+Generate a comprehensive, SEO-optimized BOARD RESULT LANDING PAGE for:
+
+State/UT: ${input.state_ut}
+Board Name: ${input.board_name} (Abbreviation: ${input.board_abbr})
+Result Variant: ${input.variant}
+Official Result URL: ${input.result_url}
+Official Board Website: ${input.official_board_url}
+${input.seo_intro ? `SEO Intro Context: ${input.seo_intro}` : ''}
+${siblingLinks}
+
+Target word count: ${input.target_word_count} words minimum.
+
+Your content MUST include ALL of these 15 sections (use <h2> for each):
+1. Overview / Introduction — what this result is, which board, which year
+2. Important Dates — exam date, result declaration date, re-evaluation window
+3. How to Check Result — step-by-step with official URL
+4. Direct Result Link — CTA paragraph mentioning the official link
+5. Result Statistics — pass percentage, toppers (use placeholder data like "Expected" if unknown)
+6. Marking Scheme & Grading System — how marks/grades work for this board
+7. Toppers List — table placeholder for top performers
+8. Compartment / Supplementary Info — when applicable, re-exam details
+9. Revaluation / Rechecking Process — how to apply, fees, deadlines
+10. What to Do After Result — next steps, admission, counseling
+11. Documents Required — for admission/verification after result
+12. Helpline & Contact Information — board contact details
+13. Previous Year Comparison — trends, pass rate comparison
+14. Important Links — table of useful official and related links
+15. Disclaimer — standard disclaimer about official sources
+
+Return a JSON object with these exact fields:
+{
+  "title": "SEO title (50-60 chars) like '${input.board_abbr.toUpperCase()} ${input.variant === 'main' ? '' : input.variant.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) + ' '}Result 2025 - ${input.state_ut}'",
+  "meta_title": "Meta title with primary keyword (≤60 chars)",
+  "meta_description": "Compelling meta description with CTA (≤160 chars)",
+  "excerpt": "2-3 sentence summary for search/social previews",
+  "content": "Full HTML content with all 15 sections. Use <h2>, <h3>, <p>, <ul>, <ol>, <table> tags. No markdown.",
+  "faq_items": [{"question": "...", "answer": "..."}, ...] (8-12 FAQ items covering common queries about this result),
+  "sections_present": ["overview", "important-dates", "how-to-check", ...] (list of section IDs present),
+  "has_disclaimer": true,
+  "has_cta": true,
+  "has_official_urls": true,
+  "section_count": number of h2 sections,
+  "word_count": estimated word count (number),
+  "suggested_tags": ["tag1", "tag2", ...]
+}
+
+Rules:
+- Content must be factual, helpful for Indian students checking board results
+- Use proper HTML: <h2> for sections, <h3> for subsections, <table> for data
+- Include ${input.result_url} and ${input.official_board_url} as clickable links in the content
+- Write in professional but student-friendly tone (Hindi-belt audience)
+- Optimize for featured snippets and "People Also Ask"
+- Do NOT use markdown — HTML only
+- Return ONLY valid JSON, no markdown fences`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PARSE AI RESPONSE
+// ═══════════════════════════════════════════════════════════════
+
+function parseAIResponse(raw: string): any {
+  const cleaned = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    const match = cleaned.match(/\{[\s\S]*\}/);
+    if (match) return JSON.parse(match[0]);
+    throw new Error('Failed to parse AI response as JSON');
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════
 // AUTH
 // ═══════════════════════════════════════════════════════════════
@@ -225,50 +309,68 @@ Deno.serve(async (req) => {
     const authResult = await verifyAdmin(req);
     if (authResult instanceof Response) return authResult;
 
-    const { action, topic, pageType, category, tags, title, content, metaTitle, metaDescription, aiModel, topics } = await req.json();
+    const body = await req.json();
+    const { action, aiModel } = body;
     const model = aiModel || 'gemini-flash';
 
+    // ── Generate generic page ──
     if (action === 'generate') {
+      const { topic, pageType, category, tags } = body;
       if (!topic) return new Response(JSON.stringify({ error: 'topic required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
       const prompt = generatePagePrompt(topic, pageType || 'landing', category || '', tags || []);
       const raw = await callAI(model, prompt);
-      const cleaned = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-      
-      let parsed;
-      try { parsed = JSON.parse(cleaned); } catch { 
-        // Try to extract JSON from response
-        const match = cleaned.match(/\{[\s\S]*\}/);
-        if (match) parsed = JSON.parse(match[0]);
-        else throw new Error('Failed to parse AI response as JSON');
-      }
+      const parsed = parseAIResponse(raw);
 
       return new Response(JSON.stringify({ success: true, data: parsed, model, action }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
+    // ── Improve existing page ──
     if (action === 'improve') {
+      const { title, content, metaTitle, metaDescription } = body;
       if (!title || !content) return new Response(JSON.stringify({ error: 'title and content required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
       const prompt = improvePagePrompt(title, content, metaTitle || '', metaDescription || '');
       const raw = await callAI(model, prompt);
-      const cleaned = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-      
-      let parsed;
-      try { parsed = JSON.parse(cleaned); } catch {
-        const match = cleaned.match(/\{[\s\S]*\}/);
-        if (match) parsed = JSON.parse(match[0]);
-        else throw new Error('Failed to parse AI response');
-      }
+      const parsed = parseAIResponse(raw);
 
       return new Response(JSON.stringify({ success: true, data: parsed, model, action }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    // Bulk just returns topics parsed — actual generation is done client-side per topic
+    // ── Generate board result page ──
+    if (action === 'generate-result') {
+      const { state_ut, board_name, board_abbr, result_url, official_board_url, seo_intro, variant, target_word_count, sibling_slugs } = body;
+      if (!state_ut || !board_name) {
+        return new Response(JSON.stringify({ error: 'state_ut and board_name required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+
+      const prompt = generateResultPagePrompt({
+        state_ut,
+        board_name,
+        board_abbr: board_abbr || '',
+        result_url: result_url || '',
+        official_board_url: official_board_url || '',
+        seo_intro: seo_intro || '',
+        variant: variant || 'main',
+        target_word_count: target_word_count || 1500,
+        sibling_slugs: sibling_slugs || [],
+      });
+
+      const raw = await callAI(model, prompt);
+      const parsed = parseAIResponse(raw);
+
+      return new Response(JSON.stringify({ success: true, data: parsed, model, action }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // ── Validate bulk topics ──
     if (action === 'validate-bulk') {
+      const { topics } = body;
       const topicList = (topics || '').split('\n').map((t: string) => t.trim()).filter(Boolean);
       return new Response(JSON.stringify({ success: true, data: { topics: topicList, count: topicList.length } }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

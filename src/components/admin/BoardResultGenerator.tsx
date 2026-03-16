@@ -797,86 +797,130 @@ export function BoardResultGenerator() {
     }
   };
 
-  // ── Restore generated pages from database + any un-generated rows from localStorage ──
+  // ── Restore from database — uses board_result_batch_rows for COMPLETE manifest ──
   const restoreFromDb = useCallback(async () => {
     try {
-      const { data, error } = await supabase
-        .from('custom_pages')
-        .select('id, slug, title, state_ut, board_name, result_variant, result_url, official_board_url, word_count, content, meta_title, meta_description, excerpt, faq_schema, tags, is_published, status, qa_notes, ai_generated_at, cover_image_url')
-        .eq('page_type', 'result-landing')
+      // Step 1: Get the latest batch that has rows
+      const { data: latestBatch } = await supabase
+        .from('import_batches')
+        .select('id, source_file_name')
         .order('created_at', { ascending: false })
-        .limit(500);
+        .limit(10);
 
-      if (error) throw error;
+      // Step 2: Try to find batch rows from board_result_batch_rows
+      let allBatchRows: any[] = [];
+      let usedBatchId: string | null = null;
+      let usedFileName = 'Restored from database';
 
-      // Build BatchRows from DB pages
-      const dbSlugs = new Set<string>();
-      const restoredFromDb: BatchRow[] = (data || []).map((p: any, i: number) => {
-        dbSlugs.add(p.slug);
-        const quality = scoreCustomPage({
-          content: p.content || '',
-          meta_title: p.meta_title,
-          meta_description: p.meta_description,
-          excerpt: p.excerpt,
-          faq_schema: p.faq_schema,
-          tags: p.tags,
-        });
-        const hasContent = p.content && p.content.length > 100;
-        return {
-          state_ut: p.state_ut || '',
-          board_name: p.board_name || '',
-          result_url: p.result_url || '',
-          official_board_url: p.official_board_url || '',
-          seo_intro_text: '',
-          slug: p.slug,
-          variant: p.result_variant || 'main',
-          board_abbr: extractBoardAbbr(p.board_name || ''),
-          valid: true,
-          errors: [],
-          rowIndex: i,
-          status: hasContent ? 'success' as const : 'failed' as const,
-          pageId: p.id,
-          quality,
-          qa_notes: Array.isArray(p.qa_notes) ? p.qa_notes : [],
-        };
-      });
-
-      // Also check localStorage for un-generated rows (from original Excel upload)
-      let ungenerated: BatchRow[] = [];
-      try {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          const savedRows: ParsedRow[] = parsed.parsedRows || [];
-          // Find rows that exist in localStorage but NOT in DB
-          ungenerated = savedRows
-            .filter(r => r.valid && !dbSlugs.has(r.slug))
-            .map((r, i) => ({
-              ...r,
-              status: 'queued' as const,
-              qa_notes: [],
-              rowIndex: restoredFromDb.length + i,
-            }));
+      for (const batch of (latestBatch || [])) {
+        const { data: bRows } = await supabase
+          .from('board_result_batch_rows' as any)
+          .select('*')
+          .eq('batch_id', batch.id)
+          .order('row_index', { ascending: true });
+        if (bRows && bRows.length > 0) {
+          allBatchRows = bRows;
+          usedBatchId = batch.id;
+          usedFileName = batch.source_file_name || 'Restored from database';
+          break;
         }
-      } catch { /* ignore */ }
+      }
 
-      const allRows = [...restoredFromDb, ...ungenerated];
+      // Step 3: Also get generated pages from custom_pages for quality scoring
+      const { data: generatedPages } = await supabase
+        .from('custom_pages')
+        .select('id, slug, content, meta_title, meta_description, excerpt, faq_schema, tags, qa_notes, word_count')
+        .eq('page_type', 'result-landing')
+        .limit(1000);
 
-      if (allRows.length === 0) {
+      const pageBySlug = new Map<string, any>();
+      (generatedPages || []).forEach((p: any) => pageBySlug.set(p.slug, p));
+
+      let restoredRows: BatchRow[];
+
+      if (allBatchRows.length > 0) {
+        // ★ FULL RESTORE from board_result_batch_rows — every single row from Excel
+        restoredRows = allBatchRows.map((r: any, i: number) => {
+          const page = pageBySlug.get(r.slug);
+          const hasPage = page && page.content && page.content.length > 100;
+          const quality = hasPage ? scoreCustomPage({
+            content: page.content, meta_title: page.meta_title,
+            meta_description: page.meta_description, excerpt: page.excerpt,
+            faq_schema: page.faq_schema, tags: page.tags,
+          }) : undefined;
+
+          return {
+            state_ut: r.state_ut,
+            board_name: r.board_name,
+            result_url: r.result_url || '',
+            official_board_url: r.official_board_url || '',
+            seo_intro_text: r.seo_intro_text || '',
+            slug: r.slug,
+            variant: r.variant || 'main',
+            board_abbr: r.board_abbr || extractBoardAbbr(r.board_name || ''),
+            valid: r.is_valid,
+            errors: r.validation_errors || [],
+            rowIndex: r.row_index,
+            status: r.generation_status === 'success' && hasPage ? 'success' as const
+              : r.generation_status === 'failed' ? 'failed' as const
+              : r.generation_status === 'skipped' ? 'skipped' as const
+              : 'queued' as const,
+            pageId: page?.id || r.generated_page_id || undefined,
+            quality,
+            qa_notes: Array.isArray(r.qa_notes) ? r.qa_notes : [],
+            error: r.error_message || undefined,
+          };
+        });
+
+        setBatchId(usedBatchId);
+      } else {
+        // Fallback: restore from custom_pages only (legacy behavior)
+        const { data, error } = await supabase
+          .from('custom_pages')
+          .select('id, slug, title, state_ut, board_name, result_variant, result_url, official_board_url, word_count, content, meta_title, meta_description, excerpt, faq_schema, tags, is_published, status, qa_notes, ai_generated_at, cover_image_url')
+          .eq('page_type', 'result-landing')
+          .order('created_at', { ascending: false })
+          .limit(500);
+
+        if (error) throw error;
+
+        restoredRows = (data || []).map((p: any, i: number) => {
+          const quality = scoreCustomPage({
+            content: p.content || '', meta_title: p.meta_title,
+            meta_description: p.meta_description, excerpt: p.excerpt,
+            faq_schema: p.faq_schema, tags: p.tags,
+          });
+          const hasContent = p.content && p.content.length > 100;
+          return {
+            state_ut: p.state_ut || '', board_name: p.board_name || '',
+            result_url: p.result_url || '', official_board_url: p.official_board_url || '',
+            seo_intro_text: '', slug: p.slug,
+            variant: p.result_variant || 'main',
+            board_abbr: extractBoardAbbr(p.board_name || ''),
+            valid: true, errors: [], rowIndex: i,
+            status: hasContent ? 'success' as const : 'failed' as const,
+            pageId: p.id, quality,
+            qa_notes: Array.isArray(p.qa_notes) ? p.qa_notes : [],
+          };
+        });
+      }
+
+      if (restoredRows.length === 0) {
         toast({ title: 'No board result pages found', description: 'Upload an Excel file to get started', variant: 'destructive' });
         return;
       }
 
-      setBatchRows(allRows);
-      setParsedRows(allRows);
-      setFileName('Restored from database');
+      setBatchRows(restoredRows);
+      setParsedRows(restoredRows);
+      setFileName(usedFileName);
       setPhase('qa');
 
-      const dbCount = restoredFromDb.length;
-      const queuedCount = ungenerated.length;
+      const successCount = restoredRows.filter(r => r.status === 'success').length;
+      const queuedCount = restoredRows.filter(r => r.status === 'queued').length;
+      const failedCount = restoredRows.filter(r => r.status === 'failed').length;
       toast({
-        title: `Restored ${allRows.length} pages`,
-        description: `${dbCount} from database (${restoredFromDb.filter(r => r.status === 'success').length} with content), ${queuedCount} still queued for generation`,
+        title: `Restored ${restoredRows.length} rows`,
+        description: `${successCount} generated, ${queuedCount} queued, ${failedCount} failed`,
       });
     } catch (e: any) {
       toast({ title: 'Restore failed', description: e.message, variant: 'destructive' });

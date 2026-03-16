@@ -1,0 +1,2 @@
+ALTER TABLE public.custom_pages DROP CONSTRAINT custom_pages_page_type_check;
+ALTER TABLE public.custom_pages ADD CONSTRAINT custom_pages_page_type_check CHECK (page_type = ANY (ARRAY['landing'::text, 'guide'::text, 'resource'::text, 'comparison'::text, 'result-landing'::text]));

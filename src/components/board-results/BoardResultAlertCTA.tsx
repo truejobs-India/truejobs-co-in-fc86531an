@@ -1,24 +1,25 @@
 /**
  * Premium Alert Subscription CTA for Board Result pages.
- * Supports WhatsApp, Telegram, and Email alerts with clean UI.
+ * Uses actual WhatsApp, Telegram, and Email logos.
  */
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Mail, CheckCircle2, Bell, Send, MessageCircle } from 'lucide-react';
+import { CheckCircle2, Bell } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { z } from 'zod';
 
+import whatsappLogo from '@/assets/whatsapp-logo.jpg';
+import telegramLogo from '@/assets/telegram-logo.jpg';
+import emailLogo from '@/assets/email-logo.png';
+
 const emailSchema = z.string().trim().email('Please enter a valid email').max(255);
 
 interface BoardResultAlertCTAProps {
-  /** Visual intensity */
   variant: 'strong' | 'soft' | 'compact';
-  /** Context for the alert */
   context: string;
-  /** Whether result is already released */
   resultReleased?: boolean;
   className?: string;
 }
@@ -78,7 +79,7 @@ export function BoardResultAlertCTA({
           <Bell className="h-4 w-4 text-primary" />
           <span className="text-sm font-semibold text-foreground">{headline}</span>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
           <AlertButton type="whatsapp" size="sm" />
           <AlertButton type="telegram" size="sm" />
           {!isSubmitted ? (
@@ -89,7 +90,7 @@ export function BoardResultAlertCTA({
                 className="h-8 text-xs rounded-lg flex-1 min-w-0" required
               />
               <Button type="submit" disabled={isLoading} size="sm" className="h-8 text-xs rounded-lg px-3 bg-primary hover:bg-primary/90">
-                {isLoading ? '…' : <Mail className="h-3.5 w-3.5" />}
+                {isLoading ? '…' : <img src={emailLogo} alt="Email" className="h-4 w-4 rounded-sm" />}
               </Button>
             </form>
           ) : (
@@ -125,13 +126,13 @@ export function BoardResultAlertCTA({
           <p className="text-sm text-muted-foreground leading-relaxed">{subtext}</p>
         </div>
 
-        {/* Action buttons */}
+        {/* Action buttons with real logos */}
         <div className="flex flex-col sm:flex-row items-center gap-3 w-full max-w-md">
           <AlertButton type="whatsapp" size="default" />
           <AlertButton type="telegram" size="default" />
         </div>
 
-        {/* Email form */}
+        {/* Email form with real logo */}
         <div className="w-full max-w-md">
           {isSubmitted ? (
             <div className="flex items-center justify-center gap-2 text-primary font-semibold py-2">
@@ -140,11 +141,11 @@ export function BoardResultAlertCTA({
           ) : (
             <form onSubmit={handleEmailSubmit} className="flex gap-2">
               <div className="relative flex-1">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <img src={emailLogo} alt="" className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 rounded-sm" />
                 <Input
                   type="email" placeholder="Enter your email for alerts"
                   value={email} onChange={e => setEmail(e.target.value)}
-                  className="pl-9 h-11 rounded-xl" required
+                  className="pl-10 h-11 rounded-xl" required
                 />
               </div>
               <Button type="submit" disabled={isLoading} className="h-11 rounded-xl px-5 bg-primary hover:bg-primary/90">
@@ -168,24 +169,25 @@ function AlertButton({ type, size = 'default' }: { type: 'whatsapp' | 'telegram'
       label: 'WhatsApp Alert',
       href: 'https://wa.me/917017604589?text=Subscribe%20to%20Board%20Result%20Alerts',
       bgClass: 'bg-[hsl(142_70%_40%)] hover:bg-[hsl(142_70%_35%)]',
-      icon: <MessageCircle className={size === 'sm' ? 'h-3.5 w-3.5' : 'h-4 w-4'} />,
+      logo: whatsappLogo,
     },
     telegram: {
       label: 'Telegram Alert',
       href: 'https://t.me/truejobs_alerts',
       bgClass: 'bg-[hsl(200_100%_40%)] hover:bg-[hsl(200_100%_35%)]',
-      icon: <Send className={size === 'sm' ? 'h-3.5 w-3.5' : 'h-4 w-4'} />,
+      logo: telegramLogo,
     },
   };
 
   const c = config[type];
+  const imgSize = size === 'sm' ? 'h-4 w-4' : 'h-5 w-5';
   const h = size === 'sm' ? 'h-8 text-xs px-3' : 'h-10 text-sm px-4';
 
   return (
     <Button asChild className={`${c.bgClass} text-white rounded-xl ${h} flex-1`}>
-      <a href={c.href} target="_blank" rel="noopener noreferrer">
-        {c.icon}
-        <span className="ml-1.5">{c.label}</span>
+      <a href={c.href} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2">
+        <img src={c.logo} alt={type} className={`${imgSize} rounded-sm object-cover`} />
+        <span>{c.label}</span>
       </a>
     </Button>
   );

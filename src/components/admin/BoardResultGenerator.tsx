@@ -98,7 +98,7 @@ export function BoardResultGenerator() {
   const [storedFileUrl, setStoredFileUrl] = useState<string | null>(initial.current?.storedFileUrl || null);
   const [storedFilePath, setStoredFilePath] = useState<string | null>(initial.current?.storedFilePath || null);
 
-  // Persist parsed rows, fileName, phase, word count, and image model to localStorage
+  // Persist parsed rows, fileName, phase, word count, image model, and file URL to localStorage
   useEffect(() => {
     if (parsedRows.length > 0 && (phase === 'preview' || phase === 'generating' || phase === 'qa')) {
       try {
@@ -109,10 +109,12 @@ export function BoardResultGenerator() {
           aiModel,
           imageModel,
           targetWordCount,
+          storedFileUrl,
+          storedFilePath,
         }));
       } catch { /* quota exceeded, ignore */ }
     }
-  }, [parsedRows, fileName, phase, aiModel, imageModel, targetWordCount]);
+  }, [parsedRows, fileName, phase, aiModel, imageModel, targetWordCount, storedFileUrl, storedFilePath]);
 
   // ── Generate image for a page ──
   const generateImageForPage = useCallback(async (index: number) => {

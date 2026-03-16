@@ -567,7 +567,7 @@ export function BoardResultGenerator() {
           official_board_url: row.official_board_url,
           seo_intro: row.seo_intro_text || '',
           variant: row.variant,
-          target_word_count: getTargetWordCount(row.variant),
+          target_word_count: targetWordCount || getTargetWordCount(row.variant),
           sibling_slugs: siblingLinks.map(l => l.slug),
           aiModel,
         },

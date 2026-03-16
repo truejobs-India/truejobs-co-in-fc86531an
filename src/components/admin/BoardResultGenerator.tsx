@@ -481,6 +481,69 @@ export function BoardResultGenerator() {
     toast({ title: 'Generation complete', description: `${completedCount} success, ${failedCount} failed` });
   }, [parsedRows, user, aiModel, fileName, checkConflicts, toast, generateRows, selectedRows]);
 
+  // ── Remove a single row from parsed list ──
+  const removeRow = useCallback((rowIndex: number) => {
+    setParsedRows(prev => {
+      const updated = prev.filter(r => r.rowIndex !== rowIndex);
+      // Also remove from batchRows if present
+      setBatchRows(bRows => bRows.filter(r => r.rowIndex !== rowIndex));
+      setSelectedRows(sel => {
+        const next = new Set(sel);
+        next.delete(rowIndex);
+        return next;
+      });
+      if (updated.length === 0) {
+        setPhase('upload');
+        localStorage.removeItem(STORAGE_KEY);
+      }
+      return updated;
+    });
+    toast({ title: 'Row removed' });
+  }, [toast]);
+
+  // ── Download stored file ──
+  const downloadFile = useCallback(() => {
+    if (storedFileUrl) {
+      window.open(storedFileUrl, '_blank');
+    }
+  }, [storedFileUrl]);
+
+  // ── Remove stored file from storage ──
+  const removeStoredFile = useCallback(async () => {
+    if (storedFilePath) {
+      await supabase.storage.from('blog-assets').remove([storedFilePath]);
+    }
+    setStoredFileUrl(null);
+    setStoredFilePath(null);
+    localStorage.removeItem(STORAGE_KEY);
+    setParsedRows([]);
+    setBatchRows([]);
+    setBatchId(null);
+    setFileName('');
+    setPhase('upload');
+    setSelectedRows(new Set());
+    setTargetWordCount(null);
+    toast({ title: 'File removed' });
+  }, [storedFilePath, toast]);
+
+  // ── Bulk generate images for selected rows ──
+  const bulkGenerateImages = useCallback(async () => {
+    const indices = Array.from(selectedRows).filter(i => {
+      const row = batchRows[i];
+      return row?.status === 'success' && row?.pageId;
+    });
+    if (indices.length === 0) {
+      toast({ title: 'No eligible pages selected', description: 'Select generated pages first', variant: 'destructive' });
+      return;
+    }
+    toast({ title: `Generating images for ${indices.length} pages…` });
+    for (const idx of indices) {
+      if (abortRef.current) break;
+      await generateImageForPage(idx);
+    }
+    toast({ title: `Bulk image generation complete` });
+  }, [selectedRows, batchRows, generateImageForPage, toast]);
+
   // ── Retry all failed rows ──
   const retryAllFailed = useCallback(async () => {
     if (!user || !batchId) return;

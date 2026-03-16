@@ -130,8 +130,12 @@ export function CustomPagesManager() {
   const [total, setTotal] = useState(0);
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
-  // View mode: 'list', 'bulk', or 'board-results'
-  const [viewMode, setViewMode] = useState<'list' | 'bulk' | 'board-results'>('list');
+  // View mode: 'list', 'bulk', 'board-results', or 'ai-workflows'
+  const [viewMode, setViewMode] = useState<'list' | 'bulk' | 'board-results' | 'ai-workflows'>('list');
+
+  // Per-row AI action loading state
+  const [rowActionLoading, setRowActionLoading] = useState<Record<string, string>>({});
+  const pageWorkflow = usePageAiWorkflow();
 
   // Editor state
   const [editorOpen, setEditorOpen] = useState(false);

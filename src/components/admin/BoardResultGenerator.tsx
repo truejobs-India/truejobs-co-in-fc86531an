@@ -339,6 +339,7 @@ export function BoardResultGenerator() {
   const startGeneration = useCallback(async (onlySelected = false) => {
     if (!user) return;
     abortRef.current = false;
+    setIsStopping(false);
     setIsRunning(true);
 
     // Create batch

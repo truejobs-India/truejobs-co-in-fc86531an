@@ -156,6 +156,21 @@ export function BoardResultGenerator() {
     if (!file) return;
     setFileName(file.name);
 
+    // Upload file to storage for persistence
+    const uploadToStorage = async (f: File) => {
+      try {
+        const filePath = `board-result-files/${Date.now()}-${f.name}`;
+        const { error: uploadErr } = await supabase.storage
+          .from('blog-assets')
+          .upload(filePath, f, { contentType: f.type, upsert: true });
+        if (!uploadErr) {
+          const { data: urlData } = supabase.storage.from('blog-assets').getPublicUrl(filePath);
+          setStoredFileUrl(urlData.publicUrl);
+          setStoredFilePath(filePath);
+        }
+      } catch { /* ignore storage errors */ }
+    };
+
     const reader = new FileReader();
     reader.onload = (evt) => {
       try {
@@ -213,6 +228,9 @@ export function BoardResultGenerator() {
         setParsedRows(rows);
         setPhase('preview');
         toast({ title: `Parsed ${rows.length} rows from ${file.name}` });
+
+        // Upload to storage in background
+        uploadToStorage(file);
       } catch (err: any) {
         toast({ title: 'Parse error', description: err.message, variant: 'destructive' });
       }

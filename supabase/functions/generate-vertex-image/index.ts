@@ -335,8 +335,6 @@ async function generateViaGeminiFlashImage(
       purpose,
       elapsedMs: elapsed,
     }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-  } finally {
-    clearTimeout(timer);
   }
 }
 

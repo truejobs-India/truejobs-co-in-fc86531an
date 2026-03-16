@@ -363,7 +363,7 @@ export function BoardResultGenerator() {
     }
 
     return { completedCount, failedCount };
-  }, [aiModel, user]);
+  }, [aiModel, user, targetWordCount]);
 
   // ── Start batch generation ──
   const startGeneration = useCallback(async (onlySelected = false) => {

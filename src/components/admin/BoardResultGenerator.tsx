@@ -983,13 +983,14 @@ export function BoardResultGenerator() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    {phase === 'preview' && (
+                    {(phase === 'preview' || phase === 'qa') && (
                       <TableHead className="w-8">
                         <Checkbox
-                          checked={selectedRows.size > 0 && parsedRows.filter(r => r.valid).every(r => selectedRows.has(r.rowIndex))}
+                          checked={selectedRows.size > 0 && (phase === 'qa' ? batchRows : parsedRows).filter(r => r.valid).every(r => selectedRows.has(r.rowIndex))}
                           onCheckedChange={(checked) => {
+                            const source = phase === 'qa' ? batchRows : parsedRows;
                             if (checked) {
-                              setSelectedRows(new Set(parsedRows.filter(r => r.valid).map(r => r.rowIndex)));
+                              setSelectedRows(new Set(source.filter(r => r.valid).map(r => r.rowIndex)));
                             } else {
                               setSelectedRows(new Set());
                             }
@@ -1007,7 +1008,7 @@ export function BoardResultGenerator() {
                     <TableHead className="w-14 text-center">Words</TableHead>
                     <TableHead className="w-10 text-center">Img</TableHead>
                     <TableHead className="w-12 text-center">Issues</TableHead>
-                    <TableHead className="text-right w-32">Actions</TableHead>
+                    <TableHead className="text-right w-36">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>

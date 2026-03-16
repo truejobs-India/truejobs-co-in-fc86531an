@@ -797,26 +797,22 @@ export function BoardResultGenerator() {
 
           {phase !== 'upload' && !isRunning && (
             <>
+              {storedFileUrl && (
+                <Button variant="outline" size="sm" onClick={downloadFile}>
+                  <ExternalLink className="h-3 w-3 mr-1" /> Download File
+                </Button>
+              )}
               <Label htmlFor="xlsx-reupload" className="cursor-pointer">
                 <Button asChild variant="outline" size="sm">
                   <span><Upload className="h-3 w-3 mr-1" /> Upload New File</span>
                 </Button>
               </Label>
               <Button
-                variant="ghost"
+                variant="destructive"
                 size="sm"
-                onClick={() => {
-                  localStorage.removeItem(STORAGE_KEY);
-                  setParsedRows([]);
-                  setBatchRows([]);
-                  setBatchId(null);
-                  setFileName('');
-                  setPhase('upload');
-                  setSelectedRows(new Set());
-                  setTargetWordCount(null);
-                }}
+                onClick={removeStoredFile}
               >
-                <XCircle className="h-3 w-3 mr-1" /> Clear
+                <XCircle className="h-3 w-3 mr-1" /> Remove File
               </Button>
             </>
           )}

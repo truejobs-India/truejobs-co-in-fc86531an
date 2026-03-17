@@ -3,7 +3,7 @@
  * Shows workflow_status, duplicate_status, validation_status, word count, actions.
  * Supports row selection checkboxes and target word count for bulk enrichment.
  */
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Loader2, RefreshCw, Sparkles, Wrench, Globe, CheckSquare, Square } from 'lucide-react';
@@ -12,6 +12,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { BatchRowActions } from './BatchRowActions';
+import { ImageGenerationPanel, type ImageTarget } from '@/components/admin/ImageGenerationPanel';
+import { supabase } from '@/integrations/supabase/client';
+import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
 import type { BatchRow, WorkflowFilter, ImportBatch } from './useBatchPipeline';
 
 interface Props {
@@ -63,16 +66,15 @@ export function BatchWorkspace({
   batch, rows, filter, filterCounts, onFilterChange, loading,
   aiModel, onEnrich, onFixSeo, onEdit, onView, onPublish, onSkip, onDelete,
 }: Props) {
+  const { toast } = useToast();
   const [bulkAction, setBulkAction] = useState<string | null>(null);
   const [bulkProgress, setBulkProgress] = useState({ done: 0, total: 0 });
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
   const [targetWordCount, setTargetWordCount] = useState<number | null>(null);
   const [customWordCount, setCustomWordCount] = useState('');
 
-  if (!batch) return <p className="text-sm text-muted-foreground text-center py-8">Select a batch to view its workspace</p>;
-
-  const activeRows = rows.filter(r => !r.deleted_at);
-  const draftRows = rows.filter(r => r.workflow_status === 'draft' && !r.deleted_at);
+  const activeRows = batch ? rows.filter(r => !r.deleted_at) : [];
+  const draftRows = batch ? rows.filter(r => r.workflow_status === 'draft' && !r.deleted_at) : [];
   const enrichedRows = rows.filter(r => ['enriched', 'seo_fixed'].includes(r.workflow_status) && !r.deleted_at);
   const unpublishedReady = rows.filter(r => r.workflow_status !== 'published' && r.content && r.content.length > 100 && !r.deleted_at);
 
@@ -123,6 +125,37 @@ export function BatchWorkspace({
   const enrichTargetRows = selectedDrafts.length > 0 ? selectedDrafts : draftRows;
   const seoTargetRows = selectedEnriched.length > 0 ? selectedEnriched : enrichedRows;
   const publishTargetRows = selectedPublishable.length > 0 ? selectedPublishable : unpublishedReady;
+
+  // Build image targets from selected rows (or all enriched if none selected)
+  const imageTargetRows = selectedActiveRows.length > 0
+    ? selectedActiveRows.filter(r => r.content && r.content.length > 100)
+    : rows.filter(r => r.content && r.content.length > 100 && !r.deleted_at);
+
+  const imageTargets: ImageTarget[] = useMemo(() => imageTargetRows.map(r => ({
+    id: r.id,
+    title: r.display_title || `${r.board_name} Result ${new Date().getFullYear()} - ${r.state_ut}`,
+    slug: r.slug,
+    content: r.content || '',
+    category: 'Board Results',
+    tags: r.tags,
+    cover_image_url: (r as any).cover_image_url || null,
+    featured_image_alt: (r as any).featured_image_alt || null,
+  })), [imageTargetRows]);
+
+  const handleImageCoverGenerated = async (targetId: string, url: string, alt: string) => {
+    await supabase.from('board_result_batch_rows').update({
+      enriched_content: { cover_image_url: url, featured_image_alt: alt },
+    } as any).eq('id', targetId);
+  };
+
+  const handleImageInlineGenerated = async (targetId: string, newContent: string, _articleImages: any) => {
+    const wordCount = newContent.split(/\s+/).filter(Boolean).length;
+    await supabase.from('board_result_batch_rows').update({
+      content: newContent, word_count: wordCount,
+    } as any).eq('id', targetId);
+  };
+
+  if (!batch) return <p className="text-sm text-muted-foreground text-center py-8">Select a batch to view its workspace</p>;
 
   return (
     <div className="space-y-3">
@@ -245,6 +278,14 @@ export function BatchWorkspace({
           </Badge>
         )}
       </div>
+
+      {/* Image Generation Panel */}
+      <ImageGenerationPanel
+        targets={imageTargets}
+        onCoverGenerated={handleImageCoverGenerated}
+        onInlineGenerated={handleImageInlineGenerated}
+        sectionLabel={`Board Results Batch #${batch.batch_number}`}
+      />
 
       {/* Filter tabs */}
       <div className="flex flex-wrap gap-1">

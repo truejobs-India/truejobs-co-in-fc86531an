@@ -414,6 +414,21 @@ export function BatchWorkspace({
                     </TableCell>
                     <TableCell className="text-xs font-mono">{row.word_count || 0}</TableCell>
                     <TableCell>
+                      <span
+                        title={seoAudit.valid
+                          ? `SEO Ready (Score: ${seoAudit.score}/100)`
+                          : seoAudit.issues.map(i => `[${i.severity}] ${i.message}`).join('\n')}
+                        className="flex items-center gap-0.5"
+                      >
+                        <Search className={`h-3 w-3 ${seoAudit.valid ? 'text-green-600' : seoErrors > 0 ? 'text-destructive' : 'text-amber-500'}`} />
+                        <span className={`text-[9px] font-mono ${seoAudit.valid ? 'text-green-600' : seoErrors > 0 ? 'text-destructive' : 'text-amber-500'}`}>
+                          {seoAudit.score}
+                        </span>
+                        {seoErrors > 0 && <span className="text-destructive text-[8px]">({seoErrors}E)</span>}
+                        {seoErrors === 0 && seoWarnings > 0 && <span className="text-amber-500 text-[8px]">({seoWarnings}W)</span>}
+                      </span>
+                    </TableCell>
+                    <TableCell>
                       <div className="flex items-center gap-1.5">
                         <span title={hasCover ? 'Cover image ✓' : 'No cover image'} className="flex items-center">
                           <Camera className={`h-3 w-3 ${hasCover ? 'text-green-600' : 'text-muted-foreground/40'}`} />

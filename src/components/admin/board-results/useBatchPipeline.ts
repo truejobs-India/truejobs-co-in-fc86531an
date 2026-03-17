@@ -269,26 +269,27 @@ export function useBatchPipeline() {
       },
     });
 
-    if (error || !data?.content) {
-      await updateRow(row.id, { workflow_status: 'failed', error_message: error?.message || 'No content returned' } as any);
+    const result = data?.data || data;
+    if (error || !result?.content) {
+      await updateRow(row.id, { workflow_status: 'failed', error_message: error?.message || data?.error || 'No content returned' } as any);
       if (selectedBatchId) await afterRowStateChange(selectedBatchId);
       return false;
     }
 
-    const wordCount = (data.content as string).split(/\s+/).filter(Boolean).length;
+    const wordCount = (result.content as string).split(/\s+/).filter(Boolean).length;
     const displayTitle = deriveDisplayTitle(row.board_name, row.state_ut);
 
     await updateRow(row.id, {
-      content: data.content,
-      meta_title: data.metaTitle || displayTitle,
-      meta_description: data.metaDescription || '',
-      excerpt: data.excerpt || '',
-      faq_schema: data.faqSchema || [],
-      tags: data.tags || [],
+      content: result.content,
+      meta_title: result.meta_title || result.metaTitle || displayTitle,
+      meta_description: result.meta_description || result.metaDescription || '',
+      excerpt: result.excerpt || '',
+      faq_schema: result.faq_items || result.faqSchema || [],
+      tags: result.suggested_tags || result.tags || [],
       word_count: wordCount,
-      display_title: displayTitle,
+      display_title: result.title || displayTitle,
       workflow_status: 'enriched',
-      enriched_content: data,
+      enriched_content: result,
       error_message: null,
     } as any);
 

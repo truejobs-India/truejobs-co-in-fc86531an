@@ -9,7 +9,7 @@
  * - Post-publish edits require explicit "Update Live Page" action
  */
 import { useState } from 'react';
-import { AiModelSelector } from '@/components/admin/AiModelSelector';
+import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSelector';
 import { HubPageGenerator } from '@/components/admin/HubPageGenerator';
 import { BatchUploadZone } from './BatchUploadZone';
 import { BatchSelector } from './BatchSelector';

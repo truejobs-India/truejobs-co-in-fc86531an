@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
-import { AiModelSelector } from '@/components/admin/AiModelSelector';
+import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSelector';
 import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';

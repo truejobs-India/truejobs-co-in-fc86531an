@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { AiModelSelector } from '@/components/admin/AiModelSelector';
+import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSelector';
 import { usePageAiWorkflow, type PageScanReport, type PageActionResult, type PageWorkflowProgress, type PageWorkflowStatus } from '@/hooks/usePageAiWorkflow';
 import { supabase } from '@/integrations/supabase/client';
 import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';

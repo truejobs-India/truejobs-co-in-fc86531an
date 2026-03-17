@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
-import { AiModelSelector } from '@/components/admin/AiModelSelector';
+import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSelector';
 import { BulkPageWorkflow } from '@/components/admin/BulkPageWorkflow';
 import { getModelDef, getModelSpeed } from '@/lib/aiModels';
 import { scoreCustomPage, scoreColor, scoreBgColor, type QualityBreakdown } from '@/lib/pageQualityScorer';

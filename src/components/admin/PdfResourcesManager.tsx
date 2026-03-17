@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
-import { AiModelSelector } from '@/components/admin/AiModelSelector';
+import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSelector';
 import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -122,7 +122,7 @@ export function PdfResourcesManager() {
   const [editItem, setEditItem] = useState<Partial<PdfResource>>(EMPTY_RESOURCE);
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
-  const [aiModel, setAiModel] = useState('gemini-flash');
+  const [aiModel, setAiModel] = useState(() => getLastUsedModel('text', 'gemini-flash'));
   const [uploadingPdf, setUploadingPdf] = useState(false);
   const [slugError, setSlugError] = useState('');
 

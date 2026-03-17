@@ -15,7 +15,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { AiModelSelector } from '@/components/admin/AiModelSelector';
+import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSelector';
 import { getModelSpeed } from '@/lib/aiModels';
 import { scoreCustomPage, type QualityBreakdown } from '@/lib/pageQualityScorer';
 import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
@@ -83,8 +83,8 @@ export function BoardResultGenerator() {
   const [phase, setPhase] = useState<Phase>(
     initial.current?.phase === 'qa' ? 'qa' : initial.current?.phase === 'preview' ? 'preview' : 'upload'
   );
-  const [aiModel, setAiModel] = useState(initial.current?.aiModel || 'gemini-flash');
-  const [imageModel, setImageModel] = useState(initial.current?.imageModel || 'gemini-flash-image');
+  const [aiModel, setAiModel] = useState(initial.current?.aiModel || getLastUsedModel('text', 'gemini-flash'));
+  const [imageModel, setImageModel] = useState(initial.current?.imageModel || getLastUsedModel('image', 'gemini-flash-image'));
   const [parsedRows, setParsedRows] = useState<ParsedRow[]>(initial.current?.parsedRows || []);
   const [batchRows, setBatchRows] = useState<BatchRow[]>(initial.current?.batchRows || []);
   const [batchId, setBatchId] = useState<string | null>(null);

@@ -9,7 +9,7 @@
  * - Post-publish edits require explicit "Update Live Page" action
  */
 import { useState } from 'react';
-import { AiModelSelector } from '@/components/admin/AiModelSelector';
+import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSelector';
 import { HubPageGenerator } from '@/components/admin/HubPageGenerator';
 import { BatchUploadZone } from './BatchUploadZone';
 import { BatchSelector } from './BatchSelector';
@@ -28,7 +28,7 @@ import { Input } from '@/components/ui/input';
 
 export function BoardResultPipeline() {
   const pipeline = useBatchPipeline();
-  const [aiModel, setAiModel] = useState('google/gemini-2.5-flash');
+  const [aiModel, setAiModel] = useState(() => getLastUsedModel('text', 'google/gemini-2.5-flash'));
 
   // Edit/View dialogs
   const [editRow, setEditRow] = useState<BatchRow | null>(null);

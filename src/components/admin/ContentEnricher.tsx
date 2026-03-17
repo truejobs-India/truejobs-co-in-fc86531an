@@ -88,7 +88,7 @@ function getStaticFaqCount(slug: string): number {
 }
 
 import { getTextModels, getModelSpeed, getModelDef } from '@/lib/aiModels';
-import { AiModelSelector } from '@/components/admin/AiModelSelector';
+import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSelector';
 
 function formatTime(seconds: number): string {
   if (seconds < 60) return `${seconds}s`;
@@ -109,7 +109,7 @@ export function ContentEnricher() {
   const [previewSlug, setPreviewSlug] = useState<string | null>(null);
   const [historySlug, setHistorySlug] = useState<string | null>(null);
   const [reviewNotes, setReviewNotes] = useState('');
-  const [aiModel, setAiModel] = useState<string>('gemini-flash');
+  const [aiModel, setAiModel] = useState<string>(() => getLastUsedModel('text', 'gemini-flash'));
   const { messages, addMessage, dismissMessage, clearAll, toggleExpand } = useAdminMessagesContext();
 
   // Sequential processing state

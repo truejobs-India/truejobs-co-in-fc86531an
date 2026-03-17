@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { AiModelSelector } from '@/components/admin/AiModelSelector';
+import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSelector';
 import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -32,7 +32,7 @@ interface HubRow {
 export function HubPageGenerator() {
   const { toast } = useToast();
   const { user } = useAuth();
-  const [imageModel, setImageModel] = useState('gemini-flash-image');
+  const [imageModel, setImageModel] = useState(() => getLastUsedModel('image', 'gemini-flash-image'));
   const [hubs, setHubs] = useState<HubRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState<Set<string>>(new Set());

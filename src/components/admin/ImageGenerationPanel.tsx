@@ -212,7 +212,7 @@ export function ImageGenerationPanel({
   };
 
   const anyRunning = coverProgress.running || inlineProgress.running;
-  const coverEligible = targets.filter(t => t.title && t.slug).length;
+  const coverEligible = targets.filter(t => t.title && t.slug && !t.cover_image_url).length;
   const inlineEligible = targets.filter(t => t.content && t.content.length > 200 && t.slug).length;
   const noCoverCount = targets.filter(t => !t.cover_image_url).length;
 

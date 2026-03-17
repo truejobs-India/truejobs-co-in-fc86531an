@@ -362,18 +362,38 @@ async function generateViaLovableGatewayImage(
 
   console.log(`[lovable-gateway-image] fallback=${fallbackReason} slug=${slug} model=${LOVABLE_GATEWAY_IMAGE_MODEL}`);
 
-  const gatewayResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${lovableApiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
+  const gatewayController = new AbortController();
+  const gatewayTimer = setTimeout(() => gatewayController.abort(), GATEWAY_TIMEOUT_MS);
+  let gatewayResponse: Response;
+  try {
+    gatewayResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${lovableApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      signal: gatewayController.signal,
+      body: JSON.stringify({
+        model: LOVABLE_GATEWAY_IMAGE_MODEL,
+        messages: [{ role: 'user', content: imagePrompt }],
+        modalities: ['image', 'text'],
+      }),
+    });
+  } catch (fetchErr: any) {
+    clearTimeout(gatewayTimer);
+    const isTimeout = fetchErr?.name === 'AbortError';
+    console.error(`[lovable-gateway-image] ${isTimeout ? 'timeout' : 'fetch error'}: ${fetchErr.message}`);
+    return new Response(JSON.stringify({
+      success: false,
+      error: isTimeout
+        ? 'Image generation timed out across all providers. Please try again or upload manually.'
+        : `Image generation failed: ${fetchErr.message}`,
       model: LOVABLE_GATEWAY_IMAGE_MODEL,
-      messages: [{ role: 'user', content: imagePrompt }],
-      modalities: ['image', 'text'],
-    }),
-  });
+      fallbackReason,
+    }), { status: isTimeout ? 504 : 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  } finally {
+    clearTimeout(gatewayTimer);
+  }
 
   if (!gatewayResponse.ok) {
     const errText = await gatewayResponse.text();

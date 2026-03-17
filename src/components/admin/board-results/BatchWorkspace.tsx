@@ -128,6 +128,35 @@ export function BatchWorkspace({
   const seoTargetRows = selectedEnriched.length > 0 ? selectedEnriched : enrichedRows;
   const publishTargetRows = selectedPublishable.length > 0 ? selectedPublishable : unpublishedReady;
 
+  // Build image targets from selected rows (or all enriched if none selected)
+  const imageTargetRows = selectedActiveRows.length > 0
+    ? selectedActiveRows.filter(r => r.content && r.content.length > 100)
+    : rows.filter(r => r.content && r.content.length > 100 && !r.deleted_at);
+
+  const imageTargets: ImageTarget[] = useMemo(() => imageTargetRows.map(r => ({
+    id: r.id,
+    title: r.display_title || `${r.board_name} Result ${new Date().getFullYear()} - ${r.state_ut}`,
+    slug: r.slug,
+    content: r.content || '',
+    category: 'Board Results',
+    tags: r.tags,
+    cover_image_url: (r as any).cover_image_url || null,
+    featured_image_alt: (r as any).featured_image_alt || null,
+  })), [imageTargetRows]);
+
+  const handleImageCoverGenerated = async (targetId: string, url: string, alt: string) => {
+    await supabase.from('board_result_batch_rows').update({
+      enriched_content: { cover_image_url: url, featured_image_alt: alt },
+    } as any).eq('id', targetId);
+  };
+
+  const handleImageInlineGenerated = async (targetId: string, newContent: string, _articleImages: any) => {
+    const wordCount = newContent.split(/\s+/).filter(Boolean).length;
+    await supabase.from('board_result_batch_rows').update({
+      content: newContent, word_count: wordCount,
+    } as any).eq('id', targetId);
+  };
+
   return (
     <div className="space-y-3">
       {/* Batch info bar */}

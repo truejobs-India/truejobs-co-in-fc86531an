@@ -2,7 +2,7 @@
  * ImageGenerationPanel — Reusable top-level panel for generating cover and inline images.
  * Works for Board Results, Custom Pages, and any content with title/slug/content.
  */
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
 import { Button } from '@/components/ui/button';

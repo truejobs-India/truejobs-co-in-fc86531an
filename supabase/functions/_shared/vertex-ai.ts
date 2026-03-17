@@ -92,8 +92,7 @@ export async function callVertexGemini(
 
   const url = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${model}:generateContent`;
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  // Note: controller & timer are created per-attempt inside the loop below
 
   // Build generationConfig with caller overrides
   const generationConfig: Record<string, unknown> = {

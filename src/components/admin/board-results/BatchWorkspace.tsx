@@ -2,9 +2,10 @@
  * BatchWorkspace — Filterable table of rows for selected batch.
  * Shows workflow_status, duplicate_status, validation_status, word count, actions.
  */
+import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Loader2, RefreshCw } from 'lucide-react';
+import { Loader2, RefreshCw, Sparkles, Wrench, Globe } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { BatchRowActions } from './BatchRowActions';
 import type { BatchRow, WorkflowFilter, ImportBatch } from './useBatchPipeline';
@@ -56,7 +57,25 @@ export function BatchWorkspace({
   batch, rows, filter, filterCounts, onFilterChange, loading,
   aiModel, onEnrich, onFixSeo, onEdit, onView, onPublish, onSkip, onDelete,
 }: Props) {
+  const [bulkAction, setBulkAction] = useState<string | null>(null);
+  const [bulkProgress, setBulkProgress] = useState({ done: 0, total: 0 });
+
   if (!batch) return <p className="text-sm text-muted-foreground text-center py-8">Select a batch to view its workspace</p>;
+
+  const draftRows = rows.filter(r => r.workflow_status === 'draft' && !r.deleted_at);
+  const enrichedRows = rows.filter(r => ['enriched', 'seo_fixed'].includes(r.workflow_status) && !r.deleted_at);
+  const unpublishedReady = rows.filter(r => r.workflow_status !== 'published' && r.content && r.content.length > 100 && !r.deleted_at);
+
+  const runBulk = async (label: string, targetRows: BatchRow[], fn: (row: BatchRow) => Promise<boolean>) => {
+    if (targetRows.length === 0) return;
+    setBulkAction(label);
+    setBulkProgress({ done: 0, total: targetRows.length });
+    for (let i = 0; i < targetRows.length; i++) {
+      await fn(targetRows[i]);
+      setBulkProgress({ done: i + 1, total: targetRows.length });
+    }
+    setBulkAction(null);
+  };
 
   return (
     <div className="space-y-3">
@@ -68,6 +87,47 @@ export function BatchWorkspace({
         <Badge className="bg-green-100 text-green-800">{batch.published_count} published</Badge>
         <Badge className="bg-blue-100 text-blue-800">{batch.enriched_count} enriched</Badge>
         {batch.failed_count > 0 && <Badge variant="destructive">{batch.failed_count} failed</Badge>}
+      </div>
+
+      {/* Bulk Actions Toolbar */}
+      <div className="flex flex-wrap items-center gap-2 p-2 border rounded-lg bg-muted/30">
+        <span className="text-xs font-semibold text-muted-foreground">Bulk Actions:</span>
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-7 text-xs gap-1"
+          disabled={!!bulkAction || draftRows.length === 0}
+          onClick={() => runBulk('Enriching', draftRows, onEnrich)}
+        >
+          <Sparkles className="h-3 w-3" />
+          Enrich All Drafts ({draftRows.length})
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-7 text-xs gap-1"
+          disabled={!!bulkAction || enrichedRows.length === 0}
+          onClick={() => runBulk('Fixing SEO', enrichedRows, onFixSeo)}
+        >
+          <Wrench className="h-3 w-3" />
+          Fix SEO All Enriched ({enrichedRows.length})
+        </Button>
+        <Button
+          size="sm"
+          variant="default"
+          className="h-7 text-xs gap-1"
+          disabled={!!bulkAction || unpublishedReady.length === 0}
+          onClick={() => runBulk('Publishing', unpublishedReady, (row) => onPublish(row.id))}
+        >
+          <Globe className="h-3 w-3" />
+          Publish All Ready ({unpublishedReady.length})
+        </Button>
+        {bulkAction && (
+          <Badge variant="secondary" className="text-xs animate-pulse">
+            <Loader2 className="h-3 w-3 animate-spin mr-1" />
+            {bulkAction} {bulkProgress.done}/{bulkProgress.total}
+          </Badge>
+        )}
       </div>
 
       {/* Filter tabs */}

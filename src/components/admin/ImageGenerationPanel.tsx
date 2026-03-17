@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AiModelSelector } from '@/components/admin/AiModelSelector';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Camera, ImageIcon, Loader2, ChevronDown, Check, AlertCircle } from 'lucide-react';
+import { Camera, ImageIcon, Loader2, ChevronDown, Check, AlertCircle, StopCircle } from 'lucide-react';
 import {
   detectInlineSlots, insertInlineImage, getContextForSlot,
   buildArticleImagesMetadata,

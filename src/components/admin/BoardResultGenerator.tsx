@@ -1321,17 +1321,9 @@ export function BoardResultGenerator() {
                           </TableCell>
                           <TableCell className="text-center text-xs">
                             {bRow.status === 'success' ? (
-                              imageGenLoading.has(realIdx) ? (
-                                <Loader2 className="h-3 w-3 animate-spin mx-auto text-primary" />
-                              ) : (
-                                <Button
-                                  variant="ghost" size="icon" className="h-6 w-6"
-                                  title="Generate hero image"
-                                  onClick={() => generateImageForPage(realIdx)}
-                                >
-                                  🖼️
-                                </Button>
-                              )
+                              <span className="text-xs text-muted-foreground">
+                                {imageTargets.some(target => target.slug === bRow.slug && target.cover_image_url) ? '✓' : '—'}
+                              </span>
                             ) : '—'}
                           </TableCell>
                           <TableCell className="text-center">

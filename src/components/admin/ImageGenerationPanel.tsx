@@ -82,6 +82,10 @@ export function ImageGenerationPanel({
 
     let done = 0, failed = 0;
     for (const target of eligible) {
+      if (stopCoverRef.current) {
+        toast({ title: 'Cover generation stopped', description: `Completed ${done}/${eligible.length}` });
+        break;
+      }
       try {
         const { data, error } = await supabase.functions.invoke('generate-vertex-image', {
           body: {

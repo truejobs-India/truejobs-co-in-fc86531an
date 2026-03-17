@@ -265,7 +265,7 @@ Official Board Website: ${input.official_board_url}
 ${input.seo_intro ? `SEO Intro Context: ${input.seo_intro}` : ''}
 ${siblingLinks}
 
-Target word count: ${input.target_word_count} words minimum.
+STRICT Word count target: ${input.target_word_count} words. Do NOT exceed ${Math.round(input.target_word_count * 1.15)} words. Keep content concise and within this limit. If the target is 1000 words, write approximately 1000 words — not 2000 or 2500.${input.target_word_count <= 1200 ? ' Since the word limit is tight, keep each section brief (3-5 sentences max) and skip subsections.' : ''}
 
 Your content MUST include ALL of these 15 sections (use <h2> for each):
 1. Overview / Introduction — what this result is, which board, which year

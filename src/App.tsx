@@ -8,7 +8,7 @@ import { ScrollToTop } from "./components/ScrollToTop";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { LanguageProvider } from "@/contexts/LanguageContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
-import { PWAUpdatePrompt } from "@/components/PWAUpdatePrompt";
+
 import { Suspense, lazy } from "react";
 
 // Critical path – eagerly loaded

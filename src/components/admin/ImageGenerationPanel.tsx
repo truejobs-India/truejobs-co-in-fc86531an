@@ -127,10 +127,15 @@ export function ImageGenerationPanel({
       toast({ title: 'No eligible targets', description: 'Select pages with sufficient content', variant: 'destructive' });
       return;
     }
+    stopInlineRef.current = false;
     setInlineProgress({ running: true, done: 0, total: eligible.length, failed: 0 });
 
     let done = 0, failed = 0;
     for (const target of eligible) {
+      if (stopInlineRef.current) {
+        toast({ title: 'Inline generation stopped', description: `Completed ${done}/${eligible.length}` });
+        break;
+      }
       try {
         const slotStatus = detectInlineSlots(target.content);
         if (slotStatus.slot1Filled && slotStatus.slot2Filled) {

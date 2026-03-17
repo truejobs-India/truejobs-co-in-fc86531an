@@ -25,6 +25,7 @@ import {
   BarChart3, FileText, Zap, Eye, FileSpreadsheet, Wrench,
 } from 'lucide-react';
 import { BoardResultPipeline } from './board-results/BoardResultPipeline';
+import { ImageGenerationPanel, type ImageTarget } from '@/components/admin/ImageGenerationPanel';
 
 // ═══════════════════════════════════════════════════════════════
 // Types

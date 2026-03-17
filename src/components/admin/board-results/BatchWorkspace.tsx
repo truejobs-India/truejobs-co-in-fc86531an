@@ -81,6 +81,22 @@ export function BatchWorkspace({
   const enrichedRows = rows.filter(r => ['enriched', 'seo_fixed'].includes(r.workflow_status) && !r.deleted_at);
   const unpublishedReady = rows.filter(r => r.workflow_status !== 'published' && r.content && r.content.length > 100 && !r.deleted_at);
 
+  // SEO readiness stats
+  const seoStats = useMemo(() => {
+    const withContent = activeRows.filter(r => r.content && r.content.length > 100);
+    let ready = 0;
+    let warnings = 0;
+    let errors = 0;
+    for (const r of withContent) {
+      const audit = runFullSeoAudit({ slug: r.slug, meta_title: r.meta_title, meta_description: r.meta_description, content: r.content, word_count: r.word_count ?? 0, faq_schema: r.faq_schema });
+      if (audit.valid && audit.score >= 80) ready++;
+      else if (audit.valid) warnings++;
+      else errors++;
+    }
+    const noContent = activeRows.length - withContent.length;
+    return { ready, warnings, errors, noContent, total: activeRows.length };
+  }, [activeRows]);
+
   // Selected rows helpers
   const selectedActiveRows = rows.filter(r => selectedRows.has(r.id) && !r.deleted_at);
   const selectedDrafts = selectedActiveRows.filter(r => r.workflow_status === 'draft');

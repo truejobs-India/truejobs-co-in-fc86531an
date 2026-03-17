@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSelector';
+import { ImageGenerationPanel, type ImageTarget } from '@/components/admin/ImageGenerationPanel';
 import { getModelSpeed } from '@/lib/aiModels';
 import { scoreCustomPage, type QualityBreakdown } from '@/lib/pageQualityScorer';
 import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
@@ -100,6 +101,7 @@ export function BoardResultGenerator() {
   const [imageGenLoading, setImageGenLoading] = useState<Set<number>>(new Set());
   const [storedFileUrl, setStoredFileUrl] = useState<string | null>(initial.current?.storedFileUrl || null);
   const [storedFilePath, setStoredFilePath] = useState<string | null>(initial.current?.storedFilePath || null);
+  const [imageTargets, setImageTargets] = useState<ImageTarget[]>([]);
 
   // Persist state to localStorage (including batchRows for QA phase)
   useEffect(() => {
@@ -140,39 +142,55 @@ export function BoardResultGenerator() {
     }
   }, [parsedRows, batchRows, fileName, phase, aiModel, imageModel, targetWordCount, storedFileUrl, storedFilePath]);
 
-  // ── Generate image for a page ──
-  const generateImageForPage = useCallback(async (index: number) => {
-    const row = batchRows[index];
-    if (!row.pageId) return;
+  useEffect(() => {
+    let cancelled = false;
 
-    setImageGenLoading(prev => new Set(prev).add(index));
-    try {
-      const { data, error } = await supabase.functions.invoke('generate-board-result-image', {
-        body: {
-          imageModel,
-          pageType: 'result-landing',
-          slug: row.slug,
-          state_ut: row.state_ut,
-          board_name: row.board_name,
-          variant: row.variant,
-        },
-      });
-      if (error) throw new Error(error.message);
-      if (!data?.success) throw new Error(data?.error || 'Image generation failed');
+    const loadImageTargets = async () => {
+      if (phase !== 'qa') {
+        setImageTargets([]);
+        return;
+      }
 
-      // Update the page with the cover image
-      await supabase.from('custom_pages').update({
-        cover_image_url: data.imageUrl,
-        featured_image_alt: `${row.board_name} result - ${row.state_ut}`,
-      } as any).eq('id', row.pageId);
+      const candidateRows = (selectedRows.size > 0
+        ? Array.from(selectedRows).map(index => batchRows[index]).filter(Boolean)
+        : batchRows
+      ).filter(row => row?.status === 'success' && row?.pageId);
 
-      toast({ title: `Image generated`, description: `Model: ${data.model}, ${data.elapsedMs}ms` });
-    } catch (e: any) {
-      toast({ title: 'Image generation failed', description: e.message, variant: 'destructive' });
-    } finally {
-      setImageGenLoading(prev => { const n = new Set(prev); n.delete(index); return n; });
-    }
-  }, [batchRows, imageModel, toast]);
+      const pageIds = candidateRows.map(row => row.pageId).filter(Boolean) as string[];
+      if (pageIds.length === 0) {
+        setImageTargets([]);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('custom_pages')
+        .select('id, title, slug, content, category, tags, cover_image_url, featured_image_alt')
+        .in('id', pageIds);
+
+      if (cancelled || error) return;
+
+      const byId = new Map(((data as any[]) || []).map(page => [page.id, page]));
+      const orderedTargets: ImageTarget[] = pageIds
+        .map(id => byId.get(id))
+        .filter(Boolean)
+        .map((page: any) => ({
+          id: page.id,
+          title: page.title,
+          slug: page.slug,
+          content: page.content || '',
+          category: page.category,
+          tags: page.tags,
+          cover_image_url: page.cover_image_url,
+          featured_image_alt: page.featured_image_alt,
+        }));
+
+      setImageTargets(orderedTargets);
+    };
+
+    void loadImageTargets();
+    return () => { cancelled = true; };
+  }, [phase, batchRows, selectedRows]);
+
 
   // ── File Upload & Parse ──
   const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -599,23 +617,34 @@ export function BoardResultGenerator() {
     toast({ title: 'File removed' });
   }, [storedFilePath, toast]);
 
-  // ── Bulk generate images for selected rows ──
-  const bulkGenerateImages = useCallback(async () => {
-    const indices = Array.from(selectedRows).filter(i => {
-      const row = batchRows[i];
-      return row?.status === 'success' && row?.pageId;
-    });
-    if (indices.length === 0) {
-      toast({ title: 'No eligible pages selected', description: 'Select generated pages first', variant: 'destructive' });
-      return;
-    }
-    toast({ title: `Generating images for ${indices.length} pages…` });
-    for (const idx of indices) {
-      if (abortRef.current) break;
-      await generateImageForPage(idx);
-    }
-    toast({ title: `Bulk image generation complete` });
-  }, [selectedRows, batchRows, generateImageForPage, toast]);
+  // ── Image panel persistence helpers ──
+  const handleCoverGenerated = useCallback(async (targetId: string, url: string, alt: string) => {
+    await supabase.from('custom_pages').update({
+      cover_image_url: url,
+      featured_image_alt: alt,
+    } as any).eq('id', targetId);
+
+    setImageTargets(prev => prev.map(target =>
+      target.id === targetId
+        ? { ...target, cover_image_url: url, featured_image_alt: alt }
+        : target
+    ));
+  }, []);
+
+  const handleInlineGenerated = useCallback(async (targetId: string, newContent: string, _articleImages: any) => {
+    const wordCount = newContent.replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length;
+
+    await supabase.from('custom_pages').update({
+      content: newContent,
+      word_count: wordCount,
+    } as any).eq('id', targetId);
+
+    setImageTargets(prev => prev.map(target =>
+      target.id === targetId
+        ? { ...target, content: newContent }
+        : target
+    ));
+  }, []);
 
   // ── Retry all failed rows ──
   const retryAllFailed = useCallback(async () => {
@@ -1166,11 +1195,6 @@ export function BoardResultGenerator() {
                     <RotateCcw className="h-4 w-4 mr-1" /> Retry {failed} Failed
                   </Button>
                 )}
-                {selectedRows.size > 0 && (
-                  <Button variant="outline" onClick={bulkGenerateImages}>
-                    🖼️ Generate Images ({selectedRows.size})
-                  </Button>
-                )}
               </>
             )}
 
@@ -1188,6 +1212,13 @@ export function BoardResultGenerator() {
               </Select>
             </div>
           </div>
+
+            <ImageGenerationPanel
+              targets={imageTargets}
+              onCoverGenerated={handleCoverGenerated}
+              onInlineGenerated={handleInlineGenerated}
+              sectionLabel="Board Result Pages"
+            />
 
           {/* Table */}
           <Card>
@@ -1290,17 +1321,9 @@ export function BoardResultGenerator() {
                           </TableCell>
                           <TableCell className="text-center text-xs">
                             {bRow.status === 'success' ? (
-                              imageGenLoading.has(realIdx) ? (
-                                <Loader2 className="h-3 w-3 animate-spin mx-auto text-primary" />
-                              ) : (
-                                <Button
-                                  variant="ghost" size="icon" className="h-6 w-6"
-                                  title="Generate hero image"
-                                  onClick={() => generateImageForPage(realIdx)}
-                                >
-                                  🖼️
-                                </Button>
-                              )
+                              <span className="text-xs text-muted-foreground">
+                                {imageTargets.some(target => target.slug === bRow.slug && target.cover_image_url) ? '✓' : '—'}
+                              </span>
                             ) : '—'}
                           </TableCell>
                           <TableCell className="text-center">

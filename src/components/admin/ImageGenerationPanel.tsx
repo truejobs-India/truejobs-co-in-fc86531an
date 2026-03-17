@@ -67,6 +67,8 @@ export function ImageGenerationPanel({
   // Bulk progress
   const [coverProgress, setCoverProgress] = useState({ running: false, done: 0, total: 0, failed: 0 });
   const [inlineProgress, setInlineProgress] = useState({ running: false, done: 0, total: 0, failed: 0 });
+  const stopCoverRef = useRef(false);
+  const stopInlineRef = useRef(false);
 
   // ── Bulk Cover Generation ──
   const handleBulkCover = async () => {

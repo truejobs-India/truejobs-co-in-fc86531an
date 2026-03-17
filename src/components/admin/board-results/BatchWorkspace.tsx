@@ -1,12 +1,16 @@
 /**
  * BatchWorkspace — Filterable table of rows for selected batch.
  * Shows workflow_status, duplicate_status, validation_status, word count, actions.
+ * Supports row selection checkboxes and target word count for bulk enrichment.
  */
 import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Loader2, RefreshCw, Sparkles, Wrench, Globe } from 'lucide-react';
+import { Loader2, RefreshCw, Sparkles, Wrench, Globe, CheckSquare, Square } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
 import { BatchRowActions } from './BatchRowActions';
 import type { BatchRow, WorkflowFilter, ImportBatch } from './useBatchPipeline';
 
@@ -18,7 +22,7 @@ interface Props {
   onFilterChange: (f: WorkflowFilter) => void;
   loading: boolean;
   aiModel: string;
-  onEnrich: (row: BatchRow) => Promise<boolean>;
+  onEnrich: (row: BatchRow, targetWordCount?: number) => Promise<boolean>;
   onFixSeo: (row: BatchRow) => Promise<boolean>;
   onEdit: (row: BatchRow) => void;
   onView: (row: BatchRow) => void;
@@ -53,18 +57,56 @@ const FILTERS: { key: WorkflowFilter; label: string }[] = [
   { key: 'deleted', label: 'Deleted' },
 ];
 
+const WORD_COUNT_PRESETS = [800, 1000, 1200, 1500, 1800, 2000, 2500];
+
 export function BatchWorkspace({
   batch, rows, filter, filterCounts, onFilterChange, loading,
   aiModel, onEnrich, onFixSeo, onEdit, onView, onPublish, onSkip, onDelete,
 }: Props) {
   const [bulkAction, setBulkAction] = useState<string | null>(null);
   const [bulkProgress, setBulkProgress] = useState({ done: 0, total: 0 });
+  const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
+  const [targetWordCount, setTargetWordCount] = useState<number | null>(null);
+  const [customWordCount, setCustomWordCount] = useState('');
 
   if (!batch) return <p className="text-sm text-muted-foreground text-center py-8">Select a batch to view its workspace</p>;
 
+  const activeRows = rows.filter(r => !r.deleted_at);
   const draftRows = rows.filter(r => r.workflow_status === 'draft' && !r.deleted_at);
   const enrichedRows = rows.filter(r => ['enriched', 'seo_fixed'].includes(r.workflow_status) && !r.deleted_at);
   const unpublishedReady = rows.filter(r => r.workflow_status !== 'published' && r.content && r.content.length > 100 && !r.deleted_at);
+
+  // Selected rows helpers
+  const selectedActiveRows = rows.filter(r => selectedRows.has(r.id) && !r.deleted_at);
+  const selectedDrafts = selectedActiveRows.filter(r => r.workflow_status === 'draft');
+  const selectedEnriched = selectedActiveRows.filter(r => ['enriched', 'seo_fixed'].includes(r.workflow_status));
+  const selectedPublishable = selectedActiveRows.filter(r => r.workflow_status !== 'published' && r.content && r.content.length > 100);
+  const allSelected = activeRows.length > 0 && activeRows.every(r => selectedRows.has(r.id));
+
+  const toggleRow = (id: string) => {
+    setSelectedRows(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (allSelected) {
+      setSelectedRows(new Set());
+    } else {
+      setSelectedRows(new Set(activeRows.map(r => r.id)));
+    }
+  };
+
+  const selectByStatus = (status: string) => {
+    const ids = rows.filter(r => r.workflow_status === status && !r.deleted_at).map(r => r.id);
+    setSelectedRows(new Set(ids));
+  };
+
+  const wordCountValue = targetWordCount
+    ? (WORD_COUNT_PRESETS.includes(targetWordCount) ? String(targetWordCount) : 'custom')
+    : 'auto';
 
   const runBulk = async (label: string, targetRows: BatchRow[], fn: (row: BatchRow) => Promise<boolean>) => {
     if (targetRows.length === 0) return;
@@ -76,6 +118,11 @@ export function BatchWorkspace({
     }
     setBulkAction(null);
   };
+
+  // Determine rows for enrichment: selected drafts if any, else all drafts
+  const enrichTargetRows = selectedDrafts.length > 0 ? selectedDrafts : draftRows;
+  const seoTargetRows = selectedEnriched.length > 0 ? selectedEnriched : enrichedRows;
+  const publishTargetRows = selectedPublishable.length > 0 ? selectedPublishable : unpublishedReady;
 
   return (
     <div className="space-y-3">
@@ -89,6 +136,70 @@ export function BatchWorkspace({
         {batch.failed_count > 0 && <Badge variant="destructive">{batch.failed_count} failed</Badge>}
       </div>
 
+      {/* Target Word Count + Selection Controls */}
+      <div className="flex flex-wrap items-center gap-3 p-2 border rounded-lg bg-muted/30">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-muted-foreground whitespace-nowrap">Target Words:</span>
+          <Select
+            value={wordCountValue}
+            onValueChange={(v) => {
+              if (v === 'auto') setTargetWordCount(null);
+              else if (v === 'custom') setTargetWordCount(Number(customWordCount) || 1500);
+              else setTargetWordCount(Number(v));
+            }}
+          >
+            <SelectTrigger className="w-[130px] h-7 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="auto">Auto (by variant)</SelectItem>
+              {WORD_COUNT_PRESETS.map(n => (
+                <SelectItem key={n} value={String(n)}>{n} words</SelectItem>
+              ))}
+              <SelectItem value="custom">Custom…</SelectItem>
+            </SelectContent>
+          </Select>
+          {wordCountValue === 'custom' && (
+            <Input
+              type="number"
+              min={500}
+              max={5000}
+              className="w-[80px] h-7 text-xs"
+              value={customWordCount}
+              onChange={e => {
+                setCustomWordCount(e.target.value);
+                const n = Number(e.target.value);
+                if (n >= 500 && n <= 5000) setTargetWordCount(n);
+              }}
+              placeholder="1500"
+            />
+          )}
+        </div>
+
+        <div className="border-l h-5 mx-1" />
+
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs font-semibold text-muted-foreground">Select:</span>
+          <Button size="sm" variant="ghost" className="h-6 text-[10px] px-2" onClick={toggleAll}>
+            {allSelected ? 'None' : 'All'}
+          </Button>
+          <Button size="sm" variant="ghost" className="h-6 text-[10px] px-2" onClick={() => selectByStatus('draft')}>
+            Drafts
+          </Button>
+          <Button size="sm" variant="ghost" className="h-6 text-[10px] px-2" onClick={() => selectByStatus('enriched')}>
+            Enriched
+          </Button>
+          <Button size="sm" variant="ghost" className="h-6 text-[10px] px-2" onClick={() => selectByStatus('failed')}>
+            Failed
+          </Button>
+          {selectedRows.size > 0 && (
+            <Badge variant="secondary" className="text-[10px] h-5">
+              {selectedRows.size} selected
+            </Badge>
+          )}
+        </div>
+      </div>
+
       {/* Bulk Actions Toolbar */}
       <div className="flex flex-wrap items-center gap-2 p-2 border rounded-lg bg-muted/30">
         <span className="text-xs font-semibold text-muted-foreground">Bulk Actions:</span>
@@ -96,36 +207,41 @@ export function BatchWorkspace({
           size="sm"
           variant="outline"
           className="h-7 text-xs gap-1"
-          disabled={!!bulkAction || draftRows.length === 0}
-          onClick={() => runBulk('Enriching', draftRows, onEnrich)}
+          disabled={!!bulkAction || enrichTargetRows.length === 0}
+          onClick={() => runBulk('Enriching', enrichTargetRows, (row) => onEnrich(row, targetWordCount || undefined))}
         >
           <Sparkles className="h-3 w-3" />
-          Enrich All Drafts ({draftRows.length})
+          Enrich {selectedDrafts.length > 0 ? 'Selected' : 'All'} Drafts ({enrichTargetRows.length})
         </Button>
         <Button
           size="sm"
           variant="outline"
           className="h-7 text-xs gap-1"
-          disabled={!!bulkAction || enrichedRows.length === 0}
-          onClick={() => runBulk('Fixing SEO', enrichedRows, onFixSeo)}
+          disabled={!!bulkAction || seoTargetRows.length === 0}
+          onClick={() => runBulk('Fixing SEO', seoTargetRows, onFixSeo)}
         >
           <Wrench className="h-3 w-3" />
-          Fix SEO All Enriched ({enrichedRows.length})
+          Fix SEO {selectedEnriched.length > 0 ? 'Selected' : 'All'} ({seoTargetRows.length})
         </Button>
         <Button
           size="sm"
           variant="default"
           className="h-7 text-xs gap-1"
-          disabled={!!bulkAction || unpublishedReady.length === 0}
-          onClick={() => runBulk('Publishing', unpublishedReady, (row) => onPublish(row.id))}
+          disabled={!!bulkAction || publishTargetRows.length === 0}
+          onClick={() => runBulk('Publishing', publishTargetRows, (row) => onPublish(row.id))}
         >
           <Globe className="h-3 w-3" />
-          Publish All Ready ({unpublishedReady.length})
+          Publish {selectedPublishable.length > 0 ? 'Selected' : 'All'} Ready ({publishTargetRows.length})
         </Button>
         {bulkAction && (
           <Badge variant="secondary" className="text-xs animate-pulse">
             <Loader2 className="h-3 w-3 animate-spin mr-1" />
             {bulkAction} {bulkProgress.done}/{bulkProgress.total}
+          </Badge>
+        )}
+        {targetWordCount && (
+          <Badge variant="outline" className="text-[10px] h-5">
+            Target: {targetWordCount}w
           </Badge>
         )}
       </div>
@@ -158,6 +274,13 @@ export function BatchWorkspace({
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-[32px]">
+                  <Checkbox
+                    checked={allSelected}
+                    onCheckedChange={toggleAll}
+                    className="h-3.5 w-3.5"
+                  />
+                </TableHead>
                 <TableHead className="w-[40px]">#</TableHead>
                 <TableHead>State</TableHead>
                 <TableHead>Board</TableHead>
@@ -173,6 +296,14 @@ export function BatchWorkspace({
                 const isOutOfSync = row.workflow_status === 'published' && row.published_at && row.updated_at > row.published_at;
                 return (
                   <TableRow key={row.id} className={row.deleted_at ? 'opacity-50' : ''}>
+                    <TableCell>
+                      <Checkbox
+                        checked={selectedRows.has(row.id)}
+                        onCheckedChange={() => toggleRow(row.id)}
+                        className="h-3.5 w-3.5"
+                        disabled={!!row.deleted_at}
+                      />
+                    </TableCell>
                     <TableCell className="font-mono text-xs">{row.row_index + 1}</TableCell>
                     <TableCell className="text-xs max-w-[80px] truncate">{row.state_ut}</TableCell>
                     <TableCell className="text-xs max-w-[150px] truncate">{row.board_name}</TableCell>

@@ -249,7 +249,7 @@ export function useBatchPipeline() {
   }, [toast]);
 
   // ─── Enrich row ────────────────────────────────────────────
-  const enrichRow = useCallback(async (row: BatchRow, aiModel: string) => {
+  const enrichRow = useCallback(async (row: BatchRow, aiModel: string, targetWordCount?: number) => {
     const action = row.content && row.content.length > 100 ? 'enrich' : 'generate-result';
     const { data, error } = await supabase.functions.invoke('generate-custom-page', {
       body: {
@@ -266,6 +266,7 @@ export function useBatchPipeline() {
         seo_intro: row.seo_intro_text || '',
         content: row.content || undefined,
         aiModel,
+        ...(targetWordCount ? { target_word_count: targetWordCount } : {}),
       },
     });
 

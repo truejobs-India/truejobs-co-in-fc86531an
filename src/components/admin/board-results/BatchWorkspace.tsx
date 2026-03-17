@@ -155,6 +155,8 @@ export function BatchWorkspace({
     } as any).eq('id', targetId);
   };
 
+  if (!batch) return <p className="text-sm text-muted-foreground text-center py-8">Select a batch to view its workspace</p>;
+
   return (
     <div className="space-y-3">
       {/* Batch info bar */}

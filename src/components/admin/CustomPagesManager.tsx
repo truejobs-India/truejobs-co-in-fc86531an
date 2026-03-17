@@ -547,6 +547,17 @@ export function CustomPagesManager() {
                     <Label className="text-xs">AI Model</Label>
                     <AiModelSelector value={aiModel} onValueChange={setAiModel} capability="text" triggerClassName="w-full" />
                   </div>
+                  <div>
+                    <Label className="text-xs">Target Words</Label>
+                    <Select value={String(bulkWordCount)} onValueChange={(v) => setBulkWordCount(Number(v))}>
+                      <SelectTrigger className="w-full h-8 text-xs"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {[800, 1000, 1200, 1500, 1800, 2000, 2500].map(n => (
+                          <SelectItem key={n} value={String(n)}>{n} words</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                   <div className="flex gap-2">
                     <Button
                       className="flex-1"

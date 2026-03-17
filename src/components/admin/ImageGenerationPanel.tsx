@@ -77,6 +77,7 @@ export function ImageGenerationPanel({
       toast({ title: 'No eligible targets', description: 'Select pages with title and slug', variant: 'destructive' });
       return;
     }
+    stopCoverRef.current = false;
     setCoverProgress({ running: true, done: 0, total: eligible.length, failed: 0 });
 
     let done = 0, failed = 0;

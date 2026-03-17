@@ -55,7 +55,7 @@ export function BoardResultPipeline() {
     }
   };
 
-  const handleEnrich = async (row: BatchRow) => pipeline.enrichRow(row, aiModel);
+  const handleEnrich = async (row: BatchRow, targetWordCount?: number) => pipeline.enrichRow(row, aiModel, targetWordCount);
   const handleFixSeo = async (row: BatchRow) => pipeline.fixSeoRow(row, aiModel);
 
   return (

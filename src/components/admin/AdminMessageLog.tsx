@@ -62,8 +62,11 @@ export function AdminMessageLog({ messages, onDismiss, onClearAll, onToggleExpan
 
   return (
     <div className="space-y-1.5 mb-4">
-      {messages.length >= 3 && (
-        <div className="flex justify-end">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-medium text-muted-foreground">
+          {messages.length} notification{messages.length !== 1 ? 's' : ''}
+        </span>
+        {messages.length >= 1 && (
           <Button
             variant="ghost"
             size="sm"
@@ -73,8 +76,8 @@ export function AdminMessageLog({ messages, onDismiss, onClearAll, onToggleExpan
             <Trash2 className="h-3 w-3" />
             Clear All Messages
           </Button>
-        </div>
-      )}
+        )}
+      </div>
       <div className="space-y-1.5 max-h-[320px] overflow-y-auto">
         {messages.map(msg => {
           const config = typeConfig[msg.type];

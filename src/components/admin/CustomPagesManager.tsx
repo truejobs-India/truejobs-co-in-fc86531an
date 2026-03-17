@@ -732,6 +732,34 @@ export function CustomPagesManager() {
             </Select>
           </div>
 
+          {/* Image Generation Panel */}
+          <ImageGenerationPanel
+            targets={pages.map(p => ({
+              id: p.id,
+              title: p.title,
+              slug: p.slug,
+              content: p.content,
+              category: p.category,
+              tags: p.tags,
+              cover_image_url: (p as any).cover_image_url || null,
+              featured_image_alt: (p as any).featured_image_alt || null,
+            }))}
+            onCoverGenerated={async (targetId, url, alt) => {
+              await supabase.from('custom_pages').update({
+                cover_image_url: url, featured_image_alt: alt,
+              } as any).eq('id', targetId);
+              loadPages();
+            }}
+            onInlineGenerated={async (targetId, newContent, _articleImages) => {
+              const wc = newContent.replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length;
+              await supabase.from('custom_pages').update({
+                content: newContent, word_count: wc,
+              } as any).eq('id', targetId);
+              loadPages();
+            }}
+            sectionLabel="Custom Pages"
+          />
+
           {/* Pages table */}
           <Card>
             <CardContent className="p-0">

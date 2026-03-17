@@ -123,7 +123,13 @@ export function deriveDisplayTitle(boardName: string, stateUt: string): string {
 export function useBatchPipeline() {
   const { toast } = useToast();
   const [batches, setBatches] = useState<ImportBatch[]>([]);
-  const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
+  const [selectedBatchId, setSelectedBatchId] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem('board_results_selected_batch_id');
+    } catch {
+      return null;
+    }
+  });
   const [rows, setRows] = useState<BatchRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [rowsLoading, setRowsLoading] = useState(false);
@@ -161,6 +167,38 @@ export function useBatchPipeline() {
   }, [toast]);
 
   useEffect(() => { fetchBatches(); }, [fetchBatches]);
+  useEffect(() => {
+    if (!batches.length) {
+      if (selectedBatchId) setSelectedBatchId(null);
+      return;
+    }
+
+    const availableBatchIds = new Set(batches.map(batch => batch.id));
+    if (selectedBatchId && availableBatchIds.has(selectedBatchId)) {
+      return;
+    }
+
+    let persistedBatchId: string | null = null;
+    try {
+      persistedBatchId = localStorage.getItem('board_results_selected_batch_id');
+    } catch {
+      persistedBatchId = null;
+    }
+
+    const nextBatchId = persistedBatchId && availableBatchIds.has(persistedBatchId)
+      ? persistedBatchId
+      : batches[0].id;
+
+    if (nextBatchId !== selectedBatchId) {
+      setSelectedBatchId(nextBatchId);
+    }
+  }, [batches, selectedBatchId]);
+  useEffect(() => {
+    try {
+      if (selectedBatchId) localStorage.setItem('board_results_selected_batch_id', selectedBatchId);
+      else localStorage.removeItem('board_results_selected_batch_id');
+    } catch {}
+  }, [selectedBatchId]);
   useEffect(() => { if (selectedBatchId) fetchRows(selectedBatchId); }, [selectedBatchId, fetchRows]);
 
   // ─── Helper: resync counters (non-essential redundancy for non-publish mutations) ──

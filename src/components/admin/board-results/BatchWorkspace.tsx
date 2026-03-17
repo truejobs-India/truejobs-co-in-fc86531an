@@ -15,6 +15,7 @@ import { BatchRowActions } from './BatchRowActions';
 import { ImageGenerationPanel, type ImageTarget } from '@/components/admin/ImageGenerationPanel';
 import { supabase } from '@/integrations/supabase/client';
 import { detectInlineSlots } from '@/lib/blogInlineImages';
+import { runFullSeoAudit } from '@/lib/seoValidator';
 import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
 import type { BatchRow, WorkflowFilter, ImportBatch } from './useBatchPipeline';
 

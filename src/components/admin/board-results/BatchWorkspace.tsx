@@ -279,6 +279,14 @@ export function BatchWorkspace({
         )}
       </div>
 
+      {/* Image Generation Panel */}
+      <ImageGenerationPanel
+        targets={imageTargets}
+        onCoverGenerated={handleImageCoverGenerated}
+        onInlineGenerated={handleImageInlineGenerated}
+        sectionLabel={`Board Results Batch #${batch.batch_number}`}
+      />
+
       {/* Filter tabs */}
       <div className="flex flex-wrap gap-1">
         {FILTERS.map(f => (

@@ -3,10 +3,10 @@
  * Shows workflow_status, duplicate_status, validation_status, word count, actions.
  * Supports row selection checkboxes and target word count for bulk enrichment.
  */
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Loader2, RefreshCw, Sparkles, Wrench, Globe, CheckSquare, Square, ImageIcon, Camera } from 'lucide-react';
+import { Loader2, RefreshCw, Sparkles, Wrench, Globe, CheckSquare, Square, ImageIcon, Camera, StopCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
@@ -73,6 +73,7 @@ export function BatchWorkspace({
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
   const [targetWordCount, setTargetWordCount] = useState<number | null>(null);
   const [customWordCount, setCustomWordCount] = useState('');
+  const stopTextRef = useRef(false);
 
   const activeRows = batch ? rows.filter(r => !r.deleted_at) : [];
   const draftRows = batch ? rows.filter(r => r.workflow_status === 'draft' && !r.deleted_at) : [];
@@ -113,13 +114,21 @@ export function BatchWorkspace({
 
   const runBulk = async (label: string, targetRows: BatchRow[], fn: (row: BatchRow) => Promise<boolean>) => {
     if (targetRows.length === 0) return;
+    stopTextRef.current = false;
     setBulkAction(label);
     setBulkProgress({ done: 0, total: targetRows.length });
+    let done = 0;
     for (let i = 0; i < targetRows.length; i++) {
+      if (stopTextRef.current) {
+        toast({ title: `${label} stopped`, description: `Completed ${done}/${targetRows.length}` });
+        break;
+      }
       await fn(targetRows[i]);
-      setBulkProgress({ done: i + 1, total: targetRows.length });
+      done++;
+      setBulkProgress({ done, total: targetRows.length });
     }
     setBulkAction(null);
+    stopTextRef.current = false;
   };
 
   // Determine rows for enrichment: selected drafts if any, else all drafts
@@ -272,10 +281,21 @@ export function BatchWorkspace({
           Publish {selectedPublishable.length > 0 ? 'Selected' : 'All'} Ready ({publishTargetRows.length})
         </Button>
         {bulkAction && (
-          <Badge variant="secondary" className="text-xs animate-pulse">
-            <Loader2 className="h-3 w-3 animate-spin mr-1" />
-            {bulkAction} {bulkProgress.done}/{bulkProgress.total}
-          </Badge>
+          <div className="flex items-center gap-1.5">
+            <Badge variant="secondary" className="text-xs animate-pulse">
+              <Loader2 className="h-3 w-3 animate-spin mr-1" />
+              {bulkAction} {bulkProgress.done}/{bulkProgress.total}
+            </Badge>
+            <Button
+              size="sm"
+              variant="destructive"
+              className="h-7 text-xs gap-1"
+              onClick={() => { stopTextRef.current = true; }}
+            >
+              <StopCircle className="h-3 w-3" />
+              Stop
+            </Button>
+          </div>
         )}
         {targetWordCount && (
           <Badge variant="outline" className="text-[10px] h-5">

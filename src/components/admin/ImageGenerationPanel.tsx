@@ -2,7 +2,7 @@
  * ImageGenerationPanel — Reusable top-level panel for generating cover and inline images.
  * Works for Board Results, Custom Pages, and any content with title/slug/content.
  */
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
 import { Button } from '@/components/ui/button';
@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AiModelSelector } from '@/components/admin/AiModelSelector';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Camera, ImageIcon, Loader2, ChevronDown, Check, AlertCircle } from 'lucide-react';
+import { Camera, ImageIcon, Loader2, ChevronDown, Check, AlertCircle, StopCircle } from 'lucide-react';
 import {
   detectInlineSlots, insertInlineImage, getContextForSlot,
   buildArticleImagesMetadata,
@@ -67,6 +67,8 @@ export function ImageGenerationPanel({
   // Bulk progress
   const [coverProgress, setCoverProgress] = useState({ running: false, done: 0, total: 0, failed: 0 });
   const [inlineProgress, setInlineProgress] = useState({ running: false, done: 0, total: 0, failed: 0 });
+  const stopCoverRef = useRef(false);
+  const stopInlineRef = useRef(false);
 
   // ── Bulk Cover Generation ──
   const handleBulkCover = async () => {
@@ -75,10 +77,15 @@ export function ImageGenerationPanel({
       toast({ title: 'No eligible targets', description: 'Select pages with title and slug', variant: 'destructive' });
       return;
     }
+    stopCoverRef.current = false;
     setCoverProgress({ running: true, done: 0, total: eligible.length, failed: 0 });
 
     let done = 0, failed = 0;
     for (const target of eligible) {
+      if (stopCoverRef.current) {
+        toast({ title: 'Cover generation stopped', description: `Completed ${done}/${eligible.length}` });
+        break;
+      }
       try {
         const { data, error } = await supabase.functions.invoke('generate-vertex-image', {
           body: {
@@ -120,10 +127,15 @@ export function ImageGenerationPanel({
       toast({ title: 'No eligible targets', description: 'Select pages with sufficient content', variant: 'destructive' });
       return;
     }
+    stopInlineRef.current = false;
     setInlineProgress({ running: true, done: 0, total: eligible.length, failed: 0 });
 
     let done = 0, failed = 0;
     for (const target of eligible) {
+      if (stopInlineRef.current) {
+        toast({ title: 'Inline generation stopped', description: `Completed ${done}/${eligible.length}` });
+        break;
+      }
       try {
         const slotStatus = detectInlineSlots(target.content);
         if (slotStatus.slot1Filled && slotStatus.slot2Filled) {
@@ -264,6 +276,9 @@ export function ImageGenerationPanel({
                       <Loader2 className="h-3 w-3 animate-spin text-primary" />
                       <span>{coverProgress.done}/{coverProgress.total}</span>
                       {coverProgress.failed > 0 && <span className="text-destructive">{coverProgress.failed} failed</span>}
+                      <Button size="sm" variant="destructive" className="h-5 text-[10px] px-2 gap-1" onClick={() => { stopCoverRef.current = true; }}>
+                        <StopCircle className="h-3 w-3" /> Stop
+                      </Button>
                     </div>
                   )}
                   {!coverProgress.running && coverProgress.total > 0 && (
@@ -302,6 +317,9 @@ export function ImageGenerationPanel({
                       <Loader2 className="h-3 w-3 animate-spin text-primary" />
                       <span>{inlineProgress.done}/{inlineProgress.total}</span>
                       {inlineProgress.failed > 0 && <span className="text-destructive">{inlineProgress.failed} failed</span>}
+                      <Button size="sm" variant="destructive" className="h-5 text-[10px] px-2 gap-1" onClick={() => { stopInlineRef.current = true; }}>
+                        <StopCircle className="h-3 w-3" /> Stop
+                      </Button>
                     </div>
                   )}
                   {!inlineProgress.running && inlineProgress.total > 0 && (

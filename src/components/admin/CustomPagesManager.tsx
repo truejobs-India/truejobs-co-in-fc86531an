@@ -695,7 +695,7 @@ export function CustomPagesManager() {
       {/* ═══════════════════════════════════════════════════════════ */}
       {/* BOARD RESULTS VIEW */}
       {/* ═══════════════════════════════════════════════════════════ */}
-      {viewMode === 'board-results' && <BoardResultGenerator />}
+      {viewMode === 'board-results' && <BoardResultPipeline />}
 
       {/* ═══════════════════════════════════════════════════════════ */}
       {/* LIST VIEW */}

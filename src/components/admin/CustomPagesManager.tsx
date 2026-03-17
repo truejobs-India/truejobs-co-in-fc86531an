@@ -156,6 +156,7 @@ export function CustomPagesManager() {
   const [bulkTopics, setBulkTopics] = useState('');
   const [bulkItems, setBulkItems] = useState<BulkItem[]>([]);
   const [isBulkRunning, setIsBulkRunning] = useState(false);
+  const [bulkWordCount, setBulkWordCount] = useState<number>(1500);
   const bulkAbortRef = useRef(false);
 
   // ── Load pages ──

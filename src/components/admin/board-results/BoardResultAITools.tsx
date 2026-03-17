@@ -3,8 +3,14 @@
  * Adapted from Blog's VertexAITools to work with BatchRow data.
  * Uses the SAME edge functions (generate-seo-helper, generate-premium-article, generate-vertex-image)
  * and the SAME Vertex AI / Lovable AI Gateway configuration.
+ *
+ * Image generation:
+ *  - Cover image: 1200px+ wide, 16:9, Google Discover compliant
+ *  - Inline images: 2 slots (after paragraph 1 and 4), contextual, responsive
+ *  - Separate AI model selectors for cover vs inline
  */
 import { useState, useCallback } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -14,15 +20,20 @@ import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { AiModelSelector } from '@/components/admin/AiModelSelector';
 import {
   Sparkles, FileText, ImageIcon, Loader2, ChevronDown, Check, X,
-  Copy, Wand2, LayoutList, Tag, Link2, Globe, PenTool, BookOpen,
+  Copy, Wand2, LayoutList, Tag, Link2, Globe, PenTool, BookOpen, Camera,
 } from 'lucide-react';
 import {
   callSeoHelper,
   callPremiumArticle,
   generateVertexImage,
 } from '@/lib/vertexAiClient';
+import {
+  detectInlineSlots, insertInlineImage, getContextForSlot,
+  buildArticleImagesMetadata,
+} from '@/lib/blogInlineImages';
 import type { SeoHelperAction, PremiumArticleAction } from '@/types/vertex-ai';
 
 interface BoardResultAIToolsProps {
@@ -37,11 +48,15 @@ interface BoardResultAIToolsProps {
     tags?: string[] | null;
     state_ut?: string;
     board_name?: string;
+    cover_image_url?: string;
+    featured_image_alt?: string;
   };
   onApplyField: (field: string, value: string) => void;
   onApplyContent?: (html: string) => void;
   onApplyFaqs?: (faqs: Array<{ question: string; answer: string }>) => void;
   onApplyTags?: (tags: string[]) => void;
+  onApplyCoverImage?: (url: string, alt: string) => void;
+  onApplyInlineImages?: (html: string, articleImages: any) => void;
 }
 
 interface ToolResult {
@@ -51,7 +66,7 @@ interface ToolResult {
   elapsedMs: number;
 }
 
-export function BoardResultAITools({ formData, onApplyField, onApplyContent, onApplyFaqs, onApplyTags }: BoardResultAIToolsProps) {
+export function BoardResultAITools({ formData, onApplyField, onApplyContent, onApplyFaqs, onApplyTags, onApplyCoverImage, onApplyInlineImages }: BoardResultAIToolsProps) {
   const { toast } = useToast();
   const [isOpen, setIsOpen] = useState(true);
   const [loading, setLoading] = useState<string | null>(null);
@@ -63,9 +78,26 @@ export function BoardResultAITools({ formData, onApplyField, onApplyContent, onA
   const [desiredWordCount, setDesiredWordCount] = useState(2000);
   const [customTopic, setCustomTopic] = useState('');
 
-  // Image settings
-  const [imageStyle, setImageStyle] = useState('modern flat illustration');
-  const [imageRatio, setImageRatio] = useState<'1:1' | '16:9' | '4:3' | '3:2'>('16:9');
+  // Image settings — separate models for cover and inline
+  const [coverImageModel, setCoverImageModel] = useState<string>(() => {
+    try { return localStorage.getItem('br_cover_image_model') || 'gemini-flash-image'; } catch { return 'gemini-flash-image'; }
+  });
+  const [inlineImageModel, setInlineImageModel] = useState<string>(() => {
+    try { return localStorage.getItem('br_inline_image_model') || 'vertex-imagen'; } catch { return 'vertex-imagen'; }
+  });
+
+  const handleCoverModelChange = useCallback((v: string) => {
+    setCoverImageModel(v);
+    try { localStorage.setItem('br_cover_image_model', v); } catch {}
+  }, []);
+  const handleInlineModelChange = useCallback((v: string) => {
+    setInlineImageModel(v);
+    try { localStorage.setItem('br_inline_image_model', v); } catch {}
+  }, []);
+
+  // Cover/inline generation state
+  const [coverLoading, setCoverLoading] = useState(false);
+  const [inlineLoading, setInlineLoading] = useState(false);
 
   const runTool = useCallback(async (label: string, fn: () => Promise<any>) => {
     setLoading(label);
@@ -115,13 +147,139 @@ export function BoardResultAITools({ formData, onApplyField, onApplyContent, onA
 
   const isLoading = loading !== null;
 
+  // ── Cover Image Generation (1200px+, 16:9, Google Discover) ──
+  const handleGenerateCover = async () => {
+    if (!formData.slug || !formData.title) {
+      toast({ title: 'Missing data', description: 'Title and slug are required', variant: 'destructive' });
+      return;
+    }
+    setCoverLoading(true);
+    try {
+      const { data, error: fnError } = await supabase.functions.invoke('generate-vertex-image', {
+        body: {
+          slug: formData.slug,
+          title: formData.title,
+          category: formData.category || 'Board Results',
+          tags: formData.tags || [],
+          model: coverImageModel,
+          purpose: 'cover',
+          imageCount: 1,
+          aspectRatio: '16:9',
+        },
+      });
+      if (fnError) throw fnError;
+      if (data?.success === false) throw new Error(data.error || 'Cover image generation failed');
+      const img = data?.data?.images?.[0];
+      if (!img?.url) throw new Error('No image returned');
+
+      const altText = img.altText || formData.title;
+      if (onApplyCoverImage) {
+        onApplyCoverImage(img.url, altText);
+      }
+      toast({ title: 'Cover image generated', description: `1200px+ wide, 16:9 — via ${data.model || coverImageModel}` });
+    } catch (err: any) {
+      toast({ title: 'Cover generation failed', description: err.message, variant: 'destructive' });
+    } finally {
+      setCoverLoading(false);
+    }
+  };
+
+  // ── Inline Image Generation (slot 1 after para 1, slot 2 after para 4) ──
+  const handleGenerateInline = async () => {
+    if (!formData.content || !formData.slug) {
+      toast({ title: 'Missing data', description: 'Content and slug are required', variant: 'destructive' });
+      return;
+    }
+
+    const slotStatus = detectInlineSlots(formData.content);
+    if (slotStatus.slot1Filled && slotStatus.slot2Filled) {
+      toast({ title: 'Already complete', description: 'Both inline image slots are filled' });
+      return;
+    }
+
+    setInlineLoading(true);
+    let updatedContent = formData.content;
+    let articleImages: any = {};
+    let generated = 0;
+
+    try {
+      // Slot 1: after paragraph 1
+      if (!slotStatus.slot1Filled && slotStatus.canPlaceSlot1) {
+        const ctx = getContextForSlot(updatedContent, 1, formData.title, formData.category);
+        const { data, error: fnError } = await supabase.functions.invoke('generate-vertex-image', {
+          body: {
+            slug: formData.slug,
+            title: formData.title,
+            category: formData.category || 'Board Results',
+            tags: formData.tags || [],
+            model: inlineImageModel,
+            purpose: 'inline',
+            slotNumber: 1,
+            contextSnippet: ctx.nearbyText,
+            nearbyHeading: ctx.nearbyHeading,
+          },
+        });
+        if (!fnError && data?.data?.images?.[0]?.url) {
+          const img = data.data.images[0];
+          const newHtml = insertInlineImage(updatedContent, 1, img.url, img.altText || formData.title);
+          if (newHtml) {
+            updatedContent = newHtml;
+            articleImages = buildArticleImagesMetadata(articleImages, 1, img.url, img.altText || formData.title);
+            generated++;
+          }
+        }
+      }
+
+      // Slot 2: after paragraph 4
+      if (!slotStatus.slot2Filled && slotStatus.canPlaceSlot2) {
+        const ctx = getContextForSlot(updatedContent, 2, formData.title, formData.category);
+        const { data, error: fnError } = await supabase.functions.invoke('generate-vertex-image', {
+          body: {
+            slug: formData.slug,
+            title: formData.title,
+            category: formData.category || 'Board Results',
+            tags: formData.tags || [],
+            model: inlineImageModel,
+            purpose: 'inline',
+            slotNumber: 2,
+            contextSnippet: ctx.nearbyText,
+            nearbyHeading: ctx.nearbyHeading,
+          },
+        });
+        if (!fnError && data?.data?.images?.[0]?.url) {
+          const img = data.data.images[0];
+          const newHtml = insertInlineImage(updatedContent, 2, img.url, img.altText || formData.title);
+          if (newHtml) {
+            updatedContent = newHtml;
+            articleImages = buildArticleImagesMetadata(articleImages, 2, img.url, img.altText || formData.title);
+            generated++;
+          }
+        }
+      }
+
+      if (generated > 0 && onApplyInlineImages) {
+        onApplyInlineImages(updatedContent, articleImages);
+        toast({ title: `${generated} inline image(s) inserted`, description: `Placed after paragraph ${generated === 2 ? '1 & 4' : slotStatus.slot1Filled ? '4' : '1'}` });
+      } else if (generated === 0) {
+        toast({ title: 'No images inserted', description: slotStatus.skipReasons.join('; ') || 'Content too short or slots filled', variant: 'destructive' });
+      }
+    } catch (err: any) {
+      toast({ title: 'Inline image generation failed', description: err.message, variant: 'destructive' });
+    } finally {
+      setInlineLoading(false);
+    }
+  };
+
+  // Detect current inline slot status for UI hints
+  const inlineSlotStatus = formData.content ? detectInlineSlots(formData.content) : null;
+
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
       <CollapsibleTrigger asChild>
         <Button variant="outline" className="w-full justify-between text-xs h-9 border-primary/30 bg-primary/5">
           <span className="flex items-center gap-2">
             <Globe className="h-3.5 w-3.5 text-primary" />
-            AI Tools (SEO · Article · Image — same as Blog)
+            AI Tools (SEO · Article · Images)
           </span>
           <ChevronDown className={`h-3.5 w-3.5 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
         </Button>
@@ -213,53 +371,74 @@ export function BoardResultAITools({ formData, onApplyField, onApplyContent, onA
           </div>
         </div>
 
-        {/* ── Imagen (Image Generation) ── */}
-        <div className="space-y-1.5">
+        {/* ═══════════════════════════════════════════════════════════
+            IMAGE GENERATION — Cover & Inline with separate selectors
+            ═══════════════════════════════════════════════════════════ */}
+
+        {/* ── Cover Image (Google Discover: 1200px+, 16:9) ── */}
+        <div className="space-y-1.5 border-t pt-2">
           <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-            <ImageIcon className="h-3 w-3" /> Imagen — Featured Image
+            <Camera className="h-3 w-3" /> Cover Image (Google Discover · 1200×630 · 16:9)
           </p>
-          <div className="flex gap-2 items-center">
-            <Select value={imageStyle} onValueChange={setImageStyle}>
-              <SelectTrigger className="h-7 text-[10px] flex-1">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="modern flat illustration">Flat Illustration</SelectItem>
-                <SelectItem value="professional photography style">Photography</SelectItem>
-                <SelectItem value="clean infographic style">Infographic</SelectItem>
-                <SelectItem value="abstract editorial art">Abstract Art</SelectItem>
-                <SelectItem value="minimalist icon style">Minimalist</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={imageRatio} onValueChange={(v) => setImageRatio(v as any)}>
-              <SelectTrigger className="h-7 text-[10px] w-20">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="16:9">16:9</SelectItem>
-                <SelectItem value="4:3">4:3</SelectItem>
-                <SelectItem value="1:1">1:1</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="flex gap-2 items-center flex-wrap">
+            <div className="flex-1 min-w-[140px]">
+              <AiModelSelector value={coverImageModel} onValueChange={handleCoverModelChange} capability="image" size="sm" triggerClassName="w-full h-7 text-[10px]" />
+            </div>
             <Button
               size="sm"
-              className="h-7 text-[10px]"
-              disabled={isLoading}
-              onClick={() => runTool('Generate Image', () => generateVertexImage({
-                title: formData.title,
-                topic,
-                excerpt: formData.excerpt,
-                category: formData.category || 'Board Results',
-                tags: formData.tags || undefined,
-                slug: formData.slug,
-                visualStyle: imageStyle,
-                aspectRatio: imageRatio,
-              }))}
+              className="h-7 text-[10px] gap-1.5"
+              disabled={coverLoading || !formData.slug}
+              onClick={handleGenerateCover}
             >
-              {loading === 'Generate Image' ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <ImageIcon className="h-3 w-3 mr-1" />}
-              Generate
+              {coverLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Camera className="h-3 w-3" />}
+              {formData.cover_image_url ? 'Regenerate Cover' : 'Generate Cover'}
             </Button>
           </div>
+          {formData.cover_image_url && (
+            <div className="mt-1.5">
+              <img src={formData.cover_image_url} alt={formData.featured_image_alt || formData.title} className="w-full rounded border object-cover" style={{ aspectRatio: '16/9', maxHeight: '120px' }} />
+              <p className="text-[9px] text-muted-foreground mt-0.5 truncate">Alt: {formData.featured_image_alt || 'Not set'}</p>
+            </div>
+          )}
+          <p className="text-[9px] text-muted-foreground/70">
+            ≥1200px wide · High quality · 16:9 landscape · Cropped for max-image-preview:large
+          </p>
+        </div>
+
+        {/* ── Inline Images (2 slots: after para 1 & para 4) ── */}
+        <div className="space-y-1.5 border-t pt-2">
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+            <ImageIcon className="h-3 w-3" /> Inline Images (After ¶1 & ¶4)
+          </p>
+          <div className="flex gap-2 items-center flex-wrap">
+            <div className="flex-1 min-w-[140px]">
+              <AiModelSelector value={inlineImageModel} onValueChange={handleInlineModelChange} capability="image" size="sm" triggerClassName="w-full h-7 text-[10px]" />
+            </div>
+            <Button
+              size="sm"
+              className="h-7 text-[10px] gap-1.5"
+              disabled={inlineLoading || !formData.content}
+              onClick={handleGenerateInline}
+            >
+              {inlineLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <ImageIcon className="h-3 w-3" />}
+              Generate Inline
+            </Button>
+          </div>
+          {/* Slot status indicators */}
+          {inlineSlotStatus && (
+            <div className="flex gap-2 text-[9px]">
+              <Badge variant={inlineSlotStatus.slot1Filled ? 'default' : 'outline'} className="text-[9px] h-5">
+                Slot 1 (¶1): {inlineSlotStatus.slot1Filled ? '✓ Filled' : inlineSlotStatus.canPlaceSlot1 ? 'Empty' : 'N/A'}
+              </Badge>
+              <Badge variant={inlineSlotStatus.slot2Filled ? 'default' : 'outline'} className="text-[9px] h-5">
+                Slot 2 (¶4): {inlineSlotStatus.slot2Filled ? '✓ Filled' : inlineSlotStatus.canPlaceSlot2 ? 'Empty' : 'N/A'}
+              </Badge>
+              <span className="text-muted-foreground">{inlineSlotStatus.totalParagraphs} paragraphs</span>
+            </div>
+          )}
+          <p className="text-[9px] text-muted-foreground/70">
+            Contextual · Compressed · Responsive · Descriptive alt text · Placed naturally
+          </p>
         </div>
 
         {/* ── Error display ── */}
@@ -438,7 +617,6 @@ export function BoardResultAITools({ formData, onApplyField, onApplyContent, onA
                         className="h-6 text-[10px]"
                         onClick={() => {
                           onApplyContent(result.data.content_html);
-                          // Also apply meta fields if available
                           if (result.data.meta_title) onApplyField('meta_title', result.data.meta_title);
                           if (result.data.meta_description) onApplyField('meta_description', result.data.meta_description);
                           if (result.data.excerpt) onApplyField('excerpt', result.data.excerpt);
@@ -487,7 +665,7 @@ export function BoardResultAITools({ formData, onApplyField, onApplyContent, onA
               </div>
             )}
 
-            {/* ── Image results ── */}
+            {/* ── Image results (from general Imagen tool) ── */}
             {result.data?.images && Array.isArray(result.data.images) && (
               <div className="space-y-1.5">
                 <p className="text-[10px] font-medium text-muted-foreground">
@@ -496,20 +674,17 @@ export function BoardResultAITools({ formData, onApplyField, onApplyContent, onA
                 <div className="grid grid-cols-2 gap-2">
                   {result.data.images.map((img: any, i: number) => (
                     <div key={i} className="space-y-1">
-                      <img
-                        src={img.url}
-                        alt={img.altText}
-                        className="w-full rounded border object-cover"
-                        style={{ aspectRatio: imageRatio.replace(':', '/') }}
-                      />
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-5 text-[9px] w-full"
-                        onClick={() => copyText(img.url, 'Image URL')}
-                      >
-                        <Copy className="h-3 w-3 mr-0.5" /> Copy URL
-                      </Button>
+                      <img src={img.url} alt={img.altText} className="w-full rounded border object-cover" style={{ aspectRatio: '16/9' }} />
+                      <div className="flex gap-1">
+                        <Button variant="outline" size="sm" className="h-5 text-[9px] flex-1" onClick={() => copyText(img.url, 'Image URL')}>
+                          <Copy className="h-3 w-3 mr-0.5" /> URL
+                        </Button>
+                        {onApplyCoverImage && (
+                          <Button variant="default" size="sm" className="h-5 text-[9px] flex-1" onClick={() => onApplyCoverImage(img.url, img.altText || formData.title)}>
+                            <Check className="h-3 w-3 mr-0.5" /> Use as Cover
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>

@@ -36,6 +36,8 @@ export function RowEditDialog({ row, open, onClose, onSave }: Props) {
         content: row.content || '',
         tags: (row.tags || []).join(', '),
         faq_schema: row.faq_schema || [],
+        cover_image_url: (row as any).cover_image_url || '',
+        featured_image_alt: (row as any).featured_image_alt || '',
       });
     }
   }, [row]);
@@ -77,11 +79,20 @@ export function RowEditDialog({ row, open, onClose, onSave }: Props) {
     setForm((prev: any) => ({ ...prev, tags: tags.join(', ') }));
   };
 
+  const handleApplyCoverImage = (url: string, alt: string) => {
+    setForm((prev: any) => ({ ...prev, cover_image_url: url, featured_image_alt: alt }));
+  };
+
+  const handleApplyInlineImages = (html: string, _articleImages: any) => {
+    const wordCount = html.split(/\s+/).filter(Boolean).length;
+    setForm((prev: any) => ({ ...prev, content: html, word_count: wordCount }));
+  };
+
   const isPublished = row.workflow_status === 'published';
 
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             Edit Row #{row.row_index + 1} — {row.board_name}
@@ -89,7 +100,7 @@ export function RowEditDialog({ row, open, onClose, onSave }: Props) {
           </DialogTitle>
         </DialogHeader>
 
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-4">
           {/* Left: Form fields */}
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
@@ -135,6 +146,15 @@ export function RowEditDialog({ row, open, onClose, onSave }: Props) {
               <Input value={form.tags || ''} onChange={e => setForm({ ...form, tags: e.target.value })} />
             </div>
 
+            {/* Cover image preview */}
+            {form.cover_image_url && (
+              <div>
+                <Label>Cover Image</Label>
+                <img src={form.cover_image_url} alt={form.featured_image_alt || 'Cover'} className="w-full rounded border object-cover mt-1" style={{ aspectRatio: '16/9', maxHeight: '160px' }} />
+                <Input value={form.featured_image_alt || ''} onChange={e => setForm({ ...form, featured_image_alt: e.target.value })} placeholder="Alt text" className="mt-1 text-xs h-7" />
+              </div>
+            )}
+
             <div>
               <Label>Content (HTML)</Label>
               <Textarea value={form.content || ''} onChange={e => setForm({ ...form, content: e.target.value })} rows={12} className="font-mono text-xs" />
@@ -178,11 +198,15 @@ export function RowEditDialog({ row, open, onClose, onSave }: Props) {
                 tags: (form.tags || '').split(',').map((t: string) => t.trim()).filter(Boolean),
                 state_ut: row.state_ut,
                 board_name: row.board_name,
+                cover_image_url: form.cover_image_url || '',
+                featured_image_alt: form.featured_image_alt || '',
               }}
               onApplyField={handleApplyField}
               onApplyContent={handleApplyContent}
               onApplyFaqs={handleApplyFaqs}
               onApplyTags={handleApplyTags}
+              onApplyCoverImage={handleApplyCoverImage}
+              onApplyInlineImages={handleApplyInlineImages}
             />
           </div>
         </div>

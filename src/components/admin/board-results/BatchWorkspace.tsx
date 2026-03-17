@@ -73,6 +73,7 @@ export function BatchWorkspace({
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
   const [targetWordCount, setTargetWordCount] = useState<number | null>(null);
   const [customWordCount, setCustomWordCount] = useState('');
+  const stopTextRef = useRef(false);
 
   const activeRows = batch ? rows.filter(r => !r.deleted_at) : [];
   const draftRows = batch ? rows.filter(r => r.workflow_status === 'draft' && !r.deleted_at) : [];

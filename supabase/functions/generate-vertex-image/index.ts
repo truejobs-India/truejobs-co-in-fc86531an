@@ -407,26 +407,27 @@ async function generateViaLovableGatewayImage(
     console.error(`[lovable-gateway-image] error [${gatewayResponse.status}]: ${errText.substring(0, 300)}`);
 
     let userMessage: string;
-    let statusCode: number;
+    let errorCode: string;
 
     if (gatewayResponse.status === 429) {
       userMessage = 'Image generation is temporarily busy across all providers. Please try again in a few minutes.';
-      statusCode = 429;
+      errorCode = 'IMAGE_GEN_TEMP_UNAVAILABLE';
     } else if (gatewayResponse.status === 402) {
       userMessage = 'All image generation providers are temporarily unavailable (quota exceeded). Please upload an image manually or try again later.';
-      statusCode = 429; // Return 429 to client so UI treats it as retryable
+      errorCode = 'IMAGE_GEN_QUOTA_EXCEEDED';
     } else {
-      userMessage = `Image generation failed across all providers. Please upload manually.`;
-      statusCode = 502;
+      userMessage = 'Image generation failed across all providers. Please upload manually.';
+      errorCode = 'IMAGE_GEN_PROVIDER_ERROR';
     }
 
     return new Response(JSON.stringify({
       success: false,
       error: userMessage,
+      code: errorCode,
       model: LOVABLE_GATEWAY_IMAGE_MODEL,
       fallbackReason,
     }), {
-      status: statusCode,
+      status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }

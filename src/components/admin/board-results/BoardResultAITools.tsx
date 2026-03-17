@@ -168,7 +168,12 @@ export function BoardResultAITools({ formData, onApplyField, onApplyContent, onA
         },
       });
       if (fnError) throw fnError;
-      if (data?.success === false) throw new Error(data.error || 'Cover image generation failed');
+      if (data?.success === false) {
+        const message = data.code === 'IMAGE_GEN_QUOTA_EXCEEDED'
+          ? 'Quota is temporarily exhausted. Please try later or upload manually.'
+          : data.error || 'Cover image generation failed';
+        throw new Error(message);
+      }
       const img = data?.data?.images?.[0];
       if (!img?.url) throw new Error('No image returned');
 

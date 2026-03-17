@@ -2,9 +2,10 @@
  * BatchWorkspace — Filterable table of rows for selected batch.
  * Shows workflow_status, duplicate_status, validation_status, word count, actions.
  */
+import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Loader2, RefreshCw } from 'lucide-react';
+import { Loader2, RefreshCw, Sparkles, Wrench, Globe } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { BatchRowActions } from './BatchRowActions';
 import type { BatchRow, WorkflowFilter, ImportBatch } from './useBatchPipeline';

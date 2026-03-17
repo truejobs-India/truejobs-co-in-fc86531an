@@ -72,7 +72,7 @@ export function ImageGenerationPanel({
 
   // ── Bulk Cover Generation ──
   const handleBulkCover = async () => {
-    const eligible = targets.filter(t => t.title && t.slug);
+    const eligible = targets.filter(t => t.title && t.slug && !t.cover_image_url);
     if (eligible.length === 0) {
       toast({ title: 'No eligible targets', description: 'Select pages with title and slug', variant: 'destructive' });
       return;

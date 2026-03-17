@@ -88,18 +88,15 @@ export function useAdminToast() {
   const ctx = useContext(AdminMessagesContext);
 
   // If used outside AdminMessagesProvider, fall back to no-op
-  // (shouldn't happen in admin panel)
-  if (!ctx) {
-    return {
-      toast: ({ title, description }: { title: string; description?: string; variant?: string }) => {
-        console.warn('[useAdminToast] Called outside provider:', title, description);
-        return { id: '', dismiss: () => {}, update: () => {} };
-      },
-      dismiss: () => {},
-    };
-  }
+  const noopToast = useCallback(({ title, description }: { title: string; description?: string; variant?: string }) => {
+    console.warn('[useAdminToast] Called outside provider:', title, description);
+    return { id: '', dismiss: () => {}, update: () => {} };
+  }, []);
 
-  const toast = ({ title, description, variant }: { title: string; description?: string; variant?: string }) => {
+  const noopDismiss = useCallback(() => {}, []);
+
+  const stableToast = useCallback(({ title, description, variant }: { title: string; description?: string; variant?: string }) => {
+    if (!ctx) return { id: '', dismiss: () => {}, update: () => {} };
     let type: AdminMessageType = 'success';
     if (variant === 'destructive') type = 'error';
     else if (title.includes('⚠') || title.toLowerCase().includes('warning')) type = 'warning';
@@ -107,7 +104,12 @@ export function useAdminToast() {
 
     const id = ctx.addMessage(type, title, description || '');
     return { id, dismiss: () => ctx.dismissMessage(id), update: () => {} };
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ctx?.addMessage, ctx?.dismissMessage]);
 
-  return { toast, dismiss: ctx.dismissMessage };
+  if (!ctx) {
+    return { toast: noopToast, dismiss: noopDismiss };
+  }
+
+  return { toast: stableToast, dismiss: ctx.dismissMessage };
 }

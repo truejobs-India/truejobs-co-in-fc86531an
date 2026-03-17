@@ -168,7 +168,12 @@ export function BoardResultAITools({ formData, onApplyField, onApplyContent, onA
         },
       });
       if (fnError) throw fnError;
-      if (data?.success === false) throw new Error(data.error || 'Cover image generation failed');
+      if (data?.success === false) {
+        const message = data.code === 'IMAGE_GEN_QUOTA_EXCEEDED'
+          ? 'Quota is temporarily exhausted. Please try later or upload manually.'
+          : data.error || 'Cover image generation failed';
+        throw new Error(message);
+      }
       const img = data?.data?.images?.[0];
       if (!img?.url) throw new Error('No image returned');
 
@@ -203,6 +208,8 @@ export function BoardResultAITools({ formData, onApplyField, onApplyContent, onA
     let generated = 0;
 
     try {
+      let blockedReason = '';
+
       // Slot 1: after paragraph 1
       if (!slotStatus.slot1Filled && slotStatus.canPlaceSlot1) {
         const ctx = getContextForSlot(updatedContent, 1, formData.title, formData.category);
@@ -219,7 +226,12 @@ export function BoardResultAITools({ formData, onApplyField, onApplyContent, onA
             nearbyHeading: ctx.nearbyHeading,
           },
         });
-        if (!fnError && data?.data?.images?.[0]?.url) {
+        if (fnError) throw fnError;
+        if (data?.success === false) {
+          blockedReason = data.code === 'IMAGE_GEN_QUOTA_EXCEEDED'
+            ? 'Quota is temporarily exhausted. Please try later or upload manually.'
+            : data.error || 'Inline image generation failed';
+        } else if (data?.data?.images?.[0]?.url) {
           const img = data.data.images[0];
           const newHtml = insertInlineImage(updatedContent, 1, img.url, img.altText || formData.title);
           if (newHtml) {
@@ -231,7 +243,7 @@ export function BoardResultAITools({ formData, onApplyField, onApplyContent, onA
       }
 
       // Slot 2: after paragraph 4
-      if (!slotStatus.slot2Filled && slotStatus.canPlaceSlot2) {
+      if (!blockedReason && !slotStatus.slot2Filled && slotStatus.canPlaceSlot2) {
         const ctx = getContextForSlot(updatedContent, 2, formData.title, formData.category);
         const { data, error: fnError } = await supabase.functions.invoke('generate-vertex-image', {
           body: {
@@ -246,7 +258,12 @@ export function BoardResultAITools({ formData, onApplyField, onApplyContent, onA
             nearbyHeading: ctx.nearbyHeading,
           },
         });
-        if (!fnError && data?.data?.images?.[0]?.url) {
+        if (fnError) throw fnError;
+        if (data?.success === false) {
+          blockedReason = data.code === 'IMAGE_GEN_QUOTA_EXCEEDED'
+            ? 'Quota is temporarily exhausted. Please try later or upload manually.'
+            : data.error || 'Inline image generation failed';
+        } else if (data?.data?.images?.[0]?.url) {
           const img = data.data.images[0];
           const newHtml = insertInlineImage(updatedContent, 2, img.url, img.altText || formData.title);
           if (newHtml) {
@@ -257,7 +274,9 @@ export function BoardResultAITools({ formData, onApplyField, onApplyContent, onA
         }
       }
 
-      if (generated > 0 && onApplyInlineImages) {
+      if (blockedReason) {
+        toast({ title: 'Inline image generation unavailable', description: blockedReason, variant: 'destructive' });
+      } else if (generated > 0 && onApplyInlineImages) {
         onApplyInlineImages(updatedContent, articleImages);
         toast({ title: `${generated} inline image(s) inserted`, description: `Placed after paragraph ${generated === 2 ? '1 & 4' : slotStatus.slot1Filled ? '4' : '1'}` });
       } else if (generated === 0) {

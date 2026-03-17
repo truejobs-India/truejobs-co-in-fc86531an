@@ -301,7 +301,7 @@ export function CustomPagesManager() {
     setGenerating(true);
     try {
       const { data, error } = await supabase.functions.invoke('generate-custom-page', {
-        body: { action: 'generate', topic: generateTopic, pageType: form.page_type, category: form.category, tags: form.tags.split(',').map(t => t.trim()).filter(Boolean), aiModel },
+        body: { action: 'generate', topic: generateTopic, pageType: form.page_type, category: form.category, tags: form.tags.split(',').map(t => t.trim()).filter(Boolean), aiModel, target_word_count: bulkWordCount },
       });
       if (error) throw new Error(error.message);
       if (!data?.success) throw new Error(data?.error || 'Generation failed');

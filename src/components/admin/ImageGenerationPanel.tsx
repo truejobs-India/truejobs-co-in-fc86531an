@@ -276,6 +276,9 @@ export function ImageGenerationPanel({
                       <Loader2 className="h-3 w-3 animate-spin text-primary" />
                       <span>{coverProgress.done}/{coverProgress.total}</span>
                       {coverProgress.failed > 0 && <span className="text-destructive">{coverProgress.failed} failed</span>}
+                      <Button size="sm" variant="destructive" className="h-5 text-[10px] px-2 gap-1" onClick={() => { stopCoverRef.current = true; }}>
+                        <StopCircle className="h-3 w-3" /> Stop
+                      </Button>
                     </div>
                   )}
                   {!coverProgress.running && coverProgress.total > 0 && (

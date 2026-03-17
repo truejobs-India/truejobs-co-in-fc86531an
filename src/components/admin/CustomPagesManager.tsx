@@ -156,6 +156,7 @@ export function CustomPagesManager() {
   const [bulkTopics, setBulkTopics] = useState('');
   const [bulkItems, setBulkItems] = useState<BulkItem[]>([]);
   const [isBulkRunning, setIsBulkRunning] = useState(false);
+  const [bulkWordCount, setBulkWordCount] = useState<number>(1500);
   const bulkAbortRef = useRef(false);
 
   // ── Load pages ──
@@ -300,7 +301,7 @@ export function CustomPagesManager() {
     setGenerating(true);
     try {
       const { data, error } = await supabase.functions.invoke('generate-custom-page', {
-        body: { action: 'generate', topic: generateTopic, pageType: form.page_type, category: form.category, tags: form.tags.split(',').map(t => t.trim()).filter(Boolean), aiModel },
+        body: { action: 'generate', topic: generateTopic, pageType: form.page_type, category: form.category, tags: form.tags.split(',').map(t => t.trim()).filter(Boolean), aiModel, target_word_count: bulkWordCount },
       });
       if (error) throw new Error(error.message);
       if (!data?.success) throw new Error(data?.error || 'Generation failed');
@@ -360,7 +361,7 @@ export function CustomPagesManager() {
 
       try {
         const { data, error } = await supabase.functions.invoke('generate-custom-page', {
-          body: { action: 'generate', topic: items[i].topic, pageType: 'landing', category: 'general', tags: [], aiModel },
+          body: { action: 'generate', topic: items[i].topic, pageType: 'landing', category: 'general', tags: [], aiModel, target_word_count: bulkWordCount },
         });
         if (error) throw new Error(error.message);
         if (!data?.success) throw new Error(data?.error || 'Failed');
@@ -411,7 +412,7 @@ export function CustomPagesManager() {
 
     try {
       const { data, error } = await supabase.functions.invoke('generate-custom-page', {
-        body: { action: 'generate', topic: item.topic, pageType: 'landing', category: 'general', tags: [], aiModel },
+        body: { action: 'generate', topic: item.topic, pageType: 'landing', category: 'general', tags: [], aiModel, target_word_count: bulkWordCount },
       });
       if (error) throw new Error(error.message);
       if (!data?.success) throw new Error(data?.error || 'Failed');
@@ -545,6 +546,17 @@ export function CustomPagesManager() {
                   <div>
                     <Label className="text-xs">AI Model</Label>
                     <AiModelSelector value={aiModel} onValueChange={setAiModel} capability="text" triggerClassName="w-full" />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Target Words</Label>
+                    <Select value={String(bulkWordCount)} onValueChange={(v) => setBulkWordCount(Number(v))}>
+                      <SelectTrigger className="w-full h-8 text-xs"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {[800, 1000, 1200, 1500, 1800, 2000, 2500].map(n => (
+                          <SelectItem key={n} value={String(n)}>{n} words</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="flex gap-2">
                     <Button

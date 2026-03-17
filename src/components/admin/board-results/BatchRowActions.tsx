@@ -10,7 +10,7 @@ import type { BatchRow } from './useBatchPipeline';
 interface Props {
   row: BatchRow;
   aiModel: string;
-  onEnrich: (row: BatchRow) => Promise<boolean>;
+  onEnrich: (row: BatchRow, targetWordCount?: number) => Promise<boolean>;
   onFixSeo: (row: BatchRow) => Promise<boolean>;
   onEdit: (row: BatchRow) => void;
   onView: (row: BatchRow) => void;

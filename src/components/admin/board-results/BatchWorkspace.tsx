@@ -248,7 +248,7 @@ export function BatchWorkspace({
           onClick={() => runBulk('Enriching', enrichTargetRows, (row) => onEnrich(row, targetWordCount || undefined))}
         >
           <Sparkles className="h-3 w-3" />
-          Enrich {selectedDrafts.length > 0 ? 'Selected' : 'All'} Drafts ({enrichTargetRows.length})
+          Enrich {selectedDrafts.length > 0 || selectedFailed.length > 0 ? 'Selected' : 'All'} Drafts ({enrichTargetRows.length})
         </Button>
         <Button
           size="sm"

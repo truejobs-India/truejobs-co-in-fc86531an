@@ -157,10 +157,12 @@ export function BatchWorkspace({
   const seoTargetRows = selectedEnriched.length > 0 ? selectedEnriched : enrichedRows;
   const publishTargetRows = selectedPublishable.length > 0 ? selectedPublishable : unpublishedReady;
 
-  // Build image targets from selected rows (or all enriched if none selected)
+  // Build image targets from selected rows (or all active rows if none selected).
+  // IMPORTANT: keep rows without long-form content included so cover-image controls
+  // remain available even before enrichment or after workspace transfer/state resets.
   const imageTargetRows = selectedActiveRows.length > 0
-    ? selectedActiveRows.filter(r => r.content && r.content.length > 100)
-    : rows.filter(r => r.content && r.content.length > 100 && !r.deleted_at);
+    ? selectedActiveRows
+    : rows.filter(r => !r.deleted_at);
 
   const imageTargets: ImageTarget[] = useMemo(() => imageTargetRows.map(r => {
     const ec = (r.enriched_content as any) || {};

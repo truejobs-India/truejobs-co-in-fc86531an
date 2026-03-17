@@ -153,11 +153,20 @@ export function ImageGenerationPanel({
     setInlineProgress({ running: true, done: 0, total: eligible.length, failed: 0 });
 
     let done = 0, failed = 0;
+    let consecutiveFailures = 0;
+    const INTER_REQUEST_DELAY = 5000;
+
     for (const target of eligible) {
       if (stopInlineRef.current) {
         toast({ title: 'Inline generation stopped', description: `Completed ${done}/${eligible.length}` });
         break;
       }
+
+      // Delay between targets
+      if (done + failed > 0) {
+        await new Promise(r => setTimeout(r, INTER_REQUEST_DELAY));
+      }
+
       try {
         const slotStatus = detectInlineSlots(target.content);
         if (slotStatus.slot1Filled && slotStatus.slot2Filled) {
@@ -169,6 +178,7 @@ export function ImageGenerationPanel({
         let updatedContent = target.content;
         let articleImages: any = {};
         let generated = 0;
+        let slotFailed = false;
 
         // Slot 1
         if (!slotStatus.slot1Filled && slotStatus.canPlaceSlot1) {
@@ -181,7 +191,10 @@ export function ImageGenerationPanel({
               contextSnippet: ctx.nearbyText, nearbyHeading: ctx.nearbyHeading,
             },
           });
-          if (!error && data?.data?.images?.[0]?.url) {
+          if (error || data?.success === false) {
+            const msg = data?.error || error?.message || '';
+            if (msg.includes('quota exceeded') || msg.includes('402')) slotFailed = true;
+          } else if (data?.data?.images?.[0]?.url) {
             const img = data.data.images[0];
             const newHtml = insertInlineImage(updatedContent, 1, img.url, img.altText || target.title);
             if (newHtml) {
@@ -192,8 +205,13 @@ export function ImageGenerationPanel({
           }
         }
 
+        // Delay between slot 1 and slot 2
+        if (!slotFailed && !slotStatus.slot2Filled && slotStatus.canPlaceSlot2) {
+          await new Promise(r => setTimeout(r, 3000));
+        }
+
         // Slot 2
-        if (!slotStatus.slot2Filled && slotStatus.canPlaceSlot2) {
+        if (!slotFailed && !slotStatus.slot2Filled && slotStatus.canPlaceSlot2) {
           const ctx = getContextForSlot(updatedContent, 2, target.title, target.category);
           const { data, error } = await supabase.functions.invoke('generate-vertex-image', {
             body: {
@@ -216,11 +234,23 @@ export function ImageGenerationPanel({
 
         if (generated > 0) {
           await onInlineGenerated(target.id, updatedContent, articleImages);
+          consecutiveFailures = 0;
         }
         done++;
       } catch (err: any) {
         failed++;
-        console.error(`Inline failed for ${target.slug}:`, err.message);
+        consecutiveFailures++;
+        const msg = err.message || '';
+        console.error(`Inline failed for ${target.slug}:`, msg);
+
+        if (consecutiveFailures >= 3 || msg.includes('quota exceeded') || msg.includes('402')) {
+          toast({
+            title: 'Inline generation paused — rate limit / quota hit',
+            description: `${done} succeeded. Try again later or switch model.`,
+            variant: 'destructive',
+          });
+          break;
+        }
       }
       setInlineProgress(p => ({ ...p, done, failed }));
     }

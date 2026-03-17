@@ -81,6 +81,22 @@ export function BatchWorkspace({
   const enrichedRows = rows.filter(r => ['enriched', 'seo_fixed'].includes(r.workflow_status) && !r.deleted_at);
   const unpublishedReady = rows.filter(r => r.workflow_status !== 'published' && r.content && r.content.length > 100 && !r.deleted_at);
 
+  // SEO readiness stats
+  const seoStats = useMemo(() => {
+    const withContent = activeRows.filter(r => r.content && r.content.length > 100);
+    let ready = 0;
+    let warnings = 0;
+    let errors = 0;
+    for (const r of withContent) {
+      const audit = runFullSeoAudit({ slug: r.slug, meta_title: r.meta_title, meta_description: r.meta_description, content: r.content, word_count: r.word_count ?? 0, faq_schema: r.faq_schema });
+      if (audit.valid && audit.score >= 80) ready++;
+      else if (audit.valid) warnings++;
+      else errors++;
+    }
+    const noContent = activeRows.length - withContent.length;
+    return { ready, warnings, errors, noContent, total: activeRows.length };
+  }, [activeRows]);
+
   // Selected rows helpers
   const selectedActiveRows = rows.filter(r => selectedRows.has(r.id) && !r.deleted_at);
   const selectedDrafts = selectedActiveRows.filter(r => r.workflow_status === 'draft');
@@ -183,6 +199,26 @@ export function BatchWorkspace({
         <Badge className="bg-blue-100 text-blue-800">{batch.enriched_count} enriched</Badge>
         {batch.failed_count > 0 && <Badge variant="destructive">{batch.failed_count} failed</Badge>}
       </div>
+
+      {/* SEO Readiness Summary */}
+      {seoStats.total > 0 && (
+        <div className="flex items-center gap-3 p-3 border rounded-lg bg-muted/20">
+          <Search className="h-4 w-4 text-primary shrink-0" />
+          <span className="text-xs font-semibold text-foreground">SEO Readiness:</span>
+          <div className="flex-1 h-2.5 rounded-full bg-muted overflow-hidden flex">
+            {seoStats.ready > 0 && <div className="bg-emerald-500 h-full transition-all" style={{ width: `${(seoStats.ready / seoStats.total) * 100}%` }} />}
+            {seoStats.warnings > 0 && <div className="bg-amber-400 h-full transition-all" style={{ width: `${(seoStats.warnings / seoStats.total) * 100}%` }} />}
+            {seoStats.errors > 0 && <div className="bg-destructive h-full transition-all" style={{ width: `${(seoStats.errors / seoStats.total) * 100}%` }} />}
+            {seoStats.noContent > 0 && <div className="bg-muted-foreground/20 h-full transition-all" style={{ width: `${(seoStats.noContent / seoStats.total) * 100}%` }} />}
+          </div>
+          <div className="flex items-center gap-2 text-xs shrink-0">
+            <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />{seoStats.ready} ready</span>
+            <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-amber-400" />{seoStats.warnings} warn</span>
+            <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-destructive" />{seoStats.errors} need fix</span>
+            {seoStats.noContent > 0 && <span className="flex items-center gap-1 text-muted-foreground"><span className="inline-block w-2 h-2 rounded-full bg-muted-foreground/20" />{seoStats.noContent} no content</span>}
+          </div>
+        </div>
+      )}
 
       {/* Target Word Count + Selection Controls */}
       <div className="flex flex-wrap items-center gap-3 p-2 border rounded-lg bg-muted/30">

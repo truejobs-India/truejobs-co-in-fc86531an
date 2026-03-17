@@ -394,9 +394,10 @@ async function generateViaLovableGatewayImage(
       error: isTimeout
         ? 'Image generation timed out across all providers. Please try again or upload manually.'
         : `Image generation failed: ${fetchErr.message}`,
+      code: isTimeout ? 'IMAGE_GEN_TEMP_UNAVAILABLE' : 'IMAGE_GEN_PROVIDER_ERROR',
       model: LOVABLE_GATEWAY_IMAGE_MODEL,
       fallbackReason,
-    }), { status: isTimeout ? 504 : 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   } finally {
     clearTimeout(gatewayTimer);
   }

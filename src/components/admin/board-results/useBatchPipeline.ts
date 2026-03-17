@@ -301,11 +301,15 @@ export function useBatchPipeline() {
     const { data, error } = await supabase.functions.invoke('generate-custom-page', {
       body: {
         action: 'fix',
+        title: row.display_title || row.board_name,
         slug: row.slug,
-        existingContent: row.content,
-        metaTitle: row.meta_title,
-        metaDescription: row.meta_description,
-        model: aiModel,
+        content: row.content,
+        meta_title: row.meta_title,
+        meta_description: row.meta_description,
+        excerpt: row.excerpt,
+        category: 'Board Results',
+        tags: row.tags,
+        aiModel,
       },
     });
 

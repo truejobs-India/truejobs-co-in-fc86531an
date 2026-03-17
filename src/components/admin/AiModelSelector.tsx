@@ -42,7 +42,7 @@ export function AiModelSelector({
   const textSize = size === 'sm' ? 'text-xs' : 'text-sm';
 
   return (
-    <Select value={value} onValueChange={onValueChange}>
+    <Select value={value} onValueChange={handleChange}>
       <SelectTrigger className={triggerClassName ?? `w-[220px] ${h} ${textSize}`}>
         <SelectValue />
       </SelectTrigger>

@@ -101,6 +101,7 @@ export function BoardResultGenerator() {
   const [imageGenLoading, setImageGenLoading] = useState<Set<number>>(new Set());
   const [storedFileUrl, setStoredFileUrl] = useState<string | null>(initial.current?.storedFileUrl || null);
   const [storedFilePath, setStoredFilePath] = useState<string | null>(initial.current?.storedFilePath || null);
+  const [imageTargets, setImageTargets] = useState<ImageTarget[]>([]);
 
   // Persist state to localStorage (including batchRows for QA phase)
   useEffect(() => {

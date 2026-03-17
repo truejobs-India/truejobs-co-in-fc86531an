@@ -586,6 +586,11 @@ async function generateViaImagen(
             },
           }),
         });
+      } catch (fetchErr: any) {
+        clearTimeout(timer);
+        const isTimeout = fetchErr?.name === 'AbortError';
+        console.error(`[vertex-imagen] ${isTimeout ? 'timeout' : 'fetch error'} on attempt ${attempt}: ${fetchErr.message}`);
+        return await generateViaLovableGatewayImage(body, slug, imagePrompt, adminClient, startMs, isTimeout ? 'imagen-timeout' : 'imagen-fetch-error');
       } finally {
         clearTimeout(timer);
       }

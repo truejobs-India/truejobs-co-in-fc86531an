@@ -7,8 +7,9 @@ export function PWAUpdatePrompt() {
   useEffect(() => {
     if (!import.meta.env.PROD) return;
 
-    import('virtual:pwa-register').then(({ registerSW }) => {
-      registerSW({
+    // @ts-ignore – virtual module only exists when VitePWA plugin is active (production build)
+    import('virtual:pwa-register').then((mod: any) => {
+      const updateSW = mod.registerSW({
         onNeedRefresh() {
           if (shownRef.current) return;
           shownRef.current = true;
@@ -17,7 +18,7 @@ export function PWAUpdatePrompt() {
             description: 'A new version of TrueJobs is ready.',
             action: (
               <button
-                onClick={() => updateSW?.()}
+                onClick={() => updateSW?.(true)}
                 className="rounded bg-primary px-3 py-1 text-xs font-medium text-primary-foreground"
               >
                 Update
@@ -28,10 +29,8 @@ export function PWAUpdatePrompt() {
         },
       });
     }).catch(() => {
-      // virtual:pwa-register not available in dev – expected
+      // virtual:pwa-register not available – expected in dev
     });
-
-    let updateSW: (() => Promise<void>) | undefined;
   }, []);
 
   return null;

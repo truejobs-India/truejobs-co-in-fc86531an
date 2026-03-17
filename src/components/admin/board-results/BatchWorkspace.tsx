@@ -122,7 +122,11 @@ export function BatchWorkspace({
   };
 
   // Determine rows for enrichment: selected drafts if any, else all drafts
-  const enrichTargetRows = selectedDrafts.length > 0 ? selectedDrafts : draftRows;
+  const selectedFailed = selectedActiveRows.filter(r => r.workflow_status === 'failed');
+  const failedRows = rows.filter(r => r.workflow_status === 'failed' && !r.deleted_at);
+  const enrichTargetRows = selectedDrafts.length > 0 || selectedFailed.length > 0
+    ? [...selectedDrafts, ...selectedFailed]
+    : draftRows;
   const seoTargetRows = selectedEnriched.length > 0 ? selectedEnriched : enrichedRows;
   const publishTargetRows = selectedPublishable.length > 0 ? selectedPublishable : unpublishedReady;
 
@@ -244,7 +248,7 @@ export function BatchWorkspace({
           onClick={() => runBulk('Enriching', enrichTargetRows, (row) => onEnrich(row, targetWordCount || undefined))}
         >
           <Sparkles className="h-3 w-3" />
-          Enrich {selectedDrafts.length > 0 ? 'Selected' : 'All'} Drafts ({enrichTargetRows.length})
+          Enrich {selectedDrafts.length > 0 || selectedFailed.length > 0 ? 'Selected' : 'All'} Drafts ({enrichTargetRows.length})
         </Button>
         <Button
           size="sm"

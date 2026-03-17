@@ -1,10 +1,22 @@
 /**
  * Shared AI Model Selector — reusable across all admin workflows.
  * Reads from the central model registry and supports capability filtering.
+ * Persists last-used model per capability to localStorage.
  */
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { AI_MODELS, type AiModelCapability, type AiModelDef } from '@/lib/aiModels';
+
+/** Get the last-used model for a capability, or return the fallback */
+export function getLastUsedModel(capability: AiModelCapability, fallback: string): string {
+  try {
+    const stored = localStorage.getItem(`ai_model_last_${capability}`);
+    if (stored && AI_MODELS.some(m => m.value === stored && m.capabilities.includes(capability))) {
+      return stored;
+    }
+  } catch {}
+  return fallback;
+}
 
 interface AiModelSelectorProps {
   value: string;

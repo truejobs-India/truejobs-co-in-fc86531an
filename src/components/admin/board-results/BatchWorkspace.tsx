@@ -3,7 +3,7 @@
  * Shows workflow_status, duplicate_status, validation_status, word count, actions.
  * Supports row selection checkboxes and target word count for bulk enrichment.
  */
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Loader2, RefreshCw, Sparkles, Wrench, Globe, CheckSquare, Square } from 'lucide-react';
@@ -12,6 +12,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { BatchRowActions } from './BatchRowActions';
+import { ImageGenerationPanel, type ImageTarget } from '@/components/admin/ImageGenerationPanel';
+import { supabase } from '@/integrations/supabase/client';
+import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
 import type { BatchRow, WorkflowFilter, ImportBatch } from './useBatchPipeline';
 
 interface Props {

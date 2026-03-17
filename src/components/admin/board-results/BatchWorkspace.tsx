@@ -6,7 +6,7 @@
 import { useState, useMemo, useRef } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Loader2, RefreshCw, Sparkles, Wrench, Globe, CheckSquare, Square, ImageIcon, Camera, StopCircle } from 'lucide-react';
+import { Loader2, RefreshCw, Sparkles, Wrench, Globe, CheckSquare, Square, ImageIcon, Camera, StopCircle, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
@@ -15,6 +15,7 @@ import { BatchRowActions } from './BatchRowActions';
 import { ImageGenerationPanel, type ImageTarget } from '@/components/admin/ImageGenerationPanel';
 import { supabase } from '@/integrations/supabase/client';
 import { detectInlineSlots } from '@/lib/blogInlineImages';
+import { runFullSeoAudit } from '@/lib/seoValidator';
 import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
 import type { BatchRow, WorkflowFilter, ImportBatch } from './useBatchPipeline';
 
@@ -354,6 +355,7 @@ export function BatchWorkspace({
                 <TableHead>Status</TableHead>
                 <TableHead>Dup</TableHead>
                 <TableHead>Words</TableHead>
+                <TableHead>SEO</TableHead>
                 <TableHead>Images</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
@@ -365,6 +367,16 @@ export function BatchWorkspace({
                 const hasCover = !!(enrichedJson?.cover_image_url);
                 const inlineStatus = row.content ? detectInlineSlots(row.content) : null;
                 const inlineCount = inlineStatus ? (inlineStatus.slot1Filled ? 1 : 0) + (inlineStatus.slot2Filled ? 1 : 0) : 0;
+                const seoAudit = runFullSeoAudit({
+                  slug: row.slug,
+                  meta_title: row.meta_title,
+                  meta_description: row.meta_description,
+                  content: row.content,
+                  word_count: row.word_count ?? 0,
+                  faq_schema: row.faq_schema,
+                });
+                const seoErrors = seoAudit.issues.filter(i => i.severity === 'error').length;
+                const seoWarnings = seoAudit.issues.filter(i => i.severity === 'warning').length;
                 return (
                   <TableRow key={row.id} className={row.deleted_at ? 'opacity-50' : ''}>
                     <TableCell>
@@ -401,6 +413,21 @@ export function BatchWorkspace({
                       {row.duplicate_status === 'clean' && <span className="text-green-600 text-xs">✓</span>}
                     </TableCell>
                     <TableCell className="text-xs font-mono">{row.word_count || 0}</TableCell>
+                    <TableCell>
+                      <span
+                        title={seoAudit.valid
+                          ? `SEO Ready (Score: ${seoAudit.score}/100)`
+                          : seoAudit.issues.map(i => `[${i.severity}] ${i.message}`).join('\n')}
+                        className="flex items-center gap-0.5"
+                      >
+                        <Search className={`h-3 w-3 ${seoAudit.valid ? 'text-green-600' : seoErrors > 0 ? 'text-destructive' : 'text-amber-500'}`} />
+                        <span className={`text-[9px] font-mono ${seoAudit.valid ? 'text-green-600' : seoErrors > 0 ? 'text-destructive' : 'text-amber-500'}`}>
+                          {seoAudit.score}
+                        </span>
+                        {seoErrors > 0 && <span className="text-destructive text-[8px]">({seoErrors}E)</span>}
+                        {seoErrors === 0 && seoWarnings > 0 && <span className="text-amber-500 text-[8px]">({seoWarnings}W)</span>}
+                      </span>
+                    </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1.5">
                         <span title={hasCover ? 'Cover image ✓' : 'No cover image'} className="flex items-center">

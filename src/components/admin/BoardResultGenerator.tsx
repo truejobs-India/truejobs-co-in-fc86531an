@@ -601,23 +601,34 @@ export function BoardResultGenerator() {
     toast({ title: 'File removed' });
   }, [storedFilePath, toast]);
 
-  // ── Bulk generate images for selected rows ──
-  const bulkGenerateImages = useCallback(async () => {
-    const indices = Array.from(selectedRows).filter(i => {
-      const row = batchRows[i];
-      return row?.status === 'success' && row?.pageId;
-    });
-    if (indices.length === 0) {
-      toast({ title: 'No eligible pages selected', description: 'Select generated pages first', variant: 'destructive' });
-      return;
-    }
-    toast({ title: `Generating images for ${indices.length} pages…` });
-    for (const idx of indices) {
-      if (abortRef.current) break;
-      await generateImageForPage(idx);
-    }
-    toast({ title: `Bulk image generation complete` });
-  }, [selectedRows, batchRows, generateImageForPage, toast]);
+  // ── Image panel persistence helpers ──
+  const handleCoverGenerated = useCallback(async (targetId: string, url: string, alt: string) => {
+    await supabase.from('custom_pages').update({
+      cover_image_url: url,
+      featured_image_alt: alt,
+    } as any).eq('id', targetId);
+
+    setImageTargets(prev => prev.map(target =>
+      target.id === targetId
+        ? { ...target, cover_image_url: url, featured_image_alt: alt }
+        : target
+    ));
+  }, []);
+
+  const handleInlineGenerated = useCallback(async (targetId: string, newContent: string, _articleImages: any) => {
+    const wordCount = newContent.replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length;
+
+    await supabase.from('custom_pages').update({
+      content: newContent,
+      word_count: wordCount,
+    } as any).eq('id', targetId);
+
+    setImageTargets(prev => prev.map(target =>
+      target.id === targetId
+        ? { ...target, content: newContent }
+        : target
+    ));
+  }, []);
 
   // ── Retry all failed rows ──
   const retryAllFailed = useCallback(async () => {

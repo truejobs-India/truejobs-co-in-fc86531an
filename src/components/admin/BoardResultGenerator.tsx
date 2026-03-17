@@ -1179,11 +1179,6 @@ export function BoardResultGenerator() {
                     <RotateCcw className="h-4 w-4 mr-1" /> Retry {failed} Failed
                   </Button>
                 )}
-                {selectedRows.size > 0 && (
-                  <Button variant="outline" onClick={bulkGenerateImages}>
-                    🖼️ Generate Images ({selectedRows.size})
-                  </Button>
-                )}
               </>
             )}
 

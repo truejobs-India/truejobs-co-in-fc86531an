@@ -412,7 +412,7 @@ export function CustomPagesManager() {
 
     try {
       const { data, error } = await supabase.functions.invoke('generate-custom-page', {
-        body: { action: 'generate', topic: item.topic, pageType: 'landing', category: 'general', tags: [], aiModel },
+        body: { action: 'generate', topic: item.topic, pageType: 'landing', category: 'general', tags: [], aiModel, target_word_count: bulkWordCount },
       });
       if (error) throw new Error(error.message);
       if (!data?.success) throw new Error(data?.error || 'Failed');

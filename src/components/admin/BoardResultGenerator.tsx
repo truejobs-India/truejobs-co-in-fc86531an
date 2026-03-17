@@ -1213,6 +1213,13 @@ export function BoardResultGenerator() {
             </div>
           </div>
 
+            <ImageGenerationPanel
+              targets={imageTargets}
+              onCoverGenerated={handleCoverGenerated}
+              onInlineGenerated={handleInlineGenerated}
+              sectionLabel="Board Result Pages"
+            />
+
           {/* Table */}
           <Card>
             <CardContent className="p-0">

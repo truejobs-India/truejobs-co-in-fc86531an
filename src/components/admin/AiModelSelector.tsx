@@ -24,8 +24,15 @@ export function AiModelSelector({
   triggerClassName,
   size = 'sm',
 }: AiModelSelectorProps) {
-  // Filter models by capability
+  const storageKey = `ai_model_last_${capability}`;
+
+  // On mount, if parent has no value or default, suggest last used
   const models = AI_MODELS.filter(m => m.capabilities.includes(capability));
+
+  const handleChange = (v: string) => {
+    try { localStorage.setItem(storageKey, v); } catch {}
+    onValueChange(v);
+  };
 
   // Group: built-in first, then external
   const builtIn = models.filter(m => m.source === 'built-in');

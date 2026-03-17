@@ -142,39 +142,55 @@ export function BoardResultGenerator() {
     }
   }, [parsedRows, batchRows, fileName, phase, aiModel, imageModel, targetWordCount, storedFileUrl, storedFilePath]);
 
-  // ── Generate image for a page ──
-  const generateImageForPage = useCallback(async (index: number) => {
-    const row = batchRows[index];
-    if (!row.pageId) return;
+  useEffect(() => {
+    let cancelled = false;
 
-    setImageGenLoading(prev => new Set(prev).add(index));
-    try {
-      const { data, error } = await supabase.functions.invoke('generate-board-result-image', {
-        body: {
-          imageModel,
-          pageType: 'result-landing',
-          slug: row.slug,
-          state_ut: row.state_ut,
-          board_name: row.board_name,
-          variant: row.variant,
-        },
-      });
-      if (error) throw new Error(error.message);
-      if (!data?.success) throw new Error(data?.error || 'Image generation failed');
+    const loadImageTargets = async () => {
+      if (phase !== 'qa') {
+        setImageTargets([]);
+        return;
+      }
 
-      // Update the page with the cover image
-      await supabase.from('custom_pages').update({
-        cover_image_url: data.imageUrl,
-        featured_image_alt: `${row.board_name} result - ${row.state_ut}`,
-      } as any).eq('id', row.pageId);
+      const candidateRows = (selectedRows.size > 0
+        ? Array.from(selectedRows).map(index => batchRows[index]).filter(Boolean)
+        : batchRows
+      ).filter(row => row?.status === 'success' && row?.pageId);
 
-      toast({ title: `Image generated`, description: `Model: ${data.model}, ${data.elapsedMs}ms` });
-    } catch (e: any) {
-      toast({ title: 'Image generation failed', description: e.message, variant: 'destructive' });
-    } finally {
-      setImageGenLoading(prev => { const n = new Set(prev); n.delete(index); return n; });
-    }
-  }, [batchRows, imageModel, toast]);
+      const pageIds = candidateRows.map(row => row.pageId).filter(Boolean) as string[];
+      if (pageIds.length === 0) {
+        setImageTargets([]);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('custom_pages')
+        .select('id, title, slug, content, category, tags, cover_image_url, featured_image_alt')
+        .in('id', pageIds);
+
+      if (cancelled || error) return;
+
+      const byId = new Map(((data as any[]) || []).map(page => [page.id, page]));
+      const orderedTargets: ImageTarget[] = pageIds
+        .map(id => byId.get(id))
+        .filter(Boolean)
+        .map((page: any) => ({
+          id: page.id,
+          title: page.title,
+          slug: page.slug,
+          content: page.content || '',
+          category: page.category,
+          tags: page.tags,
+          cover_image_url: page.cover_image_url,
+          featured_image_alt: page.featured_image_alt,
+        }));
+
+      setImageTargets(orderedTargets);
+    };
+
+    void loadImageTargets();
+    return () => { cancelled = true; };
+  }, [phase, batchRows, selectedRows]);
+
 
   // ── File Upload & Parse ──
   const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {

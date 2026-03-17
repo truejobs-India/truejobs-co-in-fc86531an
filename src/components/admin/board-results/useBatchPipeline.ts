@@ -255,38 +255,41 @@ export function useBatchPipeline() {
       body: {
         action,
         slug: row.slug,
+        title: row.display_title || row.board_name,
         pageType: 'result-landing',
-        stateUt: row.state_ut,
-        boardName: row.board_name,
-        resultUrl: row.result_url,
-        officialBoardUrl: row.official_board_url,
+        state_ut: row.state_ut,
+        board_name: row.board_name,
+        board_abbr: row.board_abbr,
+        result_url: row.result_url,
+        official_board_url: row.official_board_url,
         variant: row.variant,
-        seoIntroText: row.seo_intro_text || '',
-        existingContent: row.content || undefined,
-        model: aiModel,
+        seo_intro: row.seo_intro_text || '',
+        content: row.content || undefined,
+        aiModel,
       },
     });
 
-    if (error || !data?.content) {
-      await updateRow(row.id, { workflow_status: 'failed', error_message: error?.message || 'No content returned' } as any);
+    const result = data?.data || data;
+    if (error || !result?.content) {
+      await updateRow(row.id, { workflow_status: 'failed', error_message: error?.message || data?.error || 'No content returned' } as any);
       if (selectedBatchId) await afterRowStateChange(selectedBatchId);
       return false;
     }
 
-    const wordCount = (data.content as string).split(/\s+/).filter(Boolean).length;
+    const wordCount = (result.content as string).split(/\s+/).filter(Boolean).length;
     const displayTitle = deriveDisplayTitle(row.board_name, row.state_ut);
 
     await updateRow(row.id, {
-      content: data.content,
-      meta_title: data.metaTitle || displayTitle,
-      meta_description: data.metaDescription || '',
-      excerpt: data.excerpt || '',
-      faq_schema: data.faqSchema || [],
-      tags: data.tags || [],
+      content: result.content,
+      meta_title: result.meta_title || result.metaTitle || displayTitle,
+      meta_description: result.meta_description || result.metaDescription || '',
+      excerpt: result.excerpt || '',
+      faq_schema: result.faq_items || result.faqSchema || [],
+      tags: result.suggested_tags || result.tags || [],
       word_count: wordCount,
-      display_title: displayTitle,
+      display_title: result.title || displayTitle,
       workflow_status: 'enriched',
-      enriched_content: data,
+      enriched_content: result,
       error_message: null,
     } as any);
 
@@ -299,11 +302,15 @@ export function useBatchPipeline() {
     const { data, error } = await supabase.functions.invoke('generate-custom-page', {
       body: {
         action: 'fix',
+        title: row.display_title || row.board_name,
         slug: row.slug,
-        existingContent: row.content,
-        metaTitle: row.meta_title,
-        metaDescription: row.meta_description,
-        model: aiModel,
+        content: row.content,
+        meta_title: row.meta_title,
+        meta_description: row.meta_description,
+        excerpt: row.excerpt,
+        category: 'Board Results',
+        tags: row.tags,
+        aiModel,
       },
     });
 

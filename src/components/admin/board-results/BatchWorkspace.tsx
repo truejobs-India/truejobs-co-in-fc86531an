@@ -281,10 +281,21 @@ export function BatchWorkspace({
           Publish {selectedPublishable.length > 0 ? 'Selected' : 'All'} Ready ({publishTargetRows.length})
         </Button>
         {bulkAction && (
-          <Badge variant="secondary" className="text-xs animate-pulse">
-            <Loader2 className="h-3 w-3 animate-spin mr-1" />
-            {bulkAction} {bulkProgress.done}/{bulkProgress.total}
-          </Badge>
+          <div className="flex items-center gap-1.5">
+            <Badge variant="secondary" className="text-xs animate-pulse">
+              <Loader2 className="h-3 w-3 animate-spin mr-1" />
+              {bulkAction} {bulkProgress.done}/{bulkProgress.total}
+            </Badge>
+            <Button
+              size="sm"
+              variant="destructive"
+              className="h-7 text-xs gap-1"
+              onClick={() => { stopTextRef.current = true; }}
+            >
+              <StopCircle className="h-3 w-3" />
+              Stop
+            </Button>
+          </div>
         )}
         {targetWordCount && (
           <Badge variant="outline" className="text-[10px] h-5">

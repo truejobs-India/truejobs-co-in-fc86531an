@@ -24,7 +24,7 @@ import {
   Globe, Copy, Square, Wand2, Clock, RotateCcw,
   BarChart3, FileText, Zap, Eye, FileSpreadsheet, Wrench,
 } from 'lucide-react';
-import { BoardResultGenerator } from './BoardResultGenerator';
+import { BoardResultPipeline } from './board-results/BoardResultPipeline';
 
 // ═══════════════════════════════════════════════════════════════
 // Types

@@ -66,6 +66,7 @@ export function BatchWorkspace({
   batch, rows, filter, filterCounts, onFilterChange, loading,
   aiModel, onEnrich, onFixSeo, onEdit, onView, onPublish, onSkip, onDelete,
 }: Props) {
+  const { toast } = useToast();
   const [bulkAction, setBulkAction] = useState<string | null>(null);
   const [bulkProgress, setBulkProgress] = useState({ done: 0, total: 0 });
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());

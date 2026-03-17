@@ -124,11 +124,11 @@ export const AI_MODELS: readonly AiModelDef[] = [
   {
     value: 'vertex-pro',
     label: 'Gemini 2.5 Pro (From API)',
-    desc: 'Your API · Premium articles · ~45s',
+    desc: 'Your API · Premium articles & images · ~45s',
     speed: 45,
     source: 'external-api',
     provider: 'Google Vertex AI',
-    capabilities: ['text', 'text-premium'],
+    capabilities: ['text', 'text-premium', 'image'],
   },
   {
     value: 'vertex-imagen',

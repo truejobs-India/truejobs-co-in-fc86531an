@@ -6,7 +6,7 @@
 import { useState, useMemo, useRef } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Loader2, RefreshCw, Sparkles, Wrench, Globe, CheckSquare, Square, ImageIcon, Camera, StopCircle } from 'lucide-react';
+import { Loader2, RefreshCw, Sparkles, Wrench, Globe, CheckSquare, Square, ImageIcon, Camera, StopCircle, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';

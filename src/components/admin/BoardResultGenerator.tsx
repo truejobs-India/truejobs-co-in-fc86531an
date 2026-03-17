@@ -1,6 +1,7 @@
 /**
- * BoardResultGenerator — Admin UI for XLSX-driven board result page generation.
- * Handles: upload, validation, conflict detection, batch generation, QA, publish, hub pages.
+ * @deprecated Replaced by board-results/BoardResultPipeline.tsx
+ * This monolith is kept for reference only. No active route or import uses it.
+ * BoardResultGenerator — Legacy XLSX-driven board result page generation.
  */
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { HubPageGenerator } from '@/components/admin/HubPageGenerator';

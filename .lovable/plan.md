@@ -1,106 +1,303 @@
 
 
-# 3 Micro-Corrections to Board Result Batch Pipeline Plan
+## Phase 5: AI Features + Current Affairs — Implementation Plan
 
-These are targeted naming/logic fixes applied to the hardened plan before implementation begins. No architectural changes.
+### Architecture
+
+```
+Frontend (React)
+    ↓ supabase.functions.invoke() with auth token
+Edge Function (Deno)
+    ↓ JWT validated via getClaims()
+    ↓ DB queries via Supabase client
+AWS Bedrock (SigV4 signing)
+    ↓
+Mistral Models
+    ├─ mistral.mixtral-8x7b-instruct-v0:1  → Question generation
+    └─ mistral.mistral-large-2402-v1:0      → Answer evaluation + Reports
+```
+
+Reuses existing `callBedrockConverse()` + SigV4 signing from `enrich-job-descriptions/index.ts`.
 
 ---
 
-## Correction 1: Duplicate Title Matching → Explicit `board_name` Naming
+### Batch 1: Database + Current Affairs (5B)
 
-**Problem**: The plan uses generic "title match" terminology for duplicate detection, but the actual matching source is the structured `board_name` field — which could be confused with `display_title`, `meta_title`, or `custom_pages.title`.
+**Migration — 5 tables:**
 
-**Fix**: Rename all duplicate class identifiers and helper logic that reference "title" matching to explicitly use `board_name`:
+1. `current_affairs`: id, date, slug, title, content, category, tags (text[]), source_url, created_at
+2. `daily_quiz_questions`: id, date, question_text, options (jsonb), correct_option_id, explanation, category, difficulty_level, created_at
+   - RLS: public SELECT, admin ALL via `has_role()`
+3. `ai_interview_sessions`: id, user_id, exam_type, interview_mode, subject_area, candidate_profile (jsonb), questions_count, overall_score, timer_seconds (nullable), status (default 'in_progress'), created_at, updated_at
+4. `ai_interview_messages`: id, session_id (FK), board_member, question, answer, score, knowledge_score, communication_score, confidence_score, structure_score, relevance_score, feedback, question_order, created_at
+5. `ai_interview_reports`: id, session_id (FK), user_id, exam_type, mode, report_json (jsonb), overall_score, knowledge_score, communication_score, confidence_score, structure_score, presence_score, strengths (text[]), improvements (text[]), recommended_topics (text[]), created_at
+   - RLS on 3-5: users CRUD own rows, admin SELECT all
 
-| Old name | New name |
-|----------|----------|
-| `exact_title_match` | `exact_board_name_match` |
-| `near_title_match` | `near_board_name_match` |
+**Frontend — `/current-affairs`:** Date picker, category tabs, CA cards, 10-question daily quiz, monthly PDF download, JSON-LD.
 
-In the `duplicate_matches` table CHECK constraint, the allowed `duplicate_type` values become:
-- `exact_slug_match`
-- `exact_board_name_match`
-- `near_board_name_match`
-- `exact_result_url_match`
-- `exact_official_url_match`
-- `exact_structured_field_identity`
-- `same_board_variant_fields`
-- `possible_overlap`
-
-In `useBatchPipeline.ts` duplicate detection helpers:
-- Normalization function: `normalizeBoardName(name: string)` (not `normalizeTitle`)
-- Comparison function: `checkBoardNameMatch(a, b)` (not `checkTitleMatch`)
-- UI labels in `DuplicateReviewPanel`: "Board Name Match" / "Near Board Name Match" (not "Title Match")
-- Comments explicitly state: "Matching uses `board_name` — not display_title, meta_title, or custom_pages.title"
-
-**Files affected**: Migration SQL (CHECK constraint values), `useBatchPipeline.ts`, `DuplicateReviewPanel.tsx` — all not yet created, so corrections are applied at creation time.
+**Admin — `CurrentAffairsManager`:** CRUD + bulk add in AdminDashboard.
 
 ---
 
-## Correction 2: Visible Title Year Fallback
+### Batch 2: AI Interview Edge Function (5A — Backend)
 
-**Problem**: `display_title = "{board_name} Result {year} - {state_ut}"` breaks if year is unavailable. No `result_year` column exists on `board_result_batch_rows` currently.
-
-**Fix — no new column needed**: The year is derived deterministically at Enrich time, not stored as a dedicated field. Derivation rule with fallback:
-
-```
-function deriveDisplayTitle(boardName: string, stateUt: string): string {
-  const year = new Date().getFullYear(); // current calendar year as safe default
-  return `${boardName} Result ${year} - ${stateUt}`;
-}
-```
-
-Rationale: Board result pages are inherently tied to the current exam cycle year. Using `new Date().getFullYear()` is the correct deterministic fallback since:
-- These are generated in batch for the current cycle
-- The Excel data doesn't carry a year column
-- Current year is always a safe assumption for board results being actively uploaded
-
-The `display_title` field (added in the migration as `TEXT` on `board_result_batch_rows`) is populated during Enrich. If Enrich hasn't run, Publish falls back to just `board_name` as the page title:
-
-```sql
--- In publish RPC:
-title = COALESCE(v_row.display_title, v_row.board_name)
-```
-
-This means: no broken titles ever — worst case is just the raw `board_name` without year decoration.
-
-**Files affected**: `useBatchPipeline.ts` (Enrich action), publish RPC — applied at creation time.
+**Edge function: `ai-interview`**
+- `verify_jwt = false` in config.toml but validates JWT in code via `getClaims()` — returns 401 if unauthenticated
+- Models: Mixtral 8x7B for questions, Mistral Large for evaluation + reports
+- Actions: `start_interview`, `next_question`, `evaluate_answer`, `generate_report`
+- Queries `current_affairs` for question context
+- DB filtering before any AI call
 
 ---
 
-## Correction 3: Backend Publish Resync Is Authoritative
+### Batch 3: AI Interview Frontend (5A — UI)
 
-**Problem**: Need to ensure correctness never depends on frontend calling resync after publish.
+**`/ai-interview`:** Step 1 exam type → Step 2 mode → Step 3 profile → Timer config (60/90/120s/unlimited) → Chat interface with board member labels → Post-interview report with recharts + PDF download + save.
 
-**Fix — already designed correctly, just needs explicit documentation enforcement**:
+**`/dashboard/interview-history`:**
+- Paginated table (20/page) with next/previous
+- Progress tracking: score trend, skill radar, subject-wise bar charts
+- Interview comparison: side-by-side skill table
+- **AI progress analysis:** Button that sends **max 5** most recent session summaries (scores + metadata only, not full Q&A) to Bedrock (Mistral Large) for textual insights. Hard cap enforced server-side in the edge function — reject requests exceeding 5 sessions.
 
-The `publish_board_result_row` RPC already recomputes all batch counters atomically inside the transaction:
-```sql
-UPDATE import_batches SET
-  published_count = (SELECT count(*) FROM board_result_batch_rows WHERE ...),
-  enriched_count = ...,
-  -- etc
-WHERE id = v_row.batch_id;
-```
-
-The clarification is:
-1. The RPC is the **sole authoritative source** of counter correctness after publish
-2. Frontend `afterRowStateChange()` helper that calls `resync_batch_counters` is **optional redundancy only** — a convenience for non-publish state changes (soft delete, skip, enrich, etc.)
-3. After a publish call, frontend should **refetch batch data** (which reads the already-resynced counters), not call resync again
-4. Comments in `useBatchPipeline.ts` will state: `// Backend publish RPC handles counter resync atomically. Frontend resync is non-essential redundancy.`
-5. The `resync_batch_counters` RPC remains available for manual admin use and for non-publish mutations, but is never required for publish correctness
-
-**Files affected**: `useBatchPipeline.ts` comments, publish RPC comments — applied at creation time.
+Voice-ready architecture: input via `onSubmit(text: string)` for future speech-to-text.
 
 ---
 
-## Summary
+### Batch 4: AI Exam Matcher (5C)
 
-| Correction | Change | New field? | Files |
-|-----------|--------|-----------|-------|
-| 1. Duplicate naming | `exact_title_match` → `exact_board_name_match`, `near_title_match` → `near_board_name_match`, helpers renamed | No | Migration SQL, `useBatchPipeline.ts`, `DuplicateReviewPanel.tsx` |
-| 2. Visible title fallback | `display_title` uses `new Date().getFullYear()` as deterministic year; publish falls back to raw `board_name` | No new column beyond already-planned `display_title` | `useBatchPipeline.ts` Enrich logic, publish RPC |
-| 3. Backend resync authority | Publish RPC is sole authority; frontend resync is optional redundancy; comments enforce this | No | `useBatchPipeline.ts` comments, RPC comments |
+**Edge function: `ai-exam-matcher`** (public, no auth)
+- Step 1: DB filter `govt_exams` by age/qualification/category (SQL WHERE)
+- Step 2: Send filtered list (max ~30) to Mixtral 8x7B for ranking
 
-All corrections are applied at creation time since the pipeline components and migration don't exist yet.
+**`/ai-exam-matcher`:** Multi-step form → loading animation → sorted result cards with match %, reasons, "View Details" link.
 
+---
+
+### Batch 5: Tools Page + Polish
+
+- Add "AI-Powered Tools" and "Exam Preparation" sections to Tools.tsx
+- Cross-links from Sarkari Jobs and Govt Exam Detail pages
+
+---
+
+## Phase 6 Addendum — SEO & Feature Enhancements
+
+### 1. Telegram Bot (Replaces Widget)
+
+- **Edge function: `telegram-bot-webhook`** — handles `/start`, `/subscribe`, `/unsubscribe`, `/categories`, `/state`, `/qualification`
+- **Edge function: `send-telegram-alerts`** — triggered on new job/admit card/result/deadline
+- **Database:** `telegram_subscribers` table (`id`, `telegram_user_id` bigint unique, `categories` jsonb, `qualification` text, `state` text, `is_active` boolean default true, `created_at`). RLS: service_role ALL.
+- **Frontend:** Update `TelegramAlertWidget.tsx` to link to bot URL (stored in `app_settings`)
+- **Secret required:** `TELEGRAM_BOT_TOKEN`
+
+---
+
+### 2. Programmatic SEO — Complete Combinations
+
+New `GovtProgrammaticPage.tsx` (lazy-loaded). Slug patterns resolved via DB queries:
+
+| Pattern | Example | DB Query |
+|---------|---------|----------|
+| `{dept}-jobs` | `/ssc-jobs` | `WHERE exam_category ILIKE '%ssc%'` |
+| `govt-jobs-{state}` | `/govt-jobs-bihar` | `WHERE states @> '{bihar}'` |
+| `govt-jobs-{city}` | `/govt-jobs-patna` | Predefined city-to-state map |
+| `{qual}-govt-jobs` | `/graduate-govt-jobs` | `WHERE qualification_tags @> '{graduate}'` |
+| `{dept}-jobs-{state}` | `/ssc-jobs-bihar` | Combined filters |
+| `{dept}-{qual}-jobs` | `/ssc-graduate-jobs` | Combined filters |
+| `govt-jobs-{state}-{qual}` | `/govt-jobs-up-graduate` | Combined filters |
+| `{dept}-jobs-{city}` | `/ssc-jobs-delhi` | Combined filters |
+
+Page only renders if >= 1 matching exam exists. Falls through to NotFound otherwise.
+
+---
+
+### 3. Auto-Generated SEO Intro Content
+
+Template-driven `generateSEOIntro(filters)` utility producing 300+ word HTML intros + 3-5 FAQs + FAQ JSON-LD + internal links per programmatic page.
+
+---
+
+### 4. Deadline-Based SEO Pages
+
+New `GovtDeadlinePage.tsx` (lazy-loaded). Slug patterns:
+
+- `govt-jobs-last-date-today` / `tomorrow` / `this-week` / `this-month`
+- `govt-jobs-last-date-{month}-{year}` (e.g., `govt-jobs-last-date-july-2026`)
+
+Queries `govt_exams.application_end` relative to current date. Badges: "Closing Today", "Closing Tomorrow", "Closing This Week".
+
+---
+
+### 5. Search Query Capture
+
+Wire existing `upsert_search_query` RPC into `Jobs.tsx`, `SarkariJobs.tsx`. Add "Search Insights" (top 50 queries) to admin panel.
+
+---
+
+### 6. Internal Linking Enforcement
+
+- **`QuickLinksBlock.tsx`** — standardized links grid on all govt exam detail pages
+- **`ContextualLinks.tsx`** — "More {department} Jobs", "More Jobs in {state}", "More {qualification} Jobs"
+- **`RelatedExams.tsx`** — 4-6 similar exams by `exam_category` or `qualification_tags`
+
+All integrated into `GovtExamDetail.tsx`.
+
+---
+
+### 7. Discovery Page — `/all-sarkari-jobs`
+
+Sections: A-Z index, department grouping, year grouping, qualification grouping, latest jobs, closing soon, upcoming exams, latest results, latest admit cards. Auto-updates on new entries.
+
+---
+
+### 8. Job Freshness Signals
+
+In `GovtExamDetail.tsx`: "Last Updated" display, badges (Updated Today, Recently Updated, Closing Soon, Closing Tomorrow), `datePublished`/`dateModified` in JSON-LD schema.
+
+---
+
+### 9. Prerender Verification
+
+Add `GovtProgrammaticPage` and `GovtDeadlinePage` to `SEOCacheBuilder` for static HTML generation. Verify structured data in cached HTML.
+
+---
+
+### 10. Execution Order
+
+| Batch | Additions |
+|-------|-----------|
+| Batch 3 (Alerts) | Telegram bot, `telegram_subscribers` table |
+| Batch 4 (Programmatic SEO) | Complete combinations, auto-generated intros, deadline pages |
+| Batch 5 (Discovery) | `/all-sarkari-jobs`, freshness badges |
+| Batch 6 (Internal Linking) | QuickLinksBlock, ContextualLinks, RelatedExams |
+| Batch 7 (Sitemap) | Deadline pages + programmatic slugs in sitemaps, prerender cache |
+| Any batch | Search query capture wiring |
+
+---
+
+## Selection-Based SEO Pages (Without Exam)
+
+### Database
+- `selection_type` text column added to `govt_exams` (values: `written_exam`, `interview`, `merit`, `direct_recruitment`, `skill_test`)
+- Index: `idx_govt_exams_selection_type`
+
+### Components
+- **`GovtSelectionPage.tsx`** — renders selection-based programmatic pages with DB-driven listings, 300+ word intro, FAQ schema, internal links
+- **`selectionPageData.ts`** — slug parser (`parseSelectionSlug`) + config builder (`buildSelectionPageConfig`) + SEO intro generator + FAQ generator
+
+### Slug Patterns (in SEOLandingResolver)
+| Pattern | Example |
+|---------|---------|
+| `govt-jobs-without-exam` | Main page |
+| `{qual}-govt-jobs-without-exam` | `/10th-pass-govt-jobs-without-exam` |
+| `{dept}-jobs-without-exam` | `/railway-jobs-without-exam` |
+| `govt-jobs-without-exam-{state}` | `/govt-jobs-without-exam-bihar` |
+
+### Query Logic
+All pages filter `govt_exams WHERE selection_type IN ('interview','merit','direct_recruitment')` + optional dept/qual/state filters. Page only renders if >= 1 result.
+
+### Sitemap & Prerender
+Add to `sitemap-combinations.xml` and `seo_page_cache` in future batches.
+
+---
+
+## Phase C: Exam Authority Pages (SEO Content Hub)
+
+### Architecture
+- `src/data/examAuthority/` — typed config registry with `Map<string, ExamAuthorityConfig>` for O(1) slug lookup
+- `src/pages/govt/ExamAuthorityPage.tsx` — renders all authority page types (notification, syllabus, exam-pattern, eligibility, salary)
+- Resolved via `SEOLandingResolver.tsx` Step 0 (before all other SEO pages)
+
+### Batch 1 (Complete): SSC CGL — 5 pages
+| Slug | Type | Meta Title |
+|------|------|-----------|
+| `ssc-cgl-2026-notification` | notification | SSC CGL 2026 Notification – Dates, Eligibility, Apply |
+| `ssc-cgl-2026-syllabus` | syllabus | SSC CGL Syllabus 2026 – Complete Topic-wise Guide |
+| `ssc-cgl-2026-exam-pattern` | exam-pattern | SSC CGL Exam Pattern 2026 – Tier 1 & 2 Details |
+| `ssc-cgl-2026-eligibility` | eligibility | SSC CGL Eligibility 2026 – Age, Qualification |
+| `ssc-cgl-2026-salary` | salary | SSC CGL Salary 2026 – Pay Scale, In-Hand, Perks |
+
+### Phase C Complete ✅
+- 80 authority pages across 16 exam clusters (SSC, Railway, Banking, Defence/UPSC)
+- 16 Exam Cluster Hub pages (`/{exam}-hub`) with subtopic cards + FAQs
+- 16 Previous Year Paper pages (`/{exam}-previous-year-paper`) with year-wise tables
+- 3 enrichment sections on notification pages: Admit Card, Cutoff Table, Result
+- PopularExamsBlock on SarkariJobs, LatestGovtJobs, GovtExamDetail
+- SEOCacheBuilder updated with hub + PYP loops (sections 13, 14)
+- Dynamic sitemap includes all 32 new slugs
+
+---
+
+## Phase D: Programmatic Pages (Planned)
+
+### Objective
+Generate programmatic SEO pages from database fields for long-tail traffic capture.
+
+### Planned Page Types
+1. **State + Qualification combos** — `/govt-jobs-{state}-{qualification}` (e.g. `/govt-jobs-uttar-pradesh-graduation`)
+2. **Department landing pages** — `/{dept}-jobs` with live listings from DB
+3. **Monthly deadline pages** — `/govt-jobs-last-date-{month}-{year}`
+4. **Exam calendar pages** — `/govt-exam-calendar-{month}-{year}`
+
+### Prerequisites
+- Phase C complete ✅
+- Minimum 50 active govt_exams rows in database
+- State/qualification taxonomy finalized
+
+### Implementation Notes
+- Reuse SEOLandingResolver pattern with new step priorities
+- Each page type needs 300+ word intro + FAQ schema
+- Thin-content guard: only render if ≥1 matching listing exists
+
+---
+
+## Phase E: Calculator Tie-ins, Guide System, Internal Linking, Outreach Assets
+
+### E-3: Long-Form Guide Generation via External Gemini API
+
+#### Architecture
+- **Single source of truth**: Guide metadata (slugs, prompts, tags, internal links) lives ONLY in the edge function `generate-guide-content/index.ts`. No separate `src/data/guidesMetadata.ts` file. The edge function owns the config array and uses it directly for generation + insertion.
+- **Storage**: Existing `blog_posts` table + `/blog/:slug` route. No new tables or routes.
+- **Model**: External Gemini API (`gemini-2.5-flash`) via `GEMINI_API_KEY` secret.
+- **Category**: `'Career Advice'` (already allowed by DB).
+
+#### Validation Rules (enforced before DB insert)
+Before inserting into `blog_posts`, the edge function MUST validate Gemini output:
+
+1. **meta_title**: ≤60 characters. If over, truncate at last word boundary + "…"
+2. **meta_description**: 140–155 characters. If under 140, pad with " | TrueJobs". If over 155, truncate at last word boundary + "…"
+3. **FAQ count**: Must contain 5–7 FAQs. If fewer than 5 or more than 7, re-extract or trim to exactly 5.
+4. **Internal link URLs**: Each `href` must start with `/` and match a known route pattern (e.g., `/ssc-cgl-2026-notification`, `/govt-salary-calculator`, `/sarkari-jobs`). Reject any absolute URLs or broken paths. Log warnings for unrecognized paths but still insert.
+5. **Word count**: Must be ≥1,800 words. If under, log warning but still insert as draft for manual expansion.
+6. **Content structure**: Must contain at least 3 H2 headings. If not, log warning.
+
+#### 10 Guide Slugs
+All published under `/blog/`:
+1. `ssc-cgl-preparation-guide`
+2. `govt-jobs-after-12th-guide`
+3. `upsc-vs-ssc-guide`
+4. `railway-jobs-guide`
+5. `govt-salary-calculation-guide`
+6. `govt-jobs-by-stream-guide`
+7. `nda-preparation-guide`
+8. `sbi-po-vs-ibps-po-guide`
+9. `govt-jobs-bihar-guide`
+10. `agniveer-complete-guide`
+
+#### Flow
+```
+POST /functions/v1/generate-guide-content { slug: "all" | "<specific-slug>" }
+  → Loop guide configs (single source array in edge function)
+  → Call Gemini API with detailed prompt per guide
+  → Parse + validate response (meta title, meta desc, FAQs, links, word count)
+  → Fix/truncate fields that fail validation
+  → Insert into blog_posts as draft (status: 'draft', is_published: false)
+  → Return report: { generated: [...], skipped: [...], validation_warnings: [...], errors: [...] }
+```
+
+#### Files
+| Action | File |
+|--------|------|
+| CREATE | `supabase/functions/generate-guide-content/index.ts` |
+| MODIFY | `supabase/config.toml` — add `[functions.generate-guide-content]` |

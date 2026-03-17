@@ -345,64 +345,130 @@ export type Database = {
           batch_id: string
           board_abbr: string
           board_name: string
+          content: string | null
           created_at: string
+          delete_reason: string | null
+          deleted_at: string | null
+          deleted_by: string | null
+          display_title: string | null
+          duplicate_count: number
+          duplicate_status: string
+          enriched_content: Json | null
           error_message: string | null
+          excerpt: string | null
+          faq_schema: Json | null
           generated_page_id: string | null
           generation_status: string
           id: string
           is_valid: boolean
+          meta_description: string | null
+          meta_title: string | null
           official_board_url: string
+          published_at: string | null
+          published_page_id: string | null
           qa_notes: string[] | null
+          quality_score: number | null
           result_url: string
           row_index: number
+          seo_fixes: Json | null
           seo_intro_text: string | null
           slug: string
+          source_payload: Json
           state_ut: string
+          tags: string[] | null
+          top_duplicate_reason: string | null
           updated_at: string
           validation_errors: string[] | null
+          validation_status: string
           variant: string
+          word_count: number | null
+          workflow_status: string
         }
         Insert: {
           batch_id: string
           board_abbr?: string
           board_name: string
+          content?: string | null
           created_at?: string
+          delete_reason?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
+          display_title?: string | null
+          duplicate_count?: number
+          duplicate_status?: string
+          enriched_content?: Json | null
           error_message?: string | null
+          excerpt?: string | null
+          faq_schema?: Json | null
           generated_page_id?: string | null
           generation_status?: string
           id?: string
           is_valid?: boolean
+          meta_description?: string | null
+          meta_title?: string | null
           official_board_url?: string
+          published_at?: string | null
+          published_page_id?: string | null
           qa_notes?: string[] | null
+          quality_score?: number | null
           result_url?: string
           row_index: number
+          seo_fixes?: Json | null
           seo_intro_text?: string | null
           slug: string
+          source_payload?: Json
           state_ut: string
+          tags?: string[] | null
+          top_duplicate_reason?: string | null
           updated_at?: string
           validation_errors?: string[] | null
+          validation_status?: string
           variant?: string
+          word_count?: number | null
+          workflow_status?: string
         }
         Update: {
           batch_id?: string
           board_abbr?: string
           board_name?: string
+          content?: string | null
           created_at?: string
+          delete_reason?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
+          display_title?: string | null
+          duplicate_count?: number
+          duplicate_status?: string
+          enriched_content?: Json | null
           error_message?: string | null
+          excerpt?: string | null
+          faq_schema?: Json | null
           generated_page_id?: string | null
           generation_status?: string
           id?: string
           is_valid?: boolean
+          meta_description?: string | null
+          meta_title?: string | null
           official_board_url?: string
+          published_at?: string | null
+          published_page_id?: string | null
           qa_notes?: string[] | null
+          quality_score?: number | null
           result_url?: string
           row_index?: number
+          seo_fixes?: Json | null
           seo_intro_text?: string | null
           slug?: string
+          source_payload?: Json
           state_ut?: string
+          tags?: string[] | null
+          top_duplicate_reason?: string | null
           updated_at?: string
           validation_errors?: string[] | null
+          validation_status?: string
           variant?: string
+          word_count?: number | null
+          workflow_status?: string
         }
         Relationships: [
           {
@@ -415,6 +481,13 @@ export type Database = {
           {
             foreignKeyName: "board_result_batch_rows_generated_page_id_fkey"
             columns: ["generated_page_id"]
+            isOneToOne: false
+            referencedRelation: "custom_pages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "board_result_batch_rows_published_page_id_fkey"
+            columns: ["published_page_id"]
             isOneToOne: false
             referencedRelation: "custom_pages"
             referencedColumns: ["id"]
@@ -873,6 +946,76 @@ export type Database = {
             columns: ["import_batch_id"]
             isOneToOne: false
             referencedRelation: "import_batches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      duplicate_matches: {
+        Row: {
+          batch_row_id: string
+          confidence: number
+          created_at: string
+          duplicate_type: string
+          id: string
+          last_checked_at: string
+          matched_batch_row_id: string | null
+          matched_custom_page_id: string | null
+          matched_slug: string | null
+          matched_title: string | null
+          matched_url: string | null
+          reason: string
+          recommended_action: string
+        }
+        Insert: {
+          batch_row_id: string
+          confidence?: number
+          created_at?: string
+          duplicate_type: string
+          id?: string
+          last_checked_at?: string
+          matched_batch_row_id?: string | null
+          matched_custom_page_id?: string | null
+          matched_slug?: string | null
+          matched_title?: string | null
+          matched_url?: string | null
+          reason: string
+          recommended_action?: string
+        }
+        Update: {
+          batch_row_id?: string
+          confidence?: number
+          created_at?: string
+          duplicate_type?: string
+          id?: string
+          last_checked_at?: string
+          matched_batch_row_id?: string | null
+          matched_custom_page_id?: string | null
+          matched_slug?: string | null
+          matched_title?: string | null
+          matched_url?: string | null
+          reason?: string
+          recommended_action?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "duplicate_matches_batch_row_id_fkey"
+            columns: ["batch_row_id"]
+            isOneToOne: false
+            referencedRelation: "board_result_batch_rows"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "duplicate_matches_matched_batch_row_id_fkey"
+            columns: ["matched_batch_row_id"]
+            isOneToOne: false
+            referencedRelation: "board_result_batch_rows"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "duplicate_matches_matched_custom_page_id_fkey"
+            columns: ["matched_custom_page_id"]
+            isOneToOne: false
+            referencedRelation: "custom_pages"
             referencedColumns: ["id"]
           },
         ]
@@ -1506,39 +1649,54 @@ export type Database = {
       }
       import_batches: {
         Row: {
+          batch_number: number
           completed_at: string | null
           completed_count: number
           created_at: string
+          duplicate_count: number
+          enriched_count: number
           failed_count: number
           id: string
           published_count: number
+          skipped_count: number
           source_file_name: string
+          source_file_path: string | null
           started_by: string
           status: string
           total_rows: number
           updated_at: string
         }
         Insert: {
+          batch_number?: number
           completed_at?: string | null
           completed_count?: number
           created_at?: string
+          duplicate_count?: number
+          enriched_count?: number
           failed_count?: number
           id?: string
           published_count?: number
+          skipped_count?: number
           source_file_name: string
+          source_file_path?: string | null
           started_by: string
           status?: string
           total_rows?: number
           updated_at?: string
         }
         Update: {
+          batch_number?: number
           completed_at?: string | null
           completed_count?: number
           created_at?: string
+          duplicate_count?: number
+          enriched_count?: number
           failed_count?: number
           id?: string
           published_count?: number
+          skipped_count?: number
           source_file_name?: string
+          source_file_path?: string | null
           started_by?: string
           status?: string
           total_rows?: number
@@ -3003,9 +3161,17 @@ export type Database = {
         }
         Returns: undefined
       }
+      publish_board_result_row: {
+        Args: { p_batch_row_id: string }
+        Returns: Json
+      }
       publish_enrichment_version: {
         Args: { p_page_slug: string; p_version: number }
         Returns: Json
+      }
+      resync_batch_counters: {
+        Args: { p_batch_id: string }
+        Returns: undefined
       }
       unpublish_enrichment: { Args: { p_page_slug: string }; Returns: Json }
       upsert_search_query: {

@@ -122,7 +122,7 @@ export function PdfResourcesManager() {
   const [editItem, setEditItem] = useState<Partial<PdfResource>>(EMPTY_RESOURCE);
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
-  const [aiModel, setAiModel] = useState('gemini-flash');
+  const [aiModel, setAiModel] = useState(() => getLastUsedModel('text', 'gemini-flash'));
   const [uploadingPdf, setUploadingPdf] = useState(false);
   const [slugError, setSlugError] = useState('');
 

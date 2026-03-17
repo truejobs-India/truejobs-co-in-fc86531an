@@ -146,7 +146,7 @@ export function CustomPagesManager() {
   const [editorQuality, setEditorQuality] = useState<QualityBreakdown | null>(null);
 
   // AI state
-  const [aiModel, setAiModel] = useState('gemini-flash');
+  const [aiModel, setAiModel] = useState(() => getLastUsedModel('text', 'gemini-flash'));
   const [generating, setGenerating] = useState(false);
   const [generateTopic, setGenerateTopic] = useState('');
 

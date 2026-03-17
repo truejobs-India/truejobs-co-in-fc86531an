@@ -28,7 +28,7 @@ import { Input } from '@/components/ui/input';
 
 export function BoardResultPipeline() {
   const pipeline = useBatchPipeline();
-  const [aiModel, setAiModel] = useState('google/gemini-2.5-flash');
+  const [aiModel, setAiModel] = useState(() => getLastUsedModel('text', 'google/gemini-2.5-flash'));
 
   // Edit/View dialogs
   const [editRow, setEditRow] = useState<BatchRow | null>(null);

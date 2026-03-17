@@ -109,7 +109,7 @@ export function ContentEnricher() {
   const [previewSlug, setPreviewSlug] = useState<string | null>(null);
   const [historySlug, setHistorySlug] = useState<string | null>(null);
   const [reviewNotes, setReviewNotes] = useState('');
-  const [aiModel, setAiModel] = useState<string>('gemini-flash');
+  const [aiModel, setAiModel] = useState<string>(() => getLastUsedModel('text', 'gemini-flash'));
   const { messages, addMessage, dismissMessage, clearAll, toggleExpand } = useAdminMessagesContext();
 
   // Sequential processing state

@@ -29,7 +29,7 @@ interface BulkPageWorkflowProps {
 export function BulkPageWorkflow({ pageTypeFilter, title = 'Bulk AI Workflows', onPagesChanged }: BulkPageWorkflowProps) {
   const { toast } = useToast();
   const workflow = usePageAiWorkflow();
-  const [aiModel, setAiModel] = useState('vertex-flash');
+  const [aiModel, setAiModel] = useState(() => getLastUsedModel('text', 'vertex-flash'));
   const [activeAction, setActiveAction] = useState<'fix' | 'enrich' | 'publish' | null>(null);
   const [isScanning, setIsScanning] = useState(false);
 

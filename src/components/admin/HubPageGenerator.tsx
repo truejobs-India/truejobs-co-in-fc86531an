@@ -32,7 +32,7 @@ interface HubRow {
 export function HubPageGenerator() {
   const { toast } = useToast();
   const { user } = useAuth();
-  const [imageModel, setImageModel] = useState('gemini-flash-image');
+  const [imageModel, setImageModel] = useState(() => getLastUsedModel('image', 'gemini-flash-image'));
   const [hubs, setHubs] = useState<HubRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState<Set<string>>(new Set());

@@ -317,6 +317,9 @@ export function ImageGenerationPanel({
                       <Loader2 className="h-3 w-3 animate-spin text-primary" />
                       <span>{inlineProgress.done}/{inlineProgress.total}</span>
                       {inlineProgress.failed > 0 && <span className="text-destructive">{inlineProgress.failed} failed</span>}
+                      <Button size="sm" variant="destructive" className="h-5 text-[10px] px-2 gap-1" onClick={() => { stopInlineRef.current = true; }}>
+                        <StopCircle className="h-3 w-3" /> Stop
+                      </Button>
                     </div>
                   )}
                   {!inlineProgress.running && inlineProgress.total > 0 && (

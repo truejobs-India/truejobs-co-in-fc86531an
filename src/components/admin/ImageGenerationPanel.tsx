@@ -81,11 +81,20 @@ export function ImageGenerationPanel({
     setCoverProgress({ running: true, done: 0, total: eligible.length, failed: 0 });
 
     let done = 0, failed = 0;
+    let consecutiveFailures = 0;
+    const INTER_REQUEST_DELAY = 5000; // 5s between requests to avoid rate limits
+
     for (const target of eligible) {
       if (stopCoverRef.current) {
         toast({ title: 'Cover generation stopped', description: `Completed ${done}/${eligible.length}` });
         break;
       }
+
+      // Add delay between requests (skip for first)
+      if (done + failed > 0) {
+        await new Promise(r => setTimeout(r, INTER_REQUEST_DELAY));
+      }
+
       try {
         const { data, error } = await supabase.functions.invoke('generate-vertex-image', {
           body: {
@@ -105,9 +114,22 @@ export function ImageGenerationPanel({
         if (!img?.url) throw new Error('No image returned');
         await onCoverGenerated(target.id, img.url, img.altText || target.title);
         done++;
+        consecutiveFailures = 0;
       } catch (err: any) {
         failed++;
-        console.error(`Cover failed for ${target.slug}:`, err.message);
+        consecutiveFailures++;
+        const msg = err.message || '';
+        console.error(`Cover failed for ${target.slug}:`, msg);
+
+        // Auto-stop on quota/credit exhaustion (3 consecutive failures)
+        if (consecutiveFailures >= 3 || msg.includes('quota exceeded') || msg.includes('402') || msg.includes('payment')) {
+          toast({
+            title: 'Image generation paused — rate limit / quota hit',
+            description: `${done} succeeded. Quota or credits exhausted. Try again later or switch model.`,
+            variant: 'destructive',
+          });
+          break;
+        }
       }
       setCoverProgress(p => ({ ...p, done: done, failed }));
     }

@@ -334,6 +334,7 @@ export function BatchWorkspace({
                 <TableHead>Status</TableHead>
                 <TableHead>Dup</TableHead>
                 <TableHead>Words</TableHead>
+                <TableHead>Images</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>

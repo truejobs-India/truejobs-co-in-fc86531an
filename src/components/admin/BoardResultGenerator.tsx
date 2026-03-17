@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSelector';
+import { ImageGenerationPanel, type ImageTarget } from '@/components/admin/ImageGenerationPanel';
 import { getModelSpeed } from '@/lib/aiModels';
 import { scoreCustomPage, type QualityBreakdown } from '@/lib/pageQualityScorer';
 import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';

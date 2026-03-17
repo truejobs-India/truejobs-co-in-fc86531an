@@ -114,13 +114,21 @@ export function BatchWorkspace({
 
   const runBulk = async (label: string, targetRows: BatchRow[], fn: (row: BatchRow) => Promise<boolean>) => {
     if (targetRows.length === 0) return;
+    stopTextRef.current = false;
     setBulkAction(label);
     setBulkProgress({ done: 0, total: targetRows.length });
+    let done = 0;
     for (let i = 0; i < targetRows.length; i++) {
+      if (stopTextRef.current) {
+        toast({ title: `${label} stopped`, description: `Completed ${done}/${targetRows.length}` });
+        break;
+      }
       await fn(targetRows[i]);
-      setBulkProgress({ done: i + 1, total: targetRows.length });
+      done++;
+      setBulkProgress({ done, total: targetRows.length });
     }
     setBulkAction(null);
+    stopTextRef.current = false;
   };
 
   // Determine rows for enrichment: selected drafts if any, else all drafts

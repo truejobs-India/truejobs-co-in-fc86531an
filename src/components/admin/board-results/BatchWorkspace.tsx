@@ -341,6 +341,10 @@ export function BatchWorkspace({
             <TableBody>
               {rows.map(row => {
                 const isOutOfSync = row.workflow_status === 'published' && row.published_at && row.updated_at > row.published_at;
+                const enrichedJson = (row as any).enriched_content as any;
+                const hasCover = !!(enrichedJson?.cover_image_url);
+                const inlineStatus = row.content ? detectInlineSlots(row.content) : null;
+                const inlineCount = inlineStatus ? (inlineStatus.slot1Filled ? 1 : 0) + (inlineStatus.slot2Filled ? 1 : 0) : 0;
                 return (
                   <TableRow key={row.id} className={row.deleted_at ? 'opacity-50' : ''}>
                     <TableCell>
@@ -377,6 +381,18 @@ export function BatchWorkspace({
                       {row.duplicate_status === 'clean' && <span className="text-green-600 text-xs">✓</span>}
                     </TableCell>
                     <TableCell className="text-xs font-mono">{row.word_count || 0}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1.5">
+                        <span title={hasCover ? 'Cover image ✓' : 'No cover image'} className="flex items-center">
+                          <Camera className={`h-3 w-3 ${hasCover ? 'text-green-600' : 'text-muted-foreground/40'}`} />
+                          {hasCover ? <span className="text-green-600 text-[9px] ml-0.5">✓</span> : <span className="text-red-400 text-[9px] ml-0.5">✗</span>}
+                        </span>
+                        <span title={`Inline images: ${inlineCount}/2`} className="flex items-center">
+                          <ImageIcon className={`h-3 w-3 ${inlineCount === 2 ? 'text-green-600' : inlineCount === 1 ? 'text-amber-500' : 'text-muted-foreground/40'}`} />
+                          <span className={`text-[9px] ml-0.5 font-mono ${inlineCount === 2 ? 'text-green-600' : inlineCount === 1 ? 'text-amber-500' : 'text-red-400'}`}>{inlineCount}/2</span>
+                        </span>
+                      </div>
+                    </TableCell>
                     <TableCell className="text-right">
                       <BatchRowActions
                         row={row}

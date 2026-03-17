@@ -162,16 +162,19 @@ export function BatchWorkspace({
     ? selectedActiveRows.filter(r => r.content && r.content.length > 100)
     : rows.filter(r => r.content && r.content.length > 100 && !r.deleted_at);
 
-  const imageTargets: ImageTarget[] = useMemo(() => imageTargetRows.map(r => ({
-    id: r.id,
-    title: r.display_title || `${r.board_name} Result ${new Date().getFullYear()} - ${r.state_ut}`,
-    slug: r.slug,
-    content: r.content || '',
-    category: 'Board Results',
-    tags: r.tags,
-    cover_image_url: (r as any).cover_image_url || null,
-    featured_image_alt: (r as any).featured_image_alt || null,
-  })), [imageTargetRows]);
+  const imageTargets: ImageTarget[] = useMemo(() => imageTargetRows.map(r => {
+    const ec = (r.enriched_content as any) || {};
+    return {
+      id: r.id,
+      title: r.display_title || `${r.board_name} Result ${new Date().getFullYear()} - ${r.state_ut}`,
+      slug: r.slug,
+      content: r.content || '',
+      category: 'Board Results',
+      tags: r.tags,
+      cover_image_url: ec.cover_image_url || null,
+      featured_image_alt: ec.featured_image_alt || null,
+    };
+  }), [imageTargetRows]);
 
   const handleImageCoverGenerated = async (targetId: string, url: string, alt: string) => {
     await supabase.from('board_result_batch_rows').update({

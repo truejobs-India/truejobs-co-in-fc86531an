@@ -367,6 +367,16 @@ export function BatchWorkspace({
                 const hasCover = !!(enrichedJson?.cover_image_url);
                 const inlineStatus = row.content ? detectInlineSlots(row.content) : null;
                 const inlineCount = inlineStatus ? (inlineStatus.slot1Filled ? 1 : 0) + (inlineStatus.slot2Filled ? 1 : 0) : 0;
+                const seoAudit = runFullSeoAudit({
+                  slug: row.slug,
+                  meta_title: row.meta_title,
+                  meta_description: row.meta_description,
+                  content: row.content,
+                  word_count: row.word_count ?? 0,
+                  faq_schema: row.faq_schema,
+                });
+                const seoErrors = seoAudit.issues.filter(i => i.severity === 'error').length;
+                const seoWarnings = seoAudit.issues.filter(i => i.severity === 'warning').length;
                 return (
                   <TableRow key={row.id} className={row.deleted_at ? 'opacity-50' : ''}>
                     <TableCell>

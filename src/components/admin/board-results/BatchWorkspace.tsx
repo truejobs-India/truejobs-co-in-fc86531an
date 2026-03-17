@@ -6,7 +6,7 @@
 import { useState, useMemo } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Loader2, RefreshCw, Sparkles, Wrench, Globe, CheckSquare, Square } from 'lucide-react';
+import { Loader2, RefreshCw, Sparkles, Wrench, Globe, CheckSquare, Square, ImageIcon, Camera } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
@@ -14,6 +14,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { BatchRowActions } from './BatchRowActions';
 import { ImageGenerationPanel, type ImageTarget } from '@/components/admin/ImageGenerationPanel';
 import { supabase } from '@/integrations/supabase/client';
+import { detectInlineSlots } from '@/lib/blogInlineImages';
 import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
 import type { BatchRow, WorkflowFilter, ImportBatch } from './useBatchPipeline';
 

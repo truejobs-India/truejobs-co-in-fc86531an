@@ -118,7 +118,7 @@ const App = () => (
           <Toaster />
           <Sonner />
           <ErrorModalProvider />
-          <PWAUpdatePrompt />
+          {import.meta.env.PROD ? <PWAUpdatePrompt /> : null}
           <BrowserRouter>
             <ScrollToTop />
             <Suspense fallback={<PageLoader />}>

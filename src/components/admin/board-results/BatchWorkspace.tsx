@@ -73,10 +73,8 @@ export function BatchWorkspace({
   const [targetWordCount, setTargetWordCount] = useState<number | null>(null);
   const [customWordCount, setCustomWordCount] = useState('');
 
-  if (!batch) return <p className="text-sm text-muted-foreground text-center py-8">Select a batch to view its workspace</p>;
-
-  const activeRows = rows.filter(r => !r.deleted_at);
-  const draftRows = rows.filter(r => r.workflow_status === 'draft' && !r.deleted_at);
+  const activeRows = batch ? rows.filter(r => !r.deleted_at) : [];
+  const draftRows = batch ? rows.filter(r => r.workflow_status === 'draft' && !r.deleted_at) : [];
   const enrichedRows = rows.filter(r => ['enriched', 'seo_fixed'].includes(r.workflow_status) && !r.deleted_at);
   const unpublishedReady = rows.filter(r => r.workflow_status !== 'published' && r.content && r.content.length > 100 && !r.deleted_at);
 

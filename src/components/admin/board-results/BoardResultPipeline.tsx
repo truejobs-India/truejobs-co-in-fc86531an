@@ -63,7 +63,7 @@ export function BoardResultPipeline() {
       {/* AI Model Selector */}
       <div className="flex items-center gap-3">
         <span className="text-sm font-medium">AI Model:</span>
-        <AiModelSelector value={aiModel} onChange={setAiModel} />
+        <AiModelSelector value={aiModel} onValueChange={setAiModel} />
       </div>
 
       {/* Upload Zone */}

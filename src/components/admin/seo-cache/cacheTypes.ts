@@ -80,6 +80,10 @@ export const PAGE_TYPES = [
   'combo-state-qual', 'combo-dept-qual', 'combo-cat-qual',
   'selection-state', 'deadline-today', 'deadline-week', 'deadline-month',
   'discovery-hub', 'blog', 'govt-exam', 'employment-news',
+  // Active fallback fixes (7 types previously unmapped)
+  'combo-dept-state', 'authority-age-limit', 'authority-exam-pattern',
+  'authority-eligibility', 'custom-exam-support',
+  'combo-closing-soon', 'deadline-this-week',
 ];
 
 // ── Validation Layer Types ──────────────────────────────────────────

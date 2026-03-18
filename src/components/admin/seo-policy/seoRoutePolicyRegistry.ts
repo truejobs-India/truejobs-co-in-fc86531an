@@ -61,10 +61,26 @@ export const PAGE_TYPE_POLICIES: Record<string, PageTypePolicy> = {
   'selection-state':         seo({ schema: ['JobPosting'] }),
   'discovery-hub':           seo(),
 
+  // ── Active fallback fixes (7 types — previously unmapped) ──
+  'combo-dept-state':        seo({ notes: 'Stable geo+department listing pages' }),
+  'authority-age-limit':     seo({ notes: 'Evergreen exam age-limit info pages' }),
+  'authority-exam-pattern':  seo({ notes: 'Exam pattern detail pages' }),
+  'authority-eligibility':   seo({ notes: 'Eligibility criteria pages' }),
+  'custom-exam-support':     seo({ notes: 'Utility/guide pages for exam preparation' }),
+
+  // ── Future-proof types (not currently collected by collectAllPages) ──
+  'landing':                 seo({ breadcrumb: false, notes: 'Top-level SEO landing pages' }),
+  'guide':                   seo({ notes: 'Long-form editorial guides — add Article schema when template verified' }),
+  'resource':                seo({ notes: 'Evergreen utility/resource pages' }),
+  'comparison':              seo({ notes: 'Comparison pages — indexable if substantial' }),
+  'result-landing':          seo({ notes: 'Board result landing pages — add Article schema when template verified' }),
+
   // ── Public noindex pages ──
   'deadline-today':          noindex('Ephemeral – changes daily'),
   'deadline-week':           noindex('Ephemeral – changes weekly'),
   'deadline-month':          noindex('Ephemeral – changes monthly'),
+  'combo-closing-soon':      noindex('Ephemeral – closing deadlines change daily'),
+  'deadline-this-week':      noindex('Ephemeral – changes weekly, same as deadline-week'),
 };
 
 // ── Derived sets (drop-in replacements for seoValidationEngine) ─────

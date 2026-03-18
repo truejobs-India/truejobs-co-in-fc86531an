@@ -1,17 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <!--
-    TrueJobs Sitemap Index
+    TrueJobs Sitemap Index (static fallback)
     Domain: https://truejobs.co.in
+    Note: In production, /sitemap.xml is dynamically generated via edge function.
+    This static file serves as a fallback only.
     Submit this URL to Google Search Console: https://truejobs.co.in/sitemap.xml
   -->
 
-  <!-- sitemap-pages: Static pages + company pages -->
+  <!-- sitemap-pages: Static pages + company pages + govt exam pages -->
   <sitemap>
     <loc>https://truejobs.co.in/sitemap-pages.xml</loc>
   </sitemap>
 
-  <!-- sitemap-jobs: All active, non-expired job listings -->
+  <!-- sitemap-jobs: Active job listings + published employment news -->
   <sitemap>
     <loc>https://truejobs.co.in/sitemap-jobs.xml</loc>
   </sitemap>
@@ -21,8 +23,13 @@
     <loc>https://truejobs.co.in/sitemap-blog.xml</loc>
   </sitemap>
 
-  <!-- sitemap-seo: 400+ programmatic SEO landing pages -->
+  <!-- sitemap-seo: Programmatic SEO landing pages -->
   <sitemap>
     <loc>https://truejobs.co.in/sitemap-seo.xml</loc>
+  </sitemap>
+
+  <!-- sitemap-resources: PDF resources, sample papers, books -->
+  <sitemap>
+    <loc>https://truejobs.co.in/sitemap-resources.xml</loc>
   </sitemap>
 </sitemapindex>

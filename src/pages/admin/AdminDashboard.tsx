@@ -27,7 +27,9 @@ import {
   Globe,
   Download,
   MessageSquare,
+  Rss,
 } from 'lucide-react';
+import { RssIntakeManager } from '@/components/admin/rss-intake/RssIntakeManager';
 import { RestrictedDomainsManager } from '@/components/admin/RestrictedDomainsManager';
 import { EmploymentNewsManager } from '@/components/admin/EmploymentNewsManager';
 import { JobApprovalList } from '@/components/admin/JobApprovalList';

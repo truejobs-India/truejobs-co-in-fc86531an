@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
-import { Plus, Play, TestTube, Upload, Zap, ExternalLink, RefreshCw, Search, Pencil } from 'lucide-react';
+import { Plus, Play, TestTube, Upload, Zap, ExternalLink, RefreshCw, Search, Pencil, Rss } from 'lucide-react';
 import type { RssSource } from './rssTypes';
 import { RSS_PRIORITIES, RSS_STATUSES } from './rssTypes';
 

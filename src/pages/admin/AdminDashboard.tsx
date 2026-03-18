@@ -432,6 +432,10 @@ function AdminDashboardInner() {
                 <ChatbotSettingsManager />
                 <ChatbotAnalytics />
               </TabsContent>
+
+              <TabsContent value="rss-intake">
+                <RssIntakeManager />
+              </TabsContent>
             </Tabs>
           </>
         ) : currentView.type === 'users' ? (

@@ -1,5 +1,17 @@
 /**
- * SEO Cache Rebuild Edge Function
+ * SEO Cache Rebuild Edge Function — DB-SOURCED PAGES ONLY
+ *
+ * ARCHITECTURE NOTE:
+ * This function handles ONLY pages sourced from DB tables:
+ *   - blog        → blog_posts table
+ *   - govt-exam   → govt_exams table
+ *   - employment-news → employment_news_jobs table
+ *
+ * All other page types (cities, combos, deadlines, authority, etc.) are
+ * INVENTORY-SOURCED and handled by the companion function build-seo-cache,
+ * which receives pre-built PageData[] from the client-side collectAllPages().
+ *
+ * If a non-DB slug is requested, this function returns { status: 'skip' }.
  *
  * TEMPORARY WORKAROUND: Authentication for the pg_cron scheduled job currently
  * uses SEO_REBUILD_SECRET stored as BOTH a Supabase edge-function secret AND

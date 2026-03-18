@@ -1,5 +1,17 @@
 /**
- * SEO Cache Rebuild Edge Function
+ * SEO Cache Rebuild Edge Function — DB-SOURCED PAGES ONLY
+ *
+ * ARCHITECTURE NOTE:
+ * This function handles ONLY pages sourced from DB tables:
+ *   - blog        → blog_posts table
+ *   - govt-exam   → govt_exams table
+ *   - employment-news → employment_news_jobs table
+ *
+ * All other page types (cities, combos, deadlines, authority, etc.) are
+ * INVENTORY-SOURCED and handled by the companion function build-seo-cache,
+ * which receives pre-built PageData[] from the client-side collectAllPages().
+ *
+ * If a non-DB slug is requested, this function returns { status: 'skip' }.
  *
  * TEMPORARY WORKAROUND: Authentication for the pg_cron scheduled job currently
  * uses SEO_REBUILD_SECRET stored as BOTH a Supabase edge-function secret AND
@@ -103,8 +115,12 @@ interface PageData {
 
 // ── Noindex page types ───────────────────────────────────────────────
 // Ephemeral / time-sensitive pages that must never be indexed.
-// Must stay in sync with NOINDEX_PAGE_TYPES in build-seo-cache/index.ts,
-// dynamic-sitemap/index.ts, and PAGE_TYPE_POLICIES (seoRoutePolicyRegistry.ts).
+// ⚠️  SYNC REQUIRED — this list is duplicated in 3 isolated Deno Edge Functions:
+//   1. seo-cache-rebuild/index.ts   (this file — DB rebuild path)
+//   2. build-seo-cache/index.ts     (inventory rebuild path)
+//   3. dynamic-sitemap/index.ts     (sitemap exclusion)
+// Also mirrored in PAGE_TYPE_POLICIES (src/config/seoRoutePolicyRegistry.ts).
+// Update ALL locations when adding or removing ephemeral types.
 const NOINDEX_PAGE_TYPES = new Set([
   'deadline-today',
   'deadline-week',

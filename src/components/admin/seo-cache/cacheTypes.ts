@@ -71,6 +71,30 @@ export const STATUS_PRIORITY: Record<CacheStatus, number> = {
 
 export const SITE_URL = 'https://truejobs.co.in';
 
+// ── Rebuild-path architecture ────────────────────────────────────────
+// The SEO cache has TWO distinct write paths based on data source:
+//
+//  1. seo-cache-rebuild (Edge Function)
+//     - Handles DB-sourced pages: blog, govt-exam, employment-news
+//     - Reads from blog_posts, govt_exams, employment_news_jobs tables
+//     - Triggered by Admin UI "Rebuild All" / "Rebuild Selected" buttons
+//
+//  2. build-seo-cache (Edge Function)
+//     - Handles inventory-sourced pages (all other types)
+//     - Receives pre-built PageData[] from the client-side collectAllPages()
+//     - Triggered by the legacy "Build Cache" admin flow
+//
+// Pages NOT in DB_SOURCED_PAGE_TYPES will be SKIPPED by seo-cache-rebuild.
+// To fix/rebuild inventory-sourced pages, use build-seo-cache or direct SQL.
+
+/** Page types whose cache is built from DB tables via seo-cache-rebuild. */
+export const DB_SOURCED_PAGE_TYPES = new Set(['blog', 'govt-exam', 'employment-news']);
+
+/** Returns true if the given pageType is rebuilt via seo-cache-rebuild (DB path). */
+export function isDbSourced(pageType: string): boolean {
+  return DB_SOURCED_PAGE_TYPES.has(pageType);
+}
+
 export const PAGE_TYPES = [
   'standalone', 'city', 'category', 'industry', 'authority-exam',
   'authority-notification', 'authority-syllabus', 'authority-salary',

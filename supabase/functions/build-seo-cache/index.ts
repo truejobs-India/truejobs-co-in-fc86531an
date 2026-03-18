@@ -1,5 +1,17 @@
 /**
- * Build SEO Cache (Manual/Bulk) Edge Function
+ * Build SEO Cache (Manual/Bulk) Edge Function — INVENTORY-SOURCED PAGES
+ *
+ * ARCHITECTURE NOTE:
+ * This function handles pages sourced from the CLIENT-SIDE INVENTORY
+ * (collectAllPages), NOT from DB tables. It receives pre-built PageData[]
+ * and writes them to seo_page_cache.
+ *
+ * Page types handled here include: standalone, city, category, industry,
+ * authority-*, combo-*, deadline-*, exam-hub, discovery-hub, state-govt,
+ * department, qualification, custom-*, selection-state, etc.
+ *
+ * DB-sourced pages (blog, govt-exam, employment-news) are handled by the
+ * companion function seo-cache-rebuild, which reads directly from DB tables.
  *
  * TEMPORARY WORKAROUND NOTE: The SEO_REBUILD_SECRET used by the companion
  * seo-cache-rebuild function is duplicated in app_settings for pg_cron access.
@@ -30,8 +42,12 @@ interface PageData {
 
 // ── Noindex page types ───────────────────────────────────────────────
 // Ephemeral / time-sensitive pages that must never be indexed.
-// Must stay in sync with NOINDEX_PAGE_TYPES in dynamic-sitemap/index.ts
-// and noindex entries in PAGE_TYPE_POLICIES (seoRoutePolicyRegistry.ts).
+// ⚠️  SYNC REQUIRED — this list is duplicated in 3 isolated Deno Edge Functions:
+//   1. seo-cache-rebuild/index.ts   (DB rebuild path)
+//   2. build-seo-cache/index.ts     (this file — inventory rebuild path)
+//   3. dynamic-sitemap/index.ts     (sitemap exclusion)
+// Also mirrored in PAGE_TYPE_POLICIES (src/config/seoRoutePolicyRegistry.ts).
+// Update ALL locations when adding or removing ephemeral types.
 const NOINDEX_PAGE_TYPES = new Set([
   'deadline-today',
   'deadline-week',

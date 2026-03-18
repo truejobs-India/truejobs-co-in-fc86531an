@@ -4,8 +4,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { CachePage, CacheStatus } from './cacheTypes';
-import { MoreHorizontal, Eye, Code, ShieldCheck, RefreshCw, ExternalLink, Loader2 } from 'lucide-react';
+import { CachePage, CacheStatus, isDbSourced } from './cacheTypes';
+import { MoreHorizontal, Eye, ShieldCheck, RefreshCw, ExternalLink, Loader2 } from 'lucide-react';
 
 const STATUS_COLORS: Record<CacheStatus, string> = {
   cached: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200',
@@ -77,6 +77,7 @@ export function CacheStatusTable({
               </TableHead>
               <TableHead>Title / Slug</TableHead>
               <TableHead>Type</TableHead>
+              <TableHead>Source</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Last Built</TableHead>
               <TableHead>Hash</TableHead>
@@ -85,9 +86,9 @@ export function CacheStatusTable({
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Loading…</TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Loading…</TableCell></TableRow>
             ) : pages.length === 0 ? (
-              <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No pages found</TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No pages found</TableCell></TableRow>
             ) : pages.map(p => (
               <TableRow key={p.slug}>
                 <TableCell><Checkbox checked={selectedSlugs.has(p.slug)} onCheckedChange={() => toggleOne(p.slug)} /></TableCell>
@@ -98,6 +99,24 @@ export function CacheStatusTable({
                   </div>
                 </TableCell>
                 <TableCell><Badge variant="outline" className="text-[10px]">{p.pageType}</Badge></TableCell>
+                <TableCell>
+                  <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                    isDbSourced(p.pageType)
+                      ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+                      : 'bg-muted text-muted-foreground'
+                  }`}>
+                    {isDbSourced(p.pageType) ? 'DB rebuild' : 'Inventory'}
+                  </span>
+                </TableCell>
+                <TableCell>
+                  <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                    isDbSourced(p.pageType)
+                      ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+                      : 'bg-muted text-muted-foreground'
+                  }`}>
+                    {isDbSourced(p.pageType) ? 'DB rebuild' : 'Inventory'}
+                  </span>
+                </TableCell>
                 <TableCell>
                   <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-medium ${STATUS_COLORS[p.status]}`}>
                     {p.status}

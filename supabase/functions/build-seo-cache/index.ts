@@ -28,6 +28,18 @@ interface PageData {
   crossLinks: { label: string; slug: string }[];
 }
 
+// ── Noindex page types ───────────────────────────────────────────────
+// Ephemeral / time-sensitive pages that must never be indexed.
+// Must stay in sync with NOINDEX_PAGE_TYPES in dynamic-sitemap/index.ts
+// and noindex entries in PAGE_TYPE_POLICIES (seoRoutePolicyRegistry.ts).
+const NOINDEX_PAGE_TYPES = new Set([
+  'deadline-today',
+  'deadline-week',
+  'deadline-month',
+  'combo-closing-soon',
+  'deadline-this-week',
+]);
+
 // ── Fragment generators ──────────────────────────────────────────────
 
 function generateHeadHTML(page: PageData): string {

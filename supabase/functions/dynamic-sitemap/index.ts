@@ -10,6 +10,17 @@ const corsHeaders = {
 
 const SITE_URL = 'https://truejobs.co.in';
 
+// ── Noindex page types — excluded from sitemap ──────────────────────
+// Must stay in sync with NOINDEX_PAGE_TYPES in build-seo-cache/index.ts
+// and noindex entries in PAGE_TYPE_POLICIES (seoRoutePolicyRegistry.ts).
+const NOINDEX_PAGE_TYPES = new Set([
+  'deadline-today',
+  'deadline-week',
+  'deadline-month',
+  'combo-closing-soon',
+  'deadline-this-week',
+]);
+
 function escapeXml(str: string): string {
   if (!str) return '';
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');

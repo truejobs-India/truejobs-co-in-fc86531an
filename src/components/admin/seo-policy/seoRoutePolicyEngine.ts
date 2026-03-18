@@ -259,7 +259,7 @@ export function generateReasonSummary(
     `${policy.isCacheServed ? 'cache-served' : 'not cached'}.`;
 
   if (policy.policySource === 'fallback') {
-    return `REVIEW NEEDED: ${base}`;
+    return `REVIEW NEEDED: ${base} Unmapped page type: "${policy.fallbackPageType ?? 'unknown'}".`;
   }
   return base;
 }

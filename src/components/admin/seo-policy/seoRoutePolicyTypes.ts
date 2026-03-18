@@ -29,6 +29,8 @@ export interface PolicyOutput {
   isCacheServed: boolean;
   canonicalUrl: string;
   policySource: PolicySource;
+  /** Set only when policySource is 'fallback' — the unmapped pageType that triggered fallback */
+  fallbackPageType?: string;
 }
 
 export interface PolicyConflict {

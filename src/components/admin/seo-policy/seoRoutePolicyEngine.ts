@@ -149,6 +149,7 @@ export function derivePolicy(
     isCacheServed: false,
     canonicalUrl: canonical,
     policySource: 'fallback',
+    fallbackPageType: pageType,
   };
 }
 

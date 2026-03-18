@@ -100,6 +100,15 @@ export function CacheStatusTable({
                 </TableCell>
                 <TableCell><Badge variant="outline" className="text-[10px]">{p.pageType}</Badge></TableCell>
                 <TableCell>
+                  <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                    isDbSourced(p.pageType)
+                      ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+                      : 'bg-muted text-muted-foreground'
+                  }`}>
+                    {isDbSourced(p.pageType) ? 'DB rebuild' : 'Inventory'}
+                  </span>
+                </TableCell>
+                <TableCell>
                   <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-medium ${STATUS_COLORS[p.status]}`}>
                     {p.status}
                   </span>

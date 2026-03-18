@@ -11,8 +11,13 @@ const corsHeaders = {
 const SITE_URL = 'https://truejobs.co.in';
 
 // ── Noindex page types — excluded from sitemap ──────────────────────
-// Must stay in sync with NOINDEX_PAGE_TYPES in build-seo-cache/index.ts
-// and noindex entries in PAGE_TYPE_POLICIES (seoRoutePolicyRegistry.ts).
+// Ephemeral / time-sensitive pages that must never appear in the sitemap.
+// ⚠️  SYNC REQUIRED — this list is duplicated in 3 isolated Deno Edge Functions:
+//   1. seo-cache-rebuild/index.ts   (DB rebuild path)
+//   2. build-seo-cache/index.ts     (inventory rebuild path)
+//   3. dynamic-sitemap/index.ts     (this file — sitemap exclusion)
+// Also mirrored in PAGE_TYPE_POLICIES (src/config/seoRoutePolicyRegistry.ts).
+// Update ALL locations when adding or removing ephemeral types.
 const NOINDEX_PAGE_TYPES = new Set([
   'deadline-today',
   'deadline-week',

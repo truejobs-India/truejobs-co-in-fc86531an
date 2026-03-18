@@ -115,8 +115,12 @@ interface PageData {
 
 // ── Noindex page types ───────────────────────────────────────────────
 // Ephemeral / time-sensitive pages that must never be indexed.
-// Must stay in sync with NOINDEX_PAGE_TYPES in build-seo-cache/index.ts,
-// dynamic-sitemap/index.ts, and PAGE_TYPE_POLICIES (seoRoutePolicyRegistry.ts).
+// ⚠️  SYNC REQUIRED — this list is duplicated in 3 isolated Deno Edge Functions:
+//   1. seo-cache-rebuild/index.ts   (this file — DB rebuild path)
+//   2. build-seo-cache/index.ts     (inventory rebuild path)
+//   3. dynamic-sitemap/index.ts     (sitemap exclusion)
+// Also mirrored in PAGE_TYPE_POLICIES (src/config/seoRoutePolicyRegistry.ts).
+// Update ALL locations when adding or removing ephemeral types.
 const NOINDEX_PAGE_TYPES = new Set([
   'deadline-today',
   'deadline-week',

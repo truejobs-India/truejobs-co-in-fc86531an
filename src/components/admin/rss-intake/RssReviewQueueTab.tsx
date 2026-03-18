@@ -11,7 +11,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Textarea } from '@/components/ui/textarea';
 import { ClipboardCheck, ExternalLink, Search, RefreshCw, Check, X, Copy, EyeOff, Pause, FileDown } from 'lucide-react';
 import type { ReviewQueueEntry } from './rssTypes';
-import { REVIEW_STATUSES } from './rssTypes';
+import { REVIEW_STATUSES, PRIMARY_DOMAINS, DOMAIN_LABELS } from './rssTypes';
+
+const domainBadgeColors: Record<string, string> = {
+  jobs: 'bg-emerald-100 text-emerald-800',
+  education_services: 'bg-blue-100 text-blue-800',
+  exam_updates: 'bg-purple-100 text-purple-800',
+  public_services: 'bg-cyan-100 text-cyan-800',
+  policy_updates: 'bg-pink-100 text-pink-800',
+  general_alerts: 'bg-gray-100 text-gray-600',
+};
 
 export function RssReviewQueueTab() {
   const { toast } = useAdminToast();
@@ -19,6 +28,7 @@ export function RssReviewQueueTab() {
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState('pending');
   const [filterChannel, setFilterChannel] = useState('all');
+  const [filterDomain, setFilterDomain] = useState('all');
   const [search, setSearch] = useState('');
   const [showDetail, setShowDetail] = useState(false);
   const [detailEntry, setDetailEntry] = useState<ReviewQueueEntry | null>(null);
@@ -30,12 +40,13 @@ export function RssReviewQueueTab() {
     let query = supabase.from('monitoring_review_queue' as any).select('*').order('created_at', { ascending: false }).limit(200);
     if (filterStatus !== 'all') query = query.eq('review_status', filterStatus);
     if (filterChannel !== 'all') query = query.eq('channel', filterChannel);
+    if (filterDomain !== 'all') query = query.eq('primary_domain', filterDomain);
 
     const { data, error } = await query;
     if (error) toast({ title: 'Error', description: error.message, variant: 'destructive' });
     else setEntries((data as any as ReviewQueueEntry[]) || []);
     setLoading(false);
-  }, [filterStatus, filterChannel]);
+  }, [filterStatus, filterChannel, filterDomain]);
 
   useEffect(() => { fetchEntries(); }, [fetchEntries]);
 
@@ -132,6 +143,13 @@ export function RssReviewQueueTab() {
               <SelectItem value="crawler">Crawler</SelectItem>
             </SelectContent>
           </Select>
+          <Select value={filterDomain} onValueChange={setFilterDomain}>
+            <SelectTrigger className="w-[170px]"><SelectValue placeholder="Domain" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Domains</SelectItem>
+              {PRIMARY_DOMAINS.map((d) => <SelectItem key={d} value={d}>{DOMAIN_LABELS[d]}</SelectItem>)}
+            </SelectContent>
+          </Select>
         </div>
 
         {loading ? (
@@ -145,6 +163,7 @@ export function RssReviewQueueTab() {
                 <TableRow>
                   <TableHead>Channel</TableHead>
                   <TableHead>Title</TableHead>
+                  <TableHead>Domain</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Date</TableHead>
                   <TableHead>Status</TableHead>
@@ -156,8 +175,15 @@ export function RssReviewQueueTab() {
                 {filtered.map((entry) => (
                   <TableRow key={entry.id} className="cursor-pointer" onClick={() => openDetail(entry)}>
                     <TableCell><Badge variant="outline">{entry.channel}</Badge></TableCell>
-                    <TableCell className="max-w-[250px]"><p className="text-sm font-medium truncate">{entry.title}</p></TableCell>
-                    <TableCell className="text-xs">{entry.item_type || '—'}</TableCell>
+                    <TableCell className="max-w-[220px]"><p className="text-sm font-medium truncate">{entry.title}</p></TableCell>
+                    <TableCell>
+                      {entry.primary_domain ? (
+                        <Badge className={domainBadgeColors[entry.primary_domain] || 'bg-gray-100 text-gray-500'}>
+                          {DOMAIN_LABELS[entry.primary_domain] || entry.primary_domain}
+                        </Badge>
+                      ) : '—'}
+                    </TableCell>
+                    <TableCell className="text-xs">{entry.item_type?.replace(/_/g, ' ') || '—'}</TableCell>
                     <TableCell className="text-xs">{entry.published_at ? new Date(entry.published_at).toLocaleDateString() : '—'}</TableCell>
                     <TableCell>{statusBadge(entry.review_status)}</TableCell>
                     <TableCell className="text-xs">{new Date(entry.created_at).toLocaleDateString()}</TableCell>
@@ -198,11 +224,17 @@ export function RssReviewQueueTab() {
             <div className="space-y-4">
               <div className="space-y-2 text-sm">
                 <p><strong>Title:</strong> {detailEntry.title}</p>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <Badge variant="outline">{detailEntry.channel}</Badge>
-                  {detailEntry.item_type && <Badge variant="outline">{detailEntry.item_type}</Badge>}
+                  {detailEntry.primary_domain && (
+                    <Badge className={domainBadgeColors[detailEntry.primary_domain] || ''}>
+                      {DOMAIN_LABELS[detailEntry.primary_domain] || detailEntry.primary_domain}
+                    </Badge>
+                  )}
+                  {detailEntry.item_type && <Badge variant="outline">{detailEntry.item_type.replace(/_/g, ' ')}</Badge>}
                   {statusBadge(detailEntry.review_status)}
                 </div>
+                {detailEntry.display_group && <p><strong>Display Group:</strong> {detailEntry.display_group}</p>}
                 {detailEntry.source_url && (
                   <p><strong>Link:</strong> <a href={detailEntry.source_url} target="_blank" className="text-primary hover:underline">{detailEntry.source_url}</a></p>
                 )}

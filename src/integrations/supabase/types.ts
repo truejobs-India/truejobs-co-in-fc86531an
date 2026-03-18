@@ -2087,10 +2087,12 @@ export type Database = {
           action_decision: string | null
           channel: string
           created_at: string
+          display_group: string | null
           id: string
           item_type: string | null
           parsed_payload: Json
           pdf_url: string | null
+          primary_domain: string | null
           published_at: string | null
           qa_notes: string | null
           raw_payload: Json
@@ -2106,10 +2108,12 @@ export type Database = {
           action_decision?: string | null
           channel: string
           created_at?: string
+          display_group?: string | null
           id?: string
           item_type?: string | null
           parsed_payload?: Json
           pdf_url?: string | null
+          primary_domain?: string | null
           published_at?: string | null
           qa_notes?: string | null
           raw_payload?: Json
@@ -2125,10 +2129,12 @@ export type Database = {
           action_decision?: string | null
           channel?: string
           created_at?: string
+          display_group?: string | null
           id?: string
           item_type?: string | null
           parsed_payload?: Json
           pdf_url?: string | null
+          primary_domain?: string | null
           published_at?: string | null
           qa_notes?: string | null
           raw_payload?: Json
@@ -2744,6 +2750,7 @@ export type Database = {
           created_at: string
           current_status: string
           detection_reason: string | null
+          display_group: string
           first_pdf_url: string | null
           first_seen_at: string
           id: string
@@ -2756,6 +2763,7 @@ export type Database = {
           last_seen_at: string
           linked_pdf_urls: string[]
           normalized_hash: string
+          primary_domain: string
           published_at: string | null
           raw_payload: Json
           relevance_level: string
@@ -2769,6 +2777,7 @@ export type Database = {
           created_at?: string
           current_status?: string
           detection_reason?: string | null
+          display_group?: string
           first_pdf_url?: string | null
           first_seen_at?: string
           id?: string
@@ -2781,6 +2790,7 @@ export type Database = {
           last_seen_at?: string
           linked_pdf_urls?: string[]
           normalized_hash: string
+          primary_domain?: string
           published_at?: string | null
           raw_payload?: Json
           relevance_level?: string
@@ -2794,6 +2804,7 @@ export type Database = {
           created_at?: string
           current_status?: string
           detection_reason?: string | null
+          display_group?: string
           first_pdf_url?: string | null
           first_seen_at?: string
           id?: string
@@ -2806,6 +2817,7 @@ export type Database = {
           last_seen_at?: string
           linked_pdf_urls?: string[]
           normalized_hash?: string
+          primary_domain?: string
           published_at?: string | null
           raw_payload?: Json
           relevance_level?: string

@@ -154,8 +154,12 @@ export function SEOCacheManager() {
               <AlertDialogContent>
                 <AlertDialogHeader>
                   <AlertDialogTitle>Rebuild All Pages?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This will regenerate cached HTML for all {stats.totalCacheable} pages. Unchanged pages will be skipped.
+                  <AlertDialogDescription className="space-y-2">
+                    <p>This will regenerate cached HTML for all {stats.totalCacheable} pages. Unchanged pages will be skipped.</p>
+                    <p className="text-xs text-muted-foreground border-l-2 border-primary/30 pl-2 mt-2">
+                      Note: This rebuilds <strong>DB-sourced</strong> pages only (blog, govt-exam, employment-news).
+                      Inventory-sourced pages (cities, combos, deadlines, etc.) require the legacy Build Cache flow.
+                    </p>
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>

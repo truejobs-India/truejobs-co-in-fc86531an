@@ -86,9 +86,9 @@ export function CacheStatusTable({
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Loading…</TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Loading…</TableCell></TableRow>
             ) : pages.length === 0 ? (
-              <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No pages found</TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No pages found</TableCell></TableRow>
             ) : pages.map(p => (
               <TableRow key={p.slug}>
                 <TableCell><Checkbox checked={selectedSlugs.has(p.slug)} onCheckedChange={() => toggleOne(p.slug)} /></TableCell>
@@ -99,6 +99,15 @@ export function CacheStatusTable({
                   </div>
                 </TableCell>
                 <TableCell><Badge variant="outline" className="text-[10px]">{p.pageType}</Badge></TableCell>
+                <TableCell>
+                  <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                    isDbSourced(p.pageType)
+                      ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+                      : 'bg-muted text-muted-foreground'
+                  }`}>
+                    {isDbSourced(p.pageType) ? 'DB rebuild' : 'Inventory'}
+                  </span>
+                </TableCell>
                 <TableCell>
                   <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium ${
                     isDbSourced(p.pageType)

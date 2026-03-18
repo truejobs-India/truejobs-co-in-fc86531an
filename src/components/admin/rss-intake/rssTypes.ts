@@ -53,6 +53,8 @@ export interface RssItem {
   item_content: string | null;
   categories: string[];
   item_type: string;
+  primary_domain: string;
+  display_group: string;
   relevance_level: string;
   detection_reason: string | null;
   first_pdf_url: string | null;
@@ -76,6 +78,8 @@ export interface ReviewQueueEntry {
   pdf_url: string | null;
   published_at: string | null;
   item_type: string | null;
+  primary_domain: string | null;
+  display_group: string | null;
   review_status: string;
   action_decision: string | null;
   qa_notes: string | null;
@@ -88,7 +92,23 @@ export interface ReviewQueueEntry {
 
 export const RSS_PRIORITIES = ['High', 'Medium', 'Low'] as const;
 export const RSS_STATUSES = ['Live now', 'Needs verification', 'Not useful for jobs', 'Testing', 'Paused', 'Broken'] as const;
-export const ITEM_TYPES = ['recruitment', 'vacancy', 'exam', 'admit_card', 'result', 'answer_key', 'syllabus', 'policy', 'signal', 'unknown'] as const;
+export const ITEM_TYPES = [
+  'recruitment', 'vacancy', 'exam', 'admit_card', 'result', 'answer_key', 'syllabus',
+  'scholarship', 'certificate', 'marksheet', 'school_service', 'university_service', 'document_service',
+  'policy', 'circular', 'notification', 'signal', 'unknown',
+] as const;
 export const RELEVANCE_LEVELS = ['High', 'Medium', 'Low'] as const;
 export const ITEM_STATUSES = ['new', 'updated', 'queued', 'reviewed', 'ignored', 'duplicate'] as const;
 export const REVIEW_STATUSES = ['pending', 'approved', 'rejected', 'duplicate', 'ignored', 'on_hold'] as const;
+
+export const PRIMARY_DOMAINS = ['jobs', 'education_services', 'exam_updates', 'public_services', 'policy_updates', 'general_alerts'] as const;
+export const DISPLAY_GROUPS = ['Government Jobs', 'Education Services', 'Exam Updates', 'Public Services', 'Policy Updates', 'General Alerts'] as const;
+
+export const DOMAIN_LABELS: Record<string, string> = {
+  jobs: 'Government Jobs',
+  education_services: 'Education Services',
+  exam_updates: 'Exam Updates',
+  public_services: 'Public Services',
+  policy_updates: 'Policy Updates',
+  general_alerts: 'General Alerts',
+};

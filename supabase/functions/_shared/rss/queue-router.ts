@@ -10,6 +10,8 @@ export interface QueueableItem {
   pdfUrl: string | null;
   publishedAt: string | null;
   itemType: string;
+  primaryDomain: string;
+  displayGroup: string;
   relevanceLevel: string;
   rawPayload: Record<string, unknown>;
   parsedPayload: Record<string, unknown>;
@@ -24,7 +26,7 @@ export function shouldQueue(relevanceLevel: string): boolean {
 
 /**
  * Upsert an item into monitoring_review_queue
- * Uses ON CONFLICT on partial unique index (channel, source_item_id) WHERE source_item_id IS NOT NULL
+ * Carries primary_domain and display_group as dedicated columns for reliable filtering
  */
 export async function upsertReviewEntry(
   supabaseUrl: string,
@@ -52,6 +54,8 @@ export async function upsertReviewEntry(
           pdf_url: item.pdfUrl,
           published_at: item.publishedAt,
           item_type: item.itemType,
+          primary_domain: item.primaryDomain,
+          display_group: item.displayGroup,
           raw_payload: item.rawPayload,
           parsed_payload: item.parsedPayload,
         })
@@ -72,6 +76,8 @@ export async function upsertReviewEntry(
       pdf_url: item.pdfUrl,
       published_at: item.publishedAt,
       item_type: item.itemType,
+      primary_domain: item.primaryDomain,
+      display_group: item.displayGroup,
       review_status: 'pending',
       raw_payload: item.rawPayload,
       parsed_payload: item.parsedPayload,

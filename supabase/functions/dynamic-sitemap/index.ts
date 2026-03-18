@@ -26,6 +26,13 @@ const NOINDEX_PAGE_TYPES = new Set([
   'deadline-this-week',
 ]);
 
+// ── Page types that are already covered by dedicated sub-sitemaps ────
+// These must be excluded from the SEO sitemap to prevent duplicate URLs
+const DEDICATED_SITEMAP_PAGE_TYPES = new Set([
+  'blog',            // covered by sitemap-blog.xml
+  'employment-news', // covered by sitemap-jobs.xml (employment-news section)
+]);
+
 function escapeXml(str: string): string {
   if (!str) return '';
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
@@ -84,9 +91,10 @@ Deno.serve(async (req) => {
 
 // ─── Index ───────────────────────────────────────────────────────────────────
 async function generateSitemapIndex(supabase: any, now: string): Promise<Response> {
-  const [latestJob, latestBlog] = await Promise.all([
+  const [latestJob, latestBlog, latestResource] = await Promise.all([
     supabase.from('jobs').select('updated_at').eq('status', 'active').order('updated_at', { ascending: false }).limit(1).single(),
     supabase.from('blog_posts').select('updated_at').eq('is_published', true).order('updated_at', { ascending: false }).limit(1).single(),
+    supabase.from('pdf_resources').select('updated_at').eq('is_published', true).order('updated_at', { ascending: false }).limit(1).maybeSingle(),
   ]);
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -95,14 +103,15 @@ async function generateSitemapIndex(supabase: any, now: string): Promise<Respons
   <sitemap><loc>${SITE_URL}/sitemap-jobs.xml</loc><lastmod>${latestJob.data?.updated_at ? new Date(latestJob.data.updated_at).toISOString() : now}</lastmod></sitemap>
   <sitemap><loc>${SITE_URL}/sitemap-blog.xml</loc><lastmod>${latestBlog.data?.updated_at ? new Date(latestBlog.data.updated_at).toISOString() : now}</lastmod></sitemap>
   <sitemap><loc>${SITE_URL}/sitemap-seo.xml</loc><lastmod>${now}</lastmod></sitemap>
-  <sitemap><loc>${SITE_URL}/sitemap-resources.xml</loc><lastmod>${now}</lastmod></sitemap>
+  <sitemap><loc>${SITE_URL}/sitemap-resources.xml</loc><lastmod>${latestResource?.data?.updated_at ? new Date(latestResource.data.updated_at).toISOString() : now}</lastmod></sitemap>
 </sitemapindex>`;
   console.log('Generated sitemap index');
   return new Response(xml, { headers: corsHeaders });
 }
 
-// ─── Jobs (paginated, excludes expired) ──────────────────────────────────────
+// ─── Jobs (active jobs + published employment news) ──────────────────────────
 async function generateJobsSitemap(supabase: any, now: string): Promise<Response> {
+  // Active job listings
   const jobs = await fetchAllRows(
     supabase, 'jobs',
     'slug, updated_at, created_at',
@@ -110,17 +119,32 @@ async function generateJobsSitemap(supabase: any, now: string): Promise<Response
     'created_at'
   );
 
+  // Published employment news jobs
+  const newsJobs = await fetchAllRows(
+    supabase, 'employment_news_jobs',
+    'slug, created_at, published_at',
+    (q: any) => q.eq('status', 'published').not('slug', 'is', null),
+    'created_at'
+  );
+
   let xml = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <!-- Jobs Sitemap – ${jobs.length} active, non-expired jobs | Generated: ${now} -->\n`;
+  <!-- Jobs Sitemap – ${jobs.length} active jobs + ${newsJobs.length} employment news | Generated: ${now} -->\n`;
 
   for (const j of jobs) {
     if (!j.slug) continue;
     const lm = new Date(j.updated_at || j.created_at).toISOString();
     xml += `  <url><loc>${SITE_URL}/jobs/${escapeXml(j.slug)}</loc><lastmod>${lm}</lastmod><changefreq>daily</changefreq><priority>0.8</priority></url>\n`;
   }
+
+  for (const n of newsJobs) {
+    if (!n.slug) continue;
+    const lm = new Date(n.published_at || n.created_at).toISOString();
+    xml += `  <url><loc>${SITE_URL}/jobs/employment-news/${escapeXml(n.slug)}</loc><lastmod>${lm}</lastmod><changefreq>weekly</changefreq><priority>0.7</priority></url>\n`;
+  }
+
   xml += `</urlset>`;
-  console.log(`Jobs sitemap: ${jobs.length} URLs`);
+  console.log(`Jobs sitemap: ${jobs.length} jobs + ${newsJobs.length} employment news`);
   return new Response(xml, { headers: corsHeaders });
 }
 
@@ -148,31 +172,48 @@ async function generateBlogSitemap(supabase: any, now: string): Promise<Response
   return new Response(xml, { headers: corsHeaders });
 }
 
-// ─── Pages (static + companies) ─────────────────────────────────────────────
+// ─── Pages (static + companies + govt exam listings) ────────────────────────
 async function generatePagesSitemap(supabase: any, now: string): Promise<Response> {
   const staticPages = [
     { loc: '/', cf: 'daily', pr: '1.0' },
     { loc: '/jobs', cf: 'hourly', pr: '0.9' },
     { loc: '/sarkari-jobs', cf: 'daily', pr: '0.8' },
     { loc: '/private-jobs', cf: 'daily', pr: '0.8' },
+    { loc: '/latest-govt-jobs', cf: 'daily', pr: '0.9' },
+    { loc: '/jobs/employment-news', cf: 'daily', pr: '0.8' },
+    { loc: '/all-sarkari-jobs', cf: 'weekly', pr: '0.7' },
     { loc: '/companies', cf: 'daily', pr: '0.7' },
     { loc: '/blog', cf: 'daily', pr: '0.7' },
+    { loc: '/sample-papers', cf: 'daily', pr: '0.7' },
+    { loc: '/books', cf: 'daily', pr: '0.7' },
+    { loc: '/previous-year-papers', cf: 'daily', pr: '0.7' },
     { loc: '/tools', cf: 'monthly', pr: '0.5' },
     { loc: '/govt-salary-calculator', cf: 'monthly', pr: '0.6' },
     { loc: '/govt-job-age-calculator', cf: 'monthly', pr: '0.6' },
     { loc: '/govt-exam-eligibility-checker', cf: 'monthly', pr: '0.6' },
     { loc: '/govt-exam-fee-calculator', cf: 'monthly', pr: '0.5' },
     { loc: '/typing-test-for-government-exams', cf: 'monthly', pr: '0.5' },
+    { loc: '/photo-resizer', cf: 'monthly', pr: '0.5' },
+    { loc: '/image-resizer', cf: 'monthly', pr: '0.5' },
+    { loc: '/pdf-tools', cf: 'monthly', pr: '0.5' },
+    { loc: '/percentage-calculator', cf: 'monthly', pr: '0.5' },
+    { loc: '/govt-exam-calendar', cf: 'weekly', pr: '0.7' },
+    { loc: '/free-guides', cf: 'monthly', pr: '0.5' },
     { loc: '/aboutus', cf: 'monthly', pr: '0.5' },
     { loc: '/contactus', cf: 'monthly', pr: '0.5' },
     { loc: '/privacypolicy', cf: 'yearly', pr: '0.3' },
     { loc: '/termsofuse', cf: 'yearly', pr: '0.3' },
-    { loc: '/latest-govt-jobs-2026', cf: 'daily', pr: '0.9' },
-    { loc: '/govt-exam-calendar-2026', cf: 'weekly', pr: '0.9' },
-    { loc: '/govt-jobs-notification-today', cf: 'hourly', pr: '0.9' },
-    { loc: '/govt-jobs-last-date-today', cf: 'hourly', pr: '0.9' },
-    { loc: '/govt-exam-results-2026', cf: 'daily', pr: '0.8' },
+    { loc: '/disclaimer', cf: 'yearly', pr: '0.3' },
+    { loc: '/editorial-policy', cf: 'yearly', pr: '0.3' },
   ];
+
+  // Govt exam detail pages
+  const govtExams = await fetchAllRows(
+    supabase, 'govt_exams',
+    'slug, updated_at',
+    (q: any) => q.not('slug', 'is', null),
+    'updated_at'
+  );
 
   const companies = await fetchAllRows(
     supabase, 'companies',
@@ -183,26 +224,45 @@ async function generatePagesSitemap(supabase: any, now: string): Promise<Respons
 
   let xml = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <!-- Pages Sitemap – ${staticPages.length} static + ${companies.length} companies | Generated: ${now} -->\n`;
+  <!-- Pages Sitemap – ${staticPages.length} static + ${govtExams.length} govt exams + ${companies.length} companies | Generated: ${now} -->\n`;
 
   for (const p of staticPages) {
     xml += `  <url><loc>${SITE_URL}${p.loc}</loc><lastmod>${now}</lastmod><changefreq>${p.cf}</changefreq><priority>${p.pr}</priority></url>\n`;
+  }
+  for (const e of govtExams) {
+    if (!e.slug) continue;
+    const lm = new Date(e.updated_at).toISOString();
+    xml += `  <url><loc>${SITE_URL}/sarkari-jobs/${escapeXml(e.slug)}</loc><lastmod>${lm}</lastmod><changefreq>weekly</changefreq><priority>0.8</priority></url>\n`;
   }
   for (const c of companies) {
     if (!c.slug) continue;
     xml += `  <url><loc>${SITE_URL}/companies/${escapeXml(c.slug)}</loc><lastmod>${new Date(c.updated_at).toISOString()}</lastmod><changefreq>weekly</changefreq><priority>0.6</priority></url>\n`;
   }
   xml += `</urlset>`;
-  console.log(`Pages sitemap: ${staticPages.length} static + ${companies.length} companies`);
+  console.log(`Pages sitemap: ${staticPages.length} static + ${govtExams.length} govt exams + ${companies.length} companies`);
   return new Response(xml, { headers: corsHeaders });
 }
 
-// ─── SEO programmatic landing pages (DB-driven + hardcoded fallback) ─────────
+// ─── SEO programmatic landing pages (cache-backed, deduplicated) ────────────
 async function generateSEOSitemap(supabase: any, now: string): Promise<Response> {
-  // Primary: pull all cached slugs from seo_page_cache (populated by SEOCacheBuilder)
-  const cachedSlugs = new Set<string>();
+  // Pull all cached slugs from seo_page_cache
+  const pages: { loc: string; cf: string; pr: string }[] = [];
+  const seenLocs = new Set<string>();
   const PAGE_SIZE = 1000;
   let offset = 0;
+
+  // Pages already in other sitemaps — skip to prevent duplicates
+  const STANDALONE_SLUGS = new Set([
+    '', 'jobs', 'blog', 'companies', 'tools', 'aboutus', 'contactus',
+    'privacypolicy', 'termsofuse', 'disclaimer', 'editorial-policy',
+    'sarkari-jobs', 'private-jobs', 'latest-govt-jobs', 'all-sarkari-jobs',
+    'sample-papers', 'books', 'previous-year-papers', 'free-guides',
+    'govt-salary-calculator', 'govt-job-age-calculator',
+    'govt-exam-eligibility-checker', 'govt-exam-fee-calculator',
+    'typing-test-for-government-exams', 'photo-resizer', 'image-resizer',
+    'pdf-tools', 'percentage-calculator', 'govt-exam-calendar',
+  ]);
+
   while (true) {
     const { data, error } = await supabase
       .from('seo_page_cache')
@@ -212,36 +272,49 @@ async function generateSEOSitemap(supabase: any, now: string): Promise<Response>
     if (error) { console.error('seo_page_cache query error:', error); break; }
     if (!data || data.length === 0) break;
     for (const row of data) {
-      // Skip noindex page types — these must never appear in sitemaps
-      if (row.slug && !NOINDEX_PAGE_TYPES.has(row.page_type)) {
-        cachedSlugs.add(row.slug);
+      if (!row.slug) continue;
+      // Skip noindex page types
+      if (NOINDEX_PAGE_TYPES.has(row.page_type)) continue;
+      // Skip types covered by dedicated sitemaps (blog, employment-news)
+      if (DEDICATED_SITEMAP_PAGE_TYPES.has(row.page_type)) continue;
+      // Skip standalone pages already in pages sitemap
+      if (STANDALONE_SLUGS.has(row.slug)) continue;
+
+      const loc = `/${row.slug}`;
+      if (!seenLocs.has(loc)) {
+        seenLocs.add(loc);
+        pages.push({ loc, cf: 'weekly', pr: '0.7' });
       }
     }
     if (data.length < PAGE_SIZE) break;
     offset += PAGE_SIZE;
   }
 
-  const pages: { loc: string; cf: string; pr: string }[] = [];
-  const add = (slugs: string[], cf: string, pr: string) => {
-    for (const s of slugs) pages.push({ loc: `/${s}`, cf, pr });
-  };
-
-  // Add all cached slugs with sensible defaults
-  for (const slug of cachedSlugs) {
-    // Skip standalone pages (they're in pages sitemap)
-    if (['', 'jobs', 'blog', 'companies', 'tools', 'aboutus', 'contactus', 'privacypolicy', 'termsofuse', 'disclaimer', 'editorial-policy'].includes(slug)) continue;
-    pages.push({ loc: `/${slug}`, cf: 'weekly', pr: '0.7' });
+  // Also include published custom_pages (board results) that may not be in cache
+  const customPages = await fetchAllRows(
+    supabase, 'custom_pages',
+    'slug, updated_at',
+    (q: any) => q.eq('is_published', true).not('slug', 'is', null),
+    'updated_at'
+  );
+  for (const cp of customPages) {
+    if (!cp.slug) continue;
+    const loc = `/${cp.slug}`;
+    if (!seenLocs.has(loc)) {
+      seenLocs.add(loc);
+      pages.push({ loc, cf: 'weekly', pr: '0.7' });
+    }
   }
 
   let xml = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <!-- SEO Programmatic Pages – ${pages.length} URLs (all cache-backed) | Generated: ${now} -->\n`;
+  <!-- SEO Programmatic Pages – ${pages.length} URLs (deduplicated, cache-backed) | Generated: ${now} -->\n`;
 
   for (const p of pages) {
     xml += `  <url><loc>${SITE_URL}${p.loc}</loc><lastmod>${now}</lastmod><changefreq>${p.cf}</changefreq><priority>${p.pr}</priority></url>\n`;
   }
   xml += `</urlset>`;
-  console.log(`SEO sitemap: ${pages.length} URLs (all cache-backed)`);
+  console.log(`SEO sitemap: ${pages.length} URLs (deduplicated)`);
   return new Response(xml, { headers: corsHeaders });
 }
 
@@ -260,13 +333,6 @@ async function generateResourcesSitemap(supabase: any, now: string): Promise<Res
     previous_year_paper: 'previous-year-papers',
   };
 
-  // Static listing pages
-  const staticPages = [
-    { loc: '/sample-papers', cf: 'daily', pr: '0.7' },
-    { loc: '/books', cf: 'daily', pr: '0.7' },
-    { loc: '/previous-year-papers', cf: 'daily', pr: '0.7' },
-  ];
-
   // Hub pages
   const hubPages = [
     '/sample-papers/hub/ssc', '/sample-papers/hub/railway', '/sample-papers/hub/banking',
@@ -280,11 +346,8 @@ async function generateResourcesSitemap(supabase: any, now: string): Promise<Res
 
   let xml = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <!-- Resources Sitemap – ${staticPages.length} listings + ${hubPages.length} hubs + ${resources.length} resources | Generated: ${now} -->\n`;
+  <!-- Resources Sitemap – ${hubPages.length} hubs + ${resources.length} resources | Generated: ${now} -->\n`;
 
-  for (const p of staticPages) {
-    xml += `  <url><loc>${SITE_URL}${p.loc}</loc><lastmod>${now}</lastmod><changefreq>${p.cf}</changefreq><priority>${p.pr}</priority></url>\n`;
-  }
   for (const hub of hubPages) {
     xml += `  <url><loc>${SITE_URL}${hub}</loc><lastmod>${now}</lastmod><changefreq>weekly</changefreq><priority>0.7</priority></url>\n`;
   }
@@ -295,6 +358,6 @@ async function generateResourcesSitemap(supabase: any, now: string): Promise<Res
     xml += `  <url><loc>${SITE_URL}/${typePath}/${escapeXml(r.slug)}</loc><lastmod>${lm}</lastmod><changefreq>monthly</changefreq><priority>0.6</priority></url>\n`;
   }
   xml += `</urlset>`;
-  console.log(`Resources sitemap: ${staticPages.length} listings + ${hubPages.length} hubs + ${resources.length} resources`);
+  console.log(`Resources sitemap: ${hubPages.length} hubs + ${resources.length} resources`);
   return new Response(xml, { headers: corsHeaders });
 }

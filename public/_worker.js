@@ -3,6 +3,17 @@
 const SUPABASE_URL = 'https://riktrtfgpnrqiwatppcq.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJpa3RydGZncG5ycWl3YXRwcGNxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg5MzA2NjEsImV4cCI6MjA4NDUwNjY2MX0.CAVN3HBsibvQuj_0FPNMKJ7d3cKo3kKR77aoXFH6uFQ';
 
+// ── Sitemap routing ─────────────────────────────────────────────────
+// Maps static sitemap file paths to the dynamic-sitemap edge function
+const SITEMAP_ROUTES = {
+  '/sitemap.xml': 'index',
+  '/sitemap-pages.xml': 'pages',
+  '/sitemap-jobs.xml': 'jobs',
+  '/sitemap-blog.xml': 'blog',
+  '/sitemap-seo.xml': 'seo',
+  '/sitemap-resources.xml': 'resources',
+};
+
 // SEO route patterns — match pathname (without query/hash)
 const SEO_ROUTE_PATTERNS = [
   /^\/$/,
@@ -72,7 +83,6 @@ function mergeHTML(originHTML, headHtml, bodyHtml) {
   let originHead = headMatch[1];
 
   // Remove SEO-replaceable tags from original head (will be replaced by headHtml)
-  // Remove: <title>, meta description, canonical, OG tags, twitter tags
   originHead = originHead
     .replace(/<title[^>]*>[\s\S]*?<\/title>/gi, '')
     .replace(/<meta[^>]+name=["']description["'][^>]*\/?>/gi, '')
@@ -111,6 +121,47 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const pathname = url.pathname;
+
+    // ── Sitemap routing: proxy to dynamic-sitemap edge function ──
+    const sitemapType = SITEMAP_ROUTES[pathname];
+    if (sitemapType && request.method === 'GET') {
+      try {
+        const sitemapRes = await fetch(
+          `${SUPABASE_URL}/functions/v1/dynamic-sitemap?type=${sitemapType}`,
+          {
+            headers: {
+              'apikey': SUPABASE_ANON_KEY,
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+        if (sitemapRes.ok) {
+          const xml = await sitemapRes.text();
+          return new Response(xml, {
+            status: 200,
+            headers: {
+              'Content-Type': 'application/xml; charset=utf-8',
+              'Cache-Control': 'public, max-age=1800, s-maxage=3600',
+              'X-Robots-Tag': 'noindex',
+            },
+          });
+        }
+      } catch (err) {
+        console.error('Sitemap proxy error:', err);
+      }
+      // Fallback: serve static sitemap.xml if edge function fails
+      if (pathname === '/sitemap.xml') {
+        return env.ASSETS.fetch(request);
+      }
+      // For sub-sitemaps with no static fallback, return minimal valid XML
+      return new Response(`<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://truejobs.co.in/</loc></url>
+</urlset>`, {
+        status: 200,
+        headers: { 'Content-Type': 'application/xml; charset=utf-8' },
+      });
+    }
 
     // Static assets — serve directly via Pages asset binding
     if (/\.\w{2,5}$/.test(pathname)) {

@@ -1,5 +1,17 @@
 /**
- * Build SEO Cache (Manual/Bulk) Edge Function
+ * Build SEO Cache (Manual/Bulk) Edge Function — INVENTORY-SOURCED PAGES
+ *
+ * ARCHITECTURE NOTE:
+ * This function handles pages sourced from the CLIENT-SIDE INVENTORY
+ * (collectAllPages), NOT from DB tables. It receives pre-built PageData[]
+ * and writes them to seo_page_cache.
+ *
+ * Page types handled here include: standalone, city, category, industry,
+ * authority-*, combo-*, deadline-*, exam-hub, discovery-hub, state-govt,
+ * department, qualification, custom-*, selection-state, etc.
+ *
+ * DB-sourced pages (blog, govt-exam, employment-news) are handled by the
+ * companion function seo-cache-rebuild, which reads directly from DB tables.
  *
  * TEMPORARY WORKAROUND NOTE: The SEO_REBUILD_SECRET used by the companion
  * seo-cache-rebuild function is duplicated in app_settings for pg_cron access.

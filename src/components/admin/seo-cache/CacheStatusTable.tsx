@@ -4,8 +4,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { CachePage, CacheStatus } from './cacheTypes';
-import { MoreHorizontal, Eye, Code, ShieldCheck, RefreshCw, ExternalLink, Loader2 } from 'lucide-react';
+import { CachePage, CacheStatus, isDbSourced } from './cacheTypes';
+import { MoreHorizontal, Eye, ShieldCheck, RefreshCw, ExternalLink, Loader2 } from 'lucide-react';
 
 const STATUS_COLORS: Record<CacheStatus, string> = {
   cached: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200',

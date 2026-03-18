@@ -101,6 +101,18 @@ interface PageData {
   crossLinks: { label: string; slug: string }[];
 }
 
+// ── Noindex page types ───────────────────────────────────────────────
+// Ephemeral / time-sensitive pages that must never be indexed.
+// Must stay in sync with NOINDEX_PAGE_TYPES in build-seo-cache/index.ts,
+// dynamic-sitemap/index.ts, and PAGE_TYPE_POLICIES (seoRoutePolicyRegistry.ts).
+const NOINDEX_PAGE_TYPES = new Set([
+  'deadline-today',
+  'deadline-week',
+  'deadline-month',
+  'combo-closing-soon',
+  'deadline-this-week',
+]);
+
 function generateHeadHTML(page: PageData): string {
   const canonicalUrl = `${SITE_URL}/${page.slug}`;
   const fullTitle = `${page.title} | TrueJobs`;

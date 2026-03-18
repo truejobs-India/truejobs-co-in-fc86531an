@@ -2082,6 +2082,66 @@ export type Database = {
           },
         ]
       }
+      monitoring_review_queue: {
+        Row: {
+          action_decision: string | null
+          channel: string
+          created_at: string
+          id: string
+          item_type: string | null
+          parsed_payload: Json
+          pdf_url: string | null
+          published_at: string | null
+          qa_notes: string | null
+          raw_payload: Json
+          review_status: string
+          reviewed_at: string | null
+          source_id: string | null
+          source_item_id: string | null
+          source_url: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          action_decision?: string | null
+          channel: string
+          created_at?: string
+          id?: string
+          item_type?: string | null
+          parsed_payload?: Json
+          pdf_url?: string | null
+          published_at?: string | null
+          qa_notes?: string | null
+          raw_payload?: Json
+          review_status?: string
+          reviewed_at?: string | null
+          source_id?: string | null
+          source_item_id?: string | null
+          source_url?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          action_decision?: string | null
+          channel?: string
+          created_at?: string
+          id?: string
+          item_type?: string | null
+          parsed_payload?: Json
+          pdf_url?: string | null
+          published_at?: string | null
+          qa_notes?: string | null
+          raw_payload?: Json
+          review_status?: string
+          reviewed_at?: string | null
+          source_id?: string | null
+          source_item_id?: string | null
+          source_url?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       notification_preferences: {
         Row: {
           alert_frequency: string
@@ -2611,6 +2671,226 @@ export type Database = {
           id?: string
           request_hash?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      rss_fetch_runs: {
+        Row: {
+          content_type: string | null
+          created_at: string
+          error_log: string | null
+          finished_at: string | null
+          http_status: number | null
+          id: string
+          items_new: number
+          items_seen: number
+          items_skipped: number
+          items_updated: number
+          response_meta: Json
+          rss_source_id: string
+          run_mode: string
+          started_at: string
+          status: string
+        }
+        Insert: {
+          content_type?: string | null
+          created_at?: string
+          error_log?: string | null
+          finished_at?: string | null
+          http_status?: number | null
+          id?: string
+          items_new?: number
+          items_seen?: number
+          items_skipped?: number
+          items_updated?: number
+          response_meta?: Json
+          rss_source_id: string
+          run_mode?: string
+          started_at?: string
+          status: string
+        }
+        Update: {
+          content_type?: string | null
+          created_at?: string
+          error_log?: string | null
+          finished_at?: string | null
+          http_status?: number | null
+          id?: string
+          items_new?: number
+          items_seen?: number
+          items_skipped?: number
+          items_updated?: number
+          response_meta?: Json
+          rss_source_id?: string
+          run_mode?: string
+          started_at?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rss_fetch_runs_rss_source_id_fkey"
+            columns: ["rss_source_id"]
+            isOneToOne: false
+            referencedRelation: "rss_sources"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rss_items: {
+        Row: {
+          author: string | null
+          canonical_link: string | null
+          categories: string[]
+          created_at: string
+          current_status: string
+          detection_reason: string | null
+          first_pdf_url: string | null
+          first_seen_at: string
+          id: string
+          item_content: string | null
+          item_guid: string | null
+          item_link: string | null
+          item_summary: string | null
+          item_title: string
+          item_type: string
+          last_seen_at: string
+          linked_pdf_urls: string[]
+          normalized_hash: string
+          published_at: string | null
+          raw_payload: Json
+          relevance_level: string
+          rss_source_id: string
+          updated_at: string
+        }
+        Insert: {
+          author?: string | null
+          canonical_link?: string | null
+          categories?: string[]
+          created_at?: string
+          current_status?: string
+          detection_reason?: string | null
+          first_pdf_url?: string | null
+          first_seen_at?: string
+          id?: string
+          item_content?: string | null
+          item_guid?: string | null
+          item_link?: string | null
+          item_summary?: string | null
+          item_title: string
+          item_type?: string
+          last_seen_at?: string
+          linked_pdf_urls?: string[]
+          normalized_hash: string
+          published_at?: string | null
+          raw_payload?: Json
+          relevance_level?: string
+          rss_source_id: string
+          updated_at?: string
+        }
+        Update: {
+          author?: string | null
+          canonical_link?: string | null
+          categories?: string[]
+          created_at?: string
+          current_status?: string
+          detection_reason?: string | null
+          first_pdf_url?: string | null
+          first_seen_at?: string
+          id?: string
+          item_content?: string | null
+          item_guid?: string | null
+          item_link?: string | null
+          item_summary?: string | null
+          item_title?: string
+          item_type?: string
+          last_seen_at?: string
+          linked_pdf_urls?: string[]
+          normalized_hash?: string
+          published_at?: string | null
+          raw_payload?: Json
+          relevance_level?: string
+          rss_source_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rss_items_rss_source_id_fkey"
+            columns: ["rss_source_id"]
+            isOneToOne: false
+            referencedRelation: "rss_sources"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rss_sources: {
+        Row: {
+          category: string | null
+          check_interval_hours: number
+          created_at: string
+          etag: string | null
+          feed_url: string
+          fetch_enabled: boolean
+          focus: string | null
+          id: string
+          language: string | null
+          last_error: string | null
+          last_fetched_at: string | null
+          last_modified: string | null
+          last_success_at: string | null
+          notes: string | null
+          official_site: string | null
+          priority: string
+          source_name: string
+          source_type: string
+          state_or_scope: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          category?: string | null
+          check_interval_hours?: number
+          created_at?: string
+          etag?: string | null
+          feed_url: string
+          fetch_enabled?: boolean
+          focus?: string | null
+          id?: string
+          language?: string | null
+          last_error?: string | null
+          last_fetched_at?: string | null
+          last_modified?: string | null
+          last_success_at?: string | null
+          notes?: string | null
+          official_site?: string | null
+          priority?: string
+          source_name: string
+          source_type?: string
+          state_or_scope?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string | null
+          check_interval_hours?: number
+          created_at?: string
+          etag?: string | null
+          feed_url?: string
+          fetch_enabled?: boolean
+          focus?: string | null
+          id?: string
+          language?: string | null
+          last_error?: string | null
+          last_fetched_at?: string | null
+          last_modified?: string | null
+          last_success_at?: string | null
+          notes?: string | null
+          official_site?: string | null
+          priority?: string
+          source_name?: string
+          source_type?: string
+          state_or_scope?: string | null
+          status?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -3172,6 +3452,14 @@ export type Database = {
       resync_batch_counters: {
         Args: { p_batch_id: string }
         Returns: undefined
+      }
+      sync_rss_review_status: {
+        Args: {
+          p_new_status: string
+          p_qa_notes?: string
+          p_review_queue_id: string
+        }
+        Returns: Json
       }
       unpublish_enrichment: { Args: { p_page_slug: string }; Returns: Json }
       upsert_search_query: {

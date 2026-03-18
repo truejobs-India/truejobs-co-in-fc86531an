@@ -18,13 +18,23 @@ function unregisterServiceWorkers(): void {
 }
 
 /**
- * Cleanup all service workers and caches on EVERY load.
- * PWA has been fully removed — no service workers should ever be active.
+ * Remove any stale <link rel="manifest"> tags that third-party scripts
+ * (like OneSignal) may have injected at runtime. A manifest.json triggers
+ * "Add to Home Screen" / "Update available" prompts in browsers.
+ */
+function removeManifestLinks(): void {
+  document.querySelectorAll('link[rel="manifest"]').forEach((el) => el.remove());
+}
+
+/**
+ * Cleanup all service workers, caches, and PWA artifacts on EVERY load.
+ * PWA and OneSignal have been fully removed — no service workers,
+ * manifests, or consent banners should ever be active.
  */
 export function cleanupPreviewRuntime(): void {
   if (typeof window === "undefined") return;
 
-  // Always unregister any stale service workers (including on production)
   unregisterServiceWorkers();
   clearCaches();
+  removeManifestLinks();
 }

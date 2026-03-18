@@ -1,5 +1,3 @@
-const PRODUCTION_HOSTS = new Set(["truejobs.co.in", "www.truejobs.co.in"]);
-
 function clearCaches(): void {
   if (!("caches" in window)) return;
 
@@ -19,10 +17,14 @@ function unregisterServiceWorkers(): void {
     .catch(() => undefined);
 }
 
+/**
+ * Cleanup all service workers and caches on EVERY load.
+ * PWA has been fully removed — no service workers should ever be active.
+ */
 export function cleanupPreviewRuntime(): void {
   if (typeof window === "undefined") return;
-  if (PRODUCTION_HOSTS.has(window.location.hostname)) return;
 
+  // Always unregister any stale service workers (including on production)
   unregisterServiceWorkers();
   clearCaches();
 }

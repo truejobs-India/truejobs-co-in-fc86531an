@@ -27,7 +27,9 @@ import {
   Globe,
   Download,
   MessageSquare,
+  Rss,
 } from 'lucide-react';
+import { RssIntakeManager } from '@/components/admin/rss-intake/RssIntakeManager';
 import { RestrictedDomainsManager } from '@/components/admin/RestrictedDomainsManager';
 import { EmploymentNewsManager } from '@/components/admin/EmploymentNewsManager';
 import { JobApprovalList } from '@/components/admin/JobApprovalList';
@@ -341,6 +343,10 @@ function AdminDashboardInner() {
                   <MessageSquare className="h-4 w-4" />
                   <span className="hidden sm:inline">Chatbot</span>
                 </TabsTrigger>
+                <TabsTrigger value="rss-intake" className="flex items-center gap-2">
+                  <Rss className="h-4 w-4" />
+                  <span className="hidden sm:inline">RSS Intake</span>
+                </TabsTrigger>
               </TabsList>
 
               <TabsContent value="users">
@@ -425,6 +431,10 @@ function AdminDashboardInner() {
               <TabsContent value="chatbot" className="space-y-6">
                 <ChatbotSettingsManager />
                 <ChatbotAnalytics />
+              </TabsContent>
+
+              <TabsContent value="rss-intake">
+                <RssIntakeManager />
               </TabsContent>
             </Tabs>
           </>

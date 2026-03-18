@@ -1,7 +1,7 @@
 # TrueJobs - robots.txt
 # AI-powered job portal for India
 # Domain: https://truejobs.co.in
-# Last Updated: January 2026
+# Last Updated: March 2026
 
 User-agent: *
 Allow: /
@@ -13,10 +13,18 @@ Allow: /companies
 Allow: /companies/*
 Allow: /blog
 Allow: /blog/*
-Allow: /about
-Allow: /contact
-Allow: /privacy-policy
-Allow: /terms-of-use
+Allow: /sarkari-jobs
+Allow: /sarkari-jobs/*
+Allow: /sample-papers
+Allow: /sample-papers/*
+Allow: /books
+Allow: /books/*
+Allow: /previous-year-papers
+Allow: /previous-year-papers/*
+Allow: /aboutus
+Allow: /contactus
+Allow: /privacypolicy
+Allow: /termsofuse
 
 # Private/authenticated areas - blocked
 Disallow: /login
@@ -35,6 +43,14 @@ Disallow: /dashboard
 Disallow: /dashboard/*
 Disallow: /profile
 Disallow: /profile/*
+Disallow: /enrol-now
+Disallow: /thankyou
+Disallow: /offline
+
+# Download/interstitial pages - noindex to prevent thin content
+Disallow: /sample-papers/*/download
+Disallow: /books/*/download
+Disallow: /previous-year-papers/*/download
 
 # API and internal paths
 Disallow: /api/

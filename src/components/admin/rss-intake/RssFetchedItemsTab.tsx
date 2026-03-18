@@ -7,10 +7,39 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { FileText, ExternalLink, Search, RefreshCw, ClipboardList, EyeOff, ChevronDown, ChevronUp, FileDown } from 'lucide-react';
 import type { RssItem, RssSource } from './rssTypes';
-import { ITEM_TYPES, RELEVANCE_LEVELS, ITEM_STATUSES } from './rssTypes';
+import { ITEM_TYPES, RELEVANCE_LEVELS, ITEM_STATUSES, PRIMARY_DOMAINS, DOMAIN_LABELS } from './rssTypes';
+
+const domainBadgeColors: Record<string, string> = {
+  jobs: 'bg-emerald-100 text-emerald-800',
+  education_services: 'bg-blue-100 text-blue-800',
+  exam_updates: 'bg-purple-100 text-purple-800',
+  public_services: 'bg-cyan-100 text-cyan-800',
+  policy_updates: 'bg-pink-100 text-pink-800',
+  general_alerts: 'bg-gray-100 text-gray-600',
+};
+
+const typeBadgeColors: Record<string, string> = {
+  recruitment: 'bg-emerald-100 text-emerald-800',
+  vacancy: 'bg-green-100 text-green-800',
+  exam: 'bg-blue-100 text-blue-800',
+  admit_card: 'bg-purple-100 text-purple-800',
+  result: 'bg-orange-100 text-orange-800',
+  answer_key: 'bg-yellow-100 text-yellow-800',
+  syllabus: 'bg-cyan-100 text-cyan-800',
+  scholarship: 'bg-indigo-100 text-indigo-800',
+  certificate: 'bg-teal-100 text-teal-800',
+  marksheet: 'bg-lime-100 text-lime-800',
+  school_service: 'bg-sky-100 text-sky-800',
+  university_service: 'bg-violet-100 text-violet-800',
+  document_service: 'bg-amber-100 text-amber-800',
+  policy: 'bg-pink-100 text-pink-800',
+  circular: 'bg-rose-100 text-rose-800',
+  notification: 'bg-fuchsia-100 text-fuchsia-800',
+  signal: 'bg-gray-100 text-gray-600',
+  unknown: 'bg-gray-100 text-gray-500',
+};
 
 export function RssFetchedItemsTab() {
   const { toast } = useAdminToast();
@@ -19,17 +48,17 @@ export function RssFetchedItemsTab() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterSource, setFilterSource] = useState('all');
+  const [filterDomain, setFilterDomain] = useState('all');
   const [filterType, setFilterType] = useState('all');
   const [filterRelevance, setFilterRelevance] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [showDetail, setShowDetail] = useState(false);
-  const [detailItem, setDetailItem] = useState<RssItem | null>(null);
 
   const fetchItems = useCallback(async () => {
     setLoading(true);
     let query = supabase.from('rss_items' as any).select('*').order('first_seen_at', { ascending: false }).limit(200);
     if (filterSource !== 'all') query = query.eq('rss_source_id', filterSource);
+    if (filterDomain !== 'all') query = query.eq('primary_domain', filterDomain);
     if (filterType !== 'all') query = query.eq('item_type', filterType);
     if (filterRelevance !== 'all') query = query.eq('relevance_level', filterRelevance);
     if (filterStatus !== 'all') query = query.eq('current_status', filterStatus);
@@ -38,7 +67,7 @@ export function RssFetchedItemsTab() {
     if (error) toast({ title: 'Error', description: error.message, variant: 'destructive' });
     else setItems((data as any as RssItem[]) || []);
     setLoading(false);
-  }, [filterSource, filterType, filterRelevance, filterStatus]);
+  }, [filterSource, filterDomain, filterType, filterRelevance, filterStatus]);
 
   useEffect(() => {
     fetchItems();
@@ -75,27 +104,6 @@ export function RssFetchedItemsTab() {
     fetchItems();
   };
 
-  const typeBadge = (t: string) => {
-    const colors: Record<string, string> = {
-      recruitment: 'bg-emerald-100 text-emerald-800',
-      vacancy: 'bg-green-100 text-green-800',
-      exam: 'bg-blue-100 text-blue-800',
-      admit_card: 'bg-purple-100 text-purple-800',
-      result: 'bg-orange-100 text-orange-800',
-      answer_key: 'bg-yellow-100 text-yellow-800',
-      syllabus: 'bg-cyan-100 text-cyan-800',
-      policy: 'bg-pink-100 text-pink-800',
-      signal: 'bg-gray-100 text-gray-600',
-      unknown: 'bg-gray-100 text-gray-500',
-    };
-    return <Badge className={colors[t] || 'bg-gray-100 text-gray-500'}>{t.replace('_', ' ')}</Badge>;
-  };
-
-  const relevanceBadge = (r: string) => {
-    const v = r === 'High' ? 'destructive' : r === 'Medium' ? 'default' : 'secondary';
-    return <Badge variant={v}>{r}</Badge>;
-  };
-
   const displayDate = (item: RssItem) => {
     const d = item.published_at || item.first_seen_at;
     return d ? new Date(d).toLocaleDateString() : '—';
@@ -122,11 +130,18 @@ export function RssFetchedItemsTab() {
               {sources.map((s) => <SelectItem key={s.id} value={s.id}>{s.source_name}</SelectItem>)}
             </SelectContent>
           </Select>
+          <Select value={filterDomain} onValueChange={setFilterDomain}>
+            <SelectTrigger className="w-[170px]"><SelectValue placeholder="Domain" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Domains</SelectItem>
+              {PRIMARY_DOMAINS.map((d) => <SelectItem key={d} value={d}>{DOMAIN_LABELS[d]}</SelectItem>)}
+            </SelectContent>
+          </Select>
           <Select value={filterType} onValueChange={setFilterType}>
-            <SelectTrigger className="w-[140px]"><SelectValue placeholder="Type" /></SelectTrigger>
+            <SelectTrigger className="w-[150px]"><SelectValue placeholder="Type" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Types</SelectItem>
-              {ITEM_TYPES.map((t) => <SelectItem key={t} value={t}>{t.replace('_', ' ')}</SelectItem>)}
+              {ITEM_TYPES.map((t) => <SelectItem key={t} value={t}>{t.replace(/_/g, ' ')}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={filterRelevance} onValueChange={setFilterRelevance}>
@@ -157,6 +172,7 @@ export function RssFetchedItemsTab() {
                   <TableHead className="w-8"></TableHead>
                   <TableHead>Source</TableHead>
                   <TableHead>Title</TableHead>
+                  <TableHead>Domain</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Relevance</TableHead>
                   <TableHead>Date</TableHead>
@@ -171,9 +187,10 @@ export function RssFetchedItemsTab() {
                     <TableRow key={item.id} className="cursor-pointer" onClick={() => setExpandedId(expandedId === item.id ? null : item.id)}>
                       <TableCell>{expandedId === item.id ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}</TableCell>
                       <TableCell className="text-xs text-muted-foreground max-w-[100px] truncate">{sourceNameMap[item.rss_source_id] || '—'}</TableCell>
-                      <TableCell className="max-w-[250px]"><p className="text-sm font-medium truncate">{item.item_title}</p></TableCell>
-                      <TableCell>{typeBadge(item.item_type)}</TableCell>
-                      <TableCell>{relevanceBadge(item.relevance_level)}</TableCell>
+                      <TableCell className="max-w-[220px]"><p className="text-sm font-medium truncate">{item.item_title}</p></TableCell>
+                      <TableCell><Badge className={domainBadgeColors[item.primary_domain] || 'bg-gray-100 text-gray-500'}>{DOMAIN_LABELS[item.primary_domain] || item.primary_domain}</Badge></TableCell>
+                      <TableCell><Badge className={typeBadgeColors[item.item_type] || 'bg-gray-100 text-gray-500'}>{item.item_type.replace(/_/g, ' ')}</Badge></TableCell>
+                      <TableCell><Badge variant={item.relevance_level === 'High' ? 'destructive' : item.relevance_level === 'Medium' ? 'default' : 'secondary'}>{item.relevance_level}</Badge></TableCell>
                       <TableCell className="text-xs">{displayDate(item)}</TableCell>
                       <TableCell><Badge variant="outline">{item.current_status}</Badge></TableCell>
                       <TableCell>
@@ -201,9 +218,17 @@ export function RssFetchedItemsTab() {
                     </TableRow>
                     {expandedId === item.id && (
                       <TableRow key={`${item.id}-detail`}>
-                        <TableCell colSpan={9}>
+                        <TableCell colSpan={10}>
                           <div className="p-3 bg-muted/30 rounded space-y-2 text-sm">
                             <p><strong>Full Title:</strong> {item.item_title}</p>
+                            <div className="flex flex-wrap gap-2">
+                              <span><strong>Domain:</strong></span>
+                              <Badge className={domainBadgeColors[item.primary_domain] || ''}>{DOMAIN_LABELS[item.primary_domain] || item.primary_domain}</Badge>
+                              <span><strong>Group:</strong></span>
+                              <span className="text-muted-foreground">{item.display_group}</span>
+                              <span><strong>Type:</strong></span>
+                              <Badge className={typeBadgeColors[item.item_type] || ''}>{item.item_type.replace(/_/g, ' ')}</Badge>
+                            </div>
                             {item.item_summary && <p><strong>Summary:</strong> {item.item_summary.substring(0, 500)}</p>}
                             {item.item_link && <p><strong>Link:</strong> <a href={item.item_link} target="_blank" className="text-primary hover:underline">{item.item_link}</a></p>}
                             {item.categories.length > 0 && <p><strong>Categories:</strong> {item.categories.join(', ')}</p>}

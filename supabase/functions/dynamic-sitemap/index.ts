@@ -190,13 +190,16 @@ async function generateSEOSitemap(supabase: any, now: string): Promise<Response>
   while (true) {
     const { data, error } = await supabase
       .from('seo_page_cache')
-      .select('slug')
+      .select('slug, page_type')
       .range(offset, offset + PAGE_SIZE - 1)
       .order('slug');
     if (error) { console.error('seo_page_cache query error:', error); break; }
     if (!data || data.length === 0) break;
     for (const row of data) {
-      if (row.slug) cachedSlugs.add(row.slug);
+      // Skip noindex page types — these must never appear in sitemaps
+      if (row.slug && !NOINDEX_PAGE_TYPES.has(row.page_type)) {
+        cachedSlugs.add(row.slug);
+      }
     }
     if (data.length < PAGE_SIZE) break;
     offset += PAGE_SIZE;

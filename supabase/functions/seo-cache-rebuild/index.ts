@@ -461,24 +461,41 @@ async function handleSlugsMode(db: any, slugs: string[], triggerSource: string, 
 // ── Full Mode ────────────────────────────────────────────────────────
 
 async function handleFullMode(db: any, triggerSource: string, startTime: number) {
-  // Full rebuild: fetch ALL cached pages and regenerate them
-  // For DB-sourced pages, re-fetch from source tables
-  // For static pages, we can only rebuild what's already in the cache
-  
-  const { data: allCached, error } = await db
-    .from('seo_page_cache')
-    .select('slug, page_type, head_html, body_html, content_hash');
+  // Full rebuild means ALL DB-sourced pages only.
+  // Inventory-sourced pages are handled by build-seo-cache.
+  const [blogRes, examRes, newsRes] = await Promise.all([
+    db.from('blog_posts').select('slug').eq('is_published', true).not('slug', 'is', null),
+    db.from('govt_exams').select('slug').not('slug', 'is', null),
+    db.from('employment_news_jobs').select('slug').eq('status', 'published').not('slug', 'is', null),
+  ]);
 
-  if (error) {
-    return jsonResponse({ error: `Failed to fetch cache: ${error.message}` }, 500);
+  const sourceError = blogRes.error || examRes.error || newsRes.error;
+  if (sourceError) {
+    return jsonResponse({ error: `Failed to fetch DB rebuild targets: ${sourceError.message}` }, 500);
   }
+
+  const targets = [
+    ...(blogRes.data || []).map((row: any) => ({ slug: row.slug, page_type: 'blog' })),
+    ...(examRes.data || []).map((row: any) => ({ slug: row.slug, page_type: 'govt-exam' })),
+    ...(newsRes.data || []).map((row: any) => ({ slug: row.slug, page_type: 'employment-news' })),
+  ];
 
   let rebuilt = 0, skipped = 0, failed = 0;
   const urlsToPurge: string[] = [];
+  const concurrency = 12;
 
-  for (const row of (allCached || [])) {
-    try {
-      const result = await rebuildSingleSlug(db, row.slug, row.page_type || 'unknown');
+  for (let i = 0; i < targets.length; i += concurrency) {
+    const chunk = targets.slice(i, i + concurrency);
+    const results = await Promise.all(chunk.map(async (row) => {
+      try {
+        const result = await rebuildSingleSlug(db, row.slug, row.page_type);
+        return { row, result };
+      } catch {
+        return { row, result: 'failed' as const };
+      }
+    }));
+
+    for (const { row, result } of results) {
       if (result === 'rebuilt') {
         rebuilt++;
         urlsToPurge.push(`${SITE_URL}/${row.slug}`);
@@ -487,8 +504,6 @@ async function handleFullMode(db: any, triggerSource: string, startTime: number)
       } else {
         failed++;
       }
-    } catch {
-      failed++;
     }
   }
 
@@ -496,7 +511,7 @@ async function handleFullMode(db: any, triggerSource: string, startTime: number)
 
   await db.from('seo_rebuild_log').insert({
     rebuild_type: 'full',
-    slugs_requested: (allCached || []).length,
+    slugs_requested: targets.length,
     slugs_rebuilt: rebuilt,
     slugs_skipped: skipped,
     slugs_failed: failed,
@@ -505,7 +520,7 @@ async function handleFullMode(db: any, triggerSource: string, startTime: number)
     trigger_source: triggerSource,
   });
 
-  return jsonResponse({ success: true, total: (allCached || []).length, rebuilt, skipped, failed, cfPurged });
+  return jsonResponse({ success: true, total: targets.length, rebuilt, skipped, failed, cfPurged });
 }
 
 // ── Purge All CF Mode ────────────────────────────────────────────────

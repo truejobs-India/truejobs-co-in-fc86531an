@@ -42,16 +42,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-    <!-- OneSignal Push Notifications -->
-    <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
-    <script>
-      window.OneSignalDeferred = window.OneSignalDeferred || [];
-      OneSignalDeferred.push(async function(OneSignal) {
-        await OneSignal.init({
-          appId: "9a90aded-2ccd-4cf6-8bee-b1dda30893cd",
-        });
-      });
-    </script>
+    <!-- Push notifications removed — OneSignal was injecting consent banners and service workers -->
     <!-- Google AdSense Auto Ads — only load on production domain -->
     <script>
       if (window.location.hostname === 'truejobs.co.in' || window.location.hostname === 'www.truejobs.co.in') {

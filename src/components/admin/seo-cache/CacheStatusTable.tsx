@@ -77,6 +77,7 @@ export function CacheStatusTable({
               </TableHead>
               <TableHead>Title / Slug</TableHead>
               <TableHead>Type</TableHead>
+              <TableHead>Source</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Last Built</TableHead>
               <TableHead>Hash</TableHead>

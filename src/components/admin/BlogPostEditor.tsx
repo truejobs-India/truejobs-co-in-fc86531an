@@ -1395,6 +1395,13 @@ export function BlogPostEditor() {
       {/* ── Bulk Fix & Enrich Workflows ── */}
       <BulkWorkflowPanel posts={posts} blogTextModel={blogTextModel} onComplete={fetchPosts} />
       <SeoMetadataWorkflowPanel posts={posts} onComplete={fetchPosts} />
+      <PendingActionsPanel
+        blogTextModel={blogTextModel}
+        coverImageModel={coverImageModel}
+        inlineImageModel={inlineImageModel}
+        enrichWordLimit={enrichWordLimit}
+        onComplete={fetchPosts}
+      />
 
       {/* ── Bulk Article Generator ── */}
       <div className="px-6 pb-4 border-b">

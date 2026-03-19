@@ -187,8 +187,10 @@ function callAI(model: string, prompt: string): Promise<string> {
       return import('../_shared/vertex-ai.ts').then(m => m.callVertexGemini('gemini-2.5-flash', prompt, 60_000));
     case 'vertex-pro':
       return import('../_shared/vertex-ai.ts').then(m => m.callVertexGemini('gemini-2.5-pro', prompt, 120_000));
+    case 'nova-pro': case 'nova-premier':
+      return import('../_shared/bedrock-nova.ts').then(m => m.callBedrockNova(model, prompt, { maxTokens: 8192, temperature: 0.4 }));
     default:
-      throw new Error(`Unsupported AI model: "${model}". Supported: gemini, mistral, claude-sonnet, openai, groq, lovable-gemini, vertex-flash, vertex-pro`);
+      throw new Error(`Unsupported AI model: "${model}". Supported: gemini, mistral, claude-sonnet, openai, groq, lovable-gemini, vertex-flash, vertex-pro, nova-pro, nova-premier`);
   }
 }
 

@@ -591,6 +591,12 @@ async function callAI(model: string, prompt: string): Promise<any> {
       rawText = await callVertexGemini('gemini-2.5-pro', prompt, 120_000);
       break;
     }
+    case 'nova-pro':
+    case 'nova-premier': {
+      const { callBedrockNova } = await import('../_shared/bedrock-nova.ts');
+      rawText = await callBedrockNova(model, prompt, { maxTokens: 16384, temperature: 0.5 });
+      break;
+    }
     case 'gemini':
     default: {
       // Gemini has its own retry + JSON parse logic

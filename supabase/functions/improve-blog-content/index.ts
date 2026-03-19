@@ -311,13 +311,13 @@ async function callAI(aiModel: string, prompt: string, maxTokens: number): Promi
       actualProvider = 'lovable-gateway'; actualModelId = 'google/gemini-2.5-flash'; break;
     case 'vertex-flash': {
       const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-      const text = await callVertexGemini('gemini-2.5-flash', prompt, 90_000);
+      const text = await callVertexGemini('gemini-2.5-flash', prompt, 90_000, { maxOutputTokens: maxTokens });
       resultJson = JSON.stringify({ __raw: text, __finishReason: 'stop' });
       actualProvider = 'vertex-ai'; actualModelId = 'gemini-2.5-flash'; break;
     }
     case 'vertex-pro': {
       const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-      const text = await callVertexGemini('gemini-2.5-pro', prompt, 120_000);
+      const text = await callVertexGemini('gemini-2.5-pro', prompt, 120_000, { maxOutputTokens: maxTokens });
       resultJson = JSON.stringify({ __raw: text, __finishReason: 'stop' });
       actualProvider = 'vertex-ai'; actualModelId = 'gemini-2.5-pro'; break;
     }
@@ -451,7 +451,9 @@ No markdown code blocks.`;
       if (isStubRebuild && currentWords < 500) {
         prompt = `You are a professional content writer for TrueJobs.co.in, an Indian government job portal.
 
-Write a comprehensive, well-structured article on the topic below. Target approximately ${Math.max(1200, effectiveTarget)} words.
+Write a comprehensive, well-structured article on the topic below.
+STRICT Word count target: ${Math.max(1200, effectiveTarget)} words. Do NOT exceed ${Math.round(Math.max(1200, effectiveTarget) * 1.15)} words. Do NOT write fewer than ${Math.round(Math.max(1200, effectiveTarget) * 0.85)} words.
+${effectiveTarget <= 1200 ? 'Keep sections brief (3-5 sentences max) and skip subsections.' : ''}
 
 TOPIC: ${title}
 Category: ${category || 'General'}
@@ -481,6 +483,11 @@ No JSON wrappers, no markdown, no code blocks, no explanations.`;
         const estimatedTokens = Math.max(8000, Math.ceil(effectiveTarget * 2.5));
         maxTokens = Math.min(estimatedTokens, 65536);
 
+        // Nova models need a generous token budget
+        if (effectiveModel === 'nova-pro' || effectiveModel === 'nova-premier') {
+          maxTokens = Math.max(maxTokens, Math.ceil(Math.max(1200, effectiveTarget) * 2));
+        }
+
         // Claude Sonnet can hit platform timeouts on very large generations — keep output budget tighter.
         if (effectiveModel === 'claude-sonnet' || effectiveModel === 'claude') {
           maxTokens = Math.min(maxTokens, 3500);
@@ -488,7 +495,8 @@ No JSON wrappers, no markdown, no code blocks, no explanations.`;
 
       } else {
         prompt = `You are a professional content editor for TrueJobs.co.in, an Indian government job portal.
-Expand and improve the following article to approximately ${effectiveTarget} words (currently ~${currentWords} words).
+Expand and improve the following article.
+STRICT Word count target: ${effectiveTarget} words. Do NOT exceed ${Math.round(effectiveTarget * 1.15)} words. Do NOT write fewer than ${Math.round(effectiveTarget * 0.85)} words. Currently ~${currentWords} words.
 
 CRITICAL RULES:
 - You MUST return the COMPLETE article — every single section from the original MUST be present in your output
@@ -524,6 +532,11 @@ REMINDER: Your output must contain ALL original content plus additions. Do NOT c
 
         const estimatedTokensNeeded = Math.max(8000, Math.ceil(currentWords * 2.5));
         maxTokens = Math.min(estimatedTokensNeeded, 65536);
+
+        // Nova models need a generous token budget — 1 word ≈ 1.5 tokens for HTML content
+        if (effectiveModel === 'nova-pro' || effectiveModel === 'nova-premier') {
+          maxTokens = Math.max(maxTokens, Math.ceil(effectiveTarget * 2));
+        }
 
         // Claude Sonnet can hit platform timeouts on very large generations — keep output budget tighter.
         if (effectiveModel === 'claude-sonnet' || effectiveModel === 'claude') {

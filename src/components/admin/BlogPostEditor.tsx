@@ -55,6 +55,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { BlogAITools } from './blog/BlogAITools';
 import { normalizeBlogCategory, VALID_BLOG_CATEGORIES } from '@/lib/blogCategoryUtils';
 import { BulkWorkflowPanel } from './blog/BulkWorkflowPanel';
+import { PendingActionsPanel } from './blog/PendingActionsPanel';
 import { SeoMetadataWorkflowPanel } from './blog/SeoMetadataWorkflowPanel';
 import { BlogScoreBreakdown } from './blog/BlogScoreBreakdown';
 import { VertexAITools } from './blog/VertexAITools';
@@ -1394,6 +1395,13 @@ export function BlogPostEditor() {
       {/* ── Bulk Fix & Enrich Workflows ── */}
       <BulkWorkflowPanel posts={posts} blogTextModel={blogTextModel} onComplete={fetchPosts} />
       <SeoMetadataWorkflowPanel posts={posts} onComplete={fetchPosts} />
+      <PendingActionsPanel
+        blogTextModel={blogTextModel}
+        coverImageModel={coverImageModel}
+        inlineImageModel={inlineImageModel}
+        enrichWordLimit={enrichWordLimit}
+        onComplete={fetchPosts}
+      />
 
       {/* ── Bulk Article Generator ── */}
       <div className="px-6 pb-4 border-b">

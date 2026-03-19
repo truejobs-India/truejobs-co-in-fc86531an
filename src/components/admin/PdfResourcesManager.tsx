@@ -203,6 +203,10 @@ export function PdfResourcesManager() {
   const [bulkImageGenerating, setBulkImageGenerating] = useState(false);
   const [bulkImageProgress, setBulkImageProgress] = useState({ current: 0, total: 0 });
 
+  // Bulk publish state
+  const [bulkPublishPhase, setBulkPublishPhase] = useState<'idle' | 'selected' | 'publishing'>('idle');
+  const [bulkPublishProgress, setBulkPublishProgress] = useState({ current: 0, total: 0 });
+
   // Per-row loading states
   const [rowFixingId, setRowFixingId] = useState<string | null>(null);
   const [rowImageId, setRowImageId] = useState<string | null>(null);
@@ -827,8 +831,76 @@ export function PdfResourcesManager() {
     else setSelectedIds(new Set(resources.map(r => r.id)));
   };
 
+  // ─── Bulk Publish ─────────────────────────────────────────
+  const handleBulkPublish = async () => {
+    if (bulkPublishPhase === 'idle') {
+      // Phase 1: select all unpublished
+      const unpublishedIds = resources.filter(r => r.status !== 'published').map(r => r.id);
+      if (unpublishedIds.length === 0) {
+        toast({ title: 'All resources are already published' });
+        return;
+      }
+      setSelectedIds(new Set(unpublishedIds));
+      setBulkPublishPhase('selected');
+      toast({ title: `${unpublishedIds.length} unpublished resources selected`, description: 'Click "Publish Selected" again to publish them all.' });
+      return;
+    }
+
+    // Phase 2: publish selected
+    const toPublish = resources.filter(r => selectedIds.has(r.id) && r.status !== 'published');
+    if (toPublish.length === 0) {
+      toast({ title: 'No unpublished resources selected' });
+      setBulkPublishPhase('idle');
+      return;
+    }
+
+    setBulkPublishPhase('publishing');
+    setBulkPublishProgress({ current: 0, total: toPublish.length });
+
+    let published = 0;
+    for (const r of toPublish) {
+      const { error } = await supabase.from('pdf_resources').update({
+        status: 'published',
+        is_published: true,
+        published_at: new Date().toISOString(),
+      }).eq('id', r.id);
+      if (!error) published++;
+      setBulkPublishProgress(prev => ({ ...prev, current: prev.current + 1 }));
+    }
+
+    toast({ title: `Published ${published}/${toPublish.length} resources` });
+    setBulkPublishPhase('idle');
+    setSelectedIds(new Set());
+    fetchResources();
+  };
+
+  // ─── Download Titles ──────────────────────────────────────
+  const handleDownloadTitles = async () => {
+    // Fetch ALL titles for the current type (not just current page)
+    const { data, error } = await supabase
+      .from('pdf_resources')
+      .select('title')
+      .eq('resource_type', typeFilter)
+      .order('created_at', { ascending: false });
+
+    if (error || !data) {
+      toast({ title: 'Error fetching titles', variant: 'destructive' });
+      return;
+    }
+
+    const text = data.map(r => r.title).join('\n');
+    const blob = new Blob([text], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${typeFilter}_titles.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast({ title: `Downloaded ${data.length} titles` });
+  };
+
   const totalPages = Math.ceil(total / PAGE_SIZE);
-  const isBulkBusy = bulkMetaFixing || bulkImageGenerating || bulkUploading;
+  const isBulkBusy = bulkMetaFixing || bulkImageGenerating || bulkUploading || bulkPublishPhase === 'publishing';
 
   // ─── SEO indicator dot ────────────────────────────────────
   const SeoIndicator = ({ resource }: { resource: PdfResource }) => {
@@ -1002,6 +1074,43 @@ export function PdfResourcesManager() {
                 <Progress value={(bulkImageProgress.current / bulkImageProgress.total) * 100} className="h-2" />
               </div>
             )}
+
+            <div className="h-5 w-px bg-border" />
+
+            {/* Bulk Publish */}
+            <Button
+              variant={bulkPublishPhase === 'selected' ? 'default' : 'outline'}
+              size="sm"
+              className="gap-1.5 h-8 text-xs"
+              disabled={isBulkBusy && bulkPublishPhase !== 'selected'}
+              onClick={handleBulkPublish}
+            >
+              {bulkPublishPhase === 'publishing' ? (
+                <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Publishing {bulkPublishProgress.current}/{bulkPublishProgress.total}</>
+              ) : bulkPublishPhase === 'selected' ? (
+                <><CheckCircle className="h-3.5 w-3.5" /> Publish Selected ({selectedIds.size})</>
+              ) : (
+                <><Eye className="h-3.5 w-3.5" /> Select Unpublished</>
+              )}
+            </Button>
+            {bulkPublishPhase === 'selected' && (
+              <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => { setBulkPublishPhase('idle'); setSelectedIds(new Set()); }}>✕</Button>
+            )}
+
+            {bulkPublishPhase === 'publishing' && (
+              <div className="flex-1 min-w-[100px] max-w-[200px]">
+                <Progress value={(bulkPublishProgress.current / bulkPublishProgress.total) * 100} className="h-2" />
+              </div>
+            )}
+
+            <div className="h-5 w-px bg-border" />
+
+            {/* Download Titles */}
+            <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs"
+              disabled={isBulkBusy || resources.length === 0}
+              onClick={handleDownloadTitles}>
+              <FileText className="h-3.5 w-3.5" /> Download Titles
+            </Button>
 
             {(bulkMetaFixing || bulkImageGenerating) && (
               <Button variant="destructive" size="sm" className="h-8 text-xs ml-auto"

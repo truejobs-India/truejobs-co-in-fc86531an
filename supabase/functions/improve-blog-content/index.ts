@@ -451,7 +451,9 @@ No markdown code blocks.`;
       if (isStubRebuild && currentWords < 500) {
         prompt = `You are a professional content writer for TrueJobs.co.in, an Indian government job portal.
 
-Write a comprehensive, well-structured article on the topic below. Target approximately ${Math.max(1200, effectiveTarget)} words.
+Write a comprehensive, well-structured article on the topic below.
+STRICT Word count target: ${Math.max(1200, effectiveTarget)} words. Do NOT exceed ${Math.round(Math.max(1200, effectiveTarget) * 1.15)} words. Do NOT write fewer than ${Math.round(Math.max(1200, effectiveTarget) * 0.85)} words.
+${effectiveTarget <= 1200 ? 'Keep sections brief (3-5 sentences max) and skip subsections.' : ''}
 
 TOPIC: ${title}
 Category: ${category || 'General'}

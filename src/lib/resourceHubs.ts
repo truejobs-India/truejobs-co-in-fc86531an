@@ -16,6 +16,7 @@ export const RESOURCE_TYPE_PATHS: Record<ResourceType, string> = {
   sample_paper: 'sample-papers',
   book: 'books',
   previous_year_paper: 'previous-year-papers',
+  guide: 'guides',
 };
 
 export const PATH_TO_RESOURCE_TYPE: Record<string, ResourceType> = {

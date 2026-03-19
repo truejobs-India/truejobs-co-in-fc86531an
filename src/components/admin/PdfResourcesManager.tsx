@@ -619,6 +619,7 @@ export function PdfResourcesManager() {
     setBulkImageProgress({ current: 0, total: toGen.length });
     stopBulkRef.current = false;
     const token = await getAuthToken();
+    const interRequestDelayMs = imageAiModel.startsWith('vertex') ? 20000 : 8000;
     let generated = 0;
 
     for (let i = 0; i < toGen.length; i++) {
@@ -634,27 +635,30 @@ export function PdfResourcesManager() {
         if (error) { console.error(`DB update failed for ${r.id}:`, error.message); }
         else generated++;
       } catch (err: any) {
-        if (err.message.includes('Rate limited') || err.message.includes('rate limit') || err.message.includes('429') || err.message.includes('Payment required')) {
-          toast({ title: 'Stopped — rate limited', description: 'Waiting 30s before retrying...', variant: 'destructive' });
-          await new Promise(resolve => setTimeout(resolve, 30000));
-          // Retry same item once after cooldown
+        if (err?.retryable || isRetryableImageError(err.message, err.status)) {
+          const cooldownMs = imageAiModel.startsWith('vertex') ? 45000 : 30000;
+          toast({ title: 'Retrying image generation', description: `Temporary Vertex slowdown detected. Waiting ${Math.round(cooldownMs / 1000)}s...`, variant: 'destructive' });
+          await new Promise(resolve => setTimeout(resolve, cooldownMs));
           if (!stopBulkRef.current) {
             try {
               const retryResult = await generateImageForResource(r, token!);
-              await supabase.from('pdf_resources').update({
+              const { error } = await supabase.from('pdf_resources').update({
                 cover_image_url: retryResult.imageUrl,
                 featured_image_alt: retryResult.altText || r.featured_image_alt,
               }).eq('id', r.id);
-              generated++;
-            } catch { console.error(`Retry also failed for ${r.id}`); }
+              if (!error) generated++;
+              else console.error(`Retry DB update failed for ${r.id}:`, error.message);
+            } catch (retryErr: any) {
+              console.error(`Retry also failed for ${r.id}:`, retryErr.message);
+            }
           }
         } else {
           console.error(`Bulk image failed for ${r.id}:`, err.message);
         }
       }
-      // Throttle: 10s between requests to stay within Vertex AI rate limits
+
       if (i < toGen.length - 1 && !stopBulkRef.current) {
-        await new Promise(resolve => setTimeout(resolve, 10000));
+        await new Promise(resolve => setTimeout(resolve, interRequestDelayMs));
       }
     }
 

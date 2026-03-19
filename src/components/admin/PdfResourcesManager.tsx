@@ -890,6 +890,7 @@ export function PdfResourcesManager() {
             <TabsTrigger value="sample_paper">Sample Papers</TabsTrigger>
             <TabsTrigger value="book">Books</TabsTrigger>
             <TabsTrigger value="previous_year_paper">Previous Year Papers</TabsTrigger>
+            <TabsTrigger value="guide">Guides</TabsTrigger>
           </TabsList>
         </Tabs>
 

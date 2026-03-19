@@ -89,7 +89,7 @@ export default function ResourceHub({ resourceType: propType }: ResourceHubProps
 
   const breadcrumbs = [
     { name: 'Home', url: '/' },
-    { name: typePath === 'books' ? 'Books' : typePath === 'sample-papers' ? 'Sample Papers' : 'Previous Year Papers', url: `/${typePath}` },
+    { name: typePath === 'books' ? 'Books' : typePath === 'sample-papers' ? 'Sample Papers' : typePath === 'guides' ? 'Guides' : 'Previous Year Papers', url: `/${typePath}` },
     { name: hubConfig.label, url: `/${typePath}/hub/${hubSlug}` },
   ];
 
@@ -115,7 +115,7 @@ export default function ResourceHub({ resourceType: propType }: ResourceHubProps
           <Link to="/" className="hover:text-primary">Home</Link>
           <span className="mx-2">›</span>
           <Link to={`/${typePath}`} className="hover:text-primary">
-            {typePath === 'books' ? 'Books' : typePath === 'sample-papers' ? 'Sample Papers' : 'Previous Year Papers'}
+            {typePath === 'books' ? 'Books' : typePath === 'sample-papers' ? 'Sample Papers' : typePath === 'guides' ? 'Guides' : 'Previous Year Papers'}
           </Link>
           <span className="mx-2">›</span>
           <span className="text-foreground">{hubConfig.label}</span>

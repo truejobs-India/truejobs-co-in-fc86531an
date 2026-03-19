@@ -273,7 +273,7 @@ Deno.serve(async (req) => {
       if (!names.length) return new Response(JSON.stringify({ error: 'fileName or fileNames required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
       const rType = resourceType || 'sample_paper';
-      const typeLabels: Record<string, string> = { sample_paper: 'Sample Paper', book: 'Book / Study Material', previous_year_paper: 'Previous Year Paper' };
+      const typeLabels: Record<string, string> = { sample_paper: 'Sample Paper', book: 'Book / Study Material', previous_year_paper: 'Previous Year Paper', guide: 'Study Guide' };
       const typeLabel = typeLabels[rType] || 'Resource';
 
       const fileListStr = names.map((n: string, i: number) => `${i + 1}. "${n}"`).join('\n');

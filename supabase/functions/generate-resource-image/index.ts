@@ -315,7 +315,7 @@ Deno.serve(async (req) => {
     }
 
     const typeLabels: Record<string, string> = {
-      sample_paper: 'Sample Paper', book: 'Study Book', previous_year_paper: 'Previous Year Paper',
+      sample_paper: 'Sample Paper', book: 'Study Book', previous_year_paper: 'Previous Year Paper', guide: 'Study Guide',
     };
     const typeLabel = typeLabels[resourceType] || 'Educational Resource';
 

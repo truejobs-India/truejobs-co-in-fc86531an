@@ -66,6 +66,7 @@ const BlogPost = lazy(() => import("./pages/blog/BlogPost"));
 const SamplePapers = lazy(() => import("./pages/resources/SamplePapers"));
 const Books = lazy(() => import("./pages/resources/Books"));
 const PreviousYearPapers = lazy(() => import("./pages/resources/PreviousYearPapers"));
+const Guides = lazy(() => import("./pages/resources/Guides"));
 const ResourceHub = lazy(() => import("./pages/resources/ResourceHub"));
 const ResourceDetail = lazy(() => import("./pages/resources/ResourceDetail"));
 const ResourceDownload = lazy(() => import("./pages/resources/ResourceDownload"));
@@ -159,6 +160,10 @@ const App = () => (
                 <Route path="/previous-year-papers/hub/:hubSlug" element={<ResourceHub />} />
                 <Route path="/previous-year-papers/:slug/download" element={<ResourceDownload />} />
                 <Route path="/previous-year-papers/:slug" element={<ResourceDetail />} />
+                <Route path="/guides" element={<Guides />} />
+                <Route path="/guides/hub/:hubSlug" element={<ResourceHub />} />
+                <Route path="/guides/:slug/download" element={<ResourceDownload />} />
+                <Route path="/guides/:slug" element={<ResourceDetail />} />
 
                 <Route path="/companies" element={<Companies />} />
                 <Route path="/companies/:slug" element={<CompanyDetail />} />

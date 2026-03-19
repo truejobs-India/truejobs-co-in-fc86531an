@@ -39,6 +39,7 @@ const VALID_LINK_PATTERNS = [
   /^\/blog\//,
   /^\/sample-papers\//,
   /^\/books\//,
+  /^\/guides\//,
   /^\/previous-year-papers\//,
   /^\/sarkari-result\//,
   /^\/answer-key\//,

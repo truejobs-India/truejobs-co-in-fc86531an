@@ -136,6 +136,26 @@ export const RESOURCE_HUBS: Record<ResourceType, Record<string, HubConfig>> = {
       intro: 'Solve banking exam previous year papers from IBPS PO, IBPS Clerk, SBI PO, SBI Clerk, and RBI exams. Practice with actual questions and improve your exam strategy.',
     },
   },
+  guide: {
+    'exam-strategy': {
+      label: 'Exam Strategy Guides',
+      metaTitle: 'Exam Strategy Guides PDF — Free Download 2026 | TrueJobs',
+      metaDescription: 'Download free exam strategy guides in PDF for government exams. Tips, study plans, and preparation strategies.',
+      intro: 'Master your exam preparation with our free strategy guides. Get expert tips on time management, study planning, revision techniques, and scoring strategies for SSC, Banking, Railway, UPSC and other government exams.',
+    },
+    'syllabus-guide': {
+      label: 'Syllabus & Pattern Guides',
+      metaTitle: 'Syllabus & Exam Pattern Guides PDF — Free Download | TrueJobs',
+      metaDescription: 'Download free syllabus and exam pattern guides for government exams. Detailed breakdowns and topic-wise weightage.',
+      intro: 'Understand your exam inside-out with detailed syllabus breakdowns, topic-wise weightage analysis, and exam pattern guides for all major government competitive exams.',
+    },
+    'preparation-tips': {
+      label: 'Preparation Tips Guides',
+      metaTitle: 'Preparation Tips Guides PDF — Free Download 2026 | TrueJobs',
+      metaDescription: 'Download free preparation tips guides for government exams. Subject-wise tips, shortcuts, and study techniques.',
+      intro: 'Boost your preparation with expert tips guides covering subject-wise strategies, shortcuts, formula sheets, and study techniques for competitive government exams.',
+    },
+  },
 };
 
 // All hub slugs flattened

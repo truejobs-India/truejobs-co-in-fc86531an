@@ -311,13 +311,13 @@ async function callAI(aiModel: string, prompt: string, maxTokens: number): Promi
       actualProvider = 'lovable-gateway'; actualModelId = 'google/gemini-2.5-flash'; break;
     case 'vertex-flash': {
       const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-      const text = await callVertexGemini('gemini-2.5-flash', prompt, 90_000);
+      const text = await callVertexGemini('gemini-2.5-flash', prompt, 90_000, { maxOutputTokens: maxTokens });
       resultJson = JSON.stringify({ __raw: text, __finishReason: 'stop' });
       actualProvider = 'vertex-ai'; actualModelId = 'gemini-2.5-flash'; break;
     }
     case 'vertex-pro': {
       const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-      const text = await callVertexGemini('gemini-2.5-pro', prompt, 120_000);
+      const text = await callVertexGemini('gemini-2.5-pro', prompt, 120_000, { maxOutputTokens: maxTokens });
       resultJson = JSON.stringify({ __raw: text, __finishReason: 'stop' });
       actualProvider = 'vertex-ai'; actualModelId = 'gemini-2.5-pro'; break;
     }

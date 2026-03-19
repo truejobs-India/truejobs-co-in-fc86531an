@@ -632,7 +632,7 @@ export function PdfResourcesManager() {
     setBulkImageProgress({ current: 0, total: toGen.length });
     stopBulkRef.current = false;
     const token = await getAuthToken();
-    const interRequestDelayMs = imageAiModel.startsWith('vertex') ? 20000 : 8000;
+    const interRequestDelayMs = imageAiModel.startsWith('vertex') ? 35000 : 10000;
     let generated = 0;
 
     for (let i = 0; i < toGen.length; i++) {
@@ -649,8 +649,8 @@ export function PdfResourcesManager() {
         else generated++;
       } catch (err: any) {
         if (err?.retryable || isRetryableImageError(err.message, err.status)) {
-          const cooldownMs = imageAiModel.startsWith('vertex') ? 45000 : 30000;
-          toast({ title: 'Retrying image generation', description: `Temporary Vertex slowdown detected. Waiting ${Math.round(cooldownMs / 1000)}s...`, variant: 'destructive' });
+          const cooldownMs = imageAiModel.startsWith('vertex') ? 60000 : 30000;
+          toast({ title: 'Retrying image generation', description: `Rate limit hit. Cooling down ${Math.round(cooldownMs / 1000)}s before retry...`, variant: 'destructive' });
           await new Promise(resolve => setTimeout(resolve, cooldownMs));
           if (!stopBulkRef.current) {
             try {

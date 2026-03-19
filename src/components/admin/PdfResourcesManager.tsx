@@ -513,15 +513,41 @@ export function PdfResourcesManager() {
     fetchResources();
   };
 
+  // ─── Fetch ALL resources of current type (for bulk ops) ───
+  const fetchAllResourcesForBulk = async (): Promise<PdfResource[]> => {
+    const all: PdfResource[] = [];
+    const batchSize = 500;
+    let from = 0;
+    let hasMore = true;
+    while (hasMore) {
+      let query = supabase
+        .from('pdf_resources')
+        .select('*')
+        .eq('resource_type', typeFilter)
+        .order('created_at', { ascending: false })
+        .range(from, from + batchSize - 1);
+      if (statusFilter !== 'all') query = query.eq('status', statusFilter);
+      if (search) query = query.ilike('title', `%${search}%`);
+      const { data, error } = await query;
+      if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); break; }
+      all.push(...((data || []) as unknown as PdfResource[]));
+      hasMore = (data?.length || 0) === batchSize;
+      from += batchSize;
+    }
+    return all;
+  };
+
   // ─── Bulk Metadata Scan & Fix ─────────────────────────────
-  const handleBulkMetaScan = () => {
-    const count = resources.filter(needsMetadataFix).length;
+  const handleBulkMetaScan = async () => {
+    const allResources = await fetchAllResourcesForBulk();
+    const count = allResources.filter(needsMetadataFix).length;
     setBulkMetaScanResult(count);
-    toast({ title: 'Scan complete', description: `${count} file(s) need SEO metadata fix.` });
+    toast({ title: 'Scan complete', description: `${count} of ${allResources.length} file(s) need SEO metadata fix.` });
   };
 
   const handleBulkMetaFix = async () => {
-    const toFix = resources.filter(needsMetadataFix);
+    const allResources = await fetchAllResourcesForBulk();
+    const toFix = allResources.filter(needsMetadataFix);
     if (toFix.length === 0) { toast({ title: 'All good', description: 'No files need metadata fix.' }); return; }
 
     setBulkMetaFixing(true);
@@ -529,6 +555,7 @@ export function PdfResourcesManager() {
     stopBulkRef.current = false;
     const token = await getAuthToken();
     let fixed = 0;
+    let failed = 0;
 
     for (let i = 0; i < toFix.length; i++) {
       if (stopBulkRef.current) break;
@@ -537,16 +564,17 @@ export function PdfResourcesManager() {
       try {
         const fileName = r.download_filename || r.title || r.slug;
         const meta = await extractMetadataForFile(fileName, r.resource_type, token!);
-        if (!meta) continue;
+        if (!meta) { failed++; continue; }
 
         const updates: any = {};
         if (!r.title || r.title.length <= 5) updates.title = meta.title;
-        if (!r.meta_title || r.meta_title.length <= 10) updates.meta_title = meta.meta_title;
+        if (!r.meta_title || r.meta_title.length <= 10) updates.meta_title = meta.meta_title?.substring(0, 60);
         if (!r.slug || r.slug.length <= 3) updates.slug = meta.slug;
-        if (!r.meta_description || r.meta_description.length <= 30) updates.meta_description = meta.meta_description;
+        if (!r.meta_description || r.meta_description.length <= 30) updates.meta_description = meta.meta_description?.substring(0, 160);
         if (!r.category) updates.category = meta.category;
         if (!r.excerpt || r.excerpt.length <= 10) updates.excerpt = meta.excerpt;
-        if (!r.subject) updates.subject = meta.subject;
+        // Subject: use AI value, fallback to category or "General"
+        if (!r.subject) updates.subject = meta.subject || meta.category || 'General';
         if (!r.tags || r.tags.length === 0) updates.tags = meta.tags;
         if (!r.featured_image_alt) updates.featured_image_alt = meta.featured_image_alt;
         if (!r.download_filename) updates.download_filename = meta.download_filename;
@@ -558,17 +586,19 @@ export function PdfResourcesManager() {
         if (Object.keys(updates).length > 0) {
           updates.ai_model_used = aiModel;
           updates.ai_generated_at = new Date().toISOString();
-          await supabase.from('pdf_resources').update(updates).eq('id', r.id);
-          fixed++;
+          const { error } = await supabase.from('pdf_resources').update(updates).eq('id', r.id);
+          if (error) { console.error(`DB update failed for ${r.id}:`, error.message); failed++; }
+          else fixed++;
         }
       } catch (err: any) {
         console.error(`Bulk meta fix failed for ${r.id}:`, err.message);
+        failed++;
       }
     }
 
     setBulkMetaFixing(false);
     setBulkMetaScanResult(null);
-    toast({ title: 'Bulk fix complete', description: `${fixed}/${toFix.length} files fixed.` });
+    toast({ title: 'Bulk fix complete', description: `${fixed} fixed, ${failed} failed out of ${toFix.length}.` });
     fetchResources();
   };
 

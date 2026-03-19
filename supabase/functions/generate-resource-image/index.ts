@@ -25,7 +25,7 @@ const LOVABLE_MODEL_MAP: Record<string, string> = {
 // Vertex AI models (user's GCP API)
 // ═══════════════════════════════════════════════════════════════
 const VERTEX_MODEL_MAP: Record<string, string> = {
-  'vertex-pro': 'gemini-2.0-flash-exp',
+  'vertex-pro': 'gemini-2.0-flash-001',
   'vertex-imagen': 'imagen-3.0-generate-002',
 };
 

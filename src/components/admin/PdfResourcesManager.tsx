@@ -315,7 +315,7 @@ export function PdfResourcesManager() {
       if (!r.meta_description || r.meta_description.length <= 30) updates.meta_description = meta.meta_description;
       if (!r.category) updates.category = meta.category;
       if (!r.excerpt || r.excerpt.length <= 10) updates.excerpt = meta.excerpt;
-      if (!r.subject) updates.subject = meta.subject;
+      if (!r.subject) updates.subject = meta.subject || meta.category || 'General';
       if (!r.tags || r.tags.length === 0) updates.tags = meta.tags;
       if (!r.featured_image_alt) updates.featured_image_alt = meta.featured_image_alt;
       if (!r.download_filename) updates.download_filename = meta.download_filename;

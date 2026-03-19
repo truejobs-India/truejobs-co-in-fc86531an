@@ -23,6 +23,7 @@ export const PATH_TO_RESOURCE_TYPE: Record<string, ResourceType> = {
   'sample-papers': 'sample_paper',
   'books': 'book',
   'previous-year-papers': 'previous_year_paper',
+  'guides': 'guide',
 };
 
 // Hub definitions per resource type

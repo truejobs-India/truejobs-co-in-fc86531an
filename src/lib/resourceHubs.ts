@@ -2,7 +2,7 @@
  * Resource hub registry — defines valid hub slugs, SEO metadata, and reserved slugs.
  */
 
-export type ResourceType = 'sample_paper' | 'book' | 'previous_year_paper';
+export type ResourceType = 'sample_paper' | 'book' | 'previous_year_paper' | 'guide';
 
 export interface HubConfig {
   label: string;

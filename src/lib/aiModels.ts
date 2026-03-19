@@ -175,6 +175,15 @@ export const AI_MODELS: readonly AiModelDef[] = [
     provider: 'Google',
     capabilities: ['image'],
   },
+  {
+    value: 'gemini-flash-image-2',
+    label: 'Gemini 3.1 Flash Image',
+    desc: 'Lovable AI · Fast + pro quality',
+    speed: 25,
+    source: 'built-in',
+    provider: 'Google',
+    capabilities: ['image'],
+  },
 ] as const;
 
 // ═══════════════════════════════════════════════════════════════

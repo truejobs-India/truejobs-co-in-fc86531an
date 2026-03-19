@@ -603,14 +603,16 @@ export function PdfResourcesManager() {
   };
 
   // ─── Bulk Image Scan & Generate ───────────────────────────
-  const handleBulkImageScan = () => {
-    const count = resources.filter(needsCoverImage).length;
+  const handleBulkImageScan = async () => {
+    const allResources = await fetchAllResourcesForBulk();
+    const count = allResources.filter(needsCoverImage).length;
     setBulkImageScanResult(count);
-    toast({ title: 'Scan complete', description: `${count} file(s) need a cover image.` });
+    toast({ title: 'Scan complete', description: `${count} of ${allResources.length} file(s) need a cover image.` });
   };
 
   const handleBulkImageGenerate = async () => {
-    const toGen = resources.filter(needsCoverImage);
+    const allResources = await fetchAllResourcesForBulk();
+    const toGen = allResources.filter(needsCoverImage);
     if (toGen.length === 0) { toast({ title: 'All good', description: 'All files have cover images.' }); return; }
 
     setBulkImageGenerating(true);
@@ -625,11 +627,12 @@ export function PdfResourcesManager() {
       const r = toGen[i];
       try {
         const result = await generateImageForResource(r, token!);
-        await supabase.from('pdf_resources').update({
+        const { error } = await supabase.from('pdf_resources').update({
           cover_image_url: result.imageUrl,
           featured_image_alt: result.altText || r.featured_image_alt,
         }).eq('id', r.id);
-        generated++;
+        if (error) { console.error(`DB update failed for ${r.id}:`, error.message); }
+        else generated++;
       } catch (err: any) {
         if (err.message.includes('Rate limited') || err.message.includes('Payment required')) {
           toast({ title: 'Stopped', description: err.message, variant: 'destructive' });

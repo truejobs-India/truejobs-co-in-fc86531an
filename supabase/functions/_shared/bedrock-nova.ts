@@ -103,11 +103,11 @@ async function awsSigV4Fetch(
 
 export const NOVA_MODELS: Record<string, { modelId: string; label: string }> = {
   'nova-pro': {
-    modelId: 'amazon.nova-pro-v1:0',
+    modelId: 'us.amazon.nova-pro-v1:0',
     label: 'Amazon Nova Pro',
   },
   'nova-premier': {
-    modelId: 'amazon.nova-premier-v1:0',
+    modelId: 'us.amazon.nova-premier-v1:0',
     label: 'Amazon Nova Premier',
   },
 };

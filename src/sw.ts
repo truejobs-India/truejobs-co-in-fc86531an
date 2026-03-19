@@ -2,12 +2,8 @@
 declare const self: ServiceWorkerGlobalScope;
 
 import { clientsClaim } from 'workbox-core';
-import { cleanupOutdatedCaches, precacheAndRoute } from 'workbox-precaching';
-import {
-  registerRoute,
-  NavigationRoute,
-  createHandlerBoundToURL,
-} from 'workbox-routing';
+import { cleanupOutdatedCaches, createHandlerBoundToURL, precacheAndRoute } from 'workbox-precaching';
+import { registerRoute, NavigationRoute } from 'workbox-routing';
 import { NetworkOnly, NetworkFirst, StaleWhileRevalidate, CacheFirst } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
 import * as navigationPreload from 'workbox-navigation-preload';
@@ -111,28 +107,12 @@ const NAV_DENYLIST = new RegExp(
   ].join('|'),
 );
 
-const navigationHandler = new NetworkFirst({
-  cacheName: 'navigations',
-  networkTimeoutSeconds: 3,
-});
-
-const navRoute = new NavigationRoute(navigationHandler, {
-  denylist: [NAV_DENYLIST],
-});
-
 registerRoute(navRoute);
 
-// Fallback for navigations that miss the network and aren't in denylist
-// is handled by precached /index.html through NavigationRoute above.
-// Additionally register the handler for the shell:
-const shellHandler = createHandlerBoundToURL('/index.html');
-const shellRoute = new NavigationRoute(shellHandler, {
-  denylist: [NAV_DENYLIST],
-});
-// Replace the generic NetworkFirst nav route with the shell fallback
-// so that offline public pages get the cached SPA shell.
-// Actually we want NetworkFirst *with* fallback to the shell.
-// NavigationRoute already falls back to precached index.html when
-// NetworkFirst fails, because index.html is in the precache manifest.
-// So just the networkFirst NavigationRoute above is sufficient.
-// Remove the duplicate shell route to avoid conflicts.
+// Navigation route: serves precached /index.html for public paths
+const navRoute = new NavigationRoute(
+  createHandlerBoundToURL('/index.html'),
+  { denylist: [NAV_DENYLIST] },
+);
+
+registerRoute(navRoute);

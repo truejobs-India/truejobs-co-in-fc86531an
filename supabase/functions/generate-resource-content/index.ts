@@ -61,49 +61,57 @@ async function callClaude(prompt: string): Promise<string> {
   return data?.content?.[0]?.text || '';
 }
 
-async function callLovableGemini(prompt: string): Promise<string> {
+async function callLovableGateway(prompt: string, gatewayModel: string): Promise<string> {
   const apiKey = Deno.env.get('LOVABLE_API_KEY');
   if (!apiKey) throw new Error('LOVABLE_API_KEY not configured');
-  const resp = await fetch('https://api.lovable.dev/v1/chat/completions', {
+  const resp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: 'google/gemini-2.5-flash', messages: [{ role: 'user', content: prompt }], temperature: 0.65, max_tokens: 8192 }),
+    body: JSON.stringify({ model: gatewayModel, messages: [{ role: 'user', content: prompt }], temperature: 0.65, max_tokens: 8192 }),
   });
-  if (!resp.ok) throw new Error(`Lovable Gemini error: ${resp.status}`);
+  if (!resp.ok) {
+    const errText = await resp.text();
+    if (resp.status === 429) throw new Error('Rate limit exceeded on Lovable AI gateway');
+    if (resp.status === 402) throw new Error('Not enough Lovable AI credits — add funds in Settings → Workspace → Usage');
+    throw new Error(`Lovable gateway error [${resp.status}]: ${errText.substring(0, 200)}`);
+  }
   const data = await resp.json();
   return data?.choices?.[0]?.message?.content || '';
 }
 
-async function callOpenAI(prompt: string): Promise<string> {
-  const apiKey = Deno.env.get('OPENAI_API_KEY');
-  if (!apiKey) throw new Error('OPENAI_API_KEY not configured');
-  const resp = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: 'gpt-4o', messages: [{ role: 'user', content: prompt }], temperature: 0.65, max_tokens: 8192 }),
-  });
-  if (!resp.ok) throw new Error(`OpenAI error: ${resp.status}`);
-  const data = await resp.json();
-  return data?.choices?.[0]?.message?.content || '';
-}
-
-async function callVertexFlash(prompt: string): Promise<string> {
-  const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-  return callVertexGemini('gemini-2.5-flash', prompt, 60_000, {
-    maxOutputTokens: 8192, responseMimeType: 'application/json', temperature: 0.65,
-  });
-}
+/** Model value → Lovable gateway model ID */
+const LOVABLE_GATEWAY_MAP: Record<string, string> = {
+  'gemini-pro': 'google/gemini-2.5-pro',
+  'lovable-gemini': 'google/gemini-2.5-flash',
+  'gpt5': 'openai/gpt-5',
+  'gpt5-mini': 'openai/gpt-5-mini',
+  'nova-pro': 'openai/gpt-5-mini',       // No native Nova on gateway; closest match
+  'nova-premier': 'openai/gpt-5',         // No native Nova on gateway; closest match
+  'mistral': 'google/gemini-2.5-flash',   // No native Mistral on gateway; closest match
+};
 
 async function callAI(model: string, prompt: string): Promise<string> {
+  // Direct API models (user's own keys)
   switch (model) {
     case 'gemini': case 'gemini-flash': return callGemini(prompt);
     case 'groq': return callGroq(prompt);
     case 'claude': case 'claude-sonnet': return callClaude(prompt);
-    case 'lovable-gemini': return callLovableGemini(prompt);
-    case 'openai': case 'gpt5': return callOpenAI(prompt);
+    case 'openai': return callOpenAI(prompt);
     case 'vertex-flash': return callVertexFlash(prompt);
-    default: return callGemini(prompt);
+    case 'vertex-pro': {
+      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      return callVertexGemini('gemini-2.5-pro', prompt, 90_000, {
+        maxOutputTokens: 16384, temperature: 0.65,
+      });
+    }
   }
+  // Lovable gateway models (built-in, no user key needed)
+  const gatewayModel = LOVABLE_GATEWAY_MAP[model];
+  if (gatewayModel) return callLovableGateway(prompt, gatewayModel);
+
+  // Fallback
+  console.warn(`[generate-resource-content] Unknown model "${model}", falling back to gemini-flash`);
+  return callGemini(prompt);
 }
 
 // ═══════════════════════════════════════════════════════════════

@@ -634,11 +634,27 @@ export function PdfResourcesManager() {
         if (error) { console.error(`DB update failed for ${r.id}:`, error.message); }
         else generated++;
       } catch (err: any) {
-        if (err.message.includes('Rate limited') || err.message.includes('Payment required')) {
-          toast({ title: 'Stopped', description: err.message, variant: 'destructive' });
-          break;
+        if (err.message.includes('Rate limited') || err.message.includes('rate limit') || err.message.includes('429') || err.message.includes('Payment required')) {
+          toast({ title: 'Stopped — rate limited', description: 'Waiting 30s before retrying...', variant: 'destructive' });
+          await new Promise(resolve => setTimeout(resolve, 30000));
+          // Retry same item once after cooldown
+          if (!stopBulkRef.current) {
+            try {
+              const retryResult = await generateImageForResource(r, token!);
+              await supabase.from('pdf_resources').update({
+                cover_image_url: retryResult.imageUrl,
+                featured_image_alt: retryResult.altText || r.featured_image_alt,
+              }).eq('id', r.id);
+              generated++;
+            } catch { console.error(`Retry also failed for ${r.id}`); }
+          }
+        } else {
+          console.error(`Bulk image failed for ${r.id}:`, err.message);
         }
-        console.error(`Bulk image failed for ${r.id}:`, err.message);
+      }
+      // Throttle: 10s between requests to stay within Vertex AI rate limits
+      if (i < toGen.length - 1 && !stopBulkRef.current) {
+        await new Promise(resolve => setTimeout(resolve, 10000));
       }
     }
 

@@ -27,7 +27,7 @@ export default function ResourceDetail() {
   })();
 
   const typePath = RESOURCE_TYPE_PATHS[derivedType];
-  const typeLabel = typePath === 'books' ? 'Books' : typePath === 'sample-papers' ? 'Sample Papers' : 'Previous Year Papers';
+  const typeLabel = typePath === 'books' ? 'Books' : typePath === 'sample-papers' ? 'Sample Papers' : typePath === 'guides' ? 'Guides' : 'Previous Year Papers';
 
   useEffect(() => {
     async function fetchResource() {

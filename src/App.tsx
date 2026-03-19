@@ -160,6 +160,10 @@ const App = () => (
                 <Route path="/previous-year-papers/hub/:hubSlug" element={<ResourceHub />} />
                 <Route path="/previous-year-papers/:slug/download" element={<ResourceDownload />} />
                 <Route path="/previous-year-papers/:slug" element={<ResourceDetail />} />
+                <Route path="/guides" element={<Guides />} />
+                <Route path="/guides/hub/:hubSlug" element={<ResourceHub />} />
+                <Route path="/guides/:slug/download" element={<ResourceDownload />} />
+                <Route path="/guides/:slug" element={<ResourceDetail />} />
 
                 <Route path="/companies" element={<Companies />} />
                 <Route path="/companies/:slug" element={<CompanyDetail />} />

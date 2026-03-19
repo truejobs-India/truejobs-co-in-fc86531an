@@ -61,6 +61,7 @@ async function callClaude(prompt: string): Promise<string> {
   return data?.content?.[0]?.text || '';
 }
 
+// ── Lovable AI Gateway (for built-in models that don't have direct API keys) ──
 async function callLovableGateway(prompt: string, gatewayModel: string): Promise<string> {
   const apiKey = Deno.env.get('LOVABLE_API_KEY');
   if (!apiKey) throw new Error('LOVABLE_API_KEY not configured');
@@ -79,39 +80,94 @@ async function callLovableGateway(prompt: string, gatewayModel: string): Promise
   return data?.choices?.[0]?.message?.content || '';
 }
 
-/** Model value → Lovable gateway model ID */
-const LOVABLE_GATEWAY_MAP: Record<string, string> = {
-  'gemini-pro': 'google/gemini-2.5-pro',
-  'lovable-gemini': 'google/gemini-2.5-flash',
-  'gpt5': 'openai/gpt-5',
-  'gpt5-mini': 'openai/gpt-5-mini',
-  'nova-pro': 'openai/gpt-5-mini',       // No native Nova on gateway; closest match
-  'nova-premier': 'openai/gpt-5',         // No native Nova on gateway; closest match
-  'mistral': 'google/gemini-2.5-flash',   // No native Mistral on gateway; closest match
-};
+// ── Mistral Large via AWS Bedrock (user's AWS keys) ──
+async function callMistral(prompt: string): Promise<string> {
+  const { callBedrockNova } = await import('../_shared/bedrock-nova.ts');
+  // Reuse the shared SigV4 fetch — Mistral uses the same Converse API format
+  const ak = Deno.env.get('AWS_ACCESS_KEY_ID');
+  const sk = Deno.env.get('AWS_SECRET_ACCESS_KEY');
+  if (!ak || !sk) throw new Error('AWS credentials not configured (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY)');
+
+  // Import SigV4 from shared module
+  const { awsSigV4Fetch } = await import('../_shared/bedrock-nova.ts');
+  const modelId = 'mistral.mistral-large-2407-v1:0';
+  const region = 'us-west-2';
+  const host = `bedrock-runtime.${region}.amazonaws.com`;
+  const body = JSON.stringify({
+    messages: [{ role: 'user', content: [{ text: prompt }] }],
+    inferenceConfig: { maxTokens: 8192, temperature: 0.65 },
+  });
+  const resp = await awsSigV4Fetch(host, `/model/${modelId}/converse`, body, region, 'bedrock');
+  if (!resp.ok) throw new Error(`Mistral Bedrock error (${resp.status}): ${(await resp.text()).substring(0, 300)}`);
+  const data = await resp.json();
+  return data?.output?.message?.content?.[0]?.text || '';
+}
+
+// ── Amazon Nova via AWS Bedrock (user's AWS keys) ──
+async function callNova(modelKey: string, prompt: string): Promise<string> {
+  const { callBedrockNova } = await import('../_shared/bedrock-nova.ts');
+  return callBedrockNova(modelKey, prompt, { maxTokens: 8192, temperature: 0.65 });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// STRICT MODEL DISPATCHER — every model routes to its REAL provider
+// ═══════════════════════════════════════════════════════════════
 
 async function callAI(model: string, prompt: string): Promise<string> {
-  // Direct API models (user's own keys)
+  console.log(`[generate-resource-content] callAI invoked with model="${model}"`);
+
   switch (model) {
-    case 'gemini': case 'gemini-flash': return callGemini(prompt);
-    case 'groq': return callGroq(prompt);
-    case 'claude': case 'claude-sonnet': return callClaude(prompt);
-    case 'openai': return callOpenAI(prompt);
-    case 'vertex-flash': return callVertexFlash(prompt);
+    // ── Direct API models (user's own API keys) ──
+    case 'gemini-flash':
+    case 'gemini':
+      return callGemini(prompt);
+
+    case 'groq':
+      return callGroq(prompt);
+
+    case 'claude-sonnet':
+    case 'claude':
+      return callClaude(prompt);
+
+    case 'openai':
+      return callOpenAI(prompt);
+
+    case 'vertex-flash': {
+      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      return callVertexGemini('gemini-2.5-flash', prompt, 60_000, { maxOutputTokens: 8192, temperature: 0.65 });
+    }
+
     case 'vertex-pro': {
       const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-      return callVertexGemini('gemini-2.5-pro', prompt, 90_000, {
-        maxOutputTokens: 16384, temperature: 0.65,
-      });
+      return callVertexGemini('gemini-2.5-pro', prompt, 90_000, { maxOutputTokens: 16384, temperature: 0.65 });
     }
-  }
-  // Lovable gateway models (built-in, no user key needed)
-  const gatewayModel = LOVABLE_GATEWAY_MAP[model];
-  if (gatewayModel) return callLovableGateway(prompt, gatewayModel);
 
-  // Fallback
-  console.warn(`[generate-resource-content] Unknown model "${model}", falling back to gemini-flash`);
-  return callGemini(prompt);
+    // ── AWS Bedrock models (user's AWS keys) ──
+    case 'mistral':
+      return callMistral(prompt);
+
+    case 'nova-pro':
+      return callNova('nova-pro', prompt);
+
+    case 'nova-premier':
+      return callNova('nova-premier', prompt);
+
+    // ── Lovable AI Gateway models (platform-provided, no user key needed) ──
+    case 'gemini-pro':
+      return callLovableGateway(prompt, 'google/gemini-2.5-pro');
+
+    case 'lovable-gemini':
+      return callLovableGateway(prompt, 'google/gemini-2.5-flash');
+
+    case 'gpt5':
+      return callLovableGateway(prompt, 'openai/gpt-5');
+
+    case 'gpt5-mini':
+      return callLovableGateway(prompt, 'openai/gpt-5-mini');
+
+    default:
+      throw new Error(`Unsupported AI model: "${model}". No fallback — select a valid model.`);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════

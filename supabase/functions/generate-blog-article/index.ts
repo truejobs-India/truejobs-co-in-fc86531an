@@ -531,8 +531,12 @@ async function callAI(model: string, prompt: string, wordLimit = 1500): Promise<
       const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
       return callVertexGemini('gemini-2.5-pro', prompt, 120_000);
     }
+    case 'nova-pro': case 'nova-premier': {
+      const { callBedrockNova } = await import('../_shared/bedrock-nova.ts');
+      return callBedrockNova(model, prompt, { maxTokens: 16384, temperature: 0.5 });
+    }
     default:
-      throw new Error(`Unsupported AI model: "${model}". Supported: gemini, gemini-flash, gemini-pro, mistral, claude-sonnet, openai, gpt5, groq, lovable-gemini, vertex-flash, vertex-pro`);
+      throw new Error(`Unsupported AI model: "${model}". Supported: gemini, gemini-flash, gemini-pro, mistral, claude-sonnet, openai, gpt5, groq, lovable-gemini, vertex-flash, vertex-pro, nova-pro, nova-premier`);
   }
 }
 

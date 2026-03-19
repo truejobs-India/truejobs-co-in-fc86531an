@@ -80,6 +80,11 @@ async function callTextAI(model: string, prompt: string): Promise<string> {
     return callVertexGemini(vertexModel, prompt, 90_000, { maxOutputTokens: 8192, temperature: 0.5 });
   }
 
+  if (model === 'nova-pro' || model === 'nova-premier') {
+    const { callBedrockNova } = await import('../_shared/bedrock-nova.ts');
+    return callBedrockNova(model, prompt, { maxTokens: 8192, temperature: 0.5 });
+  }
+
   // Fallback: Lovable Gateway
   const apiKey = Deno.env.get('LOVABLE_API_KEY');
   if (!apiKey) throw new Error('LOVABLE_API_KEY not configured');

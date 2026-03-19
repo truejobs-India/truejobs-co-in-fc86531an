@@ -170,6 +170,10 @@ async function callAI(model: string, prompt: string): Promise<string> {
     case 'gpt5-mini': return callGpt5Mini(prompt);
     case 'vertex-flash': return callVertexFlash(prompt);
     case 'vertex-pro': return callVertexPro(prompt);
+    case 'nova-pro': case 'nova-premier': {
+      const { callBedrockNova } = await import('../_shared/bedrock-nova.ts');
+      return callBedrockNova(model, prompt, { maxTokens: 16384, temperature: 0.6 });
+    }
     default: return callGemini(prompt);
   }
 }

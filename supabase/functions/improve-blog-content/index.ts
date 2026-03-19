@@ -277,7 +277,7 @@ async function callLovableGemini(prompt: string, maxTokens: number): Promise<str
 // Unified dispatcher — NO silent fallback
 // ═══════════════════════════════════════════════════════════════
 
-const SUPPORTED_MODELS = ['gemini', 'gemini-flash', 'gemini-pro', 'mistral', 'claude-sonnet', 'claude', 'openai', 'gpt5', 'gpt5-mini', 'groq', 'lovable-gemini', 'vertex-flash', 'vertex-pro'];
+const SUPPORTED_MODELS = ['gemini', 'gemini-flash', 'gemini-pro', 'mistral', 'claude-sonnet', 'claude', 'openai', 'gpt5', 'gpt5-mini', 'groq', 'lovable-gemini', 'vertex-flash', 'vertex-pro', 'nova-pro', 'nova-premier'];
 
 async function callAI(aiModel: string, prompt: string, maxTokens: number): Promise<{ raw: string; finishReason: string; actualProvider: string; actualModelId: string }> {
   const model = aiModel || 'gemini';
@@ -320,6 +320,12 @@ async function callAI(aiModel: string, prompt: string, maxTokens: number): Promi
       const text = await callVertexGemini('gemini-2.5-pro', prompt, 120_000);
       resultJson = JSON.stringify({ __raw: text, __finishReason: 'stop' });
       actualProvider = 'vertex-ai'; actualModelId = 'gemini-2.5-pro'; break;
+    }
+    case 'nova-pro': case 'nova-premier': {
+      const { callBedrockNovaWithMeta } = await import('../_shared/bedrock-nova.ts');
+      const result = await callBedrockNovaWithMeta(model, prompt, { maxTokens: Math.min(maxTokens, 16384), temperature: 0.5 });
+      resultJson = JSON.stringify({ __raw: result.text, __finishReason: result.stopReason });
+      actualProvider = 'aws-bedrock'; actualModelId = model === 'nova-pro' ? 'amazon.nova-pro-v1:0' : 'amazon.nova-premier-v1:0'; break;
     }
     default:
       throw new Error(`Unsupported AI model: "${model}". Supported models: ${SUPPORTED_MODELS.join(', ')}`);

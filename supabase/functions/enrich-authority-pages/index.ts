@@ -752,6 +752,12 @@ async function callAI(
     case 'gpt5-mini':
       rawText = await callOpenAIRaw(prompt, 'openai/gpt-5-mini', timeout);
       return { data: tryParseJSON(rawText) };
+    case 'nova-pro':
+    case 'nova-premier': {
+      const { callBedrockNova } = await import('../_shared/bedrock-nova.ts');
+      rawText = await callBedrockNova(model, prompt, { maxTokens: 16384, temperature: 0.5, timeoutMs: timeout });
+      return { data: tryParseJSON(rawText) };
+    }
     default:
       console.warn(`Unknown model "${model}", defaulting to gemini-flash`);
       rawText = await fetchGemini(prompt, 'gemini-2.5-flash', timeout);

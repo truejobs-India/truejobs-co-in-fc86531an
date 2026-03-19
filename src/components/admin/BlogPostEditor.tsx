@@ -55,6 +55,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { BlogAITools } from './blog/BlogAITools';
 import { normalizeBlogCategory, VALID_BLOG_CATEGORIES } from '@/lib/blogCategoryUtils';
 import { BulkWorkflowPanel } from './blog/BulkWorkflowPanel';
+import { PendingActionsPanel } from './blog/PendingActionsPanel';
 import { SeoMetadataWorkflowPanel } from './blog/SeoMetadataWorkflowPanel';
 import { BlogScoreBreakdown } from './blog/BlogScoreBreakdown';
 import { VertexAITools } from './blog/VertexAITools';

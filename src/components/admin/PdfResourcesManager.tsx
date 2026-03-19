@@ -253,6 +253,19 @@ export function PdfResourcesManager() {
     return session.data.session?.access_token;
   };
 
+  const isRetryableImageError = (message: string, status?: number) => {
+    const normalized = message.toLowerCase();
+    return status === 429
+      || status === 408
+      || status === 503
+      || normalized.includes('rate limit')
+      || normalized.includes('429')
+      || normalized.includes('timed out')
+      || normalized.includes('timeout')
+      || normalized.includes('signal has been aborted')
+      || normalized.includes('temporarily unavailable');
+  };
+
   // ─── AI Metadata Extraction from filename ─────────────────
   const extractMetadataForFile = async (fileName: string, resourceType: string, token: string) => {
     const resp = await fetch(

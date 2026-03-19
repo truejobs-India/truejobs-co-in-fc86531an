@@ -1075,6 +1075,43 @@ export function PdfResourcesManager() {
               </div>
             )}
 
+            <div className="h-5 w-px bg-border" />
+
+            {/* Bulk Publish */}
+            <Button
+              variant={bulkPublishPhase === 'selected' ? 'default' : 'outline'}
+              size="sm"
+              className="gap-1.5 h-8 text-xs"
+              disabled={isBulkBusy && bulkPublishPhase !== 'selected'}
+              onClick={handleBulkPublish}
+            >
+              {bulkPublishPhase === 'publishing' ? (
+                <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Publishing {bulkPublishProgress.current}/{bulkPublishProgress.total}</>
+              ) : bulkPublishPhase === 'selected' ? (
+                <><CheckCircle className="h-3.5 w-3.5" /> Publish Selected ({selectedIds.size})</>
+              ) : (
+                <><Eye className="h-3.5 w-3.5" /> Select Unpublished</>
+              )}
+            </Button>
+            {bulkPublishPhase === 'selected' && (
+              <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => { setBulkPublishPhase('idle'); setSelectedIds(new Set()); }}>✕</Button>
+            )}
+
+            {bulkPublishPhase === 'publishing' && (
+              <div className="flex-1 min-w-[100px] max-w-[200px]">
+                <Progress value={(bulkPublishProgress.current / bulkPublishProgress.total) * 100} className="h-2" />
+              </div>
+            )}
+
+            <div className="h-5 w-px bg-border" />
+
+            {/* Download Titles */}
+            <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs"
+              disabled={isBulkBusy || resources.length === 0}
+              onClick={handleDownloadTitles}>
+              <FileText className="h-3.5 w-3.5" /> Download Titles
+            </Button>
+
             {(bulkMetaFixing || bulkImageGenerating) && (
               <Button variant="destructive" size="sm" className="h-8 text-xs ml-auto"
                 onClick={() => { stopBulkRef.current = true; }}>

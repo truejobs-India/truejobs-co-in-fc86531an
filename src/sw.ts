@@ -107,8 +107,6 @@ const NAV_DENYLIST = new RegExp(
   ].join('|'),
 );
 
-registerRoute(navRoute);
-
 // Navigation route: serves precached /index.html for public paths
 const navRoute = new NavigationRoute(
   createHandlerBoundToURL('/index.html'),

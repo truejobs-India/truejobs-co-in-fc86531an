@@ -36,7 +36,7 @@ async function sha256Hex(data: string): Promise<string> {
     .join('');
 }
 
-async function awsSigV4Fetch(
+export async function awsSigV4Fetch(
   host: string,
   rawPath: string,
   body: string,

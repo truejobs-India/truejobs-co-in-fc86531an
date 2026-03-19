@@ -82,13 +82,6 @@ async function callLovableGateway(prompt: string, gatewayModel: string): Promise
 
 // ── Mistral Large via AWS Bedrock (user's AWS keys) ──
 async function callMistral(prompt: string): Promise<string> {
-  const { callBedrockNova } = await import('../_shared/bedrock-nova.ts');
-  // Reuse the shared SigV4 fetch — Mistral uses the same Converse API format
-  const ak = Deno.env.get('AWS_ACCESS_KEY_ID');
-  const sk = Deno.env.get('AWS_SECRET_ACCESS_KEY');
-  if (!ak || !sk) throw new Error('AWS credentials not configured (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY)');
-
-  // Import SigV4 from shared module
   const { awsSigV4Fetch } = await import('../_shared/bedrock-nova.ts');
   const modelId = 'mistral.mistral-large-2407-v1:0';
   const region = 'us-west-2';

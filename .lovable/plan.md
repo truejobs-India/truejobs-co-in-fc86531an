@@ -1,83 +1,81 @@
 
 
-## Re-enable PWA with injectManifest + Custom Service Worker
+## Problem Analysis
 
-### What this does
-Makes TrueJobs installable as a PWA with offline-capable public browsing, while keeping all sensitive flows (admin, auth, employer, tools, mutations, API calls) strictly network-dependent. Updates are silent — no "Update available" prompt. When you Publish, users get the new version automatically on next navigation.
+Three distinct issues cause word count mismatches across AI models during blog enrichment:
 
-### Files to create (3)
+### Issue 1: Nova Pro & Nova Premier produce too few words (~800 instead of 1500)
+- The enrichment prompt uses soft language: "approximately X words"
+- Nova models tend to be conservative with output length and need explicit, strict word count instructions
+- The `STRICT Word count` instruction pattern (already used in other edge functions like `generate-custom-page`) is missing from the enrichment prompts
 
-**1. `public/manifest.webmanifest`**
-Standard web app manifest with TrueJobs branding, standalone display, `#2563eb` theme, icons at 192 and 512 reusing existing `/pwa-icon.png` with `"any maskable"` purpose.
+### Issue 2: Gemini 2.5 Flash overshoots (~2000 instead of 1500)
+- The `callAI` dispatcher calls `callVertexGemini('gemini-2.5-flash', prompt, 90_000)` passing only a timeout — **no `maxOutputTokens` option**
+- This means Vertex AI defaults to 8192 output tokens, giving Gemini unlimited room to overshoot
+- The prompt also lacks a strict upper-bound instruction
 
-**2. `src/sw.ts`** — Custom Workbox service worker
-- Imports from `workbox-core`, `workbox-precaching`, `workbox-routing`, `workbox-strategies`, `workbox-expiration`, `workbox-navigation-preload`
-- Calls `cleanupOutdatedCaches()`, `precacheAndRoute(self.__WB_MANIFEST)`, `self.skipWaiting()`, `clientsClaim()`, enables navigation preload
+### Issue 3: No strict word count enforcement in prompts
+- Other functions (e.g., `generate-custom-page`) already use the pattern: `STRICT Word count target: X words. Do NOT exceed Y words.`
+- The `enrich-article` prompts in `improve-blog-content` don't use this pattern
 
-Route registration order:
+---
 
-| # | Match | Strategy | Details |
-|---|-------|----------|---------|
-| A | Non-GET requests | NetworkOnly | Custom match on `request.method !== 'GET'` |
-| B | Supabase `/rest/v1/` and `/functions/v1/` | NetworkOnly | URL string match |
-| C | Sensitive nav paths (`/admin`, `/dashboard`, `/employer`, `/login`, `/signup`, `/phone-signup`, `/forgot-password`, `/profile`, `/enrol-now`, `/tools/resume-builder`, `/tools/resume-checker`, `/auth/callback`) | NetworkOnly | Navigation request + URL path match |
-| D | `fonts.googleapis.com` | StaleWhileRevalidate | Cache: `google-fonts-stylesheets` |
-| E | `fonts.gstatic.com` | CacheFirst | Cache: `google-fonts-webfonts`, 30 entries, 365d |
-| F | Images (png/jpg/jpeg/webp/svg/ico) | CacheFirst | Cache: `images`, 200 entries, 30d |
-| G | JS/CSS | StaleWhileRevalidate | Cache: `static-assets` |
-| H | Other navigation | NetworkFirst | 3s timeout |
+## Plan
 
-Navigation fallback via `NavigationRoute` with `createHandlerBoundToURL('/index.html')` and a denylist regex excluding `/admin`, `/dashboard`, `/employer`, `/login`, `/signup`, `/phone-signup`, `/forgot-password`, `/profile`, `/enrol-now`, `/tools/`, `/auth/`, `/api/`, `/rest/`, `/functions/`.
+### Step 1: Add strict word count instructions to enrichment prompts
+**File**: `supabase/functions/improve-blog-content/index.ts`
 
-**3. `src/pwa.d.ts`** — Replace with module declaration for `virtual:pwa-register`.
+In both the stub-rebuild prompt (line ~454) and the standard enrichment prompt (line ~491), replace the soft "approximately X words" with:
 
-### Files to modify (6)
+```
+STRICT Word count target: ${effectiveTarget} words. Do NOT exceed ${Math.round(effectiveTarget * 1.15)} words.
+${effectiveTarget <= 1200 ? 'Keep sections brief (3-5 sentences max) and skip subsections.' : ''}
+```
 
-**4. `package.json`**
-- devDependencies: add `vite-plugin-pwa`
-- dependencies: add `workbox-core`, `workbox-precaching`, `workbox-routing`, `workbox-strategies`, `workbox-expiration`, `workbox-navigation-preload`
+This matches the proven pattern from `generate-custom-page`.
 
-**5. `vite.config.ts`**
-Add `VitePWA` plugin with `strategies: 'injectManifest'`, `srcDir: 'src'`, `filename: 'sw.ts'`, `registerType: 'autoUpdate'`, `injectManifest.maximumFileSizeToCacheInBytes: 5MB`, `manifest: false`, `devOptions.enabled: false`.
+### Step 2: Pass maxOutputTokens to Vertex AI calls
+**File**: `supabase/functions/improve-blog-content/index.ts`
 
-**6. `index.html`**
-Add after the theme-color meta tag:
-- `<link rel="manifest" href="/manifest.webmanifest">`
-- `<meta name="apple-mobile-web-app-capable" content="yes">`
-- `<meta name="apple-mobile-web-app-status-bar-style" content="default">`
+Update the `vertex-flash` and `vertex-pro` cases in `callAI` to pass the `maxTokens` parameter through to Vertex AI as `maxOutputTokens`:
 
-**7. `src/main.tsx`**
-- Remove `cleanupPreviewRuntime` import and call
-- Add `import { registerSW } from 'virtual:pwa-register'` and `registerSW({ immediate: true })` — no `onNeedRefresh`, purely silent
+```typescript
+case 'vertex-flash': {
+  const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+  const text = await callVertexGemini('gemini-2.5-flash', prompt, 90_000, { maxOutputTokens: maxTokens });
+  ...
+}
+case 'vertex-pro': {
+  const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+  const text = await callVertexGemini('gemini-2.5-pro', prompt, 120_000, { maxOutputTokens: maxTokens });
+  ...
+}
+```
 
-**8. `src/utils/previewCleanup.ts`**
-Rewrite to only clean third-party artifacts:
-- `unregisterServiceWorkers`: skip SWs ending with `/sw.js`
-- `clearCaches`: only delete keys containing `onesignal` (case-insensitive)
-- `removeManifestLinks`: only remove links whose href ≠ `/manifest.webmanifest`
-- Keep exported but no longer called from `main.tsx`
+This caps Gemini's token budget to match the requested word count instead of defaulting to 8192.
 
-**9. `src/hooks/usePWAInstall.ts`**
-Restore real logic with `useEffect`/`useState`:
-- `beforeinstallprompt` listener → store deferred prompt → `isInstallable: true`
-- `isInstalled`: `matchMedia('(display-mode: standalone)')` or `navigator.standalone`
-- `isIOS`: UA detection
-- `installApp()`: call `prompt()`, await `userChoice`, return outcome
-- Cleanup on unmount
+### Step 3: Tune Nova token budget relative to word target
+**File**: `supabase/functions/improve-blog-content/index.ts`
 
-### TypeScript compatibility
-`tsconfig.app.json` currently has `lib: ["ES2020", "DOM", "DOM.Iterable"]`. The SW file needs `WebWorker` types but it runs in a different context. Since `vite-plugin-pwa` with `injectManifest` compiles `src/sw.ts` separately using its own tsconfig (via Rollup), and `skipLibCheck: true` is already set, the build will succeed. The SW file will use `declare const self: ServiceWorkerGlobalScope` at the top for type safety without modifying the app's tsconfig.
+For Nova models, the `maxTokens` calculation already works, but add a model-specific floor so Nova doesn't cut short. After `maxTokens` is computed for enrichment, add:
 
-### What stays unchanged
-- `usePushNotifications.ts` — remains inert stub
-- All routes, components, admin logic, Cloudflare Pages worker
-- No broad cache clearing or SW unregistration reintroduced
+```typescript
+// Nova models need a generous token budget — 1 word ≈ 1.5 tokens for HTML content
+if (model === 'nova-pro' || model === 'nova-premier') {
+  maxTokens = Math.max(maxTokens, Math.ceil(effectiveTarget * 2));
+}
+```
 
-### Update behavior after Publish
-1. New assets deploy with new content hashes
-2. Browser detects updated precache manifest on next visit
-3. New SW installs → `skipWaiting()` + `clientsClaim()` → immediately active
-4. No toast, no prompt, no manual action required
-5. User gets new version on next navigation/reload
-6. Already-open tabs are controlled by new SW on next fetch cycle
+### Step 4: Redeploy and verify
+- Redeploy `improve-blog-content` edge function
+- Smoke-test with a Nova Premier and Gemini Flash call to verify word counts land closer to target
+
+### Summary of changes
+| Model | Problem | Fix |
+|-------|---------|-----|
+| Nova Pro/Premier | Soft prompt → short output | Add STRICT word count instruction + increase token floor |
+| Gemini Flash | No maxOutputTokens passed → overshoot | Pass maxTokens through to Vertex AI options |
+| All models | "approximately" wording | Replace with strict upper-bound language |
+
+**Files modified**: `supabase/functions/improve-blog-content/index.ts` (single file, ~4 targeted edits)
 

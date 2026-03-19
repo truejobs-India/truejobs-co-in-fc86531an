@@ -33,6 +33,26 @@ function isVertexModel(model: string): boolean {
   return model in VERTEX_MODEL_MAP;
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getRetryAfterMs(resp: Response): number | null {
+  const retryAfter = resp.headers.get('retry-after');
+  if (!retryAfter) return null;
+
+  const seconds = Number(retryAfter);
+  if (Number.isFinite(seconds)) return seconds * 1000;
+
+  const dateMs = Date.parse(retryAfter);
+  if (Number.isNaN(dateMs)) return null;
+  return Math.max(dateMs - Date.now(), 0);
+}
+
+function isAbortError(err: unknown): boolean {
+  return err instanceof Error && err.name === 'AbortError';
+}
+
 // ═══════════════════════════════════════════════════════════════
 // Image generation via Vertex AI (Gemini multimodal)
 // ═══════════════════════════════════════════════════════════════
@@ -43,48 +63,80 @@ async function generateImageVertexGemini(prompt: string, vertexModel: string): P
 
   const accessToken = await getVertexAccessToken();
   const url = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${vertexModel}:generateContent`;
+  const maxRetries = 3;
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 90_000);
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 150_000);
 
-  try {
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: 0.8,
-          maxOutputTokens: 8192,
-          responseModalities: ['IMAGE', 'TEXT'],
+    try {
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
         },
-      }),
-      signal: controller.signal,
-    });
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0.8,
+            maxOutputTokens: 8192,
+            responseModalities: ['IMAGE', 'TEXT'],
+          },
+        }),
+        signal: controller.signal,
+      });
 
-    if (!resp.ok) {
-      const errText = await resp.text();
-      if (resp.status === 429) throw new Error('VERTEX_RATE_LIMITED');
-      if (resp.status === 403) throw new Error(`Vertex AI access denied: ${errText.substring(0, 200)}`);
-      throw new Error(`Vertex AI error (${resp.status}): ${errText.substring(0, 300)}`);
-    }
-
-    const data = await resp.json();
-    const parts = data?.candidates?.[0]?.content?.parts || [];
-
-    for (const part of parts) {
-      if (part.inlineData?.data) {
-        return { base64: part.inlineData.data, mimeType: part.inlineData.mimeType || 'image/png' };
+      if (resp.status === 429) {
+        const retryAfterMs = getRetryAfterMs(resp);
+        if (attempt < maxRetries) {
+          const waitMs = retryAfterMs ?? Math.min(5000 * Math.pow(2, attempt), 45_000);
+          console.warn(`[generate-resource-image] Vertex AI rate limited for ${vertexModel}, retry ${attempt + 1}/${maxRetries} after ${Math.round(waitMs)}ms`);
+          await sleep(waitMs);
+          continue;
+        }
+        throw new Error('VERTEX_RATE_LIMITED');
       }
-    }
 
-    throw new Error('Vertex AI returned no image data');
-  } finally {
-    clearTimeout(timer);
+      if (!resp.ok) {
+        const errText = await resp.text();
+        if (resp.status === 403) throw new Error(`Vertex AI access denied: ${errText.substring(0, 200)}`);
+        if (resp.status >= 500 && attempt < maxRetries) {
+          const waitMs = Math.min(4000 * Math.pow(2, attempt), 30_000);
+          console.warn(`[generate-resource-image] Vertex AI ${resp.status} for ${vertexModel}, retry ${attempt + 1}/${maxRetries} after ${Math.round(waitMs)}ms`);
+          await sleep(waitMs);
+          continue;
+        }
+        throw new Error(`Vertex AI error (${resp.status}): ${errText.substring(0, 300)}`);
+      }
+
+      const data = await resp.json();
+      const parts = data?.candidates?.[0]?.content?.parts || [];
+
+      for (const part of parts) {
+        if (part.inlineData?.data) {
+          return { base64: part.inlineData.data, mimeType: part.inlineData.mimeType || 'image/png' };
+        }
+      }
+
+      throw new Error('Vertex AI returned no image data');
+    } catch (err) {
+      if (isAbortError(err)) {
+        if (attempt < maxRetries) {
+          const waitMs = Math.min(6000 * (attempt + 1), 20_000);
+          console.warn(`[generate-resource-image] Vertex AI timed out for ${vertexModel}, retry ${attempt + 1}/${maxRetries} after ${Math.round(waitMs)}ms`);
+          await sleep(waitMs);
+          continue;
+        }
+        throw new Error('VERTEX_TIMEOUT');
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
   }
+
+  throw new Error('VERTEX_TIMEOUT');
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -97,44 +149,76 @@ async function generateImageVertexImagen(prompt: string): Promise<{ base64: stri
 
   const accessToken = await getVertexAccessToken();
   const url = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/imagen-3.0-generate-002:predict`;
+  const maxRetries = 2;
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 60_000);
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 120_000);
 
-  try {
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        instances: [{ prompt }],
-        parameters: {
-          sampleCount: 1,
-          aspectRatio: '16:9',
-          personGeneration: 'allow_adult',
+    try {
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
         },
-      }),
-      signal: controller.signal,
-    });
+        body: JSON.stringify({
+          instances: [{ prompt }],
+          parameters: {
+            sampleCount: 1,
+            aspectRatio: '16:9',
+            personGeneration: 'allow_adult',
+          },
+        }),
+        signal: controller.signal,
+      });
 
-    if (!resp.ok) {
-      const errText = await resp.text();
-      if (resp.status === 429) throw new Error('VERTEX_RATE_LIMITED');
-      throw new Error(`Imagen error (${resp.status}): ${errText.substring(0, 300)}`);
+      if (resp.status === 429) {
+        const retryAfterMs = getRetryAfterMs(resp);
+        if (attempt < maxRetries) {
+          const waitMs = retryAfterMs ?? Math.min(6000 * Math.pow(2, attempt), 45_000);
+          console.warn(`[generate-resource-image] Imagen rate limited, retry ${attempt + 1}/${maxRetries} after ${Math.round(waitMs)}ms`);
+          await sleep(waitMs);
+          continue;
+        }
+        throw new Error('VERTEX_RATE_LIMITED');
+      }
+
+      if (!resp.ok) {
+        const errText = await resp.text();
+        if (resp.status >= 500 && attempt < maxRetries) {
+          const waitMs = Math.min(5000 * Math.pow(2, attempt), 30_000);
+          console.warn(`[generate-resource-image] Imagen ${resp.status}, retry ${attempt + 1}/${maxRetries} after ${Math.round(waitMs)}ms`);
+          await sleep(waitMs);
+          continue;
+        }
+        throw new Error(`Imagen error (${resp.status}): ${errText.substring(0, 300)}`);
+      }
+
+      const data = await resp.json();
+      const predictions = data?.predictions;
+      if (!predictions?.length || !predictions[0].bytesBase64Encoded) {
+        throw new Error('Imagen returned no image data');
+      }
+
+      return { base64: predictions[0].bytesBase64Encoded, mimeType: predictions[0].mimeType || 'image/png' };
+    } catch (err) {
+      if (isAbortError(err)) {
+        if (attempt < maxRetries) {
+          const waitMs = Math.min(7000 * (attempt + 1), 20_000);
+          console.warn(`[generate-resource-image] Imagen timed out, retry ${attempt + 1}/${maxRetries} after ${Math.round(waitMs)}ms`);
+          await sleep(waitMs);
+          continue;
+        }
+        throw new Error('VERTEX_TIMEOUT');
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
     }
-
-    const data = await resp.json();
-    const predictions = data?.predictions;
-    if (!predictions?.length || !predictions[0].bytesBase64Encoded) {
-      throw new Error('Imagen returned no image data');
-    }
-
-    return { base64: predictions[0].bytesBase64Encoded, mimeType: predictions[0].mimeType || 'image/png' };
-  } finally {
-    clearTimeout(timer);
   }
+
+  throw new Error('VERTEX_TIMEOUT');
 }
 
 // ═══════════════════════════════════════════════════════════════

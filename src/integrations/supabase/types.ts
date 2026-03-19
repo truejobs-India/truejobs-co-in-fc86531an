@@ -2680,6 +2680,104 @@ export type Database = {
         }
         Relationships: []
       }
+      rss_ai_processing: {
+        Row: {
+          analysis_error: string | null
+          analysis_model: string | null
+          analysis_output: Json | null
+          analysis_run_at: string | null
+          analysis_status: string
+          cover_image_url: string | null
+          created_at: string
+          enrichment_error: string | null
+          enrichment_model: string | null
+          enrichment_output: Json | null
+          enrichment_run_at: string | null
+          enrichment_status: string
+          enrichment_word_limit: number | null
+          id: string
+          image_error: string | null
+          image_model: string | null
+          image_prompt_used: string | null
+          image_run_at: string | null
+          image_status: string
+          rss_item_id: string
+          seo_check_status: string
+          seo_error: string | null
+          seo_model: string | null
+          seo_output: Json | null
+          seo_run_at: string | null
+          seo_score: number | null
+          updated_at: string
+        }
+        Insert: {
+          analysis_error?: string | null
+          analysis_model?: string | null
+          analysis_output?: Json | null
+          analysis_run_at?: string | null
+          analysis_status?: string
+          cover_image_url?: string | null
+          created_at?: string
+          enrichment_error?: string | null
+          enrichment_model?: string | null
+          enrichment_output?: Json | null
+          enrichment_run_at?: string | null
+          enrichment_status?: string
+          enrichment_word_limit?: number | null
+          id?: string
+          image_error?: string | null
+          image_model?: string | null
+          image_prompt_used?: string | null
+          image_run_at?: string | null
+          image_status?: string
+          rss_item_id: string
+          seo_check_status?: string
+          seo_error?: string | null
+          seo_model?: string | null
+          seo_output?: Json | null
+          seo_run_at?: string | null
+          seo_score?: number | null
+          updated_at?: string
+        }
+        Update: {
+          analysis_error?: string | null
+          analysis_model?: string | null
+          analysis_output?: Json | null
+          analysis_run_at?: string | null
+          analysis_status?: string
+          cover_image_url?: string | null
+          created_at?: string
+          enrichment_error?: string | null
+          enrichment_model?: string | null
+          enrichment_output?: Json | null
+          enrichment_run_at?: string | null
+          enrichment_status?: string
+          enrichment_word_limit?: number | null
+          id?: string
+          image_error?: string | null
+          image_model?: string | null
+          image_prompt_used?: string | null
+          image_run_at?: string | null
+          image_status?: string
+          rss_item_id?: string
+          seo_check_status?: string
+          seo_error?: string | null
+          seo_model?: string | null
+          seo_output?: Json | null
+          seo_run_at?: string | null
+          seo_score?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rss_ai_processing_rss_item_id_fkey"
+            columns: ["rss_item_id"]
+            isOneToOne: true
+            referencedRelation: "rss_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       rss_fetch_runs: {
         Row: {
           content_type: string | null

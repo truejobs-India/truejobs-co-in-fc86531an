@@ -7,9 +7,16 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { FileText, ExternalLink, Search, RefreshCw, ClipboardList, EyeOff, ChevronDown, ChevronUp, FileDown } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import {
+  FileText, ExternalLink, Search, RefreshCw, ClipboardList, EyeOff,
+  ChevronDown, ChevronUp, FileDown, Sparkles, Brain, Image, ShieldCheck, MoreHorizontal,
+  CheckCircle2, XCircle, Loader2, Clock,
+} from 'lucide-react';
 import type { RssItem, RssSource } from './rssTypes';
 import { ITEM_TYPES, RELEVANCE_LEVELS, ITEM_STATUSES, PRIMARY_DOMAINS, DOMAIN_LABELS } from './rssTypes';
+import { RssAiActionModal } from './RssAiActionModal';
 
 const domainBadgeColors: Record<string, string> = {
   jobs: 'bg-emerald-100 text-emerald-800',
@@ -41,10 +48,34 @@ const typeBadgeColors: Record<string, string> = {
   unknown: 'bg-gray-100 text-gray-500',
 };
 
+type AiAction = 'analyse' | 'enrich' | 'generate-image' | 'seo-check';
+
+const AI_STATUS_ICON: Record<string, React.ReactNode> = {
+  pending: <Clock className="h-3 w-3 text-muted-foreground" />,
+  running: <Loader2 className="h-3 w-3 animate-spin text-primary" />,
+  completed: <CheckCircle2 className="h-3 w-3 text-green-600" />,
+  failed: <XCircle className="h-3 w-3 text-destructive" />,
+  skipped: <Clock className="h-3 w-3 text-muted-foreground" />,
+};
+
+interface AiProcessing {
+  rss_item_id: string;
+  analysis_status: string;
+  enrichment_status: string;
+  image_status: string;
+  seo_check_status: string;
+  cover_image_url: string | null;
+  seo_score: number | null;
+  analysis_output: any;
+  enrichment_output: any;
+  seo_output: any;
+}
+
 export function RssFetchedItemsTab() {
   const { toast } = useAdminToast();
   const [items, setItems] = useState<RssItem[]>([]);
   const [sources, setSources] = useState<RssSource[]>([]);
+  const [aiProcessing, setAiProcessing] = useState<Record<string, AiProcessing>>({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterSource, setFilterSource] = useState('all');
@@ -53,6 +84,14 @@ export function RssFetchedItemsTab() {
   const [filterRelevance, setFilterRelevance] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  // Selection
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // AI Action Modal
+  const [aiModalOpen, setAiModalOpen] = useState(false);
+  const [aiAction, setAiAction] = useState<AiAction>('analyse');
+  const [aiModalItemIds, setAiModalItemIds] = useState<string[]>([]);
 
   const fetchItems = useCallback(async () => {
     setLoading(true);
@@ -69,12 +108,29 @@ export function RssFetchedItemsTab() {
     setLoading(false);
   }, [filterSource, filterDomain, filterType, filterRelevance, filterStatus]);
 
+  const fetchAiStatus = useCallback(async () => {
+    if (items.length === 0) return;
+    const ids = items.map(i => i.id);
+    const { data } = await supabase.from('rss_ai_processing' as any).select('rss_item_id, analysis_status, enrichment_status, image_status, seo_check_status, cover_image_url, seo_score, analysis_output, enrichment_output, seo_output').in('rss_item_id', ids);
+    if (data) {
+      const map: Record<string, AiProcessing> = {};
+      for (const row of data as any as AiProcessing[]) {
+        map[row.rss_item_id] = row;
+      }
+      setAiProcessing(map);
+    }
+  }, [items]);
+
   useEffect(() => {
     fetchItems();
     supabase.from('rss_sources' as any).select('id, source_name').order('source_name').then(({ data }) => {
       setSources((data as any as RssSource[]) || []);
     });
   }, [fetchItems]);
+
+  useEffect(() => {
+    fetchAiStatus();
+  }, [fetchAiStatus]);
 
   const filtered = items.filter((item) => {
     if (!search) return true;
@@ -83,6 +139,38 @@ export function RssFetchedItemsTab() {
   });
 
   const sourceNameMap = Object.fromEntries(sources.map((s) => [s.id, s.source_name]));
+
+  // Selection handlers
+  const allFilteredSelected = filtered.length > 0 && filtered.every(i => selectedIds.has(i.id));
+  const someSelected = selectedIds.size > 0;
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (allFilteredSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filtered.map(i => i.id)));
+    }
+  };
+
+  // AI action openers
+  const openAiAction = (action: AiAction, ids: string[]) => {
+    setAiAction(action);
+    setAiModalItemIds(ids);
+    setAiModalOpen(true);
+  };
+
+  const handleAiComplete = () => {
+    fetchAiStatus();
+    toast({ title: 'AI Processing Complete', description: `${aiAction} finished for selected items.` });
+  };
 
   const handleQueue = async (item: RssItem) => {
     try {
@@ -109,15 +197,24 @@ export function RssFetchedItemsTab() {
     return d ? new Date(d).toLocaleDateString() : '—';
   };
 
+  const getAiStatusIcon = (itemId: string, stage: 'analysis_status' | 'enrichment_status' | 'image_status' | 'seo_check_status') => {
+    const proc = aiProcessing[itemId];
+    if (!proc) return AI_STATUS_ICON['pending'];
+    return AI_STATUS_ICON[proc[stage]] || AI_STATUS_ICON['pending'];
+  };
+
+  const selectedArray = Array.from(selectedIds);
+
   return (
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2"><FileText className="h-5 w-5" /> Fetched Items</CardTitle>
-          <Button size="sm" variant="ghost" onClick={fetchItems}><RefreshCw className="h-4 w-4" /></Button>
+          <Button size="sm" variant="ghost" onClick={() => { fetchItems(); setSelectedIds(new Set()); }}><RefreshCw className="h-4 w-4" /></Button>
         </div>
       </CardHeader>
       <CardContent>
+        {/* Filters */}
         <div className="flex flex-wrap gap-3 mb-4">
           <div className="relative flex-1 min-w-[200px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -160,6 +257,26 @@ export function RssFetchedItemsTab() {
           </Select>
         </div>
 
+        {/* Bulk Action Toolbar */}
+        {someSelected && (
+          <div className="flex items-center gap-2 mb-3 p-2 rounded-md bg-muted/50 border">
+            <Badge variant="secondary">{selectedIds.size} selected</Badge>
+            <Button size="sm" variant="outline" onClick={() => openAiAction('analyse', selectedArray)}>
+              <Brain className="h-3.5 w-3.5 mr-1" /> Analyse
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => openAiAction('enrich', selectedArray)}>
+              <Sparkles className="h-3.5 w-3.5 mr-1" /> Enrich
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => openAiAction('generate-image', selectedArray)}>
+              <Image className="h-3.5 w-3.5 mr-1" /> Image
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => openAiAction('seo-check', selectedArray)}>
+              <ShieldCheck className="h-3.5 w-3.5 mr-1" /> SEO
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>Clear</Button>
+          </div>
+        )}
+
         {loading ? (
           <p className="text-center py-8 text-muted-foreground">Loading items...</p>
         ) : filtered.length === 0 ? (
@@ -169,39 +286,63 @@ export function RssFetchedItemsTab() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-8">
+                    <Checkbox checked={allFilteredSelected} onCheckedChange={toggleSelectAll} />
+                  </TableHead>
                   <TableHead className="w-8"></TableHead>
                   <TableHead>Source</TableHead>
                   <TableHead>Title</TableHead>
                   <TableHead>Domain</TableHead>
                   <TableHead>Type</TableHead>
-                  <TableHead>Relevance</TableHead>
                   <TableHead>Date</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>PDF</TableHead>
+                  <TableHead className="text-center" title="AI Pipeline Status">AI</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filtered.map((item) => (
                   <>
-                    <TableRow key={item.id} className="cursor-pointer" onClick={() => setExpandedId(expandedId === item.id ? null : item.id)}>
-                      <TableCell>{expandedId === item.id ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}</TableCell>
-                      <TableCell className="text-xs text-muted-foreground max-w-[100px] truncate">{sourceNameMap[item.rss_source_id] || '—'}</TableCell>
-                      <TableCell className="max-w-[220px]"><p className="text-sm font-medium truncate">{item.item_title}</p></TableCell>
+                    <TableRow key={item.id} className="cursor-pointer">
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        <Checkbox checked={selectedIds.has(item.id)} onCheckedChange={() => toggleSelect(item.id)} />
+                      </TableCell>
+                      <TableCell onClick={() => setExpandedId(expandedId === item.id ? null : item.id)}>
+                        {expandedId === item.id ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground max-w-[100px] truncate" onClick={() => setExpandedId(expandedId === item.id ? null : item.id)}>{sourceNameMap[item.rss_source_id] || '—'}</TableCell>
+                      <TableCell className="max-w-[220px]" onClick={() => setExpandedId(expandedId === item.id ? null : item.id)}><p className="text-sm font-medium truncate">{item.item_title}</p></TableCell>
                       <TableCell><Badge className={domainBadgeColors[item.primary_domain] || 'bg-gray-100 text-gray-500'}>{DOMAIN_LABELS[item.primary_domain] || item.primary_domain}</Badge></TableCell>
                       <TableCell><Badge className={typeBadgeColors[item.item_type] || 'bg-gray-100 text-gray-500'}>{item.item_type.replace(/_/g, ' ')}</Badge></TableCell>
-                      <TableCell><Badge variant={item.relevance_level === 'High' ? 'destructive' : item.relevance_level === 'Medium' ? 'default' : 'secondary'}>{item.relevance_level}</Badge></TableCell>
                       <TableCell className="text-xs">{displayDate(item)}</TableCell>
-                      <TableCell><Badge variant="outline">{item.current_status}</Badge></TableCell>
                       <TableCell>
-                        {item.first_pdf_url ? (
-                          <a href={item.first_pdf_url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
-                            <FileDown className="h-4 w-4 text-primary" />
-                          </a>
-                        ) : '—'}
+                        <div className="flex items-center gap-1" title="A · E · I · S">
+                          {getAiStatusIcon(item.id, 'analysis_status')}
+                          {getAiStatusIcon(item.id, 'enrichment_status')}
+                          {getAiStatusIcon(item.id, 'image_status')}
+                          {getAiStatusIcon(item.id, 'seo_check_status')}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button size="sm" variant="ghost"><Sparkles className="h-3.5 w-3.5" /></Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => openAiAction('analyse', [item.id])}>
+                                <Brain className="h-4 w-4 mr-2" /> Analyse
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => openAiAction('enrich', [item.id])}>
+                                <Sparkles className="h-4 w-4 mr-2" /> Enrich
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => openAiAction('generate-image', [item.id])}>
+                                <Image className="h-4 w-4 mr-2" /> Generate Image
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => openAiAction('seo-check', [item.id])}>
+                                <ShieldCheck className="h-4 w-4 mr-2" /> SEO Check
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                           <Button size="sm" variant="ghost" onClick={() => handleQueue(item)} title="Queue for Review" disabled={item.current_status === 'queued'}>
                             <ClipboardList className="h-3.5 w-3.5" />
                           </Button>
@@ -218,8 +359,9 @@ export function RssFetchedItemsTab() {
                     </TableRow>
                     {expandedId === item.id && (
                       <TableRow key={`${item.id}-detail`}>
-                        <TableCell colSpan={10}>
-                          <div className="p-3 bg-muted/30 rounded space-y-2 text-sm">
+                        <TableCell colSpan={9}>
+                          <div className="p-3 bg-muted/30 rounded space-y-3 text-sm">
+                            {/* Source data */}
                             <p><strong>Full Title:</strong> {item.item_title}</p>
                             <div className="flex flex-wrap gap-2">
                               <span><strong>Domain:</strong></span>
@@ -228,6 +370,8 @@ export function RssFetchedItemsTab() {
                               <span className="text-muted-foreground">{item.display_group}</span>
                               <span><strong>Type:</strong></span>
                               <Badge className={typeBadgeColors[item.item_type] || ''}>{item.item_type.replace(/_/g, ' ')}</Badge>
+                              <span><strong>Relevance:</strong></span>
+                              <Badge variant={item.relevance_level === 'High' ? 'destructive' : item.relevance_level === 'Medium' ? 'default' : 'secondary'}>{item.relevance_level}</Badge>
                             </div>
                             {item.item_summary && <p><strong>Summary:</strong> {item.item_summary.substring(0, 500)}</p>}
                             {item.item_link && <p><strong>Link:</strong> <a href={item.item_link} target="_blank" className="text-primary hover:underline">{item.item_link}</a></p>}
@@ -236,6 +380,65 @@ export function RssFetchedItemsTab() {
                             {item.linked_pdf_urls.length > 0 && (
                               <p><strong>PDFs:</strong> {item.linked_pdf_urls.map((u, i) => <a key={i} href={u} target="_blank" className="text-primary hover:underline mr-2">{u.split('/').pop()}</a>)}</p>
                             )}
+
+                            {/* AI Processing Summary */}
+                            {aiProcessing[item.id] && (
+                              <div className="mt-2 p-2 bg-background rounded border space-y-2">
+                                <p className="font-medium text-xs uppercase tracking-wider text-muted-foreground">AI Processing</p>
+                                <div className="grid grid-cols-4 gap-2 text-xs">
+                                  <div className="flex items-center gap-1">
+                                    {getAiStatusIcon(item.id, 'analysis_status')}
+                                    <span>Analysis: {aiProcessing[item.id].analysis_status}</span>
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    {getAiStatusIcon(item.id, 'enrichment_status')}
+                                    <span>Enrichment: {aiProcessing[item.id].enrichment_status}</span>
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    {getAiStatusIcon(item.id, 'image_status')}
+                                    <span>Image: {aiProcessing[item.id].image_status}</span>
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    {getAiStatusIcon(item.id, 'seo_check_status')}
+                                    <span>SEO: {aiProcessing[item.id].seo_check_status} {aiProcessing[item.id].seo_score != null ? `(${aiProcessing[item.id].seo_score}/100)` : ''}</span>
+                                  </div>
+                                </div>
+
+                                {/* Analysis summary */}
+                                {aiProcessing[item.id].analysis_output && (
+                                  <div className="text-xs p-1.5 bg-muted/40 rounded">
+                                    <strong>Analysis:</strong>{' '}
+                                    {aiProcessing[item.id].analysis_output.publish_recommended ? '✅ Recommend publish' : '⚠️ Review needed'}
+                                    {aiProcessing[item.id].analysis_output.analysis_notes && ` — ${aiProcessing[item.id].analysis_output.analysis_notes.substring(0, 200)}`}
+                                  </div>
+                                )}
+
+                                {/* Enrichment summary */}
+                                {aiProcessing[item.id].enrichment_output && (
+                                  <div className="text-xs p-1.5 bg-muted/40 rounded">
+                                    <strong>Enriched Title:</strong> {aiProcessing[item.id].enrichment_output.cleaned_title || '—'}
+                                    {aiProcessing[item.id].enrichment_output.seo_title && <> | <strong>SEO:</strong> {aiProcessing[item.id].enrichment_output.seo_title}</>}
+                                  </div>
+                                )}
+
+                                {/* Cover Image */}
+                                {aiProcessing[item.id].cover_image_url && (
+                                  <div>
+                                    <img src={aiProcessing[item.id].cover_image_url!} alt="Cover" className="h-20 rounded object-cover" />
+                                  </div>
+                                )}
+
+                                {/* SEO summary */}
+                                {aiProcessing[item.id].seo_output && (
+                                  <div className="text-xs p-1.5 bg-muted/40 rounded">
+                                    <strong>SEO:</strong>{' '}
+                                    {aiProcessing[item.id].seo_output.seo_passed ? '✅ Passed' : '❌ Issues found'}
+                                    {aiProcessing[item.id].seo_output.seo_issues?.length > 0 && ` — ${aiProcessing[item.id].seo_output.seo_issues.slice(0, 3).join('; ')}`}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
                             <p className="text-xs text-muted-foreground">First seen: {new Date(item.first_seen_at).toLocaleString()} | Last seen: {new Date(item.last_seen_at).toLocaleString()}</p>
                           </div>
                         </TableCell>
@@ -248,6 +451,15 @@ export function RssFetchedItemsTab() {
           </div>
         )}
       </CardContent>
+
+      {/* AI Action Modal */}
+      <RssAiActionModal
+        open={aiModalOpen}
+        onOpenChange={setAiModalOpen}
+        action={aiAction}
+        itemIds={aiModalItemIds}
+        onComplete={handleAiComplete}
+      />
     </Card>
   );
 }

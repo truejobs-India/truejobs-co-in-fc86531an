@@ -483,6 +483,11 @@ No JSON wrappers, no markdown, no code blocks, no explanations.`;
         const estimatedTokens = Math.max(8000, Math.ceil(effectiveTarget * 2.5));
         maxTokens = Math.min(estimatedTokens, 65536);
 
+        // Nova models need a generous token budget
+        if (effectiveModel === 'nova-pro' || effectiveModel === 'nova-premier') {
+          maxTokens = Math.max(maxTokens, Math.ceil(Math.max(1200, effectiveTarget) * 2));
+        }
+
         // Claude Sonnet can hit platform timeouts on very large generations — keep output budget tighter.
         if (effectiveModel === 'claude-sonnet' || effectiveModel === 'claude') {
           maxTokens = Math.min(maxTokens, 3500);

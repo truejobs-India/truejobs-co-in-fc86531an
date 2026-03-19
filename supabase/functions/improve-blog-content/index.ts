@@ -490,7 +490,8 @@ No JSON wrappers, no markdown, no code blocks, no explanations.`;
 
       } else {
         prompt = `You are a professional content editor for TrueJobs.co.in, an Indian government job portal.
-Expand and improve the following article to approximately ${effectiveTarget} words (currently ~${currentWords} words).
+Expand and improve the following article.
+STRICT Word count target: ${effectiveTarget} words. Do NOT exceed ${Math.round(effectiveTarget * 1.15)} words. Do NOT write fewer than ${Math.round(effectiveTarget * 0.85)} words. Currently ~${currentWords} words.
 
 CRITICAL RULES:
 - You MUST return the COMPLETE article — every single section from the original MUST be present in your output

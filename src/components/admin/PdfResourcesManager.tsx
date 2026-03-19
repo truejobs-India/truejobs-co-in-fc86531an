@@ -632,7 +632,7 @@ export function PdfResourcesManager() {
     setBulkImageProgress({ current: 0, total: toGen.length });
     stopBulkRef.current = false;
     const token = await getAuthToken();
-    const interRequestDelayMs = imageAiModel.startsWith('vertex') ? 20000 : 8000;
+    const interRequestDelayMs = imageAiModel.startsWith('vertex') ? 35000 : 10000;
     let generated = 0;
 
     for (let i = 0; i < toGen.length; i++) {

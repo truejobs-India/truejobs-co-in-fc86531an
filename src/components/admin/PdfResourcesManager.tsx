@@ -123,7 +123,10 @@ export function PdfResourcesManager() {
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [aiModel, setAiModel] = useState(() => getLastUsedModel('text', 'gemini-flash'));
+  const [imageAiModel, setImageAiModel] = useState(() => getLastUsedModel('image', 'gemini-flash-image'));
   const [uploadingPdf, setUploadingPdf] = useState(false);
+  const [extractingMeta, setExtractingMeta] = useState(false);
+  const [generatingImage, setGeneratingImage] = useState(false);
   const [slugError, setSlugError] = useState('');
 
   // ─── Fetch ────────────────────────────────────────────────
@@ -168,6 +171,62 @@ export function PdfResourcesManager() {
     }
     setSlugError('');
     return true;
+  };
+
+  // ─── AI Metadata Extraction from filename ─────────────────
+  const handleExtractMetadata = async (fileName: string) => {
+    setExtractingMeta(true);
+    try {
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
+
+      const resp = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-resource-content`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            action: 'extract-metadata',
+            fileName,
+            resourceType: editItem.resource_type || 'sample_paper',
+            aiModel: aiModel,
+          }),
+        }
+      );
+
+      const result = await resp.json();
+      if (!result.success) throw new Error(result.error || 'Metadata extraction failed');
+
+      const meta = result.data?.[0];
+      if (!meta) throw new Error('No metadata returned');
+
+      setEditItem(prev => ({
+        ...prev,
+        title: meta.title || prev.title,
+        meta_title: meta.meta_title || prev.meta_title,
+        slug: meta.slug || prev.slug,
+        meta_description: meta.meta_description || prev.meta_description,
+        category: meta.category || prev.category,
+        excerpt: meta.excerpt || prev.excerpt,
+        subject: meta.subject || prev.subject,
+        language: meta.language || prev.language,
+        exam_year: meta.exam_year || prev.exam_year,
+        edition_year: meta.edition_year || prev.edition_year,
+        tags: meta.tags || prev.tags,
+        download_filename: meta.download_filename || prev.download_filename,
+        featured_image_alt: meta.featured_image_alt || prev.featured_image_alt,
+        exam_name: meta.exam_name || prev.exam_name,
+      }));
+
+      toast({ title: '✨ Metadata auto-filled', description: `AI extracted SEO fields from "${fileName}"` });
+    } catch (err: any) {
+      toast({ title: 'Metadata extraction failed', description: err.message, variant: 'destructive' });
+    } finally {
+      setExtractingMeta(false);
+    }
   };
 
   // ─── PDF Upload with metadata extraction ──────────────────
@@ -239,10 +298,70 @@ export function PdfResourcesManager() {
       }));
 
       toast({ title: 'PDF uploaded', description: `${fileSizeBytes > 1024 * 1024 ? (fileSizeBytes / (1024 * 1024)).toFixed(1) + ' MB' : (fileSizeBytes / 1024).toFixed(0) + ' KB'}${pageCount ? ` · ${pageCount} pages` : ''}` });
+
+      // Auto-extract metadata from filename using AI
+      handleExtractMetadata(file.name);
     } catch (err: any) {
       toast({ title: 'Upload failed', description: err.message, variant: 'destructive' });
     } finally {
       setUploadingPdf(false);
+    }
+  };
+
+  // ─── AI Cover Image Generation ────────────────────────────
+  const handleGenerateImage = async () => {
+    if (!editItem.title || !editItem.slug) {
+      toast({ title: 'Title & slug required', description: 'Fill in title and slug before generating a cover image.', variant: 'destructive' });
+      return;
+    }
+
+    setGeneratingImage(true);
+    try {
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
+
+      const resp = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-resource-image`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            slug: editItem.slug,
+            title: editItem.title,
+            category: editItem.category,
+            subject: editItem.subject,
+            resourceType: editItem.resource_type,
+            imageModel: imageAiModel,
+          }),
+        }
+      );
+
+      if (resp.status === 429) {
+        toast({ title: 'Rate limited', description: 'Too many requests. Please try again later.', variant: 'destructive' });
+        return;
+      }
+      if (resp.status === 402) {
+        toast({ title: 'Payment required', description: 'Please add funds to your workspace.', variant: 'destructive' });
+        return;
+      }
+
+      const result = await resp.json();
+      if (!result.success && !result.imageUrl) throw new Error(result.error || 'Image generation failed');
+
+      setEditItem(prev => ({
+        ...prev,
+        cover_image_url: result.imageUrl,
+        featured_image_alt: result.altText || prev.featured_image_alt,
+      }));
+
+      toast({ title: '🖼️ Cover image generated', description: `Image created with ${result.model || imageAiModel}` });
+    } catch (err: any) {
+      toast({ title: 'Image generation failed', description: err.message, variant: 'destructive' });
+    } finally {
+      setGeneratingImage(false);
     }
   };
 
@@ -359,7 +478,6 @@ export function PdfResourcesManager() {
       };
 
       if (editItem.id) {
-        // Update
         const { error } = await supabase
           .from('pdf_resources')
           .update(payload)
@@ -367,7 +485,6 @@ export function PdfResourcesManager() {
         if (error) throw error;
         toast({ title: 'Resource updated' });
       } else {
-        // Insert
         payload.author_id = user?.id;
         if (payload.status === 'published') {
           payload.published_at = new Date().toISOString();
@@ -544,9 +661,48 @@ export function PdfResourcesManager() {
               <DialogTitle>{editItem.id ? 'Edit Resource' : 'New Resource'}</DialogTitle>
             </DialogHeader>
 
+            {/* AI Model Selectors — top bar */}
+            <div className="flex flex-wrap gap-3 p-3 rounded-lg border bg-muted/30">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-primary" />
+                <span className="text-xs font-medium text-muted-foreground">Text AI:</span>
+                <AiModelSelector value={aiModel} onValueChange={setAiModel} capability="text" size="sm" />
+              </div>
+              <div className="flex items-center gap-2">
+                <Image className="h-4 w-4 text-primary" />
+                <span className="text-xs font-medium text-muted-foreground">Image AI:</span>
+                <AiModelSelector value={imageAiModel} onValueChange={setImageAiModel} capability="image" size="sm" />
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Left column */}
               <div className="space-y-4">
+                {/* PDF Upload — moved to top with AI auto-fill indicator */}
+                <div className="border rounded-lg p-3 space-y-2 bg-primary/5">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Upload className="h-4 w-4 text-primary" />
+                    <span className="font-medium text-sm">Upload PDF</span>
+                    {extractingMeta && (
+                      <Badge variant="outline" className="text-xs gap-1 animate-pulse">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        AI extracting metadata...
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="flex gap-2 items-center">
+                    <Input type="file" accept=".pdf" onChange={handlePdfUpload} disabled={uploadingPdf || extractingMeta} />
+                    {uploadingPdf && <Loader2 className="h-4 w-4 animate-spin" />}
+                  </div>
+                  {editItem.file_url && (
+                    <p className="text-xs text-muted-foreground">
+                      ✓ Uploaded · {editItem.file_size_bytes ? `${(editItem.file_size_bytes / (1024 * 1024)).toFixed(1)} MB` : ''}
+                      {editItem.page_count ? ` · ${editItem.page_count} pages` : ''}
+                    </p>
+                  )}
+                  <p className="text-[11px] text-muted-foreground">Upload a PDF and AI will auto-fill Title, Meta, Slug, Tags, Category & more from the filename.</p>
+                </div>
+
                 <div>
                   <Label>Title *</Label>
                   <Input
@@ -637,34 +793,48 @@ export function PdfResourcesManager() {
                   />
                 </div>
 
-                {/* PDF Upload */}
-                <div>
-                  <Label>PDF File</Label>
-                  <div className="flex gap-2 items-center">
-                    <Input type="file" accept=".pdf" onChange={handlePdfUpload} disabled={uploadingPdf} />
-                    {uploadingPdf && <Loader2 className="h-4 w-4 animate-spin" />}
-                  </div>
-                  {editItem.file_url && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      ✓ Uploaded · {editItem.file_size_bytes ? `${(editItem.file_size_bytes / (1024 * 1024)).toFixed(1)} MB` : ''}
-                      {editItem.page_count ? ` · ${editItem.page_count} pages` : ''}
-                    </p>
-                  )}
-                </div>
-
                 <div>
                   <Label>Download Filename</Label>
                   <Input value={editItem.download_filename || ''} onChange={(e) => setEditItem(prev => ({ ...prev, download_filename: e.target.value }))} placeholder="e.g. ssc-cgl-sample-paper-2026.pdf" />
                 </div>
 
-                <div>
-                  <Label>Cover Image URL</Label>
-                  <Input value={editItem.cover_image_url || ''} onChange={(e) => setEditItem(prev => ({ ...prev, cover_image_url: e.target.value }))} placeholder="https://..." />
-                </div>
-
-                <div>
-                  <Label>Image Alt Text</Label>
-                  <Input value={editItem.featured_image_alt || ''} onChange={(e) => setEditItem(prev => ({ ...prev, featured_image_alt: e.target.value }))} />
+                {/* Cover Image — with AI generation */}
+                <div className="border rounded-lg p-3 space-y-2 bg-muted/30">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Image className="h-4 w-4 text-primary" />
+                      <span className="font-medium text-sm">Cover Image</span>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleGenerateImage}
+                      disabled={generatingImage || !editItem.title || !editItem.slug}
+                      className="gap-1 h-7 text-xs"
+                    >
+                      {generatingImage ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                      {generatingImage ? 'Generating...' : 'Generate with AI'}
+                    </Button>
+                  </div>
+                  {editItem.cover_image_url && (
+                    <div className="relative">
+                      <img
+                        src={editItem.cover_image_url}
+                        alt={editItem.featured_image_alt || editItem.title || ''}
+                        className="w-full h-32 object-cover rounded border"
+                      />
+                    </div>
+                  )}
+                  <Input
+                    value={editItem.cover_image_url || ''}
+                    onChange={(e) => setEditItem(prev => ({ ...prev, cover_image_url: e.target.value }))}
+                    placeholder="Image URL (or generate with AI above)"
+                    className="text-xs"
+                  />
+                  <div>
+                    <Label className="text-xs">Image Alt Text</Label>
+                    <Input value={editItem.featured_image_alt || ''} onChange={(e) => setEditItem(prev => ({ ...prev, featured_image_alt: e.target.value }))} className="text-xs" />
+                  </div>
                 </div>
               </div>
 
@@ -687,13 +857,12 @@ export function PdfResourcesManager() {
                   <Textarea value={editItem.excerpt || ''} onChange={(e) => setEditItem(prev => ({ ...prev, excerpt: e.target.value }))} rows={2} />
                 </div>
 
-                {/* AI Generation */}
+                {/* AI Content Generation */}
                 <div className="border rounded-lg p-3 space-y-3 bg-muted/30">
                   <div className="flex items-center gap-2">
                     <Sparkles className="h-4 w-4 text-primary" />
                     <span className="font-medium text-sm">AI Content Generation</span>
                   </div>
-                  <AiModelSelector value={aiModel} onValueChange={setAiModel} />
                   <Button onClick={handleGenerate} disabled={generating} className="w-full gap-2">
                     {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                     {generating ? 'Generating...' : 'Generate Content'}

@@ -207,8 +207,69 @@ Deno.serve(async (req) => {
     if (authResult instanceof Response) return authResult;
 
     const body = await req.json();
-    const { action, title, resourceType, category, examName, subject, language, tags, year, slug, aiModel } = body;
+    const { action, title, resourceType, category, examName, subject, language, tags, year, slug, aiModel, fileName, fileNames } = body;
     const model = aiModel || 'gemini-flash';
+
+    // ── Extract metadata from filename(s) using AI ──────
+    if (action === 'extract-metadata') {
+      const names = fileNames || (fileName ? [fileName] : []);
+      if (!names.length) return new Response(JSON.stringify({ error: 'fileName or fileNames required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+
+      const rType = resourceType || 'sample_paper';
+      const typeLabels: Record<string, string> = { sample_paper: 'Sample Paper', book: 'Book / Study Material', previous_year_paper: 'Previous Year Paper' };
+      const typeLabel = typeLabels[rType] || 'Resource';
+
+      const fileListStr = names.map((n: string, i: number) => `${i + 1}. "${n}"`).join('\n');
+
+      const metaPrompt = `You are an expert SEO analyst for TrueJobs.co.in, India's leading government job preparation portal.
+
+Given the following PDF file name(s), extract and generate SEO metadata for each file. The files are ${typeLabel} resources for Indian government exam aspirants.
+
+File names:
+${fileListStr}
+
+For EACH file, return a JSON object with these fields:
+- "title": Human-readable, SEO-friendly title (60-80 chars). Remove file extensions, decode abbreviations, add context.
+- "meta_title": SEO meta title with primary keyword (≤60 chars)
+- "slug": URL-safe slug derived from title (lowercase, hyphens, no special chars, max 70 chars)
+- "meta_description": Compelling meta description with download CTA (120-160 chars)
+- "category": Best-fit category (e.g. SSC, UPSC, Railway, Banking, State PSC, Teaching, Defence, Police, General)
+- "excerpt": 2-3 sentence summary (80-120 chars)
+- "subject": Subject if detectable (e.g. Reasoning, Math, English, GK, Science, Hindi)
+- "language": Detected language (hindi, english, or bilingual)
+- "exam_year": Exam year if present in filename (number or null)
+- "edition_year": Edition/publication year if present (number or null)
+- "tags": Array of 5-8 relevant tags
+- "download_filename": Clean human-readable download filename ending in .pdf
+- "featured_image_alt": Descriptive alt text for a cover image (50-100 chars)
+- "exam_name": Specific exam name if detectable (e.g. SSC CGL, UPSC CSE, RRB NTPC)
+
+Rules:
+- Parse intelligently: "SSC-CGL-Tier1-Reasoning-2025.pdf" → title "SSC CGL Tier 1 Reasoning Sample Paper 2025"
+- For Hindi/bilingual content, keep title in English but note language as hindi/bilingual
+- Return ONLY valid JSON array, no markdown fences
+- If only one file, still return an array with one object`;
+
+      const raw = await callAI(model, metaPrompt);
+      const cleaned = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+
+      let parsed;
+      try { parsed = JSON.parse(cleaned); } catch {
+        const match = cleaned.match(/\[[\s\S]*\]/);
+        if (match) parsed = JSON.parse(match[0]);
+        else {
+          const objMatch = cleaned.match(/\{[\s\S]*\}/);
+          if (objMatch) parsed = [JSON.parse(objMatch[0])];
+          else throw new Error('Failed to parse AI metadata response');
+        }
+      }
+
+      if (!Array.isArray(parsed)) parsed = [parsed];
+
+      return new Response(JSON.stringify({ success: true, data: parsed, model, action }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     if (action === 'generate') {
       if (!title) return new Response(JSON.stringify({ error: 'title required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });

@@ -528,6 +528,11 @@ REMINDER: Your output must contain ALL original content plus additions. Do NOT c
         const estimatedTokensNeeded = Math.max(8000, Math.ceil(currentWords * 2.5));
         maxTokens = Math.min(estimatedTokensNeeded, 65536);
 
+        // Nova models need a generous token budget — 1 word ≈ 1.5 tokens for HTML content
+        if (effectiveModel === 'nova-pro' || effectiveModel === 'nova-premier') {
+          maxTokens = Math.max(maxTokens, Math.ceil(effectiveTarget * 2));
+        }
+
         // Claude Sonnet can hit platform timeouts on very large generations — keep output budget tighter.
         if (effectiveModel === 'claude-sonnet' || effectiveModel === 'claude') {
           maxTokens = Math.min(maxTokens, 3500);

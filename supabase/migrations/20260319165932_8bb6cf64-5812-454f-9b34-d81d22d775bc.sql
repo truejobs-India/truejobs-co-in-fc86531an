@@ -1,0 +1,1 @@
+UPDATE pdf_resources SET subject = COALESCE(NULLIF(category, ''), 'General') WHERE subject IS NULL OR subject = '';

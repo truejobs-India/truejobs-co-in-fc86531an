@@ -66,6 +66,7 @@ const BlogPost = lazy(() => import("./pages/blog/BlogPost"));
 const SamplePapers = lazy(() => import("./pages/resources/SamplePapers"));
 const Books = lazy(() => import("./pages/resources/Books"));
 const PreviousYearPapers = lazy(() => import("./pages/resources/PreviousYearPapers"));
+const Guides = lazy(() => import("./pages/resources/Guides"));
 const ResourceHub = lazy(() => import("./pages/resources/ResourceHub"));
 const ResourceDetail = lazy(() => import("./pages/resources/ResourceDetail"));
 const ResourceDownload = lazy(() => import("./pages/resources/ResourceDownload"));

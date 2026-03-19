@@ -1226,6 +1226,7 @@ export function PdfResourcesManager() {
                       <SelectItem value="sample_paper">Sample Paper</SelectItem>
                       <SelectItem value="book">Book</SelectItem>
                       <SelectItem value="previous_year_paper">Previous Year Paper</SelectItem>
+                      <SelectItem value="guide">Guide</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

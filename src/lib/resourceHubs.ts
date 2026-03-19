@@ -170,7 +170,7 @@ export const RESERVED_SLUGS = new Set([
   'employer', 'jobs', 'sarkari-jobs', 'blog', 'tools', 'companies',
   'enrol-now', 'thankyou', 'offline', 'contactus', 'aboutus',
   'privacypolicy', 'termsofuse', 'disclaimer', 'editorial-policy',
-  'free-guides', 'pdf-tools', 'image-resizer', 'photo-resizer',
+  'free-guides', 'guides', 'pdf-tools', 'image-resizer', 'photo-resizer',
   ...ALL_HUB_SLUGS,
 ]);
 

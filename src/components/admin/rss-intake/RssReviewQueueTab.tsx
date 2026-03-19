@@ -9,8 +9,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
-import { ClipboardCheck, ExternalLink, Search, RefreshCw, Check, X, Copy, EyeOff, Pause, FileDown } from 'lucide-react';
-import type { ReviewQueueEntry } from './rssTypes';
+import { ClipboardCheck, ExternalLink, Search, RefreshCw, Check, X, Copy, EyeOff, Pause, FileDown, CheckCircle2, XCircle, Clock, Loader2 } from 'lucide-react';
+import type { ReviewQueueEntry, RssAiProcessing, AnalysisOutput, EnrichmentOutput, SeoCheckOutput } from './rssTypes';
 import { REVIEW_STATUSES, PRIMARY_DOMAINS, DOMAIN_LABELS } from './rssTypes';
 
 const domainBadgeColors: Record<string, string> = {
@@ -20,6 +20,14 @@ const domainBadgeColors: Record<string, string> = {
   public_services: 'bg-cyan-100 text-cyan-800',
   policy_updates: 'bg-pink-100 text-pink-800',
   general_alerts: 'bg-gray-100 text-gray-600',
+};
+
+const AI_STATUS_ICON: Record<string, React.ReactNode> = {
+  pending: <Clock className="h-3 w-3 text-muted-foreground" />,
+  running: <Loader2 className="h-3 w-3 animate-spin text-primary" />,
+  completed: <CheckCircle2 className="h-3 w-3 text-green-600" />,
+  failed: <XCircle className="h-3 w-3 text-destructive" />,
+  skipped: <Clock className="h-3 w-3 text-muted-foreground" />,
 };
 
 export function RssReviewQueueTab() {
@@ -34,6 +42,8 @@ export function RssReviewQueueTab() {
   const [detailEntry, setDetailEntry] = useState<ReviewQueueEntry | null>(null);
   const [qaNotes, setQaNotes] = useState('');
   const [actioning, setActioning] = useState(false);
+  const [aiData, setAiData] = useState<RssAiProcessing | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
 
   const fetchEntries = useCallback(async () => {
     setLoading(true);
@@ -56,6 +66,18 @@ export function RssReviewQueueTab() {
     return e.title.toLowerCase().includes(q);
   });
 
+  const fetchAiData = useCallback(async (sourceItemId: string | null) => {
+    setAiData(null);
+    if (!sourceItemId) return;
+    setAiLoading(true);
+    const { data } = await supabase.from('rss_ai_processing' as any)
+      .select('*')
+      .eq('rss_item_id', sourceItemId)
+      .maybeSingle();
+    setAiData(data as any as RssAiProcessing | null);
+    setAiLoading(false);
+  }, []);
+
   const handleAction = async (entry: ReviewQueueEntry, newStatus: string) => {
     setActioning(true);
     try {
@@ -64,7 +86,6 @@ export function RssReviewQueueTab() {
         p_new_status: newStatus,
         p_qa_notes: qaNotes || null,
       });
-
       if (error) {
         toast({ title: 'Error', description: error.message, variant: 'destructive' });
       } else {
@@ -99,6 +120,7 @@ export function RssReviewQueueTab() {
     setDetailEntry(entry);
     setQaNotes(entry.qa_notes || '');
     setShowDetail(true);
+    fetchAiData(entry.source_item_id);
   };
 
   const statusBadge = (s: string) => {
@@ -112,6 +134,8 @@ export function RssReviewQueueTab() {
     };
     return <Badge className={colors[s] || ''}>{s.replace('_', ' ')}</Badge>;
   };
+
+  const seoStatusColor = (s: string) => s === 'good' ? 'text-green-600' : s === 'warning' ? 'text-yellow-600' : 'text-red-600';
 
   return (
     <Card>
@@ -218,10 +242,11 @@ export function RssReviewQueueTab() {
 
       {/* Detail Dialog */}
       <Dialog open={showDetail} onOpenChange={setShowDetail}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Review Item</DialogTitle></DialogHeader>
           {detailEntry && (
             <div className="space-y-4">
+              {/* Source data */}
               <div className="space-y-2 text-sm">
                 <p><strong>Title:</strong> {detailEntry.title}</p>
                 <div className="flex flex-wrap gap-2">
@@ -243,6 +268,132 @@ export function RssReviewQueueTab() {
                 )}
                 {detailEntry.published_at && <p><strong>Published:</strong> {new Date(detailEntry.published_at).toLocaleString()}</p>}
               </div>
+
+              {/* ═══ AI Processing Panel ═══ */}
+              {detailEntry.channel === 'rss' && detailEntry.source_item_id && (
+                <div className="border rounded-lg p-3 space-y-3">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">AI Processing</p>
+                  {aiLoading ? (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Loading AI data...</div>
+                  ) : !aiData ? (
+                    <p className="text-xs text-muted-foreground">No AI processing data yet.</p>
+                  ) : (
+                    <>
+                      {/* Status row */}
+                      <div className="grid grid-cols-4 gap-2 text-xs">
+                        <div className="flex items-center gap-1">{AI_STATUS_ICON[aiData.analysis_status] || AI_STATUS_ICON.pending}<span>Analysis: {aiData.analysis_status}</span></div>
+                        <div className="flex items-center gap-1">{AI_STATUS_ICON[aiData.enrichment_status] || AI_STATUS_ICON.pending}<span>Enrichment: {aiData.enrichment_status}</span></div>
+                        <div className="flex items-center gap-1">{AI_STATUS_ICON[aiData.image_status] || AI_STATUS_ICON.pending}<span>Image: {aiData.image_status}</span></div>
+                        <div className="flex items-center gap-1">{AI_STATUS_ICON[aiData.seo_check_status] || AI_STATUS_ICON.pending}<span>SEO: {aiData.seo_check_status}{aiData.seo_score != null ? ` (${aiData.seo_score}/100)` : ''}</span></div>
+                      </div>
+
+                      {/* Analysis output */}
+                      {aiData.analysis_output && (
+                        <div className="space-y-1 p-2 bg-muted/30 rounded text-xs">
+                          <p className="font-medium">📊 Analysis</p>
+                          {(() => {
+                            const a = aiData.analysis_output as AnalysisOutput;
+                            return (
+                              <>
+                                <p>{a.publish_recommended ? '✅ Recommend publish' : '⚠️ Needs review'} — Confidence: <strong>{a.confidence_level}</strong></p>
+                                {a.suggested_title && <p><strong>Suggested Title:</strong> {a.suggested_title}</p>}
+                                {a.suggested_slug && <p><strong>Slug:</strong> {a.suggested_slug}</p>}
+                                {a.key_entities?.length > 0 && <p><strong>Entities:</strong> {a.key_entities.join(', ')}</p>}
+                                {a.important_dates?.length > 0 && (
+                                  <p><strong>Dates:</strong> {a.important_dates.map(d => `${d.label}: ${d.date}`).join(' | ')}</p>
+                                )}
+                                {a.missing_information?.length > 0 && (
+                                  <p className="text-yellow-700"><strong>Missing:</strong> {a.missing_information.join('; ')}</p>
+                                )}
+                                {a.ambiguity_flags?.length > 0 && (
+                                  <p className="text-orange-700"><strong>Ambiguity:</strong> {a.ambiguity_flags.join('; ')}</p>
+                                )}
+                                {a.analysis_notes && <p><strong>Notes:</strong> {a.analysis_notes}</p>}
+                                <p><strong>Next:</strong> {a.suggested_next_action}</p>
+                              </>
+                            );
+                          })()}
+                        </div>
+                      )}
+
+                      {/* Enrichment output */}
+                      {aiData.enrichment_output && (
+                        <div className="space-y-1 p-2 bg-muted/30 rounded text-xs">
+                          <p className="font-medium">✨ Enrichment ({aiData.enrichment_word_limit || '—'} words target)</p>
+                          {(() => {
+                            const e = aiData.enrichment_output as EnrichmentOutput;
+                            return (
+                              <>
+                                <p><strong>Title:</strong> {e.cleaned_title}</p>
+                                <p><strong>SEO Title:</strong> {e.seo_title}</p>
+                                <p><strong>Meta:</strong> {e.meta_description}</p>
+                                <p><strong>Excerpt:</strong> {e.excerpt}</p>
+                                {e.short_intro && <p><strong>Intro:</strong> {e.short_intro}</p>}
+                                {e.summary_points?.length > 0 && (
+                                  <ul className="list-disc pl-4">{e.summary_points.map((p, i) => <li key={i}>{p}</li>)}</ul>
+                                )}
+                                {e.tags?.length > 0 && <p><strong>Tags:</strong> {e.tags.join(', ')}</p>}
+                                {e.faq_block?.length > 0 && <p><strong>FAQs:</strong> {e.faq_block.length} questions</p>}
+                                {e.schema_suggestion && <p><strong>Schema:</strong> {e.schema_suggestion}</p>}
+                              </>
+                            );
+                          })()}
+                        </div>
+                      )}
+
+                      {/* Cover image */}
+                      {aiData.cover_image_url && (
+                        <div className="space-y-1 p-2 bg-muted/30 rounded text-xs">
+                          <p className="font-medium">🖼️ Cover Image</p>
+                          <img src={aiData.cover_image_url} alt="Cover" className="h-32 rounded object-cover" />
+                          {aiData.image_model && <p className="text-muted-foreground">Model: {aiData.image_model}</p>}
+                        </div>
+                      )}
+
+                      {/* SEO output */}
+                      {aiData.seo_output && (
+                        <div className="space-y-1 p-2 bg-muted/30 rounded text-xs">
+                          <p className="font-medium">🔍 SEO Check — {(aiData.seo_output as SeoCheckOutput).seo_passed ? '✅ Passed' : '❌ Issues'} ({aiData.seo_score}/100)</p>
+                          {(() => {
+                            const s = aiData.seo_output as SeoCheckOutput;
+                            return (
+                              <>
+                                <div className="grid grid-cols-2 gap-1">
+                                  <span className={seoStatusColor(s.seo_title_status)}>Title: {s.seo_title_status}</span>
+                                  <span className={seoStatusColor(s.meta_description_status)}>Meta: {s.meta_description_status}</span>
+                                  <span className={seoStatusColor(s.slug_status)}>Slug: {s.slug_status}</span>
+                                  <span className={seoStatusColor(s.heading_status)}>Headings: {s.heading_status}</span>
+                                  <span>Image: {s.image_status}</span>
+                                  <span>Schema: {s.schema_status}</span>
+                                </div>
+                                {s.seo_issues?.length > 0 && (
+                                  <div className="mt-1">
+                                    <strong>Issues:</strong>
+                                    <ul className="list-disc pl-4 text-red-600">{s.seo_issues.map((i, idx) => <li key={idx}>{i}</li>)}</ul>
+                                  </div>
+                                )}
+                                {s.seo_fixes?.length > 0 && (
+                                  <div className="mt-1">
+                                    <strong>Fixes:</strong>
+                                    <ul className="list-disc pl-4 text-green-600">{s.seo_fixes.map((f, idx) => <li key={idx}>{f}</li>)}</ul>
+                                  </div>
+                                )}
+                                <p>{s.adsense_safe ? '✅ AdSense-safe' : '⚠️ AdSense risk'} | Thin: {s.thin_content_risk ? '⚠️ Yes' : '✅ No'} | Duplication: {s.duplication_risk}</p>
+                              </>
+                            );
+                          })()}
+                        </div>
+                      )}
+
+                      {/* Error display */}
+                      {aiData.analysis_error && <p className="text-xs text-destructive">Analysis error: {aiData.analysis_error}</p>}
+                      {aiData.enrichment_error && <p className="text-xs text-destructive">Enrichment error: {aiData.enrichment_error}</p>}
+                      {aiData.image_error && <p className="text-xs text-destructive">Image error: {aiData.image_error}</p>}
+                      {aiData.seo_error && <p className="text-xs text-destructive">SEO error: {aiData.seo_error}</p>}
+                    </>
+                  )}
+                </div>
+              )}
 
               {detailEntry.parsed_payload && Object.keys(detailEntry.parsed_payload).length > 0 && (
                 <div>

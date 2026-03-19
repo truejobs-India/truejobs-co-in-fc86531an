@@ -112,3 +112,102 @@ export const DOMAIN_LABELS: Record<string, string> = {
   policy_updates: 'Policy Updates',
   general_alerts: 'General Alerts',
 };
+
+// ── AI Processing types ──
+
+export type AiProcessingStatus = 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
+export type AiAction = 'analyse' | 'enrich' | 'generate-image' | 'seo-check';
+
+export interface RssAiProcessing {
+  id: string;
+  rss_item_id: string;
+  analysis_status: AiProcessingStatus;
+  analysis_model: string | null;
+  analysis_output: AnalysisOutput | null;
+  analysis_run_at: string | null;
+  analysis_error: string | null;
+  enrichment_status: AiProcessingStatus;
+  enrichment_model: string | null;
+  enrichment_word_limit: number | null;
+  enrichment_output: EnrichmentOutput | null;
+  enrichment_run_at: string | null;
+  enrichment_error: string | null;
+  image_status: AiProcessingStatus;
+  image_model: string | null;
+  cover_image_url: string | null;
+  image_prompt_used: string | null;
+  image_run_at: string | null;
+  image_error: string | null;
+  seo_check_status: AiProcessingStatus;
+  seo_model: string | null;
+  seo_output: SeoCheckOutput | null;
+  seo_score: number | null;
+  seo_run_at: string | null;
+  seo_error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AnalysisOutput {
+  publish_recommended: boolean;
+  confidence_level: 'high' | 'medium' | 'low';
+  content_type: string;
+  suggested_primary_domain: string;
+  suggested_item_type: string;
+  suggested_category: string;
+  suggested_title: string;
+  suggested_slug: string;
+  key_entities: string[];
+  important_dates: { label: string; date: string }[];
+  important_links: { label: string; url: string }[];
+  missing_information: string[];
+  ambiguity_flags: string[];
+  needs_manual_review: boolean;
+  suggested_next_action: string;
+  analysis_notes: string;
+}
+
+export interface EnrichmentOutput {
+  cleaned_title: string;
+  short_intro: string;
+  article_body: string;
+  summary_points: string[];
+  important_dates: { label: string; date: string }[];
+  eligibility_summary: string | null;
+  how_to_apply: string | null;
+  important_links: { label: string; url: string }[];
+  faq_block: { question: string; answer: string }[];
+  seo_title: string;
+  meta_description: string;
+  canonical_suggestion: string | null;
+  tags: string[];
+  excerpt: string;
+  internal_linking_suggestions: string[];
+  schema_suggestion: string;
+}
+
+export interface SeoCheckOutput {
+  seo_passed: boolean;
+  seo_score: number;
+  seo_title_status: 'good' | 'warning' | 'error';
+  seo_title_note: string;
+  meta_description_status: 'good' | 'warning' | 'error';
+  meta_description_note: string;
+  canonical_status: 'good' | 'warning' | 'missing';
+  slug_status: 'good' | 'warning' | 'error';
+  slug_note: string;
+  heading_status: 'good' | 'warning' | 'error';
+  image_status: 'good' | 'missing';
+  image_alt_suggestion: string | null;
+  internal_linking_status: 'good' | 'needs_improvement';
+  schema_status: 'ready' | 'needs_work' | 'not_applicable';
+  seo_issues: string[];
+  seo_fixes: string[];
+  thin_content_risk: boolean;
+  duplication_risk: 'low' | 'medium' | 'high';
+  over_optimization_risk: 'low' | 'medium' | 'high';
+  adsense_safe: boolean;
+  recommended_final_actions: string[];
+}
+
+export const AI_PROCESSING_STATUSES = ['pending', 'running', 'completed', 'failed', 'skipped'] as const;

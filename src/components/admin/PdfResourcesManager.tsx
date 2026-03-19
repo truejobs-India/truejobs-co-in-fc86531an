@@ -203,6 +203,10 @@ export function PdfResourcesManager() {
   const [bulkImageGenerating, setBulkImageGenerating] = useState(false);
   const [bulkImageProgress, setBulkImageProgress] = useState({ current: 0, total: 0 });
 
+  // Bulk publish state
+  const [bulkPublishPhase, setBulkPublishPhase] = useState<'idle' | 'selected' | 'publishing'>('idle');
+  const [bulkPublishProgress, setBulkPublishProgress] = useState({ current: 0, total: 0 });
+
   // Per-row loading states
   const [rowFixingId, setRowFixingId] = useState<string | null>(null);
   const [rowImageId, setRowImageId] = useState<string | null>(null);

@@ -98,3 +98,6 @@ verify_jwt = false
 
 [functions.generate-board-result-image]
 verify_jwt = false
+
+[functions.rss-ai-process]
+verify_jwt = false

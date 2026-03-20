@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 
 export type AdminMessageType = 'success' | 'warning' | 'error' | 'info';
 
@@ -31,15 +31,25 @@ function saveToSession(messages: AdminMessage[]) {
   } catch {}
 }
 
-interface AdminMessagesContextType {
+// ── State context (messages array) ──────────────────────────
+interface AdminMessagesStateContextType {
   messages: AdminMessage[];
+}
+
+const AdminMessagesStateContext = createContext<AdminMessagesStateContextType | null>(null);
+
+// ── Actions context (stable callbacks only) ─────────────────
+interface AdminMessagesActionsContextType {
   addMessage: (type: AdminMessageType, title: string, description?: string) => string;
   dismissMessage: (id: string) => void;
   clearAll: () => void;
   toggleExpand: (id: string) => void;
 }
 
-const AdminMessagesContext = createContext<AdminMessagesContextType | null>(null);
+const AdminMessagesActionsContext = createContext<AdminMessagesActionsContextType | null>(null);
+
+// ── Combined type for backward-compat hook ──────────────────
+interface AdminMessagesContextType extends AdminMessagesStateContextType, AdminMessagesActionsContextType {}
 
 export function AdminMessagesProvider({ children }: { children: ReactNode }) {
   const [messages, setMessages] = useState<AdminMessage[]>(loadFromSession);
@@ -66,26 +76,41 @@ export function AdminMessagesProvider({ children }: { children: ReactNode }) {
     setMessages(prev => prev.map(m => m.id === id ? { ...m, expanded: !m.expanded } : m));
   }, []);
 
+  // Memoize both provider values to prevent unnecessary re-renders
+  const stateValue = useMemo(() => ({ messages }), [messages]);
+  const actionsValue = useMemo(() => ({ addMessage, dismissMessage, clearAll, toggleExpand }), [addMessage, dismissMessage, clearAll, toggleExpand]);
+
   return (
-    <AdminMessagesContext.Provider value={{ messages, addMessage, dismissMessage, clearAll, toggleExpand }}>
-      {children}
-    </AdminMessagesContext.Provider>
+    <AdminMessagesActionsContext.Provider value={actionsValue}>
+      <AdminMessagesStateContext.Provider value={stateValue}>
+        {children}
+      </AdminMessagesStateContext.Provider>
+    </AdminMessagesActionsContext.Provider>
   );
 }
 
-export function useAdminMessagesContext() {
-  const ctx = useContext(AdminMessagesContext);
-  if (!ctx) throw new Error('useAdminMessagesContext must be inside AdminMessagesProvider');
-  return ctx;
+/**
+ * Full context hook — returns messages + all actions.
+ * Use this in components that READ messages (e.g. AdminMessageLog).
+ */
+export function useAdminMessagesContext(): AdminMessagesContextType {
+  const state = useContext(AdminMessagesStateContext);
+  const actions = useContext(AdminMessagesActionsContext);
+  if (!state || !actions) throw new Error('useAdminMessagesContext must be inside AdminMessagesProvider');
+  return { ...state, ...actions };
 }
 
 /**
  * Drop-in replacement for useToast() inside admin components.
  * Same API: returns { toast } where toast({ title, description, variant }) works.
  * Messages become persistent instead of ephemeral.
+ *
+ * IMPORTANT: Subscribes to actions context ONLY — components using this hook
+ * will NOT re-render when messages change. This is intentional to prevent
+ * flicker in write-only consumers like PdfResourcesManager.
  */
 export function useAdminToast() {
-  const ctx = useContext(AdminMessagesContext);
+  const actions = useContext(AdminMessagesActionsContext);
 
   // If used outside AdminMessagesProvider, fall back to no-op
   const noopToast = useCallback(({ title, description }: { title: string; description?: string; variant?: string }) => {
@@ -96,20 +121,19 @@ export function useAdminToast() {
   const noopDismiss = useCallback(() => {}, []);
 
   const stableToast = useCallback(({ title, description, variant }: { title: string; description?: string; variant?: string }) => {
-    if (!ctx) return { id: '', dismiss: () => {}, update: () => {} };
+    if (!actions) return { id: '', dismiss: () => {}, update: () => {} };
     let type: AdminMessageType = 'success';
     if (variant === 'destructive') type = 'error';
     else if (title.includes('⚠') || title.toLowerCase().includes('warning')) type = 'warning';
     else if (title.includes('ℹ') || title.toLowerCase().includes('info') || title.toLowerCase().includes('scanning') || title.toLowerCase().includes('processing')) type = 'info';
 
-    const id = ctx.addMessage(type, title, description || '');
-    return { id, dismiss: () => ctx.dismissMessage(id), update: () => {} };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ctx?.addMessage, ctx?.dismissMessage]);
+    const id = actions.addMessage(type, title, description || '');
+    return { id, dismiss: () => actions.dismissMessage(id), update: () => {} };
+  }, [actions]);
 
-  if (!ctx) {
+  if (!actions) {
     return { toast: noopToast, dismiss: noopDismiss };
   }
 
-  return { toast: stableToast, dismiss: ctx.dismissMessage };
+  return { toast: stableToast, dismiss: actions.dismissMessage };
 }

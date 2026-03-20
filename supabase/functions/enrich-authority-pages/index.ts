@@ -1210,7 +1210,10 @@ serve(async (req) => {
       const hasSchema = prompt.includes('JSON Schema:');
       const aiStartedAtMs = Date.now();
       console.log(`[enrich] ${slug}: calling ${selectedModel}, prompt ${prompt.length} chars, timeout ${getTimeout(selectedModel)}ms, schema_in_prompt=${hasSchema}, ai_budget_ms=${AI_TOTAL_BUDGET_MS}`);
-      const result = await callAI(selectedModel, prompt, slug, aiStartedAtMs);
+      const targetWordCount = getMinWordCount(pageType);
+      const aiMaxTokens = computeMaxTokens(targetWordCount, selectedModel);
+      console.log(`[enrich] ${slug}: maxTokens=${aiMaxTokens} targetWords=${targetWordCount}`);
+      const result = await callAI(selectedModel, prompt, slug, aiStartedAtMs, aiMaxTokens);
       enrichmentData = result.data;
       aiDiagnostics = result.diagnostics;
 

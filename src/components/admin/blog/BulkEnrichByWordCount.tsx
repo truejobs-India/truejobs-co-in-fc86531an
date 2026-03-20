@@ -221,7 +221,7 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
               )}
 
               {phase === 'scanned' && found.length > 0 && (
-                <Button size="sm" onClick={handleEnrich} className="bg-amber-600 hover:bg-amber-700 text-white">
+                <Button size="sm" onClick={handleEnrich} variant="default">
                   <Zap className="h-4 w-4 mr-1" />
                   Enrich {found.length} Article{found.length !== 1 ? 's' : ''}
                 </Button>

@@ -764,7 +764,7 @@ async function callAI(
       rawText = await callMistralRaw(prompt, timeout, maxTokens || 16384);
       return { data: tryParseJSON(rawText) };
     case 'lovable-gemini':
-      rawText = await callLovableGeminiRaw(prompt, timeout);
+      rawText = await callLovableGeminiRaw(prompt, timeout, maxTokens || 16384);
       return { data: tryParseJSON(rawText) };
     case 'gpt5':
       rawText = await callOpenAIRaw(prompt, 'openai/gpt-5', timeout);

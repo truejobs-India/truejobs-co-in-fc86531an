@@ -490,7 +490,7 @@ async function callClaude(prompt: string, wordLimit: number): Promise<string> {
 }
 
 // ── 6. Mistral Large (AWS Bedrock Converse — us-west-2) ──
-async function callMistral(prompt: string, systemPrompt?: string): Promise<string> {
+async function callMistral(prompt: string, systemPrompt?: string, maxTokens = 8192): Promise<string> {
   const modelId = 'mistral.mistral-large-2407-v1:0';
   const region = 'us-west-2';
   const host = `bedrock-runtime.${region}.amazonaws.com`;
@@ -498,7 +498,7 @@ async function callMistral(prompt: string, systemPrompt?: string): Promise<strin
 
   const payload: Record<string, unknown> = {
     messages: [{ role: 'user', content: [{ text: prompt }] }],
-    inferenceConfig: { maxTokens: 8192, temperature: 0.5 },
+    inferenceConfig: { maxTokens, temperature: 0.5 },
   };
 
   if (systemPrompt) {

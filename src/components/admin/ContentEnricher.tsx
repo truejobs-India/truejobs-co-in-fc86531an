@@ -287,9 +287,11 @@ export function ContentEnricher() {
           const wcv = data?.wordCountValidation;
           let wcNote = '';
           if (wcv?.status === 'fail') {
-            wcNote = ` · ⚠ Word count: ${wcv.actualWordCount}/${wcv.targetWordCount} (significantly off target)`;
+            const betterModels = getRecommendedModelsForTarget(wcv.targetWordCount).filter(m => m.value !== aiModel);
+            const suggestion = betterModels.length > 0 ? ` Try ${betterModels[0].label}.` : '';
+            wcNote = ` · ⚠ ${wcv.actualWordCount}/${wcv.targetWordCount}w — off target.${suggestion}`;
           } else if (wcv?.status === 'warn') {
-            wcNote = ` · ℹ Word count: ${wcv.actualWordCount}/${wcv.targetWordCount} (slightly outside range)`;
+            wcNote = ` · ℹ ${wcv.actualWordCount}/${wcv.targetWordCount}w — slightly outside range`;
           }
           addMessage(
             result.status === 'flagged' ? 'warning' : 'success',

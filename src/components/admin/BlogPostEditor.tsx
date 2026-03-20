@@ -1065,11 +1065,13 @@ export function BlogPostEditor() {
         // Prefer backend-provided word count when available
         const wordCount = data.wordCountValidation?.actualWordCount
           || data.content.replace(/<[^>]+>/g, '').split(/\s+/).filter((w: string) => w.length > 0).length;
-        // Non-blocking word count warning
+        // Non-blocking word count warning with model recommendation
         if (data.wordCountValidation?.status === 'fail') {
-          toast({ title: `⚠ Word count: ${data.wordCountValidation.actualWordCount} words (target: ${data.wordCountValidation.targetWordCount}). Significantly off target.` });
+          const betterModels = getRecommendedModelsForTarget(bulkWordCount).filter(m => m.value !== blogTextModel);
+          const suggestion = betterModels.length > 0 ? ` Try ${betterModels[0].label} for better results.` : '';
+          toast({ title: `⚠ Word count: ${data.wordCountValidation.actualWordCount}/${data.wordCountValidation.targetWordCount} words — significantly off target.${suggestion}` });
         } else if (data.wordCountValidation?.status === 'warn') {
-          toast({ title: `ℹ Word count: ${data.wordCountValidation.actualWordCount} words (target: ${data.wordCountValidation.targetWordCount}). Slightly outside range.` });
+          toast({ title: `ℹ Word count: ${data.wordCountValidation.actualWordCount}/${data.wordCountValidation.targetWordCount} words — slightly outside range.` });
         }
         const { data: inserted, error: insertErr } = await supabase.from('blog_posts').insert({
           title: data.title, slug: data.slug, content: data.content,

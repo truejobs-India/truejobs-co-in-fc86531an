@@ -358,21 +358,44 @@ export function PdfResourcesManager() {
 
   // ─── Single row image generation ──────────────────────────
   const generateImageForResource = async (r: PdfResource, token: string) => {
-    const resp = await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-resource-image`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          slug: r.slug, title: r.title, category: r.category,
-          subject: r.subject, resourceType: r.resource_type, imageModel: imageAiModel,
-        }),
-      },
-    );
-    if (resp.status === 429) throw new Error('Rate limited — try again later');
-    if (resp.status === 402) throw new Error('Payment required — add funds');
-    const result = await resp.json();
-    if (!result.success && !result.imageUrl) throw new Error(result.error || 'Image generation failed');
+    let resp: Response;
+    try {
+      resp = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-resource-image`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            slug: r.slug, title: r.title, category: r.category,
+            subject: r.subject, resourceType: r.resource_type, imageModel: imageAiModel,
+          }),
+        },
+      );
+    } catch (networkErr: any) {
+      throw new Error(`Network error: ${networkErr.message || 'Failed to reach server'}`);
+    }
+
+    // Parse response safely — never let resp.json() crash unguarded
+    let result: any;
+    try {
+      result = await resp.json();
+    } catch {
+      const text = await resp.text().catch(() => '');
+      throw new Error(`Server returned non-JSON (${resp.status}): ${text.substring(0, 100)}`);
+    }
+
+    // Handle structured error responses
+    if (result.ok === false || (!result.success && !result.imageUrl)) {
+      const code = result.code || '';
+      const msg = result.message || result.error || 'Image generation failed';
+      if (code === 'GATEWAY_RATE_LIMITED' || code === 'VERTEX_RATE_LIMITED' || resp.status === 429) {
+        throw new Error('Rate limited — try again later');
+      }
+      if (code === 'GATEWAY_PAYMENT_REQUIRED' || resp.status === 402) {
+        throw new Error('Payment required — add funds');
+      }
+      throw new Error(msg);
+    }
     return result;
   };
 

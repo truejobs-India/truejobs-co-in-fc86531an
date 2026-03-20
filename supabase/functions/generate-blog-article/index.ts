@@ -654,6 +654,7 @@ function extractFieldsFromBrokenJson(json: string): Record<string, any> | null {
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
+  let useModel = 'unknown';
   try {
     const authResult = await verifyAdmin(req);
     if (authResult instanceof Response) return authResult;

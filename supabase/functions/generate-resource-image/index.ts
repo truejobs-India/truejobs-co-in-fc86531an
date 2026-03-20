@@ -353,7 +353,7 @@ Deno.serve(async (req) => {
         return new Response(JSON.stringify({ error: err.message, provider, model: modelUsed }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
     } else {
-      // ── Lovable AI Gateway ──
+      // ── Lovable AI Gateway (with Vertex AI fallback) ──
       provider = 'lovable-gateway';
       const gatewayModel = LOVABLE_MODEL_MAP[selectedModel] || LOVABLE_MODEL_MAP['gemini-flash-image-2'];
       modelUsed = gatewayModel;
@@ -364,11 +364,37 @@ Deno.serve(async (req) => {
         imageBase64 = result.base64;
         mimeType = result.mimeType;
       } catch (err: any) {
-        if (err.message === 'GATEWAY_RATE_LIMITED') {
-          return new Response(JSON.stringify({ error: 'Rate limit exceeded', provider, model: modelUsed }), { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-        }
-        if (err.message === 'GATEWAY_PAYMENT_REQUIRED') {
-          return new Response(JSON.stringify({ error: 'Lovable AI credits exhausted — add funds in Settings → Workspace → Usage', provider, model: modelUsed }), { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        // On 402 (credits exhausted) or 429 (rate limited), try Vertex AI fallback
+        if (err.message === 'GATEWAY_PAYMENT_REQUIRED' || err.message === 'GATEWAY_RATE_LIMITED') {
+          const reason = err.message === 'GATEWAY_PAYMENT_REQUIRED' ? 'credits exhausted' : 'rate limited';
+          console.warn(`[generate-resource-image] Gateway ${reason}, falling back to Vertex AI for slug: ${slug}`);
+
+          const hasGcp = Deno.env.get('GCP_PROJECT_ID') && Deno.env.get('GCP_CLIENT_EMAIL') && Deno.env.get('GCP_PRIVATE_KEY');
+          if (hasGcp) {
+            try {
+              const fallbackResult = await generateImageVertexGemini(imagePrompt, 'gemini-2.5-flash-image');
+              imageBase64 = fallbackResult.base64;
+              mimeType = fallbackResult.mimeType;
+              provider = 'vertex-ai-fallback';
+              modelUsed = 'vertex/gemini-2.5-flash-image';
+              console.log(`[generate-resource-image] Vertex AI fallback succeeded for slug: ${slug}`);
+            } catch (vertexErr: any) {
+              console.error(`[generate-resource-image] Vertex AI fallback also failed:`, vertexErr.message);
+              // Return the original gateway error
+              const status = err.message === 'GATEWAY_PAYMENT_REQUIRED' ? 402 : 429;
+              const msg = err.message === 'GATEWAY_PAYMENT_REQUIRED'
+                ? 'Lovable AI credits exhausted and Vertex AI fallback failed'
+                : 'Rate limited and Vertex AI fallback failed';
+              return new Response(JSON.stringify({ error: msg, provider, model: modelUsed }), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+            }
+          } else {
+            // No GCP credentials — return the gateway error as-is
+            const status = err.message === 'GATEWAY_PAYMENT_REQUIRED' ? 402 : 429;
+            const msg = err.message === 'GATEWAY_PAYMENT_REQUIRED'
+              ? 'Lovable AI credits exhausted — add funds in Settings → Workspace → Usage'
+              : 'Rate limit exceeded';
+            return new Response(JSON.stringify({ error: msg, provider, model: modelUsed }), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+          }
         }
         console.error(`[generate-resource-image] Gateway error:`, err.message);
         return new Response(JSON.stringify({ error: err.message, provider, model: modelUsed }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });

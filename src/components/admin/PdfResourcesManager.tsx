@@ -652,6 +652,11 @@ export function PdfResourcesManager() {
         if (error) { console.error(`DB update failed for ${r.id}:`, error.message); }
         else generated++;
       } catch (err: any) {
+        // Stop immediately on payment/credits error — no point retrying
+        if (err.message?.includes('Payment') || err.message?.includes('402') || err.message?.includes('funds')) {
+          toast({ title: '⛔ Credits exhausted', description: 'Bulk generation stopped. Add funds or switch to Vertex AI model.', variant: 'destructive' });
+          break;
+        }
         if (err?.retryable || isRetryableImageError(err.message, err.status)) {
           const cooldownMs = imageAiModel.startsWith('vertex') ? 60000 : 30000;
           toast({ title: 'Retrying image generation', description: `Rate limit hit. Cooling down ${Math.round(cooldownMs / 1000)}s before retry...`, variant: 'destructive' });

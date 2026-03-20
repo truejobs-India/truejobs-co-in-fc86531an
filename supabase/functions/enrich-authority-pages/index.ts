@@ -581,7 +581,7 @@ async function callMistralRaw(prompt: string, timeoutMs = 60_000, maxTokens = 16
 }
 
 // ── Lovable Gemini (Gateway) ──
-async function callLovableGeminiRaw(prompt: string, timeoutMs = 60_000): Promise<string> {
+async function callLovableGeminiRaw(prompt: string, timeoutMs = 60_000, maxTokens = 16384): Promise<string> {
   const apiKey = Deno.env.get('LOVABLE_API_KEY');
   if (!apiKey) throw new Error('LOVABLE_API_KEY not configured — please add it to secrets');
 
@@ -600,7 +600,7 @@ async function callLovableGeminiRaw(prompt: string, timeoutMs = 60_000): Promise
         model: 'google/gemini-2.5-flash',
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.5,
-        max_tokens: 16384,
+        max_tokens: maxTokens,
       }),
     });
 

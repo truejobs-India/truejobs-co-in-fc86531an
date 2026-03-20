@@ -171,17 +171,11 @@ IMPORTANT RULES:
 Return ONLY a JSON array: [{ ... }]
 No markdown code blocks.`;
 
-    const resp = await fetch(`${GEMINI_URL}?key=${geminiApiKey}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { maxOutputTokens: 4000, temperature: 0.3 },
-      }),
+    const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+    let raw = await callVertexGemini('gemini-2.5-flash', prompt, 60_000, {
+      maxOutputTokens: 4000,
+      temperature: 0.3,
     });
-    if (!resp.ok) throw new Error(`Gemini API error ${resp.status}`);
-    const data = await resp.json();
-    let raw = data?.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
     raw = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
 
     let parsed: any[];

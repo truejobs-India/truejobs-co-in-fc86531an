@@ -134,7 +134,7 @@ Rules:
 8. Detect the state from location, address, or organization name
 9. Classify each job into the most appropriate job_category`;
 
-    const parsed = await callGemini(GEMINI_API_KEY, systemPrompt, text);
+    const parsed = await callGemini(systemPrompt, text);
 
     const jobs = parsed.jobs || [];
     if (jobs.length === 0) {

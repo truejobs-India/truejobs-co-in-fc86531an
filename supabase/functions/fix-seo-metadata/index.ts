@@ -122,45 +122,33 @@ RULES:
 Return ONLY this compact JSON (keep each "reason" under 15 words):
 {"meta_title":{"value":"...","keep_existing":false,"reason":"..."},"meta_description":{"value":"...","keep_existing":false,"reason":"..."},"slug":{"value":"...","keep_existing":true,"reason":"..."},"excerpt":{"value":"...","keep_existing":false,"reason":"..."},"summary":"..."}`;
 
-        // Call Gemini 2.5 Pro with retry
-        let geminiRes: Response | null = null;
-        for (let attempt = 0; attempt < 3; attempt++) {
-          geminiRes = await fetch(`${GEMINI_URL}?key=${GEMINI_API_KEY}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [{ parts: [{ text: prompt }] }],
-              generationConfig: {
-                temperature: 0.2,
-                maxOutputTokens: 8192,
-                responseMimeType: 'application/json',
-              },
-            }),
+        // Call Vertex AI Gemini 2.5 Pro — primary call with JSON mode
+        let rawText = '';
+        let finishReason = '';
+        try {
+          rawText = await callVertexGemini('gemini-2.5-pro', prompt, 60_000, {
+            maxOutputTokens: 8192,
+            temperature: 0.2,
+            responseMimeType: 'application/json',
           });
-          if (geminiRes.status === 429 && attempt < 2) {
-            await geminiRes.text();
-            await new Promise(r => setTimeout(r, (attempt + 1) * 5000));
+        } catch (vertexErr: any) {
+          if (vertexErr.message?.includes('429')) {
+            results.push({
+              id: article.id, slug: article.slug, status: 'failed',
+              reason: 'Vertex AI rate limit exceeded', changes: {}, ai_summary: '',
+            });
             continue;
           }
-          break;
-        }
-
-        if (!geminiRes || !geminiRes.ok) {
-          const errText = geminiRes ? await geminiRes.text() : 'No response';
-          console.error(`Gemini error for ${article.slug}:`, errText);
+          console.error(`Vertex error for ${article.slug}:`, vertexErr.message);
           results.push({
             id: article.id, slug: article.slug, status: 'failed',
-            reason: geminiRes?.status === 429 ? 'Rate limit exceeded' : `Gemini API error ${geminiRes?.status}`,
+            reason: `Vertex AI error: ${vertexErr.message?.substring(0, 200)}`,
             changes: {}, ai_summary: '',
           });
           continue;
         }
 
-        const geminiData = await geminiRes.json();
-        const rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-        const finishReason = geminiData?.candidates?.[0]?.finishReason || '';
-
-        // If empty or blocked, retry once without responseMimeType
+        // Parse JSON from response
         let aiResult: any;
         let parsed = false;
 
@@ -170,7 +158,6 @@ Return ONLY this compact JSON (keep each "reason" under 15 words):
             aiResult = JSON.parse(cleaned);
             parsed = true;
           } catch {
-            // Try to extract partial JSON
             const jsonMatch = rawText.match(/\{[\s\S]*\}/);
             if (jsonMatch) {
               try {
@@ -183,19 +170,12 @@ Return ONLY this compact JSON (keep each "reason" under 15 words):
 
         // Retry once without responseMimeType if parse failed or empty
         if (!parsed) {
-          console.warn(`Parse failed for ${article.slug} (finishReason: ${finishReason}), retrying without responseMimeType...`);
+          console.warn(`Parse failed for ${article.slug}, retrying without responseMimeType via Vertex AI...`);
           await new Promise(r => setTimeout(r, 2000));
-          const retryRes = await fetch(`${GEMINI_URL}?key=${GEMINI_API_KEY}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [{ parts: [{ text: prompt + '\n\nIMPORTANT: Return ONLY the JSON object, no markdown fences, no extra text.' }] }],
-              generationConfig: { temperature: 0.2, maxOutputTokens: 1500 },
-            }),
-          });
-          if (retryRes.ok) {
-            const retryData = await retryRes.json();
-            const retryText = retryData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+          try {
+            const retryText = await callVertexGemini('gemini-2.5-pro',
+              prompt + '\n\nIMPORTANT: Return ONLY the JSON object, no markdown fences, no extra text.',
+              60_000, { maxOutputTokens: 1500, temperature: 0.2 });
             if (retryText) {
               try {
                 const cleaned = retryText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
@@ -206,8 +186,8 @@ Return ONLY this compact JSON (keep each "reason" under 15 words):
                 console.error(`Retry parse also failed for ${article.slug}:`, retryText.substring(0, 300));
               }
             }
-          } else {
-            await retryRes.text();
+          } catch (retryErr: any) {
+            console.error(`Retry Vertex call failed for ${article.slug}:`, retryErr.message);
           }
         }
 

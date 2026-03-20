@@ -537,7 +537,7 @@ ${guide.internalLinks.map(l => `- [${l.anchor}](${l.href})`).join('\n')}
 ${guide.prompt}`;
 
         console.log(`Generating guide: ${guide.slug}`);
-        const rawContent = await callGemini(systemPrompt, GEMINI_API_KEY);
+        const rawContent = await callGeminiVertex(systemPrompt);
 
         if (!rawContent || rawContent.length < 500) {
           report.errors.push(`${guide.slug}: Generated content too short (${rawContent?.length || 0} chars)`);

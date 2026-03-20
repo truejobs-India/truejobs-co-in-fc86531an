@@ -36,13 +36,13 @@ async function callGemini(prompt: string, maxTokens = 8192, timeout = 60_000): P
   } finally { clearTimeout(timer); }
 }
 
-async function callGroq(prompt: string): Promise<string> {
+async function callGroq(prompt: string, maxTokens = 8192): Promise<string> {
   const apiKey = Deno.env.get('GROQ_API_KEY');
   if (!apiKey) throw new Error('GROQ_API_KEY not configured');
   const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.6, max_tokens: 8192 }),
+    body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.6, max_tokens: maxTokens }),
   });
   if (!resp.ok) throw new Error(`Groq error: ${resp.status}`);
   const data = await resp.json();

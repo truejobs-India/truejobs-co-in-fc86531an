@@ -8,22 +8,23 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
 import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
-import { calcLiveWordCount, calcReadingTime, wordCountFields } from '@/lib/blogWordCount';
+import { calcLiveWordCount, calcReadingTime } from '@/lib/blogWordCount';
 import {
   analyzeQuality, analyzeSEO, getReadinessStatus, blogPostToMetadata,
   type ReadinessStatus,
 } from '@/lib/blogArticleAnalyzer';
 import {
   Search, Zap, Loader2, Square, ChevronDown, CheckCircle2, AlertTriangle,
-  RefreshCw,
+  RefreshCw, ClipboardList,
 } from 'lucide-react';
+import { EnrichmentReviewQueue } from './EnrichmentReviewQueue';
 
 interface Props {
   blogTextModel: string;
   onComplete: () => void;
 }
 
-type Phase = 'idle' | 'scanning' | 'scanned' | 'enriching' | 'syncing';
+type Phase = 'idle' | 'scanning' | 'scanned' | 'enriching' | 'generated' | 'syncing';
 type Scope = 'all' | 'published' | 'unpublished';
 
 interface FoundArticle {
@@ -31,8 +32,8 @@ interface FoundArticle {
   title: string;
   slug: string;
   content: string;
-  word_count: number;        // live-calculated
-  db_word_count: number;     // stale DB value
+  word_count: number;
+  db_word_count: number;
   is_published: boolean;
   readiness: ReadinessStatus;
   category: string | null;
@@ -70,15 +71,19 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
   // ── Sync state ──
   const [syncProgress, setSyncProgress] = useState<{ done: number; total: number; failed: number } | null>(null);
 
-  // ── Compute readiness for a post (uses the exact same path as the table) ──
-  const computeReadiness = (post: { title: string; slug: string; content: string; is_published: boolean; meta_title?: string | null; meta_description?: string | null; excerpt?: string | null; cover_image_url?: string | null; featured_image_alt?: string | null; category?: string | null; tags?: string[] | null; word_count?: number | null; faq_count?: number | null; has_faq_schema?: boolean | null; internal_links?: any; canonical_url?: string | null; author_name?: string | null; }, liveWc: number): ReadinessStatus => {
+  // ── Review state ──
+  const [currentBatchId, setCurrentBatchId] = useState<string | null>(null);
+  const [generationSummary, setGenerationSummary] = useState<{ total: number; succeeded: number; failed: number } | null>(null);
+  const [reviewOpen, setReviewOpen] = useState(false);
+
+  const computeReadiness = (post: any, liveWc: number): ReadinessStatus => {
     const meta = blogPostToMetadata({ ...post, word_count: liveWc });
     const q = analyzeQuality(meta);
     const s = analyzeSEO(meta);
     return getReadinessStatus(q, s, meta);
   };
 
-  // ── Step 1: Scan ──
+  // ── Step 1: Scan (unchanged) ──
   const handleScan = useCallback(async () => {
     if (searchBelow < 50) {
       toast({ title: 'Enter a valid word count threshold (≥ 50)', variant: 'destructive' });
@@ -87,8 +92,9 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
     setPhase('scanning');
     setFound([]);
     setScanSummary(null);
+    setGenerationSummary(null);
+    setCurrentBatchId(null);
     try {
-      // Fetch all posts in batches of 500
       let allPosts: any[] = [];
       let from = 0;
       const batchSize = 500;
@@ -96,11 +102,8 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
         let query = supabase
           .from('blog_posts')
           .select('id, title, slug, content, word_count, category, tags, is_published, meta_title, meta_description, excerpt, cover_image_url, featured_image_alt, faq_count, has_faq_schema, internal_links, canonical_url, author_name');
-
-        // Apply scope filter at DB level
         if (scope === 'published') query = query.eq('is_published', true);
         else if (scope === 'unpublished') query = query.eq('is_published', false);
-
         const { data, error } = await query.range(from, from + batchSize - 1);
         if (error) throw error;
         if (!data || data.length === 0) break;
@@ -109,22 +112,14 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
         from += batchSize;
       }
 
-      // Calculate live word count, compute readiness, and filter
       const matches: FoundArticle[] = allPosts
         .map((p) => {
           const liveWc = calcLiveWordCount(p.content);
           const readiness = computeReadiness(p, liveWc);
           return {
-            id: p.id,
-            title: p.title,
-            slug: p.slug,
-            content: p.content,
-            word_count: liveWc,
-            db_word_count: p.word_count || 0,
-            is_published: p.is_published,
-            readiness,
-            category: p.category,
-            tags: p.tags,
+            id: p.id, title: p.title, slug: p.slug, content: p.content,
+            word_count: liveWc, db_word_count: p.word_count || 0,
+            is_published: p.is_published, readiness, category: p.category, tags: p.tags,
           };
         })
         .filter((p) => p.word_count < searchBelow)
@@ -145,7 +140,7 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
     }
   }, [searchBelow, scope, toast]);
 
-  // ── Step 2: Enrich ──
+  // ── Step 2: Enrich → Store Proposals (review-first) ──
   const handleEnrich = useCallback(async () => {
     if (found.length === 0) return;
     if (enrichTo < 200) {
@@ -159,6 +154,9 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
 
     abortRef.current = false;
     setPhase('enriching');
+    const batchId = crypto.randomUUID();
+    setCurrentBatchId(batchId);
+
     const total = found.length;
     let done = 0;
     let failed = 0;
@@ -168,18 +166,18 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
 
     for (const post of found) {
       if (abortRef.current) {
-        toast({ title: '⏹️ Enrichment stopped', description: `${done} enriched, ${failed} failed, ${total - done - failed} skipped.` });
+        toast({ title: '⏹️ Enrichment stopped', description: `${done} generated, ${failed} failed, ${total - done - failed} skipped.` });
         break;
       }
       if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
         toast({
           title: '⛔ Auto-stopped: too many consecutive failures',
-          description: `${consecutiveFailures} articles failed in a row. ${done} enriched, ${failed} failed, ${total - done - failed} skipped.`,
+          description: `${consecutiveFailures} failed in a row. ${done} generated, ${failed} failed.`,
           variant: 'destructive',
         });
         break;
       }
-      setProgress({ done, total, failed, current: post.title });
+      setProgress({ done: done + failed, total, failed, current: post.title });
 
       try {
         const resp = await supabase.functions.invoke('improve-blog-content', {
@@ -195,10 +193,26 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
           },
         });
 
-        if (resp.error) {
-          const errorMsg = typeof resp.error === 'object' && resp.error?.message
-            ? resp.error.message : String(resp.error);
-          console.warn(`Enrich edge function error for "${post.title}": ${errorMsg}`);
+        const errorMsg = resp.error
+          ? (typeof resp.error === 'object' && resp.error?.message ? resp.error.message : String(resp.error))
+          : null;
+
+        if (errorMsg) {
+          // Generation truly failed
+          await supabase.from('blog_enrichment_proposals').insert({
+            batch_id: batchId,
+            article_id: post.id,
+            article_title: post.title,
+            article_slug: post.slug,
+            original_content: post.content,
+            original_word_count: post.word_count,
+            proposed_content: null,
+            proposed_word_count: 0,
+            target_word_count: enrichTo,
+            status: 'generation_failed',
+            model_used: blogTextModel,
+            error_message: errorMsg,
+          });
           failed++;
           consecutiveFailures++;
           continue;
@@ -206,65 +220,79 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
 
         const enrichData = resp.data;
         if (!enrichData || enrichData.error) {
-          console.warn(`Enrich returned error for "${post.title}": ${enrichData?.error || 'no data'}`);
+          await supabase.from('blog_enrichment_proposals').insert({
+            batch_id: batchId,
+            article_id: post.id,
+            article_title: post.title,
+            article_slug: post.slug,
+            original_content: post.content,
+            original_word_count: post.word_count,
+            proposed_content: null,
+            proposed_word_count: 0,
+            target_word_count: enrichTo,
+            status: 'generation_failed',
+            model_used: blogTextModel,
+            error_message: enrichData?.error || 'No data returned',
+          });
           failed++;
           consecutiveFailures++;
           continue;
         }
 
         const enrichedHtml = enrichData?.result;
-        const wcValidation = enrichData?.wordCountValidation;
-        const actualWc = wcValidation?.actualWordCount
-          || calcLiveWordCount(enrichedHtml);
-        const originalWc = post.word_count; // live-calculated baseline
-
         if (!enrichedHtml || typeof enrichedHtml !== 'string' || enrichedHtml.length < 100) {
-          console.warn(`Enrich returned empty/short for "${post.title}"`);
+          await supabase.from('blog_enrichment_proposals').insert({
+            batch_id: batchId,
+            article_id: post.id,
+            article_title: post.title,
+            article_slug: post.slug,
+            original_content: post.content,
+            original_word_count: post.word_count,
+            proposed_content: enrichedHtml || null,
+            proposed_word_count: 0,
+            target_word_count: enrichTo,
+            status: 'generation_failed',
+            model_used: blogTextModel,
+            error_message: 'Generated content too short or empty',
+          });
           failed++;
           consecutiveFailures++;
-        } else if (wcValidation?.status === 'fail') {
-          console.warn(`Enrich word count FAILED for "${post.title}": ${actualWc}/${enrichTo}. Skipping.`);
-          failed++;
-          consecutiveFailures++;
-        } else if (actualWc <= originalWc) {
-          console.warn(`Enrich did not increase word count for "${post.title}": ${originalWc} → ${actualWc}. Skipping.`);
-          failed++;
-          consecutiveFailures++;
-        } else {
-          consecutiveFailures = 0;
-
-          const linkMatches = [...enrichedHtml.matchAll(/<a\s+[^>]*href="([^"]*)"[^>]*>(.*?)<\/a>/gi)];
-          const internalLinks = linkMatches
-            .filter((m: RegExpMatchArray) => m[1].startsWith('/'))
-            .map((m: RegExpMatchArray) => ({ url: m[1], text: m[2].replace(/<[^>]+>/g, '') }));
-
-          // Save enriched content — word_count computed from the exact payload being saved
-          const savedContent = enrichedHtml;
-          const postSaveWc = calcLiveWordCount(savedContent);
-          const { error: updateErr } = await supabase
-            .from('blog_posts')
-            .update({
-              content: savedContent,
-              word_count: postSaveWc,
-              reading_time: calcReadingTime(postSaveWc),
-              internal_links: internalLinks.length > 0 ? internalLinks : undefined,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', post.id);
-
-          if (updateErr) throw updateErr;
-
-          // Post-save verification: report target status
-          const pct = Math.round((postSaveWc / enrichTo) * 100);
-          if (postSaveWc >= enrichTo * 0.85) {
-            console.log(`✅ "${post.title}" — ${postSaveWc} words (${pct}% of target ${enrichTo})`);
-          } else {
-            console.warn(`⚠️ "${post.title}" — ${postSaveWc} words (${pct}% of target ${enrichTo}) — below 85% target`);
-          }
-          done++;
+          continue;
         }
+
+        // Generation succeeded — store as pending_review regardless of word count
+        const proposedWc = calcLiveWordCount(enrichedHtml);
+        consecutiveFailures = 0;
+
+        await supabase.from('blog_enrichment_proposals').insert({
+          batch_id: batchId,
+          article_id: post.id,
+          article_title: post.title,
+          article_slug: post.slug,
+          original_content: post.content,
+          original_word_count: post.word_count,
+          proposed_content: enrichedHtml,
+          proposed_word_count: proposedWc,
+          target_word_count: enrichTo,
+          status: 'pending_review',
+          model_used: blogTextModel,
+        });
+        done++;
       } catch (err: any) {
-        console.warn(`Enrich failed for "${post.title}":`, err.message);
+        await supabase.from('blog_enrichment_proposals').insert({
+          batch_id: batchId,
+          article_id: post.id,
+          article_title: post.title,
+          article_slug: post.slug,
+          original_content: post.content,
+          original_word_count: post.word_count,
+          proposed_content: null,
+          proposed_word_count: 0,
+          target_word_count: enrichTo,
+          status: 'generation_failed',
+          model_used: blogTextModel,
+          error_message: err.message,
+        });
         failed++;
         consecutiveFailures++;
       }
@@ -273,27 +301,23 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
       if (done + failed < total) await new Promise(r => setTimeout(r, 2000));
     }
 
-    if (!abortRef.current && consecutiveFailures < MAX_CONSECUTIVE_FAILURES) {
-      const variant = failed > 0 && done === 0 ? 'destructive' : undefined;
-      toast({
-        title: done > 0 ? '✅ Bulk enrichment complete' : '⚠️ Bulk enrichment finished with issues',
-        description: `${done} enriched, ${failed} failed out of ${total}.`,
-        variant,
-      });
-    }
-    setPhase('idle');
-    setFound([]);
+    setGenerationSummary({ total: done + failed, succeeded: done, failed });
+    setPhase('generated');
     setProgress(null);
+    setFound([]);
     setScanSummary(null);
-    onComplete();
-  }, [found, enrichTo, searchBelow, blogTextModel, toast, onComplete]);
 
-  // ── One-time Word Count Sync (chunked, with progress) ──
+    toast({
+      title: done > 0 ? '✅ Generation complete — Review results' : '⚠️ Generation finished with issues',
+      description: `${done} generated, ${failed} failed out of ${total}. Open review to inspect.`,
+    });
+  }, [found, enrichTo, searchBelow, blogTextModel, toast]);
+
+  // ── Sync Word Counts (unchanged) ──
   const handleSyncWordCounts = useCallback(async () => {
     setPhase('syncing');
     setSyncProgress({ done: 0, total: 0, failed: 0 });
     try {
-      // Fetch all posts with content in batches
       let allPosts: { id: string; content: string; word_count: number | null }[] = [];
       let from = 0;
       const batchSize = 500;
@@ -308,8 +332,6 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
         if (data.length < batchSize) break;
         from += batchSize;
       }
-
-      // Find stale rows
       const staleRows = allPosts
         .map(p => ({ id: p.id, liveWc: calcLiveWordCount(p.content), dbWc: p.word_count || 0 }))
         .filter(p => p.liveWc !== p.dbWc);
@@ -320,20 +342,16 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
         setSyncProgress(null);
         return;
       }
-
       const total = staleRows.length;
       let done = 0;
       let failed = 0;
       setSyncProgress({ done: 0, total, failed: 0 });
-
-      // Process in chunks of 20
       const CHUNK_SIZE = 20;
       for (let i = 0; i < staleRows.length; i += CHUNK_SIZE) {
         const chunk = staleRows.slice(i, i + CHUNK_SIZE);
         const results = await Promise.allSettled(
           chunk.map(row =>
-            supabase
-              .from('blog_posts')
+            supabase.from('blog_posts')
               .update({ word_count: row.liveWc, reading_time: calcReadingTime(row.liveWc) })
               .eq('id', row.id)
           )
@@ -344,7 +362,6 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
         }
         setSyncProgress({ done: done + failed, total, failed });
       }
-
       toast({
         title: '✅ Word count sync complete',
         description: `${done} fixed, ${failed} failed out of ${total} stale (${allPosts.length} total checked).`,
@@ -362,6 +379,8 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
     setFound([]);
     setProgress(null);
     setScanSummary(null);
+    setGenerationSummary(null);
+    setCurrentBatchId(null);
     abortRef.current = false;
   };
 
@@ -394,9 +413,7 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
             <div className="space-y-1">
               <Label className="text-xs text-muted-foreground">Find articles below (words)</Label>
               <Input
-                type="number"
-                min={50}
-                max={10000}
+                type="number" min={50} max={10000}
                 value={searchBelow}
                 onChange={e => setSearchBelow(Number(e.target.value))}
                 className="w-[140px] h-8 text-sm"
@@ -407,9 +424,7 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
             <div className="space-y-1">
               <Label className="text-xs text-muted-foreground">Enrich to (target words)</Label>
               <Input
-                type="number"
-                min={200}
-                max={10000}
+                type="number" min={200} max={10000}
                 value={enrichTo}
                 onChange={e => setEnrichTo(Number(e.target.value))}
                 className="w-[140px] h-8 text-sm"
@@ -418,7 +433,7 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
             </div>
 
             <div className="flex items-center gap-2">
-              {(phase === 'idle' || phase === 'scanned') && (
+              {(phase === 'idle' || phase === 'scanned' || phase === 'generated') && (
                 <Button variant="outline" size="sm" onClick={handleScan}>
                   <Search className="h-4 w-4 mr-1" />
                   {phase === 'scanned' ? 'Re-Scan' : 'Scan'}
@@ -444,7 +459,7 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
                 </Button>
               )}
 
-              {phase === 'scanned' && (
+              {(phase === 'scanned' || phase === 'generated') && (
                 <Button variant="ghost" size="sm" onClick={handleReset} className="text-xs">
                   Clear
                 </Button>
@@ -527,14 +542,57 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
           {phase === 'enriching' && progress && (
             <div className="space-y-2">
               <div className="flex justify-between text-xs text-muted-foreground">
-                <span>Enriching: {progress.current}</span>
+                <span>Generating: {progress.current}</span>
                 <span>{progress.done}/{progress.total} ({progress.failed} failed)</span>
               </div>
               <Progress value={(progress.done / progress.total) * 100} className="h-2" />
             </div>
           )}
+
+          {/* ── Generation Summary + Review Button ── */}
+          {phase === 'generated' && generationSummary && (
+            <div className="space-y-3">
+              <div className="rounded-lg border bg-muted/30 p-4 space-y-2">
+                <h4 className="text-sm font-semibold">Generation Complete</h4>
+                <div className="grid grid-cols-3 gap-3 text-center">
+                  <div>
+                    <div className="text-lg font-bold">{generationSummary.total}</div>
+                    <div className="text-[11px] text-muted-foreground">Total</div>
+                  </div>
+                  <div>
+                    <div className="text-lg font-bold text-green-600">{generationSummary.succeeded}</div>
+                    <div className="text-[11px] text-muted-foreground">Succeeded</div>
+                  </div>
+                  <div>
+                    <div className="text-lg font-bold text-destructive">{generationSummary.failed}</div>
+                    <div className="text-[11px] text-muted-foreground">Failed</div>
+                  </div>
+                </div>
+              </div>
+
+              {generationSummary.succeeded > 0 && (
+                <Button size="sm" onClick={() => setReviewOpen(true)}>
+                  <ClipboardList className="h-4 w-4 mr-1" />
+                  Review {generationSummary.succeeded} Result{generationSummary.succeeded !== 1 ? 's' : ''}
+                </Button>
+              )}
+            </div>
+          )}
         </CollapsibleContent>
       </Collapsible>
+
+      {/* ── Review Queue Dialog ── */}
+      {currentBatchId && (
+        <EnrichmentReviewQueue
+          batchId={currentBatchId}
+          open={reviewOpen}
+          onOpenChange={setReviewOpen}
+          onComplete={() => {
+            onComplete();
+            handleReset();
+          }}
+        />
+      )}
     </div>
   );
 }

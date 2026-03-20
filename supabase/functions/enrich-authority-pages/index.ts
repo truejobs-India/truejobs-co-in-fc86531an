@@ -635,7 +635,7 @@ async function callOpenAIRaw(prompt: string, model = 'openai/gpt-5', timeoutMs =
         model,
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.5,
-        max_completion_tokens: 16384,
+        max_completion_tokens: maxTokens,
       }),
     });
 

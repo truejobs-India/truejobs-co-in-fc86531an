@@ -26,8 +26,7 @@ async function verifyAdmin(req: Request): Promise<{ userId: string } | Response>
   return { userId };
 }
 
-const GEMINI_MODEL = 'gemini-2.5-flash';
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+// Vertex AI Gemini via shared helper
 
 // ── Server-side normalization whitelists ──
 const VALID_FIX_TYPES = new Set([

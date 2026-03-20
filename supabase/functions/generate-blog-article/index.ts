@@ -738,6 +738,8 @@ Format: {"title": "...", "slug": "...", "content": "...", "metaTitle": "...", "m
 No markdown code blocks. Return ONLY the JSON object.`;
     }
 
+    prompt += '\n\n' + buildWordCountInstruction(wordTarget, useModel);
+
     const raw = await callAI(useModel, prompt, wordTarget);
     const cleaned = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
 

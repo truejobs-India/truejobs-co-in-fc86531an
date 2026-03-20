@@ -108,7 +108,7 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
       setProgress({ done, total, failed, current: post.title });
 
       try {
-        const { data: enrichData, error } = await supabase.functions.invoke('improve-blog-content', {
+        const resp = await supabase.functions.invoke('improve-blog-content', {
           body: {
             action: 'enrich-article',
             slug: post.slug,
@@ -120,7 +120,25 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
             aiModel: blogTextModel,
           },
         });
-        if (error) throw error;
+
+        // Handle structured error responses (edge function returned non-2xx with JSON body)
+        if (resp.error) {
+          const errorMsg = typeof resp.error === 'object' && resp.error?.message
+            ? resp.error.message
+            : String(resp.error);
+          console.warn(`Enrich edge function error for "${post.title}": ${errorMsg}`);
+          failed++;
+          consecutiveFailures++;
+          continue;
+        }
+
+        const enrichData = resp.data;
+        if (!enrichData || enrichData.error) {
+          console.warn(`Enrich returned error for "${post.title}": ${enrichData?.error || 'no data'}`);
+          failed++;
+          consecutiveFailures++;
+          continue;
+        }
 
         const enrichedHtml = enrichData?.result;
         const wcValidation = enrichData?.wordCountValidation;
@@ -132,13 +150,17 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
         if (!enrichedHtml || typeof enrichedHtml !== 'string' || enrichedHtml.length < 100) {
           console.warn(`Enrich returned empty/short for "${post.title}"`);
           failed++;
+          consecutiveFailures++;
         } else if (wcValidation?.status === 'fail') {
           console.warn(`Enrich word count FAILED for "${post.title}": ${actualWc}/${enrichTo} (${wcValidation.deviation}%). Skipping DB update.`);
           failed++;
+          consecutiveFailures++;
         } else if (actualWc <= originalWc) {
           console.warn(`Enrich did not increase word count for "${post.title}": ${originalWc} → ${actualWc}. Skipping DB update.`);
           failed++;
+          consecutiveFailures++;
         } else {
+          consecutiveFailures = 0; // Reset on success
           const readingTime = Math.max(1, Math.ceil(actualWc / 200));
 
           const linkMatches = [...enrichedHtml.matchAll(/<a\s+[^>]*href="([^"]*)"[^>]*>(.*?)<\/a>/gi)];
@@ -163,6 +185,7 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
       } catch (err: any) {
         console.warn(`Enrich failed for "${post.title}":`, err.message);
         failed++;
+        consecutiveFailures++;
       }
 
       setProgress({ done: done + failed, total, failed, current: post.title });

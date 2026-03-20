@@ -266,7 +266,7 @@ async function callGemini(prompt: string, systemPrompt?: string, maxTokens = 320
 }
 
 // ── 2. Lovable Gemini (gateway) ──
-async function callLovableGemini(prompt: string): Promise<string> {
+async function callLovableGemini(prompt: string, maxTokens = 16000): Promise<string> {
   const apiKey = Deno.env.get('LOVABLE_API_KEY');
   if (!apiKey) throw new Error('LOVABLE_API_KEY not configured');
   const resp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
@@ -275,7 +275,7 @@ async function callLovableGemini(prompt: string): Promise<string> {
     body: JSON.stringify({
       model: 'google/gemini-2.5-flash',
       messages: [{ role: 'user', content: prompt }],
-      max_tokens: 16000,
+      max_tokens: maxTokens,
       temperature: 0.5,
     }),
   });

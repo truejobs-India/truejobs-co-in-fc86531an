@@ -1,5 +1,5 @@
-// Direct Gemini 2.5 API only for non-image AI features — does NOT use Lovable AI gateway
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+// Blog compliance analysis — Vertex AI Gemini
+// Uses shared Vertex AI helper
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',

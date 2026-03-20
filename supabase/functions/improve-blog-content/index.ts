@@ -107,7 +107,7 @@ async function awsSigV4Fetch(host: string, rawPath: string, body: string, region
   });
 }
 
-// ── Gemini (direct API) — falls back to Lovable Gateway on persistent 429 ──
+// ── Gemini (direct API) — NO silent fallback ──
 async function callGemini(prompt: string, maxTokens: number, geminiModel = 'gemini-2.5-flash'): Promise<string> {
   const apiKey = Deno.env.get('GEMINI_API_KEY');
   if (!apiKey) throw new Error('GEMINI_API_KEY not configured');
@@ -133,34 +133,9 @@ async function callGemini(prompt: string, maxTokens: number, geminiModel = 'gemi
     break;
   }
 
-  // If still 429 after retries, try Lovable AI Gateway as fallback
+  // If still 429 after retries — throw, NO silent fallback to Gateway
   if (resp && resp.status === 429) {
-    const lovableKey = Deno.env.get('LOVABLE_API_KEY');
-    if (lovableKey) {
-      console.warn(`[improve-blog-content] Gemini 429 exhausted retries — falling back to Lovable AI Gateway`);
-      const gatewayResp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${lovableKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: geminiModel === 'gemini-2.5-pro' ? 'google/gemini-2.5-pro' : 'google/gemini-2.5-flash',
-          messages: [{ role: 'user', content: prompt }],
-          max_tokens: maxTokens,
-          temperature: 0.4,
-        }),
-      });
-      if (gatewayResp.ok) {
-        const gData = await gatewayResp.json();
-        const text = gData?.choices?.[0]?.message?.content || '';
-        console.log(`[improve-blog-content] Lovable Gateway fallback succeeded, len=${text.length}`);
-        return JSON.stringify({ __raw: text, __finishReason: gData?.choices?.[0]?.finish_reason || 'stop' });
-      }
-      const gStatus = gatewayResp.status;
-      const gBody = await gatewayResp.text();
-      console.error(`[improve-blog-content] Lovable Gateway fallback failed [${gStatus}]: ${gBody.substring(0, 200)}`);
-      if (gStatus === 402) throw new Error('Lovable AI credits exhausted. Please add funds or try later.');
-      if (gStatus === 429) throw new Error('Both Gemini and Lovable AI rate-limited. Please wait a moment and try again.');
-    }
-    throw new Error('Gemini API rate limit exceeded. Please wait a moment and try again.');
+    throw new Error('GEMINI_RATE_LIMITED: Gemini API rate limit exceeded after retries. Please wait a moment and try again.');
   }
 
   if (!resp || !resp.ok) {
@@ -340,52 +315,24 @@ async function callAI(aiModel: string, prompt: string, maxTokens: number): Promi
       resultJson = await callLovableGemini(prompt, maxTokens);
       actualProvider = 'lovable-gateway'; actualModelId = 'google/gemini-2.5-flash'; break;
     case 'vertex-flash': {
-      try {
-        const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-        const text = await callVertexGemini('gemini-2.5-flash', prompt, 90_000, { maxOutputTokens: maxTokens });
-        resultJson = JSON.stringify({ __raw: text, __finishReason: 'stop' });
-        actualProvider = 'vertex-ai'; actualModelId = 'gemini-2.5-flash';
-      } catch (vertexErr: any) {
-        if (vertexErr?.message?.includes('429') || vertexErr?.message?.includes('RESOURCE_EXHAUSTED')) {
-          console.warn(`[improve-blog-content] Vertex Flash 429 — falling back to Lovable Gateway`);
-          resultJson = await callLovableGemini(prompt, maxTokens);
-          actualProvider = 'lovable-gateway'; actualModelId = 'google/gemini-2.5-flash';
-        } else { throw vertexErr; }
-      }
+      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      const text = await callVertexGemini('gemini-2.5-flash', prompt, 90_000, { maxOutputTokens: maxTokens });
+      resultJson = JSON.stringify({ __raw: text, __finishReason: 'stop' });
+      actualProvider = 'vertex-ai'; actualModelId = 'gemini-2.5-flash';
       break;
     }
     case 'vertex-pro': {
-      try {
-        const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-        const text = await callVertexGemini('gemini-2.5-pro', prompt, 120_000, { maxOutputTokens: maxTokens });
-        resultJson = JSON.stringify({ __raw: text, __finishReason: 'stop' });
-        actualProvider = 'vertex-ai'; actualModelId = 'gemini-2.5-pro';
-      } catch (vertexErr: any) {
-        if (vertexErr?.message?.includes('429') || vertexErr?.message?.includes('RESOURCE_EXHAUSTED')) {
-          console.warn(`[improve-blog-content] Vertex Pro 429 — falling back to Lovable Gateway`);
-          const lovKey = Deno.env.get('LOVABLE_API_KEY');
-          if (!lovKey) throw vertexErr;
-          const gResp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${lovKey}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model: 'google/gemini-2.5-pro', messages: [{ role: 'user', content: prompt }], max_tokens: maxTokens, temperature: 0.4 }),
-          });
-          if (!gResp.ok) {
-            const gBody = await gResp.text();
-            if (gResp.status === 402) throw new Error('Lovable AI credits exhausted.');
-            if (gResp.status === 429) throw new Error('Both Vertex AI and Lovable AI rate-limited. Please wait.');
-            throw new Error(`Lovable Gateway error ${gResp.status}: ${gBody.substring(0, 200)}`);
-          }
-          const gData = await gResp.json();
-          resultJson = JSON.stringify({ __raw: gData?.choices?.[0]?.message?.content || '', __finishReason: gData?.choices?.[0]?.finish_reason || 'stop' });
-          actualProvider = 'lovable-gateway'; actualModelId = 'google/gemini-2.5-pro';
-        } else { throw vertexErr; }
-      }
+      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      const text = await callVertexGemini('gemini-2.5-pro', prompt, 120_000, { maxOutputTokens: maxTokens });
+      resultJson = JSON.stringify({ __raw: text, __finishReason: 'stop' });
+      actualProvider = 'vertex-ai'; actualModelId = 'gemini-2.5-pro';
       break;
     }
     case 'nova-pro': case 'nova-premier': {
       const { callBedrockNovaWithMeta } = await import('../_shared/bedrock-nova.ts');
-      const result = await callBedrockNovaWithMeta(model, prompt, { maxTokens: Math.min(maxTokens, 16384), temperature: 0.5 });
+      const { computeMaxTokens: computeNovaBudget } = await import('../_shared/word-count-enforcement.ts');
+      const novaBudget = computeNovaBudget(Math.ceil(maxTokens / 2), model); // maxTokens was already computed from target, reverse to get approx target
+      const result = await callBedrockNovaWithMeta(model, prompt, { maxTokens: novaBudget, temperature: 0.5 });
       resultJson = JSON.stringify({ __raw: result.text, __finishReason: result.stopReason });
       actualProvider = 'aws-bedrock'; actualModelId = model === 'nova-pro' ? 'amazon.nova-pro-v1:0' : 'amazon.nova-premier-v1:0'; break;
     }
@@ -511,10 +458,12 @@ No markdown code blocks.`;
       const criteriaBlock = buildCriteriaInstructions(Array.isArray(failingCriteria) ? failingCriteria : []);
 
       if (isStubRebuild && currentWords < 500) {
+        const { buildWordCountInstruction: buildWCI } = await import('../_shared/word-count-enforcement.ts');
+        const STRICT_WC_BLOCK = buildWCI(Math.max(1200, effectiveTarget), effectiveModel);
         prompt = `You are a professional content writer for TrueJobs.co.in, an Indian government job portal.
 
 Write a comprehensive, well-structured article on the topic below.
-STRICT Word count target: ${Math.max(1200, effectiveTarget)} words. Do NOT exceed ${Math.round(Math.max(1200, effectiveTarget) * 1.15)} words. Do NOT write fewer than ${Math.round(Math.max(1200, effectiveTarget) * 0.85)} words.
+${STRICT_WC_BLOCK}
 ${effectiveTarget <= 1200 ? 'Keep sections brief (3-5 sentences max) and skip subsections.' : ''}
 
 TOPIC: ${title}
@@ -542,23 +491,15 @@ ${criteriaBlock}
 Return ONLY the full article as valid HTML.
 No JSON wrappers, no markdown, no code blocks, no explanations.`;
 
-        const estimatedTokens = Math.max(8000, Math.ceil(effectiveTarget * 2.5));
-        maxTokens = Math.min(estimatedTokens, 65536);
-
-        // Nova models need a generous token budget
-        if (effectiveModel === 'nova-pro' || effectiveModel === 'nova-premier') {
-          maxTokens = Math.max(maxTokens, Math.ceil(Math.max(1200, effectiveTarget) * 2));
-        }
-
-        // Claude Sonnet can hit platform timeouts on very large generations — keep output budget tighter.
-        if (effectiveModel === 'claude-sonnet' || effectiveModel === 'claude') {
-          maxTokens = Math.min(maxTokens, 3500);
-        }
+        const { computeMaxTokens: computeMT } = await import('../_shared/word-count-enforcement.ts');
+        maxTokens = computeMT(Math.max(1200, effectiveTarget), effectiveModel);
 
       } else {
+        const { buildWordCountInstruction: buildWCI2, computeMaxTokens: computeMT2 } = await import('../_shared/word-count-enforcement.ts');
+        const STRICT_WC_BLOCK2 = buildWCI2(effectiveTarget, effectiveModel);
         prompt = `You are a professional content editor for TrueJobs.co.in, an Indian government job portal.
 Expand and improve the following article.
-STRICT Word count target: ${effectiveTarget} words. Do NOT exceed ${Math.round(effectiveTarget * 1.15)} words. Do NOT write fewer than ${Math.round(effectiveTarget * 0.85)} words. Currently ~${currentWords} words.
+${STRICT_WC_BLOCK2} Currently ~${currentWords} words.
 
 CRITICAL RULES:
 - You MUST return the COMPLETE article — every single section from the original MUST be present in your output
@@ -592,18 +533,7 @@ Return ONLY the full enriched article as valid HTML.
 No JSON wrappers, no markdown, no code blocks, no explanations.
 REMINDER: Your output must contain ALL original content plus additions. Do NOT cut short.`;
 
-        const estimatedTokensNeeded = Math.max(8000, Math.ceil(currentWords * 2.5));
-        maxTokens = Math.min(estimatedTokensNeeded, 65536);
-
-        // Nova models need a generous token budget — 1 word ≈ 1.5 tokens for HTML content
-        if (effectiveModel === 'nova-pro' || effectiveModel === 'nova-premier') {
-          maxTokens = Math.max(maxTokens, Math.ceil(effectiveTarget * 2));
-        }
-
-        // Claude Sonnet can hit platform timeouts on very large generations — keep output budget tighter.
-        if (effectiveModel === 'claude-sonnet' || effectiveModel === 'claude') {
-          maxTokens = Math.min(maxTokens, 3500);
-        }
+        maxTokens = computeMT2(effectiveTarget, effectiveModel);
       }
 
     } else if (action === 'structure') {
@@ -733,14 +663,70 @@ No markdown code blocks.`;
         resultHtml = markdownToHtml(resultHtml);
       }
 
-      const wordCountComputed = resultHtml.replace(/<[^>]+>/g, ' ').split(/\s+/).filter(w => w.length > 0).length;
+      // ── Word count validation using clean text counting ──
+      const { countWordsFromHtml, validateWordCount, buildCorrectionPrompt: buildCorr } = await import('../_shared/word-count-enforcement.ts');
+      const wordCountComputed = countWordsFromHtml(resultHtml);
+
+      // Determine the effective target for validation
+      const validationTarget = isStubRebuild ? Math.max(1200, effectiveTarget) : effectiveTarget;
+      const wcValidation = validateWordCount(resultHtml, validationTarget, maxTokens);
+
+      // ── Optional single correction retry for 'fail' state ──
+      let correctionAttempted = false;
+      let finalResultHtml = resultHtml;
+      let finalWordCount = wordCountComputed;
+      let finalValidation = wcValidation;
+
+      if (wcValidation.status === 'fail' && !wasTruncated && resultHtml.length > 100) {
+        correctionAttempted = true;
+        const direction = wordCountComputed < validationTarget ? 'expand' : 'trim';
+        const correctionPrompt = buildCorr(resultHtml, validationTarget, wordCountComputed, direction);
+        console.log(`[improve-blog-content] Word count ${wcValidation.status}: ${wordCountComputed}/${validationTarget} (${wcValidation.deviation}%). Attempting ${direction} correction.`);
+
+        try {
+          const { computeMaxTokens: computeMT3 } = await import('../_shared/word-count-enforcement.ts');
+          const corrMaxTokens = computeMT3(validationTarget, effectiveModel);
+          const { raw: corrRaw } = await callAI(effectiveModel, correctionPrompt, corrMaxTokens);
+          let corrHtml = corrRaw.trim();
+          if (corrHtml.startsWith('```')) corrHtml = corrHtml.replace(/^```(?:json|html)?\s*\n/, '');
+          if (corrHtml.endsWith('```')) corrHtml = corrHtml.replace(/\n?```\s*$/, '');
+          corrHtml = corrHtml.trim();
+
+          const corrWordCount = countWordsFromHtml(corrHtml);
+          const corrValidation = validateWordCount(corrHtml, validationTarget, corrMaxTokens);
+
+          // Use whichever version is closer to target
+          const origDist = Math.abs(wordCountComputed - validationTarget);
+          const corrDist = Math.abs(corrWordCount - validationTarget);
+          if (corrDist < origDist && corrHtml.length > 100) {
+            finalResultHtml = corrHtml;
+            finalWordCount = corrWordCount;
+            finalValidation = corrValidation;
+            console.log(`[improve-blog-content] Correction improved: ${wordCountComputed} → ${corrWordCount} words`);
+          } else {
+            console.log(`[improve-blog-content] Correction did not improve: original=${wordCountComputed}, corrected=${corrWordCount}. Keeping original.`);
+          }
+        } catch (corrErr: any) {
+          console.warn(`[improve-blog-content] Correction retry failed: ${corrErr.message}. Keeping original.`);
+        }
+      }
+
       return new Response(JSON.stringify({
-        result: resultHtml,
-        wordCount: wordCountComputed,
+        result: finalResultHtml,
+        wordCount: finalWordCount,
         wasTruncated,
         changes: Array.isArray(changes) ? changes : [],
         actualProvider,
         actualModelId,
+        selectedModelId: effectiveModel,
+        correctionAttempted,
+        wordCountValidation: {
+          targetWordCount: finalValidation.targetWordCount,
+          actualWordCount: finalValidation.actualWordCount,
+          maxTokensRequested: maxTokens,
+          status: finalValidation.status,
+          deviation: finalValidation.deviation,
+        },
       }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 

@@ -14,7 +14,7 @@ const corsHeaders = {
 // AI MODEL DISPATCHER
 // ═══════════════════════════════════════════════════════════════
 
-async function callGemini(prompt: string, timeout = 60_000): Promise<string> {
+async function callGemini(prompt: string, maxTokens = 8192, timeout = 60_000): Promise<string> {
   const apiKey = Deno.env.get('GEMINI_API_KEY');
   if (!apiKey) throw new Error('GEMINI_API_KEY not configured');
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
@@ -26,7 +26,7 @@ async function callGemini(prompt: string, timeout = 60_000): Promise<string> {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.6, maxOutputTokens: 8192 },
+        generationConfig: { temperature: 0.6, maxOutputTokens: maxTokens },
       }),
       signal: controller.signal,
     });
@@ -36,26 +36,26 @@ async function callGemini(prompt: string, timeout = 60_000): Promise<string> {
   } finally { clearTimeout(timer); }
 }
 
-async function callGroq(prompt: string): Promise<string> {
+async function callGroq(prompt: string, maxTokens = 8192): Promise<string> {
   const apiKey = Deno.env.get('GROQ_API_KEY');
   if (!apiKey) throw new Error('GROQ_API_KEY not configured');
   const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.6, max_tokens: 8192 }),
+    body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.6, max_tokens: maxTokens }),
   });
   if (!resp.ok) throw new Error(`Groq error: ${resp.status}`);
   const data = await resp.json();
   return data?.choices?.[0]?.message?.content || '';
 }
 
-async function callMistral(prompt: string): Promise<string> {
+async function callMistral(prompt: string, maxTokens = 8192): Promise<string> {
   const apiKey = Deno.env.get('LOVABLE_API_KEY');
   if (!apiKey) throw new Error('LOVABLE_API_KEY not configured');
   const resp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: 'google/gemini-2.5-flash', messages: [{ role: 'user', content: prompt }], temperature: 0.6, max_tokens: 8192 }),
+    body: JSON.stringify({ model: 'google/gemini-2.5-flash', messages: [{ role: 'user', content: prompt }], temperature: 0.6, max_tokens: maxTokens }),
   });
   if (!resp.ok) {
     const errText = await resp.text();
@@ -65,26 +65,26 @@ async function callMistral(prompt: string): Promise<string> {
   return data?.choices?.[0]?.message?.content || '';
 }
 
-async function callClaude(prompt: string): Promise<string> {
+async function callClaude(prompt: string, maxTokens = 8192): Promise<string> {
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured');
   const resp = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 8192, messages: [{ role: 'user', content: prompt }] }),
+    body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: maxTokens, messages: [{ role: 'user', content: prompt }] }),
   });
   if (!resp.ok) throw new Error(`Claude error: ${resp.status}`);
   const data = await resp.json();
   return data?.content?.[0]?.text || '';
 }
 
-async function callLovableGemini(prompt: string): Promise<string> {
+async function callLovableGemini(prompt: string, maxTokens = 8192): Promise<string> {
   const apiKey = Deno.env.get('LOVABLE_API_KEY');
   if (!apiKey) throw new Error('LOVABLE_API_KEY not configured');
   const resp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: 'google/gemini-2.5-flash', messages: [{ role: 'user', content: prompt }], temperature: 0.6, max_tokens: 8192 }),
+    body: JSON.stringify({ model: 'google/gemini-2.5-flash', messages: [{ role: 'user', content: prompt }], temperature: 0.6, max_tokens: maxTokens }),
   });
   if (!resp.ok) {
     const errText = await resp.text();
@@ -94,13 +94,13 @@ async function callLovableGemini(prompt: string): Promise<string> {
   return data?.choices?.[0]?.message?.content || '';
 }
 
-async function callOpenAI(prompt: string, model = 'gpt-4o'): Promise<string> {
+async function callOpenAI(prompt: string, maxTokens = 8192, model = 'gpt-4o'): Promise<string> {
   const apiKey = Deno.env.get('OPENAI_API_KEY');
   if (!apiKey) throw new Error('OPENAI_API_KEY not configured');
   const resp = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model, messages: [{ role: 'user', content: prompt }], temperature: 0.6, max_tokens: 8192 }),
+    body: JSON.stringify({ model, messages: [{ role: 'user', content: prompt }], temperature: 0.6, max_tokens: maxTokens }),
   });
   if (!resp.ok) {
     const errText = await resp.text();
@@ -110,13 +110,13 @@ async function callOpenAI(prompt: string, model = 'gpt-4o'): Promise<string> {
   return data?.choices?.[0]?.message?.content || '';
 }
 
-async function callGeminiPro(prompt: string): Promise<string> {
+async function callGeminiPro(prompt: string, maxTokens = 8192): Promise<string> {
   const apiKey = Deno.env.get('LOVABLE_API_KEY');
   if (!apiKey) throw new Error('LOVABLE_API_KEY not configured');
   const resp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: 'google/gemini-2.5-pro', messages: [{ role: 'user', content: prompt }], temperature: 0.6, max_tokens: 8192 }),
+    body: JSON.stringify({ model: 'google/gemini-2.5-pro', messages: [{ role: 'user', content: prompt }], temperature: 0.6, max_tokens: maxTokens }),
   });
   if (!resp.ok) {
     const errText = await resp.text();
@@ -126,13 +126,13 @@ async function callGeminiPro(prompt: string): Promise<string> {
   return data?.choices?.[0]?.message?.content || '';
 }
 
-async function callGpt5Mini(prompt: string): Promise<string> {
+async function callGpt5Mini(prompt: string, maxTokens = 8192): Promise<string> {
   const apiKey = Deno.env.get('LOVABLE_API_KEY');
   if (!apiKey) throw new Error('LOVABLE_API_KEY not configured');
   const resp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: 'openai/gpt-5-mini', messages: [{ role: 'user', content: prompt }], temperature: 0.6, max_tokens: 8192 }),
+    body: JSON.stringify({ model: 'openai/gpt-5-mini', messages: [{ role: 'user', content: prompt }], temperature: 0.6, max_tokens: maxTokens }),
   });
   if (!resp.ok) {
     const errText = await resp.text();
@@ -142,39 +142,42 @@ async function callGpt5Mini(prompt: string): Promise<string> {
   return data?.choices?.[0]?.message?.content || '';
 }
 
-async function callVertexFlash(prompt: string): Promise<string> {
+async function callVertexFlash(prompt: string, maxTokens = 16384): Promise<string> {
   const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
   return callVertexGemini('gemini-2.5-flash', prompt, 90_000, {
-    maxOutputTokens: 16384,
+    maxOutputTokens: maxTokens,
     temperature: 0.6,
   });
 }
 
-async function callVertexPro(prompt: string): Promise<string> {
+async function callVertexPro(prompt: string, maxTokens = 16384): Promise<string> {
   const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
   return callVertexGemini('gemini-2.5-pro', prompt, 150_000, {
-    maxOutputTokens: 16384,
+    maxOutputTokens: maxTokens,
     temperature: 0.6,
   });
 }
 
-async function callAI(model: string, prompt: string): Promise<string> {
+async function callAI(model: string, prompt: string, maxTokens = 8192): Promise<string> {
   switch (model) {
-    case 'gemini': case 'gemini-flash': return callGemini(prompt);
-    case 'gemini-pro': return callGeminiPro(prompt);
-    case 'groq': return callGroq(prompt);
-    case 'claude': case 'claude-sonnet': return callClaude(prompt);
-    case 'mistral': return callMistral(prompt);
-    case 'lovable-gemini': return callLovableGemini(prompt);
-    case 'openai': case 'gpt5': return callOpenAI(prompt);
-    case 'gpt5-mini': return callGpt5Mini(prompt);
-    case 'vertex-flash': return callVertexFlash(prompt);
-    case 'vertex-pro': return callVertexPro(prompt);
+    case 'gemini': case 'gemini-flash': return callGemini(prompt, maxTokens);
+    case 'gemini-pro': return callGeminiPro(prompt, maxTokens);
+    case 'groq': return callGroq(prompt, maxTokens);
+    case 'claude': case 'claude-sonnet': return callClaude(prompt, maxTokens);
+    case 'mistral': return callMistral(prompt, maxTokens);
+    case 'lovable-gemini': return callLovableGemini(prompt, maxTokens);
+    case 'openai': case 'gpt5': return callOpenAI(prompt, maxTokens);
+    case 'gpt5-mini': return callGpt5Mini(prompt, maxTokens);
+    case 'vertex-flash': return callVertexFlash(prompt, maxTokens);
+    case 'vertex-pro': return callVertexPro(prompt, maxTokens);
     case 'nova-pro': case 'nova-premier': {
       const { callBedrockNova } = await import('../_shared/bedrock-nova.ts');
-      return callBedrockNova(model, prompt, { maxTokens: 16384, temperature: 0.6 });
+      const { computeMaxTokens } = await import('../_shared/word-count-enforcement.ts');
+      const novaBudget = computeMaxTokens(Math.ceil(maxTokens / 2), model);
+      return callBedrockNova(model, prompt, { maxTokens: novaBudget, temperature: 0.6 });
     }
-    default: return callGemini(prompt);
+    default:
+      throw new Error(`Unsupported AI model: "${model}". Select a valid model.`);
   }
 }
 
@@ -531,12 +534,18 @@ Rules:
 
     // ── Enrich page content ──
     if (action === 'enrich') {
-      const { title, slug, content, meta_title, meta_description, excerpt, category, tags, faq_schema, word_count: currentWc } = body;
+      const { title, slug, content, meta_title, meta_description, excerpt, category, tags, faq_schema, word_count: currentWc, target_word_count: enrichTarget } = body;
       if (!title) return new Response(JSON.stringify({ error: 'title required for enrich' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+
+      const { buildWordCountInstruction, computeMaxTokens, validateWordCount, countWordsFromHtml } = await import('../_shared/word-count-enforcement.ts');
+      const enrichWordTarget = enrichTarget || 2000;
+      const wcInstruction = buildWordCountInstruction(enrichWordTarget, model);
+      const enrichMaxTokens = computeMaxTokens(enrichWordTarget, model);
 
       const enrichPrompt = `You are an expert SEO content writer for TrueJobs.co.in, a leading Indian government job & education portal.
 
 Enrich and improve this existing page. Expand thin content, add missing sections, improve structure.
+${wcInstruction}
 
 Current page:
 - Title: ${title}
@@ -556,7 +565,7 @@ Return a JSON object with the enriched version:
   "meta_title": "Improved meta title (40-60 chars)",
   "meta_description": "Improved meta description (120-160 chars)",
   "excerpt": "Improved excerpt",
-  "content": "Full enriched HTML content (target: 1500-2500 words). Keep existing good content, expand thin sections, add missing ones. Use <h2>, <h3>, <p>, <ul>, <ol>, <table>.",
+  "content": "Full enriched HTML content. Keep existing good content, expand thin sections, add missing ones. Use <h2>, <h3>, <p>, <ul>, <ol>, <table>.",
   "faq_items": [{"question": "...", "answer": "..."}, ...] (5-8 FAQ items),
   "suggested_tags": ["tag1", "tag2", ...],
   "word_count": estimated word count,
@@ -567,17 +576,23 @@ Return a JSON object with the enriched version:
 Rules:
 - Keep existing good content, don't replace it
 - Add missing H2 sections, lists, tables where appropriate
-- Target 1500-2500 words total
 - Ensure E-E-A-T compliance
 - Add FAQ if missing or thin
 - Use HTML only, no markdown
 - Return ONLY valid JSON`;
 
-      console.log(`[generate-custom-page] enrich action, model=${model}, slug=${slug}, currentWc=${currentWc}`);
-      const raw = await callAI(model, enrichPrompt);
+      console.log(`[generate-custom-page] enrich action, model=${model}, slug=${slug}, currentWc=${currentWc}, targetWc=${enrichWordTarget}, maxTokens=${enrichMaxTokens}`);
+      const raw = await callAI(model, enrichPrompt, enrichMaxTokens);
       const parsed = parseAIResponse(raw);
 
-      return new Response(JSON.stringify({ success: true, data: parsed, model, action }), {
+      // Add word count validation if content was returned
+      let wordCountValidation = null;
+      if (parsed?.content) {
+        wordCountValidation = validateWordCount(parsed.content, enrichWordTarget, enrichMaxTokens);
+        parsed.word_count = countWordsFromHtml(parsed.content);
+      }
+
+      return new Response(JSON.stringify({ success: true, data: parsed, model, action, wordCountValidation }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
@@ -587,6 +602,10 @@ Rules:
       const { state_ut, board_name, board_abbr, result_url, official_board_url, seo_intro, variant, target_word_count, sibling_slugs } = body;
       if (!state_ut || !board_name) return new Response(JSON.stringify({ error: 'state_ut and board_name required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
+      const twc = target_word_count || 2000;
+      const { computeMaxTokens: computeMT, validateWordCount: validateWC, countWordsFromHtml: countWC } = await import('../_shared/word-count-enforcement.ts');
+      const resultMaxTokens = computeMT(twc, model);
+
       const prompt = generateResultPagePrompt({
         state_ut,
         board_name,
@@ -595,15 +614,22 @@ Rules:
         official_board_url: official_board_url || '',
         seo_intro: seo_intro || '',
         variant: variant || 'main',
-        target_word_count: target_word_count || 2000,
+        target_word_count: twc,
         sibling_slugs: sibling_slugs || [],
       });
 
-      console.log(`[generate-custom-page] generate-result action, model=${model}, board=${board_abbr}, variant=${variant}`);
-      const raw = await callAI(model, prompt);
+      console.log(`[generate-custom-page] generate-result action, model=${model}, board=${board_abbr}, variant=${variant}, targetWc=${twc}, maxTokens=${resultMaxTokens}`);
+      const raw = await callAI(model, prompt, resultMaxTokens);
       const parsed = parseAIResponse(raw);
 
-      return new Response(JSON.stringify({ success: true, data: parsed, model, action }), {
+      // Add word count validation
+      let wordCountValidation = null;
+      if (parsed?.content) {
+        wordCountValidation = validateWC(parsed.content, twc, resultMaxTokens);
+        parsed.word_count = countWC(parsed.content);
+      }
+
+      return new Response(JSON.stringify({ success: true, data: parsed, model, action, wordCountValidation }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }

@@ -368,67 +368,8 @@ function autoFillMissingFields(enriched: any, job: any): string[] {
 
 const AI_TIMEOUT_MS = 60000; // 60 seconds timeout for all AI calls
 
-async function fetchGemini(apiKey: string, prompt: string): Promise<string> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-  const body = {
-    contents: [{ role: "user", parts: [{ text: prompt }] }],
-    generationConfig: { responseMimeType: "application/json", temperature: 0.5 },
-  };
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
-
-  let response: Response;
-  try {
-    response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-  } catch (err) {
-    clearTimeout(timeoutId);
-    if (err instanceof DOMException && err.name === "AbortError") {
-      throw new Error("AI model timeout after 60 seconds");
-    }
-    throw err;
-  }
-
-  if (response.status === 429) {
-    console.log("Rate limited, retrying in 5s...");
-    await delay(5000);
-    const c2 = new AbortController();
-    const t2 = setTimeout(() => c2.abort(), AI_TIMEOUT_MS);
-    try {
-      response = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-        signal: c2.signal,
-      });
-    } catch (err) {
-      clearTimeout(t2);
-      if (err instanceof DOMException && err.name === "AbortError") {
-        throw new Error("AI model timeout after 60 seconds (retry)");
-      }
-      throw err;
-    }
-    clearTimeout(t2);
-  }
-
-  clearTimeout(timeoutId);
-
-  if (!response.ok) {
-    const errText = await response.text();
-    console.error("Gemini error:", response.status, errText);
-    throw new Error(`Gemini API error: ${response.status}`);
-  }
-
-  const data = await response.json();
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw new Error("No content in Gemini response");
-  return text;
-}
+// Removed: fetchGemini using GEMINI_API_KEY + generativelanguage.googleapis.com
+// Now handled inline in callAI dispatcher via callVertexGemini
 
 // ── AWS Sig V4 helpers (for Bedrock models) ──
 async function hmacSha256B(key: ArrayBuffer | Uint8Array, data: string): Promise<ArrayBuffer> {

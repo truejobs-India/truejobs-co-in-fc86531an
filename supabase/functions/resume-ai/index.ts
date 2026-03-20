@@ -10,9 +10,7 @@ const corsHeaders = {
 // STRICT COMPLIANCE: Max tokens limit 800-1000
 const MAX_TOKENS = 900;
 
-// Use external Gemini API as primary AI provider
-const GEMINI_MODEL = "gemini-2.5-flash";
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+// Vertex AI is the primary Gemini provider
 
 // ─── AWS Bedrock Converse API Support ─────────────────────────────────────────
 
@@ -166,44 +164,17 @@ const requestSchema = z.object({
   provider: z.enum(['gemini', 'bedrock']).optional(),
 });
 
-// Call external Gemini API (primary AI provider)
+// Call Vertex AI Gemini (primary AI provider)
 async function callGeminiAI(
   systemPrompt: string,
   userPrompt: string
 ): Promise<string> {
-  const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-  
-  if (!GEMINI_API_KEY) {
-    throw new Error("GEMINI_API_KEY is not configured");
-  }
-
+  const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
   const fullPrompt = `${systemPrompt}\n\n${userPrompt}`;
-
-  const response = await fetch(`${GEMINI_URL}?key=${GEMINI_API_KEY}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: fullPrompt }] }],
-      generationConfig: {
-        maxOutputTokens: MAX_TOKENS,
-        temperature: 0.3,
-      },
-    }),
+  return callVertexGemini('gemini-2.5-flash', fullPrompt, 60_000, {
+    maxOutputTokens: MAX_TOKENS,
+    temperature: 0.3,
   });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error("Gemini API error:", response.status, errorText);
-    
-    if (response.status === 429) {
-      throw new Error("Rate limit exceeded. Please try again in a moment.");
-    }
-    
-    throw new Error(`Gemini API error: ${response.status} - ${errorText}`);
-  }
-
-  const data = await response.json();
-  return data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
 }
 
 // Generate hash for request to track duplicates

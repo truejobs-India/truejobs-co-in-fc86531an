@@ -400,31 +400,15 @@ function validateInternalLinks(links: { anchor: string; href: string }[]): { val
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// GEMINI API
+// VERTEX AI GEMINI
 // ═══════════════════════════════════════════════════════════════════════════════
 
-async function callGemini(prompt: string, apiKey: string): Promise<string> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: 0.7,
-        maxOutputTokens: 8192,
-      },
-    }),
+async function callGeminiVertex(prompt: string): Promise<string> {
+  const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+  return callVertexGemini('gemini-2.5-flash', prompt, 90_000, {
+    maxOutputTokens: 8192,
+    temperature: 0.7,
   });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Gemini API error ${response.status}: ${errorText}`);
-  }
-
-  const data = await response.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -512,8 +496,7 @@ Deno.serve(async (req) => {
 
   try {
     const { slug: requestedSlug } = await req.json();
-    const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
-    if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY not configured');
+    // No GEMINI_API_KEY needed — uses Vertex AI via shared helper
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -554,7 +537,7 @@ ${guide.internalLinks.map(l => `- [${l.anchor}](${l.href})`).join('\n')}
 ${guide.prompt}`;
 
         console.log(`Generating guide: ${guide.slug}`);
-        const rawContent = await callGemini(systemPrompt, GEMINI_API_KEY);
+        const rawContent = await callGeminiVertex(systemPrompt);
 
         if (!rawContent || rawContent.length < 500) {
           report.errors.push(`${guide.slug}: Generated content too short (${rawContent?.length || 0} chars)`);

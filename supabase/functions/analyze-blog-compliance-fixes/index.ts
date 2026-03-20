@@ -1,4 +1,5 @@
-// Direct Gemini 2.5 API only for non-image AI features — does NOT use Lovable AI gateway
+// Blog compliance analysis — Vertex AI Gemini
+// Uses shared Vertex AI helper
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
@@ -26,8 +27,7 @@ async function verifyAdmin(req: Request): Promise<{ userId: string } | Response>
   return { userId };
 }
 
-const GEMINI_MODEL = 'gemini-2.5-flash';
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+// Vertex AI Gemini via shared helper
 
 // ── Server-side normalization whitelists ──
 const VALID_FIX_TYPES = new Set([
@@ -96,10 +96,7 @@ Deno.serve(async (req) => {
     const authResult = await verifyAdmin(req);
     if (authResult instanceof Response) return authResult;
 
-    const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
-    if (!geminiApiKey) {
-      return new Response(JSON.stringify({ error: 'GEMINI_API_KEY not configured' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-    }
+    // No GEMINI_API_KEY needed — uses Vertex AI via shared helper
 
     const { title, content, issues, slug, existingMeta } = await req.json();
     if (!title || !issues || !Array.isArray(issues)) {
@@ -175,17 +172,11 @@ IMPORTANT RULES:
 Return ONLY a JSON array: [{ ... }]
 No markdown code blocks.`;
 
-    const resp = await fetch(`${GEMINI_URL}?key=${geminiApiKey}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { maxOutputTokens: 4000, temperature: 0.3 },
-      }),
+    const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+    let raw = await callVertexGemini('gemini-2.5-flash', prompt, 60_000, {
+      maxOutputTokens: 4000,
+      temperature: 0.3,
     });
-    if (!resp.ok) throw new Error(`Gemini API error ${resp.status}`);
-    const data = await resp.json();
-    let raw = data?.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
     raw = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
 
     let parsed: any[];

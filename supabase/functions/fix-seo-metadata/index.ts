@@ -1,5 +1,5 @@
-// Gemini 2.5 Pro API — SEO metadata generation/fixing for blog articles
-// Does NOT use Lovable AI gateway — uses direct Gemini API only
+// SEO metadata generation/fixing for blog articles — Vertex AI Gemini 2.5 Pro
+// Uses shared Vertex AI helper, NOT Google AI Studio
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {

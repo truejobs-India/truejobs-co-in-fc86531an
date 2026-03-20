@@ -1001,7 +1001,15 @@ export function BlogPostEditor() {
         if (error) throw new Error(error.message);
         if (!data?.title || !data?.content) throw new Error('Invalid AI response');
 
-        const wordCount = data.content.replace(/<[^>]+>/g, '').split(/\s+/).filter((w: string) => w.length > 0).length;
+        // Prefer backend-provided word count when available
+        const wordCount = data.wordCountValidation?.actualWordCount
+          || data.content.replace(/<[^>]+>/g, '').split(/\s+/).filter((w: string) => w.length > 0).length;
+        // Non-blocking word count warning
+        if (data.wordCountValidation?.status === 'fail') {
+          toast({ title: `⚠ Word count: ${data.wordCountValidation.actualWordCount} words (target: ${data.wordCountValidation.targetWordCount}). Significantly off target.` });
+        } else if (data.wordCountValidation?.status === 'warn') {
+          toast({ title: `ℹ Word count: ${data.wordCountValidation.actualWordCount} words (target: ${data.wordCountValidation.targetWordCount}). Slightly outside range.` });
+        }
         const { data: inserted, error: insertErr } = await supabase.from('blog_posts').insert({
           title: data.title, slug: data.slug, content: data.content,
           excerpt: data.excerpt || null, meta_title: data.metaTitle || null,

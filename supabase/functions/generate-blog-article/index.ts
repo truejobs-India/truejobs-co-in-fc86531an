@@ -497,7 +497,7 @@ async function callMistral(prompt: string, systemPrompt?: string): Promise<strin
 
   const payload: Record<string, unknown> = {
     messages: [{ role: 'user', content: [{ text: prompt }] }],
-    inferenceConfig: { maxTokens: 16384, temperature: 0.5 },
+    inferenceConfig: { maxTokens: 8192, temperature: 0.5 },
   };
 
   if (systemPrompt) {
@@ -533,7 +533,7 @@ async function callAI(model: string, prompt: string, wordLimit = 1500): Promise<
     }
     case 'nova-pro': case 'nova-premier': {
       const { callBedrockNova } = await import('../_shared/bedrock-nova.ts');
-      return callBedrockNova(model, prompt, { maxTokens: 16384, temperature: 0.5 });
+      return callBedrockNova(model, prompt, { maxTokens: model === 'nova-pro' ? 8192 : 10000, temperature: 0.5 });
     }
     default:
       throw new Error(`Unsupported AI model: "${model}". Supported: gemini, gemini-flash, gemini-pro, mistral, claude-sonnet, openai, gpt5, groq, lovable-gemini, vertex-flash, vertex-pro, nova-pro, nova-premier`);

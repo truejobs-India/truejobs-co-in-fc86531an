@@ -159,7 +159,7 @@ export async function callBedrockNova(
   }
 
   const {
-    maxTokens = 16384,
+    maxTokens = 8192,
     temperature = 0.5,
     timeoutMs = 120_000,
     systemPrompt,
@@ -220,7 +220,7 @@ export async function callBedrockNovaWithMeta(
   }
 
   const {
-    maxTokens = 16384,
+    maxTokens = 8192,
     temperature = 0.5,
     timeoutMs = 120_000,
     systemPrompt,

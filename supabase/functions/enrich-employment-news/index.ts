@@ -616,9 +616,38 @@ async function callAI(model: string, prompt: string, maxTokensParam?: number): P
       rawText = await callBedrockNova(model, prompt, { maxTokens: maxTokensParam || 16384, temperature: 0.5 });
       break;
     }
-    case 'gemini':
-    default: {
-      // Gemini has its own retry + JSON parse logic
+    case 'groq': {
+      const groqKey = Deno.env.get('GROQ_API_KEY');
+      if (!groqKey) throw new Error('GROQ_API_KEY not configured');
+      const groqResp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${groqKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], max_tokens: maxTokensParam || 8192, temperature: 0.5 }),
+      });
+      if (!groqResp.ok) throw new Error(`Groq API error: ${groqResp.status}`);
+      const groqData = await groqResp.json();
+      rawText = groqData?.choices?.[0]?.message?.content || '';
+      break;
+    }
+    case 'gpt5':
+    case 'gpt5-mini':
+    case 'openai': {
+      const lovKey = Deno.env.get('LOVABLE_API_KEY');
+      if (!lovKey) throw new Error('LOVABLE_API_KEY not configured');
+      const gwModel = model === 'gpt5-mini' ? 'openai/gpt-5-mini' : 'openai/gpt-5';
+      const gwResp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${lovKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: gwModel, messages: [{ role: 'user', content: prompt }], max_tokens: maxTokensParam || 8192, temperature: 0.5 }),
+      });
+      if (!gwResp.ok) throw new Error(`Lovable AI error: ${gwResp.status}`);
+      const gwData = await gwResp.json();
+      rawText = gwData?.choices?.[0]?.message?.content || '';
+      break;
+    }
+    case 'gemini-flash':
+    case 'gemini-pro':
+    case 'gemini': {
       const apiKey = Deno.env.get("GEMINI_API_KEY");
       if (!apiKey) throw new Error("GEMINI_API_KEY not configured");
       const text = await fetchGemini(apiKey, prompt);
@@ -631,6 +660,8 @@ async function callAI(model: string, prompt: string, maxTokensParam?: number): P
         return tryParseJSON(text2);
       }
     }
+    default:
+      throw new Error(`Unsupported AI model: "${model}". No silent fallback allowed.`);
   }
 
   // For non-Gemini models, strip markdown fences and parse

@@ -458,12 +458,9 @@ No markdown code blocks.`;
       const criteriaBlock = buildCriteriaInstructions(Array.isArray(failingCriteria) ? failingCriteria : []);
 
       if (isStubRebuild && currentWords < 500) {
+        const { buildWordCountInstruction: buildWCI } = await import('../_shared/word-count-enforcement.ts');
+        const STRICT_WC_BLOCK = buildWCI(Math.max(1200, effectiveTarget), effectiveModel);
         prompt = `You are a professional content writer for TrueJobs.co.in, an Indian government job portal.
-
-Write a comprehensive, well-structured article on the topic below.
-const { buildWordCountInstruction: buildWCI } = await import('../_shared/word-count-enforcement.ts');
-STRICT_WC_BLOCK = buildWCI(Math.max(1200, effectiveTarget), effectiveModel);
-prompt = `You are a professional content writer for TrueJobs.co.in, an Indian government job portal.
 
 Write a comprehensive, well-structured article on the topic below.
 ${STRICT_WC_BLOCK}

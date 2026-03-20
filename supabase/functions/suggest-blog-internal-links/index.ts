@@ -104,11 +104,6 @@ Deno.serve(async (req) => {
     const authResult = await verifyAdmin(req);
     if (authResult instanceof Response) return authResult;
 
-    const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
-    if (!geminiApiKey) {
-      return new Response(JSON.stringify({ error: 'GEMINI_API_KEY not configured' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-    }
-
     const { title, content, category, tags, slug } = await req.json();
     if (!title) {
       return new Response(JSON.stringify({ error: 'title required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
@@ -148,17 +143,11 @@ Article excerpt: ${plainText}
 Return ONLY a JSON array: [{"path": "...", "anchorText": "...", "reason": "...", "sentenceTemplate": "...", "suggestedPlacement": "..."}]
 No markdown, no code blocks.`;
 
-    const resp = await fetch(`${GEMINI_URL}?key=${geminiApiKey}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { maxOutputTokens: 2000, temperature: 0.3 },
-      }),
+    const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+    let raw = await callVertexGemini('gemini-2.5-flash', prompt, 60_000, {
+      maxOutputTokens: 2000,
+      temperature: 0.3,
     });
-    if (!resp.ok) throw new Error(`Gemini API error ${resp.status}`);
-    const data = await resp.json();
-    let raw = data?.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
     raw = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
 
     let parsed: any[];

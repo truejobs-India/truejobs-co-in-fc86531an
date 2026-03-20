@@ -208,8 +208,8 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
             {/* Action buttons */}
             <div className="flex items-center gap-2">
               {(phase === 'idle' || phase === 'scanned') && (
-                <Button variant="outline" size="sm" onClick={handleScan} disabled={phase === 'enriching'}>
-                  {phase === 'idle' ? <Search className="h-4 w-4 mr-1" /> : <Search className="h-4 w-4 mr-1" />}
+                <Button variant="outline" size="sm" onClick={handleScan}>
+                  <Search className="h-4 w-4 mr-1" />
                   {phase === 'scanned' ? 'Re-Scan' : 'Scan'}
                 </Button>
               )}

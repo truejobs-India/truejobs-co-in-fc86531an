@@ -14,6 +14,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
 import { supabase } from '@/integrations/supabase/client';
 import mammoth from 'mammoth';
+import { getRecommendedModelsForTarget } from '@/lib/aiModels';
 import {
   Upload, FileText, Sparkles, CheckCircle, XCircle, Eye, Pencil, Trash2,
   Search, ChevronLeft, ChevronRight, Loader2, AlertCircle, Info
@@ -404,12 +405,16 @@ export function EmploymentNewsManager() {
       } else {
         successTotal += data?.successCount || 0;
         failTotal += data?.failCount || 0;
-        // Log word count warnings (non-blocking — content already saved)
-        const wcIssues = (data?.results || []).filter((r: any) =>
-          r.wordCountValidation?.status === 'warn' || r.wordCountValidation?.status === 'fail'
-        ).length;
-        if (wcIssues > 0) {
-          console.log(`[enrich] ${wcIssues} items had word count outside target range`);
+        // Non-blocking word count warnings with model recommendation
+        const wcFails = (data?.results || []).filter((r: any) => r.wordCountValidation?.status === 'fail').length;
+        const wcWarns = (data?.results || []).filter((r: any) => r.wordCountValidation?.status === 'warn').length;
+        if (wcFails > 0) {
+          const betterModels = getRecommendedModelsForTarget(1200).filter(m => m.value !== enrichAiModel);
+          const suggestion = betterModels.length > 0 ? ` Try ${betterModels[0].label}.` : '';
+          console.log(`[enrich] ${wcFails} items significantly under target.${suggestion}`);
+        }
+        if (wcWarns > 0) {
+          console.log(`[enrich] ${wcWarns} items slightly outside target range`);
         }
       }
 

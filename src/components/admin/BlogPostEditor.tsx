@@ -60,7 +60,7 @@ import { SeoMetadataWorkflowPanel } from './blog/SeoMetadataWorkflowPanel';
 import { BlogScoreBreakdown } from './blog/BlogScoreBreakdown';
 import { VertexAITools } from './blog/VertexAITools';
 import { AiModelSelector } from '@/components/admin/AiModelSelector';
-import { getModelDef } from '@/lib/aiModels';
+import { getModelDef, getRecommendedModelsForTarget } from '@/lib/aiModels';
 
 interface BlogPost {
   id: string;
@@ -1004,11 +1004,13 @@ export function BlogPostEditor() {
         // Prefer backend-provided word count when available
         const wordCount = data.wordCountValidation?.actualWordCount
           || data.content.replace(/<[^>]+>/g, '').split(/\s+/).filter((w: string) => w.length > 0).length;
-        // Non-blocking word count warning
+        // Non-blocking word count warning with model recommendation
         if (data.wordCountValidation?.status === 'fail') {
-          toast({ title: `⚠ Word count: ${data.wordCountValidation.actualWordCount} words (target: ${data.wordCountValidation.targetWordCount}). Significantly off target.` });
+          const betterModels = getRecommendedModelsForTarget(bulkWordCount).filter(m => m.value !== blogTextModel);
+          const suggestion = betterModels.length > 0 ? ` Try ${betterModels[0].label} for better results.` : '';
+          toast({ title: `⚠ Word count: ${data.wordCountValidation.actualWordCount}/${data.wordCountValidation.targetWordCount} words — significantly off target.${suggestion}` });
         } else if (data.wordCountValidation?.status === 'warn') {
-          toast({ title: `ℹ Word count: ${data.wordCountValidation.actualWordCount} words (target: ${data.wordCountValidation.targetWordCount}). Slightly outside range.` });
+          toast({ title: `ℹ Word count: ${data.wordCountValidation.actualWordCount}/${data.wordCountValidation.targetWordCount} words — slightly outside range.` });
         }
         const { data: inserted, error: insertErr } = await supabase.from('blog_posts').insert({
           title: data.title, slug: data.slug, content: data.content,
@@ -1063,11 +1065,13 @@ export function BlogPostEditor() {
         // Prefer backend-provided word count when available
         const wordCount = data.wordCountValidation?.actualWordCount
           || data.content.replace(/<[^>]+>/g, '').split(/\s+/).filter((w: string) => w.length > 0).length;
-        // Non-blocking word count warning
+        // Non-blocking word count warning with model recommendation
         if (data.wordCountValidation?.status === 'fail') {
-          toast({ title: `⚠ Word count: ${data.wordCountValidation.actualWordCount} words (target: ${data.wordCountValidation.targetWordCount}). Significantly off target.` });
+          const betterModels = getRecommendedModelsForTarget(bulkWordCount).filter(m => m.value !== blogTextModel);
+          const suggestion = betterModels.length > 0 ? ` Try ${betterModels[0].label} for better results.` : '';
+          toast({ title: `⚠ Word count: ${data.wordCountValidation.actualWordCount}/${data.wordCountValidation.targetWordCount} words — significantly off target.${suggestion}` });
         } else if (data.wordCountValidation?.status === 'warn') {
-          toast({ title: `ℹ Word count: ${data.wordCountValidation.actualWordCount} words (target: ${data.wordCountValidation.targetWordCount}). Slightly outside range.` });
+          toast({ title: `ℹ Word count: ${data.wordCountValidation.actualWordCount}/${data.wordCountValidation.targetWordCount} words — slightly outside range.` });
         }
         const { data: inserted, error: insertErr } = await supabase.from('blog_posts').insert({
           title: data.title, slug: data.slug, content: data.content,
@@ -1326,7 +1330,7 @@ export function BlogPostEditor() {
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">AI Models</span>
         <div className="flex items-center gap-2">
           <Label className="text-xs text-muted-foreground">Text:</Label>
-          <AiModelSelector value={blogTextModel} onValueChange={handleTextModelChange} capability="text" triggerClassName="w-[220px] h-8 text-xs" size="sm" />
+          <AiModelSelector value={blogTextModel} onValueChange={handleTextModelChange} capability="text" wordTarget={bulkWordCount} triggerClassName="w-[220px] h-8 text-xs" size="sm" />
         </div>
         <div className="flex items-center gap-2">
           <Label className="text-xs text-muted-foreground">Image:</Label>

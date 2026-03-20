@@ -675,7 +675,17 @@ async function callAI(model: string, prompt: string, maxTokensParam?: number): P
     let retryText: string;
     if (model === 'mistral') retryText = await callMistralRaw(prompt);
     else if (model === 'claude' || model === 'claude-sonnet') retryText = await callClaudeRaw(prompt);
-    else if (model === 'vertex-flash') {
+    else if (model === 'lovable-gemini') retryText = await callLovableGeminiRaw(prompt);
+    else if (model === 'groq') {
+      const groqKey = Deno.env.get('GROQ_API_KEY');
+      if (!groqKey) throw new Error('GROQ_API_KEY not configured');
+      const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST', headers: { Authorization: `Bearer ${groqKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], max_tokens: 8192, temperature: 0.5 }),
+      });
+      if (!r.ok) throw new Error(`Groq retry error: ${r.status}`);
+      retryText = (await r.json())?.choices?.[0]?.message?.content || '';
+    } else if (model === 'vertex-flash') {
       const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
       retryText = await callVertexGemini('gemini-2.5-flash', prompt, 60_000);
     } else if (model === 'vertex-pro') {

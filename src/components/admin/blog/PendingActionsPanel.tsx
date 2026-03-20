@@ -394,14 +394,30 @@ export function PendingActionsPanel({
         <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Pending Actions</span>
       </div>
       <div className="flex flex-wrap gap-3">
-        {renderActionButton(
-          'Enrich Pending Articles',
-          <Zap className="h-4 w-4" />,
-          enrichPhase, enrichScan, enrichProgress,
-          scanEnrich, executeEnrich,
-          () => { enrichAbortRef.current = true; },
-          'primary',
-        )}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
+            <Label htmlFor="enrich-word-limit" className="text-xs text-muted-foreground whitespace-nowrap">Target words:</Label>
+            <Input
+              id="enrich-word-limit"
+              type="number"
+              min={500}
+              max={10000}
+              step={100}
+              value={customWordLimit}
+              onChange={(e) => setCustomWordLimit(Number(e.target.value) || enrichWordLimit)}
+              className="w-20 h-8 text-xs"
+              disabled={enrichPhase === 'executing'}
+            />
+          </div>
+          {renderActionButton(
+            'Enrich Pending Articles',
+            <Zap className="h-4 w-4" />,
+            enrichPhase, enrichScan, enrichProgress,
+            scanEnrich, executeEnrich,
+            () => { enrichAbortRef.current = true; },
+            'primary',
+          )}
+        </div>
         {renderActionButton(
           'Create Pending Cover Images',
           <ImageIcon className="h-4 w-4" />,

@@ -1074,7 +1074,7 @@ export function BlogPostEditor() {
 
         // Prefer backend-provided word count when available
         const wordCount = data.wordCountValidation?.actualWordCount
-          || data.content.replace(/<[^>]+>/g, '').split(/\s+/).filter((w: string) => w.length > 0).length;
+          || calcLiveWordCount(data.content);
         // Non-blocking word count warning with model recommendation
         if (data.wordCountValidation?.status === 'fail') {
           const betterModels = getRecommendedModelsForTarget(bulkWordCount).filter(m => m.value !== blogTextModel);

@@ -29,7 +29,24 @@ const IMAGE_MODELS: Record<string, string> = {
   'gemini-pro-image': 'google/gemini-3-pro-image-preview',
 };
 
-async function callTextAI(model: string, prompt: string): Promise<string> {
+function resolveProviderInfo(model: string): { provider: string; apiModel: string } {
+  switch (model) {
+    case 'gemini-flash': case 'gemini': return { provider: 'google-ai-studio', apiModel: 'gemini-2.5-flash' };
+    case 'gemini-pro': return { provider: 'google-ai-studio', apiModel: 'gemini-2.5-pro' };
+    case 'vertex-flash': return { provider: 'vertex-ai', apiModel: 'gemini-2.5-flash' };
+    case 'vertex-pro': return { provider: 'vertex-ai', apiModel: 'gemini-2.5-pro' };
+    case 'claude-sonnet': case 'claude': return { provider: 'anthropic', apiModel: 'claude-sonnet-4-20250514' };
+    case 'groq': return { provider: 'groq', apiModel: 'llama-3.3-70b-versatile' };
+    case 'nova-pro': return { provider: 'bedrock', apiModel: 'us.amazon.nova-pro-v1:0' };
+    case 'nova-premier': return { provider: 'bedrock', apiModel: 'us.amazon.nova-premier-v1:0' };
+    case 'lovable-gemini': return { provider: 'lovable-gateway', apiModel: 'google/gemini-2.5-flash' };
+    case 'gpt5': return { provider: 'lovable-gateway', apiModel: 'openai/gpt-5' };
+    case 'gpt5-mini': return { provider: 'lovable-gateway', apiModel: 'openai/gpt-5-mini' };
+    default: return { provider: model, apiModel: model };
+  }
+}
+
+async function callTextAI(model: string, prompt: string, maxTokens?: number): Promise<string> {
   // Direct API models first
   if (model === 'gemini' || model === 'gemini-flash') {
     const apiKey = Deno.env.get('GEMINI_API_KEY');

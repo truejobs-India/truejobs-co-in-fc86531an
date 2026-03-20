@@ -49,13 +49,13 @@ async function callGroq(prompt: string, maxTokens = 8192): Promise<string> {
   return data?.choices?.[0]?.message?.content || '';
 }
 
-async function callMistral(prompt: string): Promise<string> {
+async function callMistral(prompt: string, maxTokens = 8192): Promise<string> {
   const apiKey = Deno.env.get('LOVABLE_API_KEY');
   if (!apiKey) throw new Error('LOVABLE_API_KEY not configured');
   const resp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: 'google/gemini-2.5-flash', messages: [{ role: 'user', content: prompt }], temperature: 0.6, max_tokens: 8192 }),
+    body: JSON.stringify({ model: 'google/gemini-2.5-flash', messages: [{ role: 'user', content: prompt }], temperature: 0.6, max_tokens: maxTokens }),
   });
   if (!resp.ok) {
     const errText = await resp.text();

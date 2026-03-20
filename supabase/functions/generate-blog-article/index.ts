@@ -654,6 +654,7 @@ function extractFieldsFromBrokenJson(json: string): Record<string, any> | null {
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
+  let useModel = 'unknown';
   try {
     const authResult = await verifyAdmin(req);
     if (authResult instanceof Response) return authResult;
@@ -663,7 +664,7 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'topic is required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    const useModel = aiModel || 'gemini';
+    useModel = aiModel || 'gemini';
     console.log(`[generate-blog-article] Using model: ${useModel}`);
 
     const wordTarget = Math.min(Math.max(Number(targetWordCount) || 1500, 800), 3000);

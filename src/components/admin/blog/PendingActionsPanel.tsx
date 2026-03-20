@@ -35,10 +35,13 @@ export function PendingActionsPanel({
   const { toast } = useToast();
 
   // ── Enrich state ──
+  const [customWordLimit, setCustomWordLimit] = useState(enrichWordLimit);
   const [enrichPhase, setEnrichPhase] = useState<ScanPhase>('idle');
   const [enrichScan, setEnrichScan] = useState<ScanResult | null>(null);
   const [enrichProgress, setEnrichProgress] = useState<{ done: number; total: number; failed: number; current: string } | null>(null);
   const enrichAbortRef = useRef(false);
+
+  useEffect(() => { setCustomWordLimit(enrichWordLimit); }, [enrichWordLimit]);
 
   // ── Cover image state ──
   const [coverPhase, setCoverPhase] = useState<ScanPhase>('idle');

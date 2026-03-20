@@ -113,9 +113,22 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
         if (error) throw error;
 
         const enrichedHtml = enrichData?.result;
-        if (enrichedHtml && typeof enrichedHtml === 'string' && enrichedHtml.length > 0) {
-          const actualWc = enrichData?.wordCountValidation?.actualWordCount
-            || enrichedHtml.replace(/<[^>]+>/g, ' ').split(/\s+/).filter((w: string) => w.length > 0).length;
+        const wcValidation = enrichData?.wordCountValidation;
+        const actualWc = wcValidation?.actualWordCount
+          || (enrichedHtml ? enrichedHtml.replace(/<[^>]+>/g, ' ').split(/\s+/).filter((w: string) => w.length > 0).length : 0);
+        const originalWc = post.word_count || 0;
+
+        // ── Validate: must have content, must have actually increased, and must not be a 'fail' ──
+        if (!enrichedHtml || typeof enrichedHtml !== 'string' || enrichedHtml.length < 100) {
+          console.warn(`Enrich returned empty/short for "${post.title}"`);
+          failed++;
+        } else if (wcValidation?.status === 'fail') {
+          console.warn(`Enrich word count FAILED for "${post.title}": ${actualWc}/${enrichTo} (${wcValidation.deviation}%). Skipping DB update.`);
+          failed++;
+        } else if (actualWc <= originalWc) {
+          console.warn(`Enrich did not increase word count for "${post.title}": ${originalWc} → ${actualWc}. Skipping DB update.`);
+          failed++;
+        } else {
           const readingTime = Math.max(1, Math.ceil(actualWc / 200));
 
           const linkMatches = [...enrichedHtml.matchAll(/<a\s+[^>]*href="([^"]*)"[^>]*>(.*?)<\/a>/gi)];
@@ -136,9 +149,6 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
 
           if (updateErr) throw updateErr;
           done++;
-        } else {
-          console.warn(`Enrich returned empty for "${post.title}"`);
-          failed++;
         }
       } catch (err: any) {
         console.warn(`Enrich failed for "${post.title}":`, err.message);
@@ -150,7 +160,12 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
     }
 
     if (!abortRef.current) {
-      toast({ title: '✅ Bulk enrichment complete', description: `${done} enriched, ${failed} failed out of ${total}.` });
+      const variant = failed > 0 && done === 0 ? 'destructive' : undefined;
+      toast({
+        title: done > 0 ? '✅ Bulk enrichment complete' : '⚠️ Bulk enrichment finished with issues',
+        description: `${done} enriched, ${failed} failed out of ${total}.${failed > 0 ? ' Failed articles did not meet word count targets — try a different model or lower target.' : ''}`,
+        variant,
+      });
     }
     setPhase('idle');
     setFound([]);

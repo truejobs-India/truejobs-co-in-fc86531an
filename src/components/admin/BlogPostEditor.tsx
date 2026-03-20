@@ -810,8 +810,8 @@ export function BlogPostEditor() {
   );
 
   // Word count from content
-  const liveWordCount = formData.content.replace(/<[^>]+>/g, '').split(/\s+/).filter(w => w.length > 0).length;
-  const liveReadingTime = Math.max(1, Math.ceil(liveWordCount / 200));
+  const liveWordCount = calcLiveWordCount(formData.content);
+  const liveReadingTime = calcReadingTime(liveWordCount);
 
   // ── Compute scores for current form data ───────────
   const currentMetadata = formData.title ? blogPostToMetadata({

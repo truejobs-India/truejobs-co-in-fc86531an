@@ -443,7 +443,7 @@ async function fetchGemini(prompt: string, model = 'gemini-2.5-flash', timeoutMs
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.5, topP: 0.8, maxOutputTokens: 16384, responseMimeType: 'application/json' },
+          generationConfig: { temperature: 0.5, topP: 0.8, maxOutputTokens, responseMimeType: 'application/json' },
         }),
       });
       if (!retry.ok) throw new Error(`Gemini retry failed: ${retry.status}`);

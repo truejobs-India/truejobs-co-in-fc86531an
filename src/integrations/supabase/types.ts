@@ -241,6 +241,66 @@ export type Database = {
         }
         Relationships: []
       }
+      blog_enrichment_proposals: {
+        Row: {
+          article_id: string
+          article_slug: string
+          article_title: string
+          batch_id: string
+          created_at: string
+          error_message: string | null
+          id: string
+          model_used: string | null
+          original_content: string
+          original_word_count: number
+          proposed_content: string | null
+          proposed_word_count: number
+          reviewed_at: string | null
+          status: string
+          target_word_count: number
+          updated_at: string
+          word_count_delta: number | null
+        }
+        Insert: {
+          article_id: string
+          article_slug: string
+          article_title: string
+          batch_id: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          model_used?: string | null
+          original_content: string
+          original_word_count?: number
+          proposed_content?: string | null
+          proposed_word_count?: number
+          reviewed_at?: string | null
+          status?: string
+          target_word_count: number
+          updated_at?: string
+          word_count_delta?: number | null
+        }
+        Update: {
+          article_id?: string
+          article_slug?: string
+          article_title?: string
+          batch_id?: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          model_used?: string | null
+          original_content?: string
+          original_word_count?: number
+          proposed_content?: string | null
+          proposed_word_count?: number
+          reviewed_at?: string | null
+          status?: string
+          target_word_count?: number
+          updated_at?: string
+          word_count_delta?: number | null
+        }
+        Relationships: []
+      }
       blog_posts: {
         Row: {
           ai_fixed_at: string | null

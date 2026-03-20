@@ -758,7 +758,7 @@ async function callAI(
     }
 
     case 'groq':
-      rawText = await callGroqRaw(prompt, timeout);
+      rawText = await callGroqRaw(prompt, timeout, maxTokens || 16384);
       return { data: tryParseJSON(rawText) };
     case 'mistral':
       rawText = await callMistralRaw(prompt, timeout);

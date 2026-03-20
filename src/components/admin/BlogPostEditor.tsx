@@ -970,10 +970,10 @@ export function BlogPostEditor() {
 
   const applyEnrichment = async () => {
     if (!enrichDialogPost || !enrichResult) return;
-    const wordCount = enrichResult.content.replace(/<[^>]+>/g, '').split(/\s+/).filter(w => w.length > 0).length;
+    const wordCount = calcLiveWordCount(enrichResult.content);
     const { error } = await supabase.from('blog_posts').update({
       content: enrichResult.content, word_count: wordCount,
-      reading_time: Math.max(1, Math.ceil(wordCount / 200)),
+      reading_time: calcReadingTime(wordCount),
     }).eq('id', enrichDialogPost.id);
     if (error) {
       toast({ title: 'Save failed', description: error.message, variant: 'destructive' });

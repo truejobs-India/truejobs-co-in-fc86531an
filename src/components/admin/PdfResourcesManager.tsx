@@ -166,6 +166,33 @@ function needsCoverImage(r: PdfResource): boolean {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// SEO indicator — MUST stay at module scope for stable React identity.
+// Moving this inside PdfResourcesManager causes full DOM unmount/remount
+// on every parent re-render, producing visible flicker.
+// ═══════════════════════════════════════════════════════════════
+function SeoIndicator({ resource }: { resource: PdfResource }) {
+  const h = computeSeoHealth(resource);
+  const color = h.score >= 9 ? 'text-green-600' : h.score >= 6 ? 'text-yellow-500' : 'text-destructive';
+  const Icon = h.score >= 9 ? CheckCircle : h.score >= 6 ? AlertTriangle : XCircle;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className={`inline-flex items-center gap-0.5 ${color}`}>
+          <Icon className="h-3.5 w-3.5" />
+          <span className="text-[10px] font-medium">{h.score}/10</span>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" className="max-w-xs">
+        {h.missing.length > 0
+          ? <p className="text-xs">Missing: {h.missing.join(', ')}</p>
+          : <p className="text-xs text-green-600">All SEO fields filled ✓</p>
+        }
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
 // Component
 // ═══════════════════════════════════════════════════════════════
 

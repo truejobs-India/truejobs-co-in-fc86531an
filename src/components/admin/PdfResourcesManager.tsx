@@ -1549,7 +1549,7 @@ export function PdfResourcesManager() {
                   <Label>Content (HTML)</Label>
                   <Textarea value={editItem.content || ''} onChange={(e) => {
                     const content = e.target.value;
-                    const wordCount = content.replace(/<[^>]*>/g, '').split(/\s+/).filter(Boolean).length;
+                    const wordCount = calcLiveWordCount(content);
                     setEditItem(prev => ({ ...prev, content, word_count: wordCount }));
                   }} rows={8} className="font-mono text-xs" />
                   <p className="text-xs text-muted-foreground mt-1">{editItem.word_count || 0} words</p>

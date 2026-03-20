@@ -2,7 +2,8 @@
  * Shared AI Model Registry — single source of truth for all admin model selectors.
  *
  * Every admin workflow (blog, enrichment, employment news, etc.) imports from here.
- * Models are tagged with capabilities and source so selectors can filter appropriately.
+ * Models are tagged with capabilities, source, and long-form reliability metadata
+ * so selectors can filter appropriately and warn about poor model choices.
  */
 
 // ═══════════════════════════════════════════════════════════════
@@ -14,6 +15,9 @@ export type AiModelSource = 'built-in' | 'external-api';
 
 /** What the model can do */
 export type AiModelCapability = 'text' | 'text-premium' | 'image';
+
+/** How reliable this model is for long-form generation */
+export type LongFormReliability = 'excellent' | 'good' | 'fair' | 'poor';
 
 export interface AiModelDef {
   /** Unique key passed to edge functions as `aiModel` */
@@ -30,6 +34,17 @@ export interface AiModelDef {
   provider: string;
   /** What this model can do */
   capabilities: AiModelCapability[];
+
+  // ── Long-form suitability metadata ──
+
+  /** Max words this model can reliably produce in a single pass */
+  recommendedMaxWords: number;
+  /** Show a warning when word target exceeds this threshold */
+  warnAboveWords: number;
+  /** Overall reliability rating for 1000+ word generation */
+  longFormReliability: LongFormReliability;
+  /** Whether a continuation pass can recover meaningful content */
+  supportsContinuationPass: boolean;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -46,51 +61,75 @@ export const AI_MODELS: readonly AiModelDef[] = [
     source: 'built-in',
     provider: 'Google',
     capabilities: ['text'],
+    recommendedMaxWords: 1500,
+    warnAboveWords: 1200,
+    longFormReliability: 'good',
+    supportsContinuationPass: true,
   },
   {
     value: 'gemini-pro',
     label: 'Gemini 2.5 Pro',
-    desc: 'High quality · ~30s/page',
+    desc: 'High quality · ~30s/page · Best for long-form',
     speed: 30,
     source: 'built-in',
     provider: 'Google',
     capabilities: ['text', 'text-premium'],
+    recommendedMaxWords: 3000,
+    warnAboveWords: 2500,
+    longFormReliability: 'excellent',
+    supportsContinuationPass: true,
   },
   {
     value: 'groq',
     label: 'Groq (Llama 3.3 70B)',
-    desc: 'Fastest · ~10s/page · Great for bulk',
+    desc: 'Fastest · ~10s/page · Best under 800 words',
     speed: 10,
     source: 'built-in',
     provider: 'Groq',
     capabilities: ['text'],
+    recommendedMaxWords: 800,
+    warnAboveWords: 600,
+    longFormReliability: 'poor',
+    supportsContinuationPass: false,
   },
   {
     value: 'claude-sonnet',
     label: 'Claude Sonnet 4.6',
-    desc: 'Highest quality · ~90s/page · Best for important pages',
+    desc: 'Highest quality · ~90s/page · Excellent for long-form',
     speed: 90,
     source: 'external-api',
     provider: 'Anthropic',
     capabilities: ['text', 'text-premium'],
+    recommendedMaxWords: 3000,
+    warnAboveWords: 2500,
+    longFormReliability: 'excellent',
+    supportsContinuationPass: true,
   },
   {
     value: 'nova-pro',
     label: 'Amazon Nova Pro',
-    desc: 'Good quality · ~25s/page · Bedrock',
+    desc: 'Good quality · ~25s/page · Best under 800 words',
     speed: 25,
     source: 'built-in',
     provider: 'Amazon',
     capabilities: ['text'],
+    recommendedMaxWords: 800,
+    warnAboveWords: 600,
+    longFormReliability: 'poor',
+    supportsContinuationPass: false,
   },
   {
     value: 'nova-premier',
     label: 'Amazon Nova Premier',
-    desc: 'Highest quality · ~45s/page · Bedrock',
+    desc: 'Higher quality · ~45s/page · Best under 800 words',
     speed: 45,
     source: 'built-in',
     provider: 'Amazon',
     capabilities: ['text', 'text-premium'],
+    recommendedMaxWords: 800,
+    warnAboveWords: 600,
+    longFormReliability: 'poor',
+    supportsContinuationPass: false,
   },
   {
     value: 'mistral',
@@ -100,15 +139,23 @@ export const AI_MODELS: readonly AiModelDef[] = [
     source: 'built-in',
     provider: 'Mistral',
     capabilities: ['text'],
+    recommendedMaxWords: 1200,
+    warnAboveWords: 1000,
+    longFormReliability: 'fair',
+    supportsContinuationPass: true,
   },
   {
     value: 'gpt5',
     label: 'OpenAI GPT-5',
-    desc: 'Good all-rounder · ~30s/page',
+    desc: 'Good all-rounder · ~30s/page · Good for long-form',
     speed: 30,
     source: 'built-in',
     provider: 'OpenAI',
     capabilities: ['text', 'text-premium'],
+    recommendedMaxWords: 2000,
+    warnAboveWords: 1500,
+    longFormReliability: 'good',
+    supportsContinuationPass: true,
   },
   {
     value: 'gpt5-mini',
@@ -118,6 +165,10 @@ export const AI_MODELS: readonly AiModelDef[] = [
     source: 'built-in',
     provider: 'OpenAI',
     capabilities: ['text'],
+    recommendedMaxWords: 1200,
+    warnAboveWords: 1000,
+    longFormReliability: 'fair',
+    supportsContinuationPass: true,
   },
   {
     value: 'lovable-gemini',
@@ -127,6 +178,10 @@ export const AI_MODELS: readonly AiModelDef[] = [
     source: 'built-in',
     provider: 'Lovable',
     capabilities: ['text'],
+    recommendedMaxWords: 1500,
+    warnAboveWords: 1200,
+    longFormReliability: 'good',
+    supportsContinuationPass: true,
   },
 
   // ── External API models (user-connected via GCP Service Account) ──
@@ -138,15 +193,23 @@ export const AI_MODELS: readonly AiModelDef[] = [
     source: 'external-api',
     provider: 'Google Vertex AI',
     capabilities: ['text'],
+    recommendedMaxWords: 1500,
+    warnAboveWords: 1200,
+    longFormReliability: 'good',
+    supportsContinuationPass: true,
   },
   {
     value: 'vertex-pro',
     label: 'Gemini 2.5 Pro (From API)',
-    desc: 'Your API · Premium articles & images · ~45s',
+    desc: 'Your API · Best for long-form & images · ~45s',
     speed: 45,
     source: 'external-api',
     provider: 'Google Vertex AI',
     capabilities: ['text', 'text-premium', 'image'],
+    recommendedMaxWords: 3000,
+    warnAboveWords: 2500,
+    longFormReliability: 'excellent',
+    supportsContinuationPass: true,
   },
   {
     value: 'vertex-imagen',
@@ -156,6 +219,10 @@ export const AI_MODELS: readonly AiModelDef[] = [
     source: 'external-api',
     provider: 'Google Vertex AI',
     capabilities: ['image'],
+    recommendedMaxWords: 0,
+    warnAboveWords: 0,
+    longFormReliability: 'poor',
+    supportsContinuationPass: false,
   },
   {
     value: 'gemini-flash-image',
@@ -165,6 +232,10 @@ export const AI_MODELS: readonly AiModelDef[] = [
     source: 'built-in',
     provider: 'Google',
     capabilities: ['image'],
+    recommendedMaxWords: 0,
+    warnAboveWords: 0,
+    longFormReliability: 'poor',
+    supportsContinuationPass: false,
   },
   {
     value: 'gemini-pro-image',
@@ -174,6 +245,10 @@ export const AI_MODELS: readonly AiModelDef[] = [
     source: 'built-in',
     provider: 'Google',
     capabilities: ['image'],
+    recommendedMaxWords: 0,
+    warnAboveWords: 0,
+    longFormReliability: 'poor',
+    supportsContinuationPass: false,
   },
   {
     value: 'gemini-flash-image-2',
@@ -183,6 +258,10 @@ export const AI_MODELS: readonly AiModelDef[] = [
     source: 'built-in',
     provider: 'Google',
     capabilities: ['image'],
+    recommendedMaxWords: 0,
+    warnAboveWords: 0,
+    longFormReliability: 'poor',
+    supportsContinuationPass: false,
   },
 ] as const;
 
@@ -218,4 +297,47 @@ export function getModelSpeed(value: string): number {
 /** Check if a model is from an external API */
 export function isExternalModel(value: string): boolean {
   return getModelDef(value)?.source === 'external-api';
+}
+
+/**
+ * Get recommended models for a given word target, sorted by suitability.
+ * Returns models whose recommendedMaxWords >= target, sorted best-first.
+ */
+export function getRecommendedModelsForTarget(
+  targetWords: number,
+  capability: AiModelCapability = 'text',
+): AiModelDef[] {
+  const reliabilityOrder: Record<LongFormReliability, number> = {
+    excellent: 0,
+    good: 1,
+    fair: 2,
+    poor: 3,
+  };
+
+  return AI_MODELS
+    .filter(m =>
+      m.capabilities.includes(capability) &&
+      m.recommendedMaxWords >= targetWords
+    )
+    .sort((a, b) => {
+      // Sort by reliability first, then by speed (faster is better)
+      const rDiff = reliabilityOrder[a.longFormReliability] - reliabilityOrder[b.longFormReliability];
+      if (rDiff !== 0) return rDiff;
+      return a.speed - b.speed;
+    });
+}
+
+/**
+ * Check if a model is suitable for a given word target.
+ * Returns: 'ok' | 'warn' | 'avoid'
+ */
+export function checkModelSuitability(
+  modelValue: string,
+  targetWords: number,
+): 'ok' | 'warn' | 'avoid' {
+  const model = getModelDef(modelValue);
+  if (!model) return 'ok';
+  if (targetWords <= model.warnAboveWords) return 'ok';
+  if (targetWords <= model.recommendedMaxWords) return 'warn';
+  return 'avoid';
 }

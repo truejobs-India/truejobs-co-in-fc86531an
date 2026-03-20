@@ -95,10 +95,7 @@ Deno.serve(async (req) => {
     const authResult = await verifyAdmin(req);
     if (authResult instanceof Response) return authResult;
 
-    const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
-    if (!geminiApiKey) {
-      return new Response(JSON.stringify({ error: 'GEMINI_API_KEY not configured' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-    }
+    // No GEMINI_API_KEY needed — uses Vertex AI via shared helper
 
     const { title, content, issues, slug, existingMeta } = await req.json();
     if (!title || !issues || !Array.isArray(issues)) {

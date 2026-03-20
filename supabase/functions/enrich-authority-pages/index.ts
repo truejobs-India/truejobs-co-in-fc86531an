@@ -616,7 +616,7 @@ async function callLovableGeminiRaw(prompt: string, timeoutMs = 60_000, maxToken
 }
 
 // ── OpenAI GPT-5 / GPT-5 Mini (via Lovable AI Gateway) ──
-async function callOpenAIRaw(prompt: string, model = 'openai/gpt-5', timeoutMs = 60_000): Promise<string> {
+async function callOpenAIRaw(prompt: string, model = 'openai/gpt-5', timeoutMs = 60_000, maxTokens = 16384): Promise<string> {
   const apiKey = Deno.env.get('LOVABLE_API_KEY');
   if (!apiKey) throw new Error('LOVABLE_API_KEY not configured — please add it to secrets');
 

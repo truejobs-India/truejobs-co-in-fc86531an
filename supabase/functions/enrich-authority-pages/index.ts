@@ -559,14 +559,14 @@ async function awsSigV4Fetch(url: string, body: string, region: string, service:
 }
 
 // ── Mistral Large (AWS Bedrock — us-west-2) ──
-async function callMistralRaw(prompt: string, timeoutMs = 60_000): Promise<string> {
+async function callMistralRaw(prompt: string, timeoutMs = 60_000, maxTokens = 16384): Promise<string> {
   const region = 'us-west-2';
   const modelId = 'mistral.mistral-large-2407-v1:0';
   const url = `https://bedrock-runtime.${region}.amazonaws.com/model/${modelId}/invoke`;
 
   const body = JSON.stringify({
     prompt: `<s>[INST] ${prompt} [/INST]`,
-    max_tokens: 16384,
+    max_tokens: maxTokens,
     temperature: 0.5,
     top_p: 0.9,
   });

@@ -26,37 +26,12 @@ async function verifyAdmin(req: Request): Promise<{ userId: string } | Response>
   return { userId };
 }
 
-const GEMINI_MODEL = 'gemini-2.5-flash';
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
-
-async function callGemini(apiKey: string, prompt: string): Promise<string> {
-  const resp = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { maxOutputTokens: 500, temperature: 0.3 },
-    }),
-  });
-  if (!resp.ok) {
-    const errText = await resp.text().catch(() => '');
-    throw new Error(`Gemini API error ${resp.status}: ${errText}`);
-  }
-  const data = await resp.json();
-  return data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-}
-
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
   try {
     const authResult = await verifyAdmin(req);
     if (authResult instanceof Response) return authResult;
-
-    const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
-    if (!geminiApiKey) {
-      return new Response(JSON.stringify({ error: 'GEMINI_API_KEY not configured' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-    }
 
     const body = await req.json();
 

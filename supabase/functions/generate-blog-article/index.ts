@@ -512,32 +512,51 @@ async function callMistral(prompt: string, systemPrompt?: string, maxTokens = 81
   return data?.output?.message?.content?.[0]?.text || '';
 }
 
+function resolveProviderInfo(model: string): { provider: string; apiModel: string } {
+  switch (model) {
+    case 'gemini-flash': case 'gemini': return { provider: 'google-ai-studio', apiModel: 'gemini-2.5-flash' };
+    case 'gemini-pro': return { provider: 'google-ai-studio', apiModel: 'gemini-2.5-pro' };
+    case 'vertex-flash': return { provider: 'vertex-ai', apiModel: 'gemini-2.5-flash' };
+    case 'vertex-pro': return { provider: 'vertex-ai', apiModel: 'gemini-2.5-pro' };
+    case 'claude-sonnet': case 'claude': return { provider: 'anthropic', apiModel: 'claude-sonnet-4-6' };
+    case 'groq': return { provider: 'groq', apiModel: 'llama-3.3-70b-versatile' };
+    case 'mistral': return { provider: 'bedrock', apiModel: 'mistral.mistral-large-2407-v1:0' };
+    case 'lovable-gemini': return { provider: 'lovable-gateway', apiModel: 'google/gemini-2.5-flash' };
+    case 'openai': case 'gpt5': return { provider: 'openai', apiModel: 'gpt-4o' };
+    case 'gpt5-mini': return { provider: 'openai', apiModel: 'gpt-4o' };
+    case 'nova-pro': return { provider: 'bedrock', apiModel: 'us.amazon.nova-pro-v1:0' };
+    case 'nova-premier': return { provider: 'bedrock', apiModel: 'us.amazon.nova-premier-v1:0' };
+    default: return { provider: model, apiModel: model };
+  }
+}
+
 // ── Model dispatcher — NO silent fallback ──
 async function callAI(model: string, prompt: string, wordLimit = 1500): Promise<string> {
-  console.log(`[generate-blog-article] model_requested=${model} wordLimit=${wordLimit}`);
+  const mt = computeMaxTokens(wordLimit, model);
+  console.log(`[generate-blog-article] model_requested=${model} wordLimit=${wordLimit} maxTokens=${mt}`);
   switch (model) {
-    case 'gemini': case 'gemini-flash': return callGemini(prompt, GEMINI_SYSTEM_PROMPT, 16384, 0.65, 'gemini-2.5-flash');
-    case 'gemini-pro': return callGemini(prompt, GEMINI_SYSTEM_PROMPT, 32768, 0.5, 'gemini-2.5-pro');
-    case 'lovable-gemini': return callLovableGemini(prompt);
-    case 'openai': case 'gpt5': case 'gpt5-mini': return callOpenAI(prompt);
-    case 'groq': return callGroq(prompt);
+    case 'gemini': case 'gemini-flash': return callGemini(prompt, GEMINI_SYSTEM_PROMPT, mt, 0.65, 'gemini-2.5-flash');
+    case 'gemini-pro': return callGemini(prompt, GEMINI_SYSTEM_PROMPT, mt, 0.5, 'gemini-2.5-pro');
+    case 'lovable-gemini': return callLovableGemini(prompt, mt);
+    case 'openai': case 'gpt5': case 'gpt5-mini': return callOpenAI(prompt, mt);
+    case 'groq': return callGroq(prompt, mt);
     case 'claude-sonnet':
     case 'claude': return callClaude(prompt, wordLimit);
-    case 'mistral': return callMistral(prompt, MISTRAL_SYSTEM_PROMPT);
+    case 'mistral': return callMistral(prompt, MISTRAL_SYSTEM_PROMPT, mt);
     case 'vertex-flash': {
       const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-      return callVertexGemini('gemini-2.5-flash', prompt, 60_000);
+      return callVertexGemini('gemini-2.5-flash', prompt, 60_000, { maxOutputTokens: mt });
     }
     case 'vertex-pro': {
       const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-      return callVertexGemini('gemini-2.5-pro', prompt, 120_000);
+      return callVertexGemini('gemini-2.5-pro', prompt, 120_000, { maxOutputTokens: mt });
     }
     case 'nova-pro': case 'nova-premier': {
       const { callBedrockNova } = await import('../_shared/bedrock-nova.ts');
-      return callBedrockNova(model, prompt, { maxTokens: model === 'nova-pro' ? 8192 : 10000, temperature: 0.5 });
+      return callBedrockNova(model, prompt, { maxTokens: mt, temperature: 0.5 });
     }
     default:
-      throw new Error(`Unsupported AI model: "${model}". Supported: gemini, gemini-flash, gemini-pro, mistral, claude-sonnet, openai, gpt5, groq, lovable-gemini, vertex-flash, vertex-pro, nova-pro, nova-premier`);
+      throw new Error(`Unsupported AI model: "${model}".`);
   }
 }
 

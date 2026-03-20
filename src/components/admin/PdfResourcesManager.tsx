@@ -257,6 +257,33 @@ export function PdfResourcesManager() {
     return session.data.session?.access_token;
   };
 
+  /** Structured error class for edge-function business errors — NOT runtime crashes */
+  class ImageGenError extends Error {
+    code: string;
+    httpStatus: number;
+    retryable: boolean;
+    userMessage: string;
+    constructor(opts: { code: string; message: string; httpStatus: number; retryable: boolean; userMessage: string }) {
+      super(opts.message);
+      this.name = 'ImageGenError';
+      this.code = opts.code;
+      this.httpStatus = opts.httpStatus;
+      this.retryable = opts.retryable;
+      this.userMessage = opts.userMessage;
+    }
+  }
+
+  const STRUCTURED_ERROR_MAP: Record<string, { retryable: boolean; userMessage: string }> = {
+    VERTEX_RATE_LIMITED: { retryable: true, userMessage: 'Vertex AI rate limit exceeded. Retry shortly or switch model.' },
+    VERTEX_TIMEOUT: { retryable: true, userMessage: 'Vertex AI timed out. Retry or switch model.' },
+    GATEWAY_RATE_LIMITED: { retryable: true, userMessage: 'Gateway rate limit exceeded. Retry shortly.' },
+    GATEWAY_PAYMENT_REQUIRED: { retryable: false, userMessage: 'Payment required — add funds in Settings.' },
+    GEMINI_BLOCKED: { retryable: false, userMessage: 'Gemini blocked this prompt. Try different content.' },
+    MODEL_RETURNED_NO_IMAGE: { retryable: true, userMessage: 'Model returned no image. Retry or switch model.' },
+    IMAGE_DECODE_FAILED: { retryable: false, userMessage: 'Image decoding failed. Try a different model.' },
+    STORAGE_UPLOAD_FAILED: { retryable: true, userMessage: 'Storage upload failed. Retry.' },
+  };
+
   const isRetryableImageError = (message: string, status?: number) => {
     const normalized = message.toLowerCase();
     return status === 429

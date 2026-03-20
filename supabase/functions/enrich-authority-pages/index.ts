@@ -429,7 +429,7 @@ async function fetchGemini(prompt: string, model = 'gemini-2.5-flash', timeoutMs
         generationConfig: {
           temperature: 0.5,
           topP: 0.8,
-          maxOutputTokens: 16384,
+          maxOutputTokens,
           responseMimeType: 'application/json',
         },
       }),

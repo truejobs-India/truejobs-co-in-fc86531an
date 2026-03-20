@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Editor } from '@tiptap/react';
 import { supabase } from '@/integrations/supabase/client';
+import { calcLiveWordCount, calcReadingTime, wordCountFields } from '@/lib/blogWordCount';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
 import { Button } from '@/components/ui/button';

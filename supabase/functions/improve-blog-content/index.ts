@@ -257,15 +257,15 @@ async function callAI(aiModel: string, prompt: string, maxTokens: number): Promi
 
   switch (model) {
     case 'gemini': case 'gemini-flash': {
-      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-      const text = await callVertexGemini('gemini-2.5-flash', prompt, 90_000, { maxOutputTokens: maxTokens });
-      resultJson = JSON.stringify({ __raw: text, __finishReason: 'stop' });
+      const { callVertexGeminiWithMeta } = await import('../_shared/vertex-ai.ts');
+      const result = await callVertexGeminiWithMeta('gemini-2.5-flash', prompt, 90_000, { maxOutputTokens: maxTokens });
+      resultJson = JSON.stringify({ __raw: result.text, __finishReason: result.finishReason });
       actualProvider = 'vertex-ai'; actualModelId = 'gemini-2.5-flash'; break;
     }
     case 'gemini-pro': {
-      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-      const text = await callVertexGemini('gemini-2.5-pro', prompt, 120_000, { maxOutputTokens: maxTokens });
-      resultJson = JSON.stringify({ __raw: text, __finishReason: 'stop' });
+      const { callVertexGeminiWithMeta } = await import('../_shared/vertex-ai.ts');
+      const result = await callVertexGeminiWithMeta('gemini-2.5-pro', prompt, 120_000, { maxOutputTokens: maxTokens });
+      resultJson = JSON.stringify({ __raw: result.text, __finishReason: result.finishReason });
       actualProvider = 'vertex-ai'; actualModelId = 'gemini-2.5-pro'; break;
     }
     case 'mistral':
@@ -284,16 +284,16 @@ async function callAI(aiModel: string, prompt: string, maxTokens: number): Promi
       resultJson = await callLovableGemini(prompt, maxTokens);
       actualProvider = 'lovable-gateway'; actualModelId = 'google/gemini-2.5-flash'; break;
     case 'vertex-flash': {
-      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-      const text = await callVertexGemini('gemini-2.5-flash', prompt, 90_000, { maxOutputTokens: maxTokens });
-      resultJson = JSON.stringify({ __raw: text, __finishReason: 'stop' });
+      const { callVertexGeminiWithMeta } = await import('../_shared/vertex-ai.ts');
+      const result = await callVertexGeminiWithMeta('gemini-2.5-flash', prompt, 90_000, { maxOutputTokens: maxTokens });
+      resultJson = JSON.stringify({ __raw: result.text, __finishReason: result.finishReason });
       actualProvider = 'vertex-ai'; actualModelId = 'gemini-2.5-flash';
       break;
     }
     case 'vertex-pro': {
-      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-      const text = await callVertexGemini('gemini-2.5-pro', prompt, 120_000, { maxOutputTokens: maxTokens });
-      resultJson = JSON.stringify({ __raw: text, __finishReason: 'stop' });
+      const { callVertexGeminiWithMeta } = await import('../_shared/vertex-ai.ts');
+      const result = await callVertexGeminiWithMeta('gemini-2.5-pro', prompt, 120_000, { maxOutputTokens: maxTokens });
+      resultJson = JSON.stringify({ __raw: result.text, __finishReason: result.finishReason });
       actualProvider = 'vertex-ai'; actualModelId = 'gemini-2.5-pro';
       break;
     }
@@ -558,7 +558,7 @@ No markdown code blocks.`;
 
     // ── Call AI via unified dispatcher ──
     const { raw, finishReason, actualProvider, actualModelId } = await callAI(effectiveModel, prompt, maxTokens);
-    const wasTruncated = finishReason === 'MAX_TOKENS' || finishReason === 'LENGTH' || finishReason === 'max_tokens';
+    const wasTruncated = finishReason === 'MAX_TOKENS' || finishReason === 'LENGTH' || finishReason === 'max_tokens' || finishReason === 'length';
 
     console.log(`[improve-blog-content] AI response received provider=${actualProvider} model=${actualModelId} finishReason=${finishReason} rawLength=${raw.length} wasTruncated=${wasTruncated}`);
 

@@ -779,9 +779,7 @@ async function callAI(
       return { data: tryParseJSON(rawText) };
     }
     default:
-      console.warn(`Unknown model "${model}", defaulting to gemini-flash`);
-      rawText = await fetchGemini(prompt, 'gemini-2.5-flash', timeout);
-      return { data: tryParseJSON(rawText) };
+      throw new Error(`Unsupported model: "${model}". No silent fallback allowed.`);
   }
 }
 

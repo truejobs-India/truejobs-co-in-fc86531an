@@ -534,12 +534,18 @@ Rules:
 
     // ── Enrich page content ──
     if (action === 'enrich') {
-      const { title, slug, content, meta_title, meta_description, excerpt, category, tags, faq_schema, word_count: currentWc } = body;
+      const { title, slug, content, meta_title, meta_description, excerpt, category, tags, faq_schema, word_count: currentWc, target_word_count: enrichTarget } = body;
       if (!title) return new Response(JSON.stringify({ error: 'title required for enrich' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+
+      const { buildWordCountInstruction, computeMaxTokens, validateWordCount, countWordsFromHtml } = await import('../_shared/word-count-enforcement.ts');
+      const enrichWordTarget = enrichTarget || 2000;
+      const wcInstruction = buildWordCountInstruction(enrichWordTarget, model);
+      const enrichMaxTokens = computeMaxTokens(enrichWordTarget, model);
 
       const enrichPrompt = `You are an expert SEO content writer for TrueJobs.co.in, a leading Indian government job & education portal.
 
 Enrich and improve this existing page. Expand thin content, add missing sections, improve structure.
+${wcInstruction}
 
 Current page:
 - Title: ${title}
@@ -559,7 +565,7 @@ Return a JSON object with the enriched version:
   "meta_title": "Improved meta title (40-60 chars)",
   "meta_description": "Improved meta description (120-160 chars)",
   "excerpt": "Improved excerpt",
-  "content": "Full enriched HTML content (target: 1500-2500 words). Keep existing good content, expand thin sections, add missing ones. Use <h2>, <h3>, <p>, <ul>, <ol>, <table>.",
+  "content": "Full enriched HTML content. Keep existing good content, expand thin sections, add missing ones. Use <h2>, <h3>, <p>, <ul>, <ol>, <table>.",
   "faq_items": [{"question": "...", "answer": "..."}, ...] (5-8 FAQ items),
   "suggested_tags": ["tag1", "tag2", ...],
   "word_count": estimated word count,
@@ -570,17 +576,23 @@ Return a JSON object with the enriched version:
 Rules:
 - Keep existing good content, don't replace it
 - Add missing H2 sections, lists, tables where appropriate
-- Target 1500-2500 words total
 - Ensure E-E-A-T compliance
 - Add FAQ if missing or thin
 - Use HTML only, no markdown
 - Return ONLY valid JSON`;
 
-      console.log(`[generate-custom-page] enrich action, model=${model}, slug=${slug}, currentWc=${currentWc}`);
-      const raw = await callAI(model, enrichPrompt);
+      console.log(`[generate-custom-page] enrich action, model=${model}, slug=${slug}, currentWc=${currentWc}, targetWc=${enrichWordTarget}, maxTokens=${enrichMaxTokens}`);
+      const raw = await callAI(model, enrichPrompt, enrichMaxTokens);
       const parsed = parseAIResponse(raw);
 
-      return new Response(JSON.stringify({ success: true, data: parsed, model, action }), {
+      // Add word count validation if content was returned
+      let wordCountValidation = null;
+      if (parsed?.content) {
+        wordCountValidation = validateWordCount(parsed.content, enrichWordTarget, enrichMaxTokens);
+        parsed.word_count = countWordsFromHtml(parsed.content);
+      }
+
+      return new Response(JSON.stringify({ success: true, data: parsed, model, action, wordCountValidation }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }

@@ -71,7 +71,7 @@ export function PendingActionsPanel({
       const pending = (data || []).filter(p => {
         const wc = p.word_count || 0;
         const contentLen = p.content?.length || 0;
-        return wc < enrichWordLimit * 0.85 || contentLen < 4000;
+        return wc < customWordLimit * 0.85 || contentLen < 4000;
       });
 
       setEnrichScan({ count: pending.length, items: pending });

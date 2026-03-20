@@ -192,7 +192,7 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
       if (done + failed < total) await new Promise(r => setTimeout(r, 2000));
     }
 
-    if (!abortRef.current) {
+    if (!abortRef.current && consecutiveFailures < MAX_CONSECUTIVE_FAILURES) {
       const variant = failed > 0 && done === 0 ? 'destructive' : undefined;
       toast({
         title: done > 0 ? '✅ Bulk enrichment complete' : '⚠️ Bulk enrichment finished with issues',

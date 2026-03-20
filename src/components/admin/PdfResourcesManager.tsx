@@ -1319,8 +1319,7 @@ export function PdfResourcesManager() {
                       <div className="flex items-center gap-0.5 justify-end">
                         {/* AI Fix metadata button */}
                         {needsMetadataFix(r) && (
-                          <TooltipProvider>
-                            <Tooltip>
+                          <Tooltip>
                               <TooltipTrigger asChild>
                                 <Button variant="ghost" size="icon" className="h-7 w-7"
                                   disabled={rowFixingId === r.id}
@@ -1332,7 +1331,6 @@ export function PdfResourcesManager() {
                               </TooltipTrigger>
                               <TooltipContent>Fix SEO metadata with AI</TooltipContent>
                             </Tooltip>
-                          </TooltipProvider>
                         )}
                         {/* AI Generate image button */}
                         {needsCoverImage(r) && (

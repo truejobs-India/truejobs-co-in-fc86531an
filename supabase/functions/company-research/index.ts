@@ -86,21 +86,12 @@ Deno.serve(async (req) => {
     const { companyName, jobTitle, companyWebsite } = parseResult.data;
 
     const firecrawlApiKey = Deno.env.get('FIRECRAWL_API_KEY');
-    const groqApiKey = Deno.env.get('GROQ_API_KEY');
-
-    if (!groqApiKey) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'AI service not configured' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
 
     let scrapedContent = '';
 
     // Try to scrape company website if Firecrawl is available
     if (firecrawlApiKey && companyWebsite) {
       try {
-        // Format URL properly
         let formattedUrl = companyWebsite.trim();
         if (!formattedUrl.startsWith('http')) {
           formattedUrl = `https://${formattedUrl}`;
@@ -124,7 +115,6 @@ Deno.serve(async (req) => {
         if (scrapeResponse.ok) {
           const scrapeData = await scrapeResponse.json();
           scrapedContent = scrapeData.data?.markdown || scrapeData.markdown || '';
-          // Limit content length to prevent memory issues
           scrapedContent = scrapedContent.substring(0, 10000);
           console.log('Scraped content length:', scrapedContent.length);
         }
@@ -148,7 +138,7 @@ Deno.serve(async (req) => {
           body: JSON.stringify({
             query: `${companyName} company news recent`,
             limit: 5,
-            tbs: 'qdr:m', // Last month
+            tbs: 'qdr:m',
           }),
         });
 
@@ -165,7 +155,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    console.log('Generating company research with AI');
+    console.log('Generating company research with Vertex AI');
 
     const prompt = `You are a career research assistant. Analyze the following information about "${companyName}" and provide comprehensive research for a job seeker applying for a "${jobTitle || 'position'}" role.
 
@@ -187,36 +177,13 @@ Based on the above information (and your general knowledge if limited info is av
 
 Respond ONLY with valid JSON. Be specific and actionable with interview tips.`;
 
-    const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
-    if (!GEMINI_API_KEY) {
-      throw new Error('GEMINI_API_KEY is not configured');
-    }
-
-    const GEMINI_MODEL = "gemini-2.5-flash";
-    const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
-
     const fullPrompt = `You are a career research assistant that provides comprehensive company research in JSON format.\n\n${prompt}`;
 
-    const geminiResponse = await fetch(`${GEMINI_URL}?key=${GEMINI_API_KEY}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: fullPrompt }] }],
-        generationConfig: {
-          temperature: 0.3,
-          maxOutputTokens: 3000,
-        },
-      }),
+    const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+    const content = await callVertexGemini('gemini-2.5-flash', fullPrompt, 60_000, {
+      maxOutputTokens: 3000,
+      temperature: 0.3,
     });
-
-    if (!geminiResponse.ok) {
-      const errorText = await geminiResponse.text();
-      console.error('Gemini API error:', errorText);
-      throw new Error('AI service error');
-    }
-
-    const geminiData = await geminiResponse.json();
-    const content = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
     // Parse JSON from response
     const jsonMatch = content.match(/\{[\s\S]*\}/);

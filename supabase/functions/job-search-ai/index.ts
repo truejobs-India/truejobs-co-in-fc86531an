@@ -24,12 +24,10 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     
-    // Create Supabase client with user's auth header for JWT validation
     const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } }
     });
 
-    // Verify JWT token
     const token = authHeader.replace("Bearer ", "");
     const { data: claimsData, error: claimsError } = await supabaseAuth.auth.getClaims(token);
 
@@ -41,11 +39,6 @@ serve(async (req) => {
     }
 
     const { message, conversationHistory = [] } = await req.json();
-    
-    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-    if (!GEMINI_API_KEY) {
-      throw new Error("GEMINI_API_KEY is not configured");
-    }
 
     // Create Supabase client with service role to search jobs
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -109,37 +102,11 @@ When recommending jobs, use this format:
     // Build a single prompt from messages for Gemini's generateContent API
     const fullPrompt = messages.map(m => `${m.role === 'system' ? '[System]' : m.role === 'user' ? '[User]' : '[Assistant]'}: ${m.content}`).join('\n\n');
 
-    const GEMINI_MODEL = "gemini-2.5-flash";
-    const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
-
-    const response = await fetch(`${GEMINI_URL}?key=${GEMINI_API_KEY}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: fullPrompt }] }],
-        generationConfig: {
-          temperature: 0.7,
-          maxOutputTokens: 1024,
-        },
-      }),
+    const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+    const aiResponse = await callVertexGemini('gemini-2.5-flash', fullPrompt, 60_000, {
+      maxOutputTokens: 1024,
+      temperature: 0.7,
     });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Gemini API error:", response.status, errorText);
-      
-      if (response.status === 429) {
-        return new Response(
-          JSON.stringify({ error: "Rate limit exceeded. Please try again in a moment." }),
-          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      
-      throw new Error(`Gemini API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    const aiResponse = data?.candidates?.[0]?.content?.parts?.[0]?.text || "I'm sorry, I couldn't process your request. Please try again.";
 
     return new Response(
       JSON.stringify({ response: aiResponse }),
@@ -148,6 +115,14 @@ When recommending jobs, use this format:
 
   } catch (error) {
     console.error("Error in job-search-ai:", error);
+
+    if (error instanceof Error && error.message.includes('429')) {
+      return new Response(
+        JSON.stringify({ error: "Rate limit exceeded. Please try again in a moment." }),
+        { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : "An error occurred" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }

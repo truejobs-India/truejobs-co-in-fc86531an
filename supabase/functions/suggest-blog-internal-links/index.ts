@@ -95,8 +95,7 @@ function keywordFallback(title: string, content: string, slug: string, existingP
   }));
 }
 
-const GEMINI_MODEL = 'gemini-2.5-flash';
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+// Vertex AI Gemini via shared helper
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });

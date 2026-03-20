@@ -40,7 +40,6 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     
-    // Create client with user's auth token to validate JWT
     const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } }
     });
@@ -55,7 +54,6 @@ serve(async (req) => {
       );
     }
 
-    // User is authenticated - we can proceed (userId from JWT is available if needed)
     const authenticatedUserId = claimsData.claims.sub;
     console.log("Authenticated user:", authenticatedUserId);
 
@@ -76,14 +74,6 @@ serve(async (req) => {
     if (!FIRECRAWL_API_KEY) {
       return new Response(
         JSON.stringify({ success: false, error: "Firecrawl connector not configured" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    const GROQ_API_KEY = Deno.env.get("GROQ_API_KEY");
-    if (!GROQ_API_KEY) {
-      return new Response(
-        JSON.stringify({ success: false, error: "GROQ_API_KEY not configured" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -131,9 +121,9 @@ serve(async (req) => {
       if (_attempt < 3) await new Promise(r => setTimeout(r, _attempt * 5000));
     }
 
-    const scrapeData = await scrapeResponse.json();
+    const scrapeData = await scrapeResponse!.json();
 
-    if (!scrapeResponse.ok || !scrapeData.success) {
+    if (!scrapeResponse!.ok || !scrapeData.success) {
       console.error("Firecrawl error:", scrapeData);
       return new Response(
         JSON.stringify({ 
@@ -158,45 +148,17 @@ serve(async (req) => {
 
     console.log("Scraped markdown length:", markdown.length);
 
-    // Limit markdown to prevent memory issues
     const limitedMarkdown = markdown.substring(0, 15000);
 
-    // Use Gemini to parse the LinkedIn data into structured format
-    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-    if (!GEMINI_API_KEY) {
-      return new Response(
-        JSON.stringify({ success: false, error: "GEMINI_API_KEY not configured" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    const GEMINI_MODEL = "gemini-2.5-flash";
-    const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+    // Use Vertex AI Gemini to parse the LinkedIn data into structured format
+    const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
 
     const parsePrompt = `You are an expert at parsing LinkedIn profile data. Extract structured information from the provided markdown content of a LinkedIn profile. Return ONLY valid JSON, no markdown code blocks.\n\nParse this LinkedIn profile markdown and extract the following information. Return ONLY valid JSON:\n\n${limitedMarkdown.substring(0, 8000)}\n\nReturn this exact JSON structure (use null for missing fields):\n{\n  "full_name": "Person's full name",\n  "headline": "Their professional headline/title",\n  "location": "Their location",\n  "bio": "About/summary section text",\n  "skills": ["skill1", "skill2", "skill3"],\n  "experience": [\n    {\n      "job_title": "Title",\n      "company_name": "Company",\n      "location": "Location or null",\n      "start_date": "YYYY-MM or null",\n      "end_date": "YYYY-MM or null",\n      "is_current": false,\n      "description": "Description or null"\n    }\n  ],\n  "education": [\n    {\n      "institution": "School name",\n      "degree": "Degree type",\n      "field_of_study": "Field or null",\n      "start_date": "YYYY-MM or null",\n      "end_date": "YYYY-MM or null"\n    }\n  ],\n  "linkedin_url": "${formattedUrl}"\n}`;
 
-    const parseResponse = await fetch(`${GEMINI_URL}?key=${GEMINI_API_KEY}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: parsePrompt }] }],
-        generationConfig: {
-          temperature: 0.3,
-          maxOutputTokens: 2048,
-        },
-      }),
+    const aiResponse = await callVertexGemini('gemini-2.5-flash', parsePrompt, 60_000, {
+      maxOutputTokens: 2048,
+      temperature: 0.3,
     });
-
-    if (!parseResponse.ok) {
-      console.error("Gemini API error:", await parseResponse.text());
-      return new Response(
-        JSON.stringify({ success: false, error: "Failed to parse profile data" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    const parseData = await parseResponse.json();
-    const aiResponse = parseData?.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
     // Parse the JSON response
     let profileData;

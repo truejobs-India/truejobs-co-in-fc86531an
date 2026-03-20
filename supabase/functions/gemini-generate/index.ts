@@ -6,23 +6,12 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const GEMINI_MODEL = "gemini-2.5-flash";
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
-
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-    if (!GEMINI_API_KEY) {
-      return new Response(
-        JSON.stringify({ error: "GEMINI_API_KEY is not configured" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
     const { prompt, useCase } = await req.json();
     if (!prompt || typeof prompt !== "string") {
       return new Response(
@@ -46,48 +35,24 @@ serve(async (req) => {
     const systemPrefix = systemPrefixes[useCase] || "";
     const fullPrompt = systemPrefix ? `${systemPrefix}\n\n${prompt}` : prompt;
 
-    const response = await fetch(`${GEMINI_URL}?key=${GEMINI_API_KEY}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: fullPrompt }] }],
-      }),
-    });
-
-    if (!response.ok) {
-      const errorBody = await response.text();
-      console.error(`Gemini API error [${response.status}]:`, errorBody);
-
-      if (response.status === 429) {
-        return new Response(
-          JSON.stringify({ error: "Rate limit exceeded. Please try again in a moment." }),
-          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      return new Response(
-        JSON.stringify({ error: `Gemini API error (${response.status})` }),
-        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    const data = await response.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-
-    if (!text) {
-      console.error("Unexpected Gemini response shape:", JSON.stringify(data));
-      return new Response(
-        JSON.stringify({ error: "No text generated from Gemini" }),
-        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+    const model = 'gemini-2.5-flash';
+    const text = await callVertexGemini(model, fullPrompt, 60_000);
 
     return new Response(
-      JSON.stringify({ text, model: GEMINI_MODEL }),
+      JSON.stringify({ text, model }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
     console.error("gemini-generate error:", err);
+
+    if (err instanceof Error && err.message.includes('429')) {
+      return new Response(
+        JSON.stringify({ error: "Rate limit exceeded. Please try again in a moment." }),
+        { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     return new Response(
       JSON.stringify({ error: err instanceof Error ? err.message : "Unknown error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }

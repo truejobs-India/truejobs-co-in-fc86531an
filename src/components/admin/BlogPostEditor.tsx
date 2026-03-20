@@ -1330,7 +1330,7 @@ export function BlogPostEditor() {
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">AI Models</span>
         <div className="flex items-center gap-2">
           <Label className="text-xs text-muted-foreground">Text:</Label>
-          <AiModelSelector value={blogTextModel} onValueChange={handleTextModelChange} capability="text" triggerClassName="w-[220px] h-8 text-xs" size="sm" />
+          <AiModelSelector value={blogTextModel} onValueChange={handleTextModelChange} capability="text" wordTarget={bulkWordCount} triggerClassName="w-[220px] h-8 text-xs" size="sm" />
         </div>
         <div className="flex items-center gap-2">
           <Label className="text-xs text-muted-foreground">Image:</Label>

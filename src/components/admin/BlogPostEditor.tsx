@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Editor } from '@tiptap/react';
 import { supabase } from '@/integrations/supabase/client';
+import { calcLiveWordCount, calcReadingTime, wordCountFields } from '@/lib/blogWordCount';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
 import { Button } from '@/components/ui/button';
@@ -319,24 +320,30 @@ export function BlogPostEditor() {
     }
   };
 
-  const buildPostData = () => ({
-    title: formData.title.trim(),
-    slug: (formData.slug || generateSlug(formData.title)).replace(/^\/+/, ''),
-    content: formData.content.trim(),
-    excerpt: formData.excerpt.trim() || null,
-    cover_image_url: formData.cover_image_url.trim() || null,
-    featured_image_alt: formData.featured_image_alt.trim() || null,
-    is_published: formData.is_published,
-    published_at: formData.is_published ? new Date().toISOString() : null,
-    meta_title: formData.meta_title.trim() || null,
-    meta_description: formData.meta_description.trim() || null,
-    author_name: formData.author_name.trim() || null,
-    canonical_url: formData.canonical_url.trim() || null,
-    category: normalizeBlogCategory(formData.category),
-    tags: formData.tags || [],
-    author_id: user!.id,
-    ai_fixed_at: null, // Clear AI fixed status on manual save
-  });
+  const buildPostData = () => {
+    const contentTrimmed = formData.content.trim();
+    const { word_count, reading_time } = wordCountFields(contentTrimmed);
+    return {
+      title: formData.title.trim(),
+      slug: (formData.slug || generateSlug(formData.title)).replace(/^\/+/, ''),
+      content: contentTrimmed,
+      excerpt: formData.excerpt.trim() || null,
+      cover_image_url: formData.cover_image_url.trim() || null,
+      featured_image_alt: formData.featured_image_alt.trim() || null,
+      is_published: formData.is_published,
+      published_at: formData.is_published ? new Date().toISOString() : null,
+      meta_title: formData.meta_title.trim() || null,
+      meta_description: formData.meta_description.trim() || null,
+      author_name: formData.author_name.trim() || null,
+      canonical_url: formData.canonical_url.trim() || null,
+      category: normalizeBlogCategory(formData.category),
+      tags: formData.tags || [],
+      author_id: user!.id,
+      ai_fixed_at: null, // Clear AI fixed status on manual save
+      word_count,
+      reading_time,
+    };
+  };
 
   const executeSubmit = async () => {
     if (!formData.title.trim() || !formData.content.trim()) {
@@ -396,9 +403,12 @@ export function BlogPostEditor() {
   };
 
   const togglePublish = async (post: BlogPost) => {
+    const { word_count, reading_time } = wordCountFields(post.content);
     const { error } = await supabase.from('blog_posts').update({
       is_published: !post.is_published,
       published_at: !post.is_published ? new Date().toISOString() : null,
+      word_count,
+      reading_time,
     }).eq('id', post.id);
     if (!error) {
       fetchPosts();
@@ -800,8 +810,8 @@ export function BlogPostEditor() {
   );
 
   // Word count from content
-  const liveWordCount = formData.content.replace(/<[^>]+>/g, '').split(/\s+/).filter(w => w.length > 0).length;
-  const liveReadingTime = Math.max(1, Math.ceil(liveWordCount / 200));
+  const liveWordCount = calcLiveWordCount(formData.content);
+  const liveReadingTime = calcReadingTime(liveWordCount);
 
   // ── Compute scores for current form data ───────────
   const currentMetadata = formData.title ? blogPostToMetadata({
@@ -838,8 +848,7 @@ export function BlogPostEditor() {
 
   // Helper to get score for a post in the table
   const getPostScores = (post: BlogPost) => {
-    // Recalculate word count from content to avoid stale DB values
-    const liveWc = post.content.replace(/<[^>]+>/g, '').split(/\s+/).filter(w => w.length > 0).length;
+    const liveWc = calcLiveWordCount(post.content);
     const postWithLiveWc = { ...post, word_count: liveWc };
     const meta = blogPostToMetadata(postWithLiveWc);
     const q = analyzeQuality(meta);
@@ -910,9 +919,9 @@ export function BlogPostEditor() {
       // Apply safe metadata to DB
       if (Object.keys(updatePayload).length > 0) {
         // Also recalculate word_count from content to keep it fresh
-        const freshWordCount = post.content.replace(/<[^>]+>/g, '').split(/\s+/).filter(w => w.length > 0).length;
-        (updatePayload as any).word_count = freshWordCount;
-        (updatePayload as any).reading_time = Math.max(1, Math.ceil(freshWordCount / 200));
+        const { word_count, reading_time } = wordCountFields(post.content);
+        (updatePayload as any).word_count = word_count;
+        (updatePayload as any).reading_time = reading_time;
         await supabase.from('blog_posts').update(updatePayload).eq('id', post.id);
       }
 
@@ -961,10 +970,10 @@ export function BlogPostEditor() {
 
   const applyEnrichment = async () => {
     if (!enrichDialogPost || !enrichResult) return;
-    const wordCount = enrichResult.content.replace(/<[^>]+>/g, '').split(/\s+/).filter(w => w.length > 0).length;
+    const wordCount = calcLiveWordCount(enrichResult.content);
     const { error } = await supabase.from('blog_posts').update({
       content: enrichResult.content, word_count: wordCount,
-      reading_time: Math.max(1, Math.ceil(wordCount / 200)),
+      reading_time: calcReadingTime(wordCount),
     }).eq('id', enrichDialogPost.id);
     if (error) {
       toast({ title: 'Save failed', description: error.message, variant: 'destructive' });
@@ -1004,7 +1013,7 @@ export function BlogPostEditor() {
 
         // Prefer backend-provided word count when available
         const wordCount = data.wordCountValidation?.actualWordCount
-          || data.content.replace(/<[^>]+>/g, '').split(/\s+/).filter((w: string) => w.length > 0).length;
+          || calcLiveWordCount(data.content);
         // Non-blocking word count warning with model recommendation
         if (data.wordCountValidation?.status === 'fail') {
           const betterModels = getRecommendedModelsForTarget(bulkWordCount).filter(m => m.value !== blogTextModel);
@@ -1065,7 +1074,7 @@ export function BlogPostEditor() {
 
         // Prefer backend-provided word count when available
         const wordCount = data.wordCountValidation?.actualWordCount
-          || data.content.replace(/<[^>]+>/g, '').split(/\s+/).filter((w: string) => w.length > 0).length;
+          || calcLiveWordCount(data.content);
         // Non-blocking word count warning with model recommendation
         if (data.wordCountValidation?.status === 'fail') {
           const betterModels = getRecommendedModelsForTarget(bulkWordCount).filter(m => m.value !== blogTextModel);

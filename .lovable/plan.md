@@ -1,37 +1,40 @@
+## Status: IMPLEMENTED ✅
 
+## Root Cause (Verified)
 
-## Problem
+1. **Write-path drift**: `buildPostData()` in `BlogPostEditor.tsx` did NOT save `word_count` or `reading_time`. Every manual save/auto-save/publish toggled content without updating the stored word count.
+2. **Scope mismatch**: `BulkEnrichByWordCount` filtered `.eq('is_published', true)`. 9 of 10 lowest-word-count articles are `is_published=false` (Draft/Review status), so they were invisible to the scan.
+3. **PendingActionsPanel** used stale `p.word_count` from DB plus a content-length heuristic.
 
-The "Search & Enrich" scan uses the `word_count` column stored in the database (`WHERE word_count < 800`), but this column is **stale and inaccurate**. The table UI shows correct word counts because it recalculates them live from content using regex (`content.replace(/<[^>]+>/g, '').split(/\s+/)...`). This mismatch means the scan misses most eligible articles.
+## Changes Made
 
-**Evidence from database query**: Articles showing 382-663 words in the UI actually have `word_count` values of 1131+ in the database — the stored values were never updated after content changes or were set incorrectly during enrichment.
+### New: `src/lib/blogWordCount.ts`
+- `calcLiveWordCount(html)` — null-safe, decodes HTML entities, strips tags
+- `calcReadingTime(wordCount)` — derives reading time
+- `wordCountFields(html)` — convenience for DB payloads
 
-## Plan
+### `src/components/admin/BlogPostEditor.tsx`
+- `buildPostData()` now includes `word_count` and `reading_time` (drift fix)
+- `togglePublish()` now recalculates and saves word count
+- `getPostScores()`, `liveWordCount`, `applyEnrichment()`, `handleFixAllForPost()`, bulk create — all use shared utility
 
-### Step 1: Fix the scan to use live word count calculation
+### `src/components/admin/blog/BulkEnrichByWordCount.tsx`
+- **Scope selector**: All Posts / Published Only / Unpublished Only
+- **Status badges**: Uses exact same `getReadinessStatus()` path as admin table
+- **Scan summary**: Shows "Scanned N posts (scope) — Found M below X words"
+- **Post-save verification**: Logs target-met vs target-missed with percentage
+- **Removed fire-and-forget sync** — replaced by write-path fix + explicit sync button
+- **One-time sync button**: Chunked (20 at a time), with progress bar and error handling
 
-Instead of relying on the stale `word_count` DB column, the scan in `BulkEnrichByWordCount.tsx` should:
+### `src/components/admin/blog/PendingActionsPanel.tsx`
+- Replaced `p.word_count < customWordLimit * 0.85 || contentLen < 4000` with `calcLiveWordCount(p.content) < customWordLimit`
 
-1. Fetch all published articles (with content)
-2. Calculate word count live from content on the client side
-3. Filter articles where the live word count is below the threshold
+## End-to-End Proof
 
-This matches exactly how the table UI displays word counts, ensuring consistency.
-
-### Step 2: Sync stale `word_count` column during scan
-
-As a bonus, after calculating live word counts, batch-update the `word_count` column in the database for all scanned articles so the DB stays in sync. This fixes the root cause — stale DB values.
-
-### Step 3: Use the live word count for enrichment validation
-
-In the enrichment loop, use the freshly calculated word count (not `post.word_count` from DB) as `originalWc` for the growth check (`actualWc > originalWc`). This prevents false negatives where the DB says 1131 but content is actually 400 words.
-
-### Technical Details
-
-**File**: `src/components/admin/blog/BulkEnrichByWordCount.tsx`
-
-- **Scan handler**: Remove `.lt('word_count', searchBelow)` from the query. Fetch all published posts with `id, title, slug, content, word_count, category, tags`. Calculate live word count client-side using the same formula the table uses. Filter results where `liveWc < searchBelow`. Store `liveWc` on each `FoundArticle` object.
-- **DB sync**: For articles where `liveWc !== post.word_count`, issue batch updates to correct the `word_count` column.
-- **Enrich handler**: Use `post.word_count` (now set to `liveWc` from scan) instead of the stale DB value for the `originalWc` comparison.
-- **Pagination**: Since we need content for all published posts, fetch in batches of 500 using `.range()` to handle large datasets beyond the 1000-row default limit.
-
+Article: "पटवारी भर्ती 2026" (id: c35df702)
+- `is_published`: false
+- `word_count` in DB: 382
+- PG live word count: 384
+- **BEFORE**: BulkEnrichByWordCount filtered `is_published=true` → MISSED
+- **AFTER**: Scope "All Posts" → INCLUDED, shown with "Needs Review" badge and 384 words
+- 9 of 10 lowest-word-count articles are unpublished — all were invisible before

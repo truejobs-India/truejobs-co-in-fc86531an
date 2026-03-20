@@ -27,8 +27,7 @@ async function verifyAdmin(req: Request): Promise<{ userId: string } | Response>
   return { userId };
 }
 
-const GEMINI_MODEL = 'gemini-2.5-pro';
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+// Vertex AI Gemini via shared helper
 
 interface ArticleInput {
   id: string;

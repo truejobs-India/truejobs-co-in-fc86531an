@@ -919,9 +919,9 @@ export function BlogPostEditor() {
       // Apply safe metadata to DB
       if (Object.keys(updatePayload).length > 0) {
         // Also recalculate word_count from content to keep it fresh
-        const freshWordCount = post.content.replace(/<[^>]+>/g, '').split(/\s+/).filter(w => w.length > 0).length;
-        (updatePayload as any).word_count = freshWordCount;
-        (updatePayload as any).reading_time = Math.max(1, Math.ceil(freshWordCount / 200));
+        const { word_count, reading_time } = wordCountFields(post.content);
+        (updatePayload as any).word_count = word_count;
+        (updatePayload as any).reading_time = reading_time;
         await supabase.from('blog_posts').update(updatePayload).eq('id', post.id);
       }
 

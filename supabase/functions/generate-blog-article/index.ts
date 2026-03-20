@@ -448,7 +448,7 @@ async function callClaude(prompt: string, wordLimit: number): Promise<string> {
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: Math.max(4096, Math.min(Math.ceil(wordLimit * 2.5), 8192)),
+        max_tokens: computeMaxTokens(wordLimit, 'claude-sonnet'),
         system: CLAUDE_SYSTEM_PROMPT,
         messages: [
           {

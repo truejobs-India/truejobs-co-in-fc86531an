@@ -263,9 +263,9 @@ async function callAI(aiModel: string, prompt: string, maxTokens: number): Promi
       actualProvider = 'vertex-ai'; actualModelId = 'gemini-2.5-flash'; break;
     }
     case 'gemini-pro': {
-      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-      const text = await callVertexGemini('gemini-2.5-pro', prompt, 120_000, { maxOutputTokens: maxTokens });
-      resultJson = JSON.stringify({ __raw: text, __finishReason: 'stop' });
+      const { callVertexGeminiWithMeta } = await import('../_shared/vertex-ai.ts');
+      const result = await callVertexGeminiWithMeta('gemini-2.5-pro', prompt, 120_000, { maxOutputTokens: maxTokens });
+      resultJson = JSON.stringify({ __raw: result.text, __finishReason: result.finishReason });
       actualProvider = 'vertex-ai'; actualModelId = 'gemini-2.5-pro'; break;
     }
     case 'mistral':

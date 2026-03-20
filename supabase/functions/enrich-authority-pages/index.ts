@@ -1228,10 +1228,15 @@ serve(async (req) => {
       }
       await insertFailedRow(svc, slug, pageType, reason, existingWordCount);
 
+      const errProviderInfo = resolveProviderInfo(selectedModel);
       return new Response(JSON.stringify({
         status: 'failed',
         slug,
         error: reason,
+        selectedModelId: selectedModel,
+        actualProviderUsed: errProviderInfo.provider,
+        actualModelUsed: errProviderInfo.apiModel,
+        wordCountValidation: null,
         diagnostics: errDiagnostics || null,
         results: [{
           slug, status: 'failed', sectionsAdded: [], qualityScore: {},

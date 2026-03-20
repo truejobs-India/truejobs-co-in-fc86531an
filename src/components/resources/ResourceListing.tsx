@@ -26,11 +26,19 @@ export function ResourceListing({ resourceType, pageTitle, metaTitle, metaDescri
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState(searchParams.get('q') || '');
+  const [debouncedSearch, setDebouncedSearch] = useState(search);
   const [categoryFilter, setCategoryFilter] = useState(searchParams.get('category') || '');
   const [categories, setCategories] = useState<string[]>([]);
+  const [initialLoad, setInitialLoad] = useState(true);
   const page = parseInt(searchParams.get('page') || '1', 10);
   const typePath = RESOURCE_TYPE_PATHS[resourceType];
   const hubs = getHubsForType(resourceType);
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+
+  useEffect(() => {
+    debounceRef.current = setTimeout(() => setDebouncedSearch(search), 350);
+    return () => clearTimeout(debounceRef.current);
+  }, [search]);
 
   const fetchResources = useCallback(async () => {
     setLoading(true);

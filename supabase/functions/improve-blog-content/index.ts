@@ -382,6 +382,9 @@ function buildCriteriaInstructions(failingCriteria: string[]): string {
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
+  // Declare at outermost handler scope to guarantee availability in ALL code paths
+  var effectiveTarget = 0;
+
   try {
     const authResult = await verifyAdmin(req);
     if (authResult instanceof Response) return authResult;
@@ -396,7 +399,6 @@ Deno.serve(async (req) => {
 
     let prompt: string;
     let maxTokens = 2000;
-    let effectiveTarget = 0; // hoisted — set by enrich-article, used in response handling
 
     if (action === 'rewrite-section') {
       if (!selectedHtml) {

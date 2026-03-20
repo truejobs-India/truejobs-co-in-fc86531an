@@ -88,11 +88,21 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
     const total = found.length;
     let done = 0;
     let failed = 0;
+    let consecutiveFailures = 0;
+    const MAX_CONSECUTIVE_FAILURES = 3;
     setProgress({ done: 0, total, failed: 0, current: found[0]?.title || '' });
 
     for (const post of found) {
       if (abortRef.current) {
         toast({ title: '⏹️ Enrichment stopped', description: `${done} enriched, ${failed} failed, ${total - done - failed} skipped.` });
+        break;
+      }
+      if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+        toast({
+          title: '⛔ Auto-stopped: too many consecutive failures',
+          description: `${consecutiveFailures} articles failed in a row. Stopped to prevent wasting AI credits. ${done} enriched, ${failed} failed, ${total - done - failed} skipped. Try a different model or lower target.`,
+          variant: 'destructive',
+        });
         break;
       }
       setProgress({ done, total, failed, current: post.title });

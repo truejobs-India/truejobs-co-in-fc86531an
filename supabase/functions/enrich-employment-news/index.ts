@@ -651,7 +651,7 @@ async function callAI(model: string, prompt: string, maxTokensParam?: number): P
       const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
       retryText = await callVertexGemini('gemini-2.5-pro', prompt, 120_000);
     }
-    else retryText = await callLovableGeminiRaw(prompt);
+    else throw new Error(`JSON parse retry not supported for model: ${model}. Re-select and try again.`);
     retryText = retryText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     return tryParseJSON(retryText);
   }

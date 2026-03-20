@@ -848,8 +848,7 @@ export function BlogPostEditor() {
 
   // Helper to get score for a post in the table
   const getPostScores = (post: BlogPost) => {
-    // Recalculate word count from content to avoid stale DB values
-    const liveWc = post.content.replace(/<[^>]+>/g, '').split(/\s+/).filter(w => w.length > 0).length;
+    const liveWc = calcLiveWordCount(post.content);
     const postWithLiveWc = { ...post, word_count: liveWc };
     const meta = blogPostToMetadata(postWithLiveWc);
     const q = analyzeQuality(meta);

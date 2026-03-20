@@ -170,7 +170,7 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
       <Collapsible open={open} onOpenChange={setOpen}>
         <CollapsibleTrigger className="flex items-center gap-2 w-full py-2 text-sm font-medium hover:text-primary">
           <ChevronDown className={`h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`} />
-          <Zap className="h-4 w-4 text-amber-500" />
+          <Zap className="h-4 w-4 text-primary" />
           Search &amp; Enrich Articles by Word Count
         </CollapsibleTrigger>
 

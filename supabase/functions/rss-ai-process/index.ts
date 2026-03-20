@@ -100,7 +100,7 @@ async function callTextAI(model: string, prompt: string, maxTokens?: number): Pr
 
   if (model === 'nova-pro' || model === 'nova-premier') {
     const { callBedrockNova } = await import('../_shared/bedrock-nova.ts');
-    return callBedrockNova(model, prompt, { maxTokens: 8192, temperature: 0.5 });
+    return callBedrockNova(model, prompt, { maxTokens: maxTokens || 8192, temperature: 0.5 });
   }
 
   // Fallback: Lovable Gateway

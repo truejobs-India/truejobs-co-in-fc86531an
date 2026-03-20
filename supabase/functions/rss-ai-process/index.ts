@@ -29,8 +29,8 @@ const IMAGE_MODELS: Record<string, string> = {
 
 function resolveProviderInfo(model: string): { provider: string; apiModel: string } {
   switch (model) {
-    case 'gemini-flash': case 'gemini': return { provider: 'google-ai-studio', apiModel: 'gemini-2.5-flash' };
-    case 'gemini-pro': return { provider: 'google-ai-studio', apiModel: 'gemini-2.5-pro' };
+    case 'gemini-flash': case 'gemini': return { provider: 'vertex-ai', apiModel: 'gemini-2.5-flash' };
+    case 'gemini-pro': return { provider: 'vertex-ai', apiModel: 'gemini-2.5-pro' };
     case 'vertex-flash': return { provider: 'vertex-ai', apiModel: 'gemini-2.5-flash' };
     case 'vertex-pro': return { provider: 'vertex-ai', apiModel: 'gemini-2.5-pro' };
     case 'claude-sonnet': case 'claude': return { provider: 'anthropic', apiModel: 'claude-sonnet-4-20250514' };

@@ -79,10 +79,7 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Max 10 articles per batch' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
-    if (!GEMINI_API_KEY) {
-      return new Response(JSON.stringify({ error: 'GEMINI_API_KEY not configured' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-    }
+    const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
 
     const results: SeoFixResult[] = [];
 

@@ -65,7 +65,8 @@ CATEGORY: ${article.category || "Career Advice"}
 CURRENT CONTENT:
 ${article.content}`;
 
-        const result = await callGeminiAI(prompt, geminiApiKey);
+        const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+        const result = await callVertexGemini('gemini-2.5-flash', prompt, 90_000);
 
         let expandedContent = result;
         let faqSchema = article.faq_schema;

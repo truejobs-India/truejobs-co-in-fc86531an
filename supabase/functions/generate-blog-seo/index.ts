@@ -77,7 +77,8 @@ Deno.serve(async (req) => {
 
     for (const field of fields) {
       const prompt = buildPrompt(field, title, plainText, extraContext);
-      let generated = await callGemini(geminiApiKey, prompt);
+      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      let generated = await callVertexGemini('gemini-2.5-flash', prompt, 60_000, { maxOutputTokens: 500, temperature: 0.3 });
       generated = cleanResult(field, generated);
       result[field] = generated;
     }

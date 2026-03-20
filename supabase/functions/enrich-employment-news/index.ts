@@ -529,7 +529,7 @@ async function callClaudeRaw(prompt: string, maxTokensParam?: number): Promise<s
   return textBlocks.map((b: any) => b.text).join('') || '';
 }
 
-async function callLovableGeminiRaw(prompt: string): Promise<string> {
+async function callLovableGeminiRaw(prompt: string, maxTokensParam?: number): Promise<string> {
   const apiKey = Deno.env.get('LOVABLE_API_KEY');
   if (!apiKey) throw new Error('LOVABLE_API_KEY not configured');
   const controller = new AbortController();
@@ -542,7 +542,7 @@ async function callLovableGeminiRaw(prompt: string): Promise<string> {
       body: JSON.stringify({
         model: 'google/gemini-2.5-flash',
         messages: [{ role: 'user', content: prompt }],
-        max_tokens: 8192,
+        max_tokens: maxTokensParam || 8192,
         temperature: 0.5,
       }),
       signal: controller.signal,

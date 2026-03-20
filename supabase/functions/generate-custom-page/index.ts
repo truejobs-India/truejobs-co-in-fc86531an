@@ -94,13 +94,13 @@ async function callLovableGemini(prompt: string, maxTokens = 8192): Promise<stri
   return data?.choices?.[0]?.message?.content || '';
 }
 
-async function callOpenAI(prompt: string, model = 'gpt-4o'): Promise<string> {
+async function callOpenAI(prompt: string, maxTokens = 8192, model = 'gpt-4o'): Promise<string> {
   const apiKey = Deno.env.get('OPENAI_API_KEY');
   if (!apiKey) throw new Error('OPENAI_API_KEY not configured');
   const resp = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model, messages: [{ role: 'user', content: prompt }], temperature: 0.6, max_tokens: 8192 }),
+    body: JSON.stringify({ model, messages: [{ role: 'user', content: prompt }], temperature: 0.6, max_tokens: maxTokens }),
   });
   if (!resp.ok) {
     const errText = await resp.text();
@@ -110,13 +110,13 @@ async function callOpenAI(prompt: string, model = 'gpt-4o'): Promise<string> {
   return data?.choices?.[0]?.message?.content || '';
 }
 
-async function callGeminiPro(prompt: string): Promise<string> {
+async function callGeminiPro(prompt: string, maxTokens = 8192): Promise<string> {
   const apiKey = Deno.env.get('LOVABLE_API_KEY');
   if (!apiKey) throw new Error('LOVABLE_API_KEY not configured');
   const resp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: 'google/gemini-2.5-pro', messages: [{ role: 'user', content: prompt }], temperature: 0.6, max_tokens: 8192 }),
+    body: JSON.stringify({ model: 'google/gemini-2.5-pro', messages: [{ role: 'user', content: prompt }], temperature: 0.6, max_tokens: maxTokens }),
   });
   if (!resp.ok) {
     const errText = await resp.text();
@@ -126,13 +126,13 @@ async function callGeminiPro(prompt: string): Promise<string> {
   return data?.choices?.[0]?.message?.content || '';
 }
 
-async function callGpt5Mini(prompt: string): Promise<string> {
+async function callGpt5Mini(prompt: string, maxTokens = 8192): Promise<string> {
   const apiKey = Deno.env.get('LOVABLE_API_KEY');
   if (!apiKey) throw new Error('LOVABLE_API_KEY not configured');
   const resp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: 'openai/gpt-5-mini', messages: [{ role: 'user', content: prompt }], temperature: 0.6, max_tokens: 8192 }),
+    body: JSON.stringify({ model: 'openai/gpt-5-mini', messages: [{ role: 'user', content: prompt }], temperature: 0.6, max_tokens: maxTokens }),
   });
   if (!resp.ok) {
     const errText = await resp.text();
@@ -142,39 +142,42 @@ async function callGpt5Mini(prompt: string): Promise<string> {
   return data?.choices?.[0]?.message?.content || '';
 }
 
-async function callVertexFlash(prompt: string): Promise<string> {
+async function callVertexFlash(prompt: string, maxTokens = 16384): Promise<string> {
   const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
   return callVertexGemini('gemini-2.5-flash', prompt, 90_000, {
-    maxOutputTokens: 16384,
+    maxOutputTokens: maxTokens,
     temperature: 0.6,
   });
 }
 
-async function callVertexPro(prompt: string): Promise<string> {
+async function callVertexPro(prompt: string, maxTokens = 16384): Promise<string> {
   const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
   return callVertexGemini('gemini-2.5-pro', prompt, 150_000, {
-    maxOutputTokens: 16384,
+    maxOutputTokens: maxTokens,
     temperature: 0.6,
   });
 }
 
-async function callAI(model: string, prompt: string): Promise<string> {
+async function callAI(model: string, prompt: string, maxTokens = 8192): Promise<string> {
   switch (model) {
-    case 'gemini': case 'gemini-flash': return callGemini(prompt);
-    case 'gemini-pro': return callGeminiPro(prompt);
-    case 'groq': return callGroq(prompt);
-    case 'claude': case 'claude-sonnet': return callClaude(prompt);
-    case 'mistral': return callMistral(prompt);
-    case 'lovable-gemini': return callLovableGemini(prompt);
-    case 'openai': case 'gpt5': return callOpenAI(prompt);
-    case 'gpt5-mini': return callGpt5Mini(prompt);
-    case 'vertex-flash': return callVertexFlash(prompt);
-    case 'vertex-pro': return callVertexPro(prompt);
+    case 'gemini': case 'gemini-flash': return callGemini(prompt, maxTokens);
+    case 'gemini-pro': return callGeminiPro(prompt, maxTokens);
+    case 'groq': return callGroq(prompt, maxTokens);
+    case 'claude': case 'claude-sonnet': return callClaude(prompt, maxTokens);
+    case 'mistral': return callMistral(prompt, maxTokens);
+    case 'lovable-gemini': return callLovableGemini(prompt, maxTokens);
+    case 'openai': case 'gpt5': return callOpenAI(prompt, maxTokens);
+    case 'gpt5-mini': return callGpt5Mini(prompt, maxTokens);
+    case 'vertex-flash': return callVertexFlash(prompt, maxTokens);
+    case 'vertex-pro': return callVertexPro(prompt, maxTokens);
     case 'nova-pro': case 'nova-premier': {
       const { callBedrockNova } = await import('../_shared/bedrock-nova.ts');
-      return callBedrockNova(model, prompt, { maxTokens: 16384, temperature: 0.6 });
+      const { computeMaxTokens } = await import('../_shared/word-count-enforcement.ts');
+      const novaBudget = computeMaxTokens(Math.ceil(maxTokens / 2), model);
+      return callBedrockNova(model, prompt, { maxTokens: novaBudget, temperature: 0.6 });
     }
-    default: return callGemini(prompt);
+    default:
+      throw new Error(`Unsupported AI model: "${model}". Select a valid model.`);
   }
 }
 

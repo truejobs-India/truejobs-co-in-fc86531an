@@ -320,24 +320,30 @@ export function BlogPostEditor() {
     }
   };
 
-  const buildPostData = () => ({
-    title: formData.title.trim(),
-    slug: (formData.slug || generateSlug(formData.title)).replace(/^\/+/, ''),
-    content: formData.content.trim(),
-    excerpt: formData.excerpt.trim() || null,
-    cover_image_url: formData.cover_image_url.trim() || null,
-    featured_image_alt: formData.featured_image_alt.trim() || null,
-    is_published: formData.is_published,
-    published_at: formData.is_published ? new Date().toISOString() : null,
-    meta_title: formData.meta_title.trim() || null,
-    meta_description: formData.meta_description.trim() || null,
-    author_name: formData.author_name.trim() || null,
-    canonical_url: formData.canonical_url.trim() || null,
-    category: normalizeBlogCategory(formData.category),
-    tags: formData.tags || [],
-    author_id: user!.id,
-    ai_fixed_at: null, // Clear AI fixed status on manual save
-  });
+  const buildPostData = () => {
+    const contentTrimmed = formData.content.trim();
+    const { word_count, reading_time } = wordCountFields(contentTrimmed);
+    return {
+      title: formData.title.trim(),
+      slug: (formData.slug || generateSlug(formData.title)).replace(/^\/+/, ''),
+      content: contentTrimmed,
+      excerpt: formData.excerpt.trim() || null,
+      cover_image_url: formData.cover_image_url.trim() || null,
+      featured_image_alt: formData.featured_image_alt.trim() || null,
+      is_published: formData.is_published,
+      published_at: formData.is_published ? new Date().toISOString() : null,
+      meta_title: formData.meta_title.trim() || null,
+      meta_description: formData.meta_description.trim() || null,
+      author_name: formData.author_name.trim() || null,
+      canonical_url: formData.canonical_url.trim() || null,
+      category: normalizeBlogCategory(formData.category),
+      tags: formData.tags || [],
+      author_id: user!.id,
+      ai_fixed_at: null, // Clear AI fixed status on manual save
+      word_count,
+      reading_time,
+    };
+  };
 
   const executeSubmit = async () => {
     if (!formData.title.trim() || !formData.content.trim()) {

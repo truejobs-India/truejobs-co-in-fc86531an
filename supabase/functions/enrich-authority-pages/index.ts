@@ -979,6 +979,7 @@ CRITICAL: Return ONLY the raw JSON object. No markdown fences, no backticks, no 
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function countWords(text: string): number {
+  if (text.includes('<')) return countWordsFromHtml(text);
   return text.trim().split(/\s+/).filter(Boolean).length;
 }
 

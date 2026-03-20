@@ -16,8 +16,6 @@ const corsHeaders = {
 // ═══════════════════════════════════════════════════════════════
 
 const GATEWAY_MODELS: Record<string, string> = {
-  'gemini-flash': 'google/gemini-2.5-flash',
-  'gemini-pro': 'google/gemini-2.5-pro',
   'gpt5': 'openai/gpt-5',
   'gpt5-mini': 'openai/gpt-5-mini',
   'mistral': 'google/gemini-2.5-flash',

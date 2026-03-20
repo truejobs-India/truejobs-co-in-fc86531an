@@ -12,7 +12,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { calcLiveWordCount } from '@/lib/blogWordCount';
 import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSelector';
 import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -162,6 +163,33 @@ function needsMetadataFix(r: PdfResource): boolean {
 
 function needsCoverImage(r: PdfResource): boolean {
   return !r.cover_image_url;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SEO indicator — MUST stay at module scope for stable React identity.
+// Moving this inside PdfResourcesManager causes full DOM unmount/remount
+// on every parent re-render, producing visible flicker.
+// ═══════════════════════════════════════════════════════════════
+function SeoIndicator({ resource }: { resource: PdfResource }) {
+  const h = computeSeoHealth(resource);
+  const color = h.score >= 9 ? 'text-green-600' : h.score >= 6 ? 'text-yellow-500' : 'text-destructive';
+  const Icon = h.score >= 9 ? CheckCircle : h.score >= 6 ? AlertTriangle : XCircle;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className={`inline-flex items-center gap-0.5 ${color}`}>
+          <Icon className="h-3.5 w-3.5" />
+          <span className="text-[10px] font-medium">{h.score}/10</span>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" className="max-w-xs">
+        {h.missing.length > 0
+          ? <p className="text-xs">Missing: {h.missing.join(', ')}</p>
+          : <p className="text-xs text-green-600">All SEO fields filled ✓</p>
+        }
+      </TooltipContent>
+    </Tooltip>
+  );
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1023,30 +1051,7 @@ export function PdfResourcesManager() {
   const totalPages = Math.ceil(total / PAGE_SIZE);
   const isBulkBusy = bulkMetaFixing || bulkImageGenerating || bulkUploading || bulkPublishPhase === 'publishing';
 
-  // ─── SEO indicator dot ────────────────────────────────────
-  const SeoIndicator = ({ resource }: { resource: PdfResource }) => {
-    const h = computeSeoHealth(resource);
-    const color = h.score >= 9 ? 'text-green-600' : h.score >= 6 ? 'text-yellow-500' : 'text-destructive';
-    const Icon = h.score >= 9 ? CheckCircle : h.score >= 6 ? AlertTriangle : XCircle;
-    return (
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span className={`inline-flex items-center gap-0.5 ${color}`}>
-              <Icon className="h-3.5 w-3.5" />
-              <span className="text-[10px] font-medium">{h.score}/10</span>
-            </span>
-          </TooltipTrigger>
-          <TooltipContent side="bottom" className="max-w-xs">
-            {h.missing.length > 0
-              ? <p className="text-xs">Missing: {h.missing.join(', ')}</p>
-              : <p className="text-xs text-green-600">All SEO fields filled ✓</p>
-            }
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-    );
-  };
+  // SeoIndicator is now defined at module scope (above) for stable React identity
 
   // ═══════════════════════════════════════════════════════════════
   // RENDER
@@ -1314,8 +1319,7 @@ export function PdfResourcesManager() {
                       <div className="flex items-center gap-0.5 justify-end">
                         {/* AI Fix metadata button */}
                         {needsMetadataFix(r) && (
-                          <TooltipProvider>
-                            <Tooltip>
+                          <Tooltip>
                               <TooltipTrigger asChild>
                                 <Button variant="ghost" size="icon" className="h-7 w-7"
                                   disabled={rowFixingId === r.id}
@@ -1327,12 +1331,10 @@ export function PdfResourcesManager() {
                               </TooltipTrigger>
                               <TooltipContent>Fix SEO metadata with AI</TooltipContent>
                             </Tooltip>
-                          </TooltipProvider>
                         )}
                         {/* AI Generate image button */}
                         {needsCoverImage(r) && (
-                          <TooltipProvider>
-                            <Tooltip>
+                          <Tooltip>
                               <TooltipTrigger asChild>
                                 <Button variant="ghost" size="icon" className="h-7 w-7"
                                   disabled={rowImageId === r.id}
@@ -1344,7 +1346,6 @@ export function PdfResourcesManager() {
                               </TooltipTrigger>
                               <TooltipContent>Generate cover image with AI</TooltipContent>
                             </Tooltip>
-                          </TooltipProvider>
                         )}
                         <Button variant="ghost" size="icon" className="h-7 w-7"
                           onClick={() => { setEditItem(r); setDialogOpen(true); }}>
@@ -1548,7 +1549,7 @@ export function PdfResourcesManager() {
                   <Label>Content (HTML)</Label>
                   <Textarea value={editItem.content || ''} onChange={(e) => {
                     const content = e.target.value;
-                    const wordCount = content.replace(/<[^>]*>/g, '').split(/\s+/).filter(Boolean).length;
+                    const wordCount = calcLiveWordCount(content);
                     setEditItem(prev => ({ ...prev, content, word_count: wordCount }));
                   }} rows={8} className="font-mono text-xs" />
                   <p className="text-xs text-muted-foreground mt-1">{editItem.word_count || 0} words</p>

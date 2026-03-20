@@ -445,7 +445,8 @@ export function PdfResourcesManager() {
       toast({ title: '🖼️ Cover generated', description: `Image created for "${r.title}"` });
       fetchResources();
     } catch (err: any) {
-      toast({ title: 'Image failed', description: err.message, variant: 'destructive' });
+      const msg = err instanceof ImageGenError ? err.userMessage : (err.message || 'Unknown error');
+      toast({ title: 'Image failed', description: msg, variant: 'destructive' });
     } finally {
       setRowImageId(null);
     }

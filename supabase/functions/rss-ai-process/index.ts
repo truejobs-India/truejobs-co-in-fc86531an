@@ -57,7 +57,7 @@ async function callTextAI(model: string, prompt: string, maxTokens?: number): Pr
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.5, maxOutputTokens: 8192 },
+          generationConfig: { temperature: 0.5, maxOutputTokens: maxTokens || 8192 },
         }),
       });
       if (!resp.ok) throw new Error(`Gemini API error: ${resp.status}`);

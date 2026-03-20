@@ -497,7 +497,7 @@ async function callMistral(prompt: string, systemPrompt?: string): Promise<strin
 
   const payload: Record<string, unknown> = {
     messages: [{ role: 'user', content: [{ text: prompt }] }],
-    inferenceConfig: { maxTokens: 16384, temperature: 0.5 },
+    inferenceConfig: { maxTokens: 8192, temperature: 0.5 },
   };
 
   if (systemPrompt) {

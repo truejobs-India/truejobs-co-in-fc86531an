@@ -122,6 +122,19 @@ export function PendingActionsPanel({
           const newWordCount = enrichData?.wordCount || enrichedHtml.replace(/<[^>]+>/g, ' ').split(/\s+/).filter((w: string) => w.length > 0).length;
           const readingTime = Math.max(1, Math.ceil(newWordCount / 200));
 
+          // Check word count validation from backend
+          const wcv = enrichData?.wordCountValidation;
+          if (wcv) {
+            if (wcv.status === 'warn') {
+              toast({ title: `⚠️ "${post.title}" — ${wcv.actualWordCount} words (target: ${wcv.targetWordCount}). Slightly outside range.` });
+            } else if (wcv.status === 'fail') {
+              toast({ title: `❌ "${post.title}" — ${wcv.actualWordCount} words (target: ${wcv.targetWordCount}). Significantly off target.`, variant: 'destructive' });
+            }
+            if (enrichData?.correctionAttempted) {
+              console.log(`[PendingActions] Correction was attempted for "${post.title}"`);
+            }
+          }
+
           // Extract internal links from enriched content
           const linkMatches = [...enrichedHtml.matchAll(/<a\s+[^>]*href="([^"]*)"[^>]*>(.*?)<\/a>/gi)];
           const internalLinks = linkMatches

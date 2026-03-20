@@ -482,7 +482,7 @@ async function callGroqRaw(prompt: string, timeoutMs = 30_000, maxTokens = 16384
         model: 'llama-3.3-70b-versatile',
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.5,
-        max_tokens: 16384,
+        max_tokens: maxTokens,
       }),
     });
 

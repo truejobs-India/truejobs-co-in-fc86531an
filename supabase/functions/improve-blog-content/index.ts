@@ -340,16 +340,48 @@ async function callAI(aiModel: string, prompt: string, maxTokens: number): Promi
       resultJson = await callLovableGemini(prompt, maxTokens);
       actualProvider = 'lovable-gateway'; actualModelId = 'google/gemini-2.5-flash'; break;
     case 'vertex-flash': {
-      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-      const text = await callVertexGemini('gemini-2.5-flash', prompt, 90_000, { maxOutputTokens: maxTokens });
-      resultJson = JSON.stringify({ __raw: text, __finishReason: 'stop' });
-      actualProvider = 'vertex-ai'; actualModelId = 'gemini-2.5-flash'; break;
+      try {
+        const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+        const text = await callVertexGemini('gemini-2.5-flash', prompt, 90_000, { maxOutputTokens: maxTokens });
+        resultJson = JSON.stringify({ __raw: text, __finishReason: 'stop' });
+        actualProvider = 'vertex-ai'; actualModelId = 'gemini-2.5-flash';
+      } catch (vertexErr: any) {
+        if (vertexErr?.message?.includes('429') || vertexErr?.message?.includes('RESOURCE_EXHAUSTED')) {
+          console.warn(`[improve-blog-content] Vertex Flash 429 — falling back to Lovable Gateway`);
+          resultJson = await callLovableGemini(prompt, maxTokens);
+          actualProvider = 'lovable-gateway'; actualModelId = 'google/gemini-2.5-flash';
+        } else { throw vertexErr; }
+      }
+      break;
     }
     case 'vertex-pro': {
-      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-      const text = await callVertexGemini('gemini-2.5-pro', prompt, 120_000, { maxOutputTokens: maxTokens });
-      resultJson = JSON.stringify({ __raw: text, __finishReason: 'stop' });
-      actualProvider = 'vertex-ai'; actualModelId = 'gemini-2.5-pro'; break;
+      try {
+        const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+        const text = await callVertexGemini('gemini-2.5-pro', prompt, 120_000, { maxOutputTokens: maxTokens });
+        resultJson = JSON.stringify({ __raw: text, __finishReason: 'stop' });
+        actualProvider = 'vertex-ai'; actualModelId = 'gemini-2.5-pro';
+      } catch (vertexErr: any) {
+        if (vertexErr?.message?.includes('429') || vertexErr?.message?.includes('RESOURCE_EXHAUSTED')) {
+          console.warn(`[improve-blog-content] Vertex Pro 429 — falling back to Lovable Gateway`);
+          const lovKey = Deno.env.get('LOVABLE_API_KEY');
+          if (!lovKey) throw vertexErr;
+          const gResp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${lovKey}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: 'google/gemini-2.5-pro', messages: [{ role: 'user', content: prompt }], max_tokens: maxTokens, temperature: 0.4 }),
+          });
+          if (!gResp.ok) {
+            const gBody = await gResp.text();
+            if (gResp.status === 402) throw new Error('Lovable AI credits exhausted.');
+            if (gResp.status === 429) throw new Error('Both Vertex AI and Lovable AI rate-limited. Please wait.');
+            throw new Error(`Lovable Gateway error ${gResp.status}: ${gBody.substring(0, 200)}`);
+          }
+          const gData = await gResp.json();
+          resultJson = JSON.stringify({ __raw: gData?.choices?.[0]?.message?.content || '', __finishReason: gData?.choices?.[0]?.finish_reason || 'stop' });
+          actualProvider = 'lovable-gateway'; actualModelId = 'google/gemini-2.5-pro';
+        } else { throw vertexErr; }
+      }
+      break;
     }
     case 'nova-pro': case 'nova-premier': {
       const { callBedrockNovaWithMeta } = await import('../_shared/bedrock-nova.ts');

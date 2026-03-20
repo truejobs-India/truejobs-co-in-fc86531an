@@ -476,13 +476,13 @@ async function awsSigV4Fetch(host: string, rawPath: string, body: string, region
   });
 }
 
-async function callMistralRaw(prompt: string): Promise<string> {
+async function callMistralRaw(prompt: string, maxTokensParam?: number): Promise<string> {
   const modelId = 'mistral.mistral-large-2407-v1:0';
   const region = 'us-west-2';
   const host = `bedrock-runtime.${region}.amazonaws.com`;
   const body = JSON.stringify({
     messages: [{ role: 'user', content: [{ text: prompt }] }],
-    inferenceConfig: { maxTokens: 16384, temperature: 0.5 },
+    inferenceConfig: { maxTokens: maxTokensParam || 16384, temperature: 0.5 },
   });
   const resp = await Promise.race([
     awsSigV4Fetch(host, `/model/${modelId}/converse`, body, region, 'bedrock'),

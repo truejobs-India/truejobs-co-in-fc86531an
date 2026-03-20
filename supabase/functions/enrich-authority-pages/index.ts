@@ -767,7 +767,7 @@ async function callAI(
       rawText = await callLovableGeminiRaw(prompt, timeout, maxTokens || 16384);
       return { data: tryParseJSON(rawText) };
     case 'gpt5':
-      rawText = await callOpenAIRaw(prompt, 'openai/gpt-5', timeout);
+      rawText = await callOpenAIRaw(prompt, 'openai/gpt-5', timeout, maxTokens || 16384);
       return { data: tryParseJSON(rawText) };
     case 'gpt5-mini':
       rawText = await callOpenAIRaw(prompt, 'openai/gpt-5-mini', timeout);

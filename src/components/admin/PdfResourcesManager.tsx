@@ -1051,30 +1051,7 @@ export function PdfResourcesManager() {
   const totalPages = Math.ceil(total / PAGE_SIZE);
   const isBulkBusy = bulkMetaFixing || bulkImageGenerating || bulkUploading || bulkPublishPhase === 'publishing';
 
-  // ─── SEO indicator dot ────────────────────────────────────
-  const SeoIndicator = ({ resource }: { resource: PdfResource }) => {
-    const h = computeSeoHealth(resource);
-    const color = h.score >= 9 ? 'text-green-600' : h.score >= 6 ? 'text-yellow-500' : 'text-destructive';
-    const Icon = h.score >= 9 ? CheckCircle : h.score >= 6 ? AlertTriangle : XCircle;
-    return (
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span className={`inline-flex items-center gap-0.5 ${color}`}>
-              <Icon className="h-3.5 w-3.5" />
-              <span className="text-[10px] font-medium">{h.score}/10</span>
-            </span>
-          </TooltipTrigger>
-          <TooltipContent side="bottom" className="max-w-xs">
-            {h.missing.length > 0
-              ? <p className="text-xs">Missing: {h.missing.join(', ')}</p>
-              : <p className="text-xs text-green-600">All SEO fields filled ✓</p>
-            }
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-    );
-  };
+  // SeoIndicator is now defined at module scope (above) for stable React identity
 
   // ═══════════════════════════════════════════════════════════════
   // RENDER

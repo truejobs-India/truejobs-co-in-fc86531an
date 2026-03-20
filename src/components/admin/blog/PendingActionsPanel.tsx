@@ -110,7 +110,7 @@ export function PendingActionsPanel({
             content: post.content,
             category: post.category,
             tags: post.tags,
-            targetWordCount: enrichWordLimit,
+            targetWordCount: customWordLimit,
             aiModel: blogTextModel,
           },
         });

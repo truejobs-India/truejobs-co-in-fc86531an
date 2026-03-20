@@ -1334,8 +1334,7 @@ export function PdfResourcesManager() {
                         )}
                         {/* AI Generate image button */}
                         {needsCoverImage(r) && (
-                          <TooltipProvider>
-                            <Tooltip>
+                          <Tooltip>
                               <TooltipTrigger asChild>
                                 <Button variant="ghost" size="icon" className="h-7 w-7"
                                   disabled={rowImageId === r.id}
@@ -1347,7 +1346,6 @@ export function PdfResourcesManager() {
                               </TooltipTrigger>
                               <TooltipContent>Generate cover image with AI</TooltipContent>
                             </Tooltip>
-                          </TooltipProvider>
                         )}
                         <Button variant="ghost" size="icon" className="h-7 w-7"
                           onClick={() => { setEditItem(r); setDialogOpen(true); }}>

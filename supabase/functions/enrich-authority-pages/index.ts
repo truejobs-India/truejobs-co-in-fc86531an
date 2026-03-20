@@ -770,7 +770,7 @@ async function callAI(
       rawText = await callOpenAIRaw(prompt, 'openai/gpt-5', timeout, maxTokens || 16384);
       return { data: tryParseJSON(rawText) };
     case 'gpt5-mini':
-      rawText = await callOpenAIRaw(prompt, 'openai/gpt-5-mini', timeout);
+      rawText = await callOpenAIRaw(prompt, 'openai/gpt-5-mini', timeout, maxTokens || 16384);
       return { data: tryParseJSON(rawText) };
     case 'nova-pro':
     case 'nova-premier': {

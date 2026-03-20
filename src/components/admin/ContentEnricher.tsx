@@ -87,7 +87,7 @@ function getStaticFaqCount(slug: string): number {
   return 0;
 }
 
-import { getTextModels, getModelSpeed, getModelDef } from '@/lib/aiModels';
+import { getTextModels, getModelSpeed, getModelDef, getRecommendedModelsForTarget } from '@/lib/aiModels';
 import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSelector';
 
 function formatTime(seconds: number): string {

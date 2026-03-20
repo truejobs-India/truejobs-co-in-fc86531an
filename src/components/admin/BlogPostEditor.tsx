@@ -60,7 +60,7 @@ import { SeoMetadataWorkflowPanel } from './blog/SeoMetadataWorkflowPanel';
 import { BlogScoreBreakdown } from './blog/BlogScoreBreakdown';
 import { VertexAITools } from './blog/VertexAITools';
 import { AiModelSelector } from '@/components/admin/AiModelSelector';
-import { getModelDef } from '@/lib/aiModels';
+import { getModelDef, getRecommendedModelsForTarget } from '@/lib/aiModels';
 
 interface BlogPost {
   id: string;

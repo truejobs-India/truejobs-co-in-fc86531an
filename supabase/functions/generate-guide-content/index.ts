@@ -400,31 +400,15 @@ function validateInternalLinks(links: { anchor: string; href: string }[]): { val
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// GEMINI API
+// VERTEX AI GEMINI
 // ═══════════════════════════════════════════════════════════════════════════════
 
-async function callGemini(prompt: string, apiKey: string): Promise<string> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: 0.7,
-        maxOutputTokens: 8192,
-      },
-    }),
+async function callGeminiVertex(prompt: string): Promise<string> {
+  const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+  return callVertexGemini('gemini-2.5-flash', prompt, 90_000, {
+    maxOutputTokens: 8192,
+    temperature: 0.7,
   });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Gemini API error ${response.status}: ${errorText}`);
-  }
-
-  const data = await response.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

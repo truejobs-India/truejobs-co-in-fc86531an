@@ -103,23 +103,27 @@ async function callTextAI(model: string, prompt: string, maxTokens?: number): Pr
     return callBedrockNova(model, prompt, { maxTokens: maxTokens || 8192, temperature: 0.5 });
   }
 
-  // Fallback: Lovable Gateway
-  const apiKey = Deno.env.get('LOVABLE_API_KEY');
-  if (!apiKey) throw new Error('LOVABLE_API_KEY not configured');
-  const gatewayModel = GATEWAY_MODELS[model] || 'google/gemini-2.5-flash';
-  const resp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: gatewayModel, messages: [{ role: 'user', content: prompt }], temperature: 0.5, max_tokens: 8192 }),
-  });
-  if (!resp.ok) {
-    const errText = await resp.text();
-    if (resp.status === 429) throw new Error('Rate limit exceeded, please try again later');
-    if (resp.status === 402) throw new Error('Payment required, please add credits');
-    throw new Error(`AI Gateway error (${resp.status}): ${errText.substring(0, 300)}`);
+  // Known Lovable Gateway models
+  if (model === 'lovable-gemini' || model === 'gpt5' || model === 'gpt5-mini') {
+    const apiKey = Deno.env.get('LOVABLE_API_KEY');
+    if (!apiKey) throw new Error('LOVABLE_API_KEY not configured');
+    const gatewayModel = GATEWAY_MODELS[model] || 'google/gemini-2.5-flash';
+    const resp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: gatewayModel, messages: [{ role: 'user', content: prompt }], temperature: 0.5, max_tokens: maxTokens || 8192 }),
+    });
+    if (!resp.ok) {
+      const errText = await resp.text();
+      if (resp.status === 429) throw new Error('Rate limit exceeded, please try again later');
+      if (resp.status === 402) throw new Error('Payment required, please add credits');
+      throw new Error(`AI Gateway error (${resp.status}): ${errText.substring(0, 300)}`);
+    }
+    const data = await resp.json();
+    return data?.choices?.[0]?.message?.content || '';
   }
-  const data = await resp.json();
-  return data?.choices?.[0]?.message?.content || '';
+
+  throw new Error(`Unsupported AI model: "${model}". No silent fallback allowed.`);
 }
 
 async function callImageAI(model: string, prompt: string): Promise<{ base64: string; mimeType: string }> {

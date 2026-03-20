@@ -396,6 +396,7 @@ Deno.serve(async (req) => {
 
     let prompt: string;
     let maxTokens = 2000;
+    let effectiveTarget = 0; // hoisted — set by enrich-article, used in response handling
 
     if (action === 'rewrite-section') {
       if (!selectedHtml) {

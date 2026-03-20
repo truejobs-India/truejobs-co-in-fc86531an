@@ -706,17 +706,21 @@ export function PdfResourcesManager() {
           cover_image_url: result.imageUrl,
           featured_image_alt: result.altText || r.featured_image_alt,
         }).eq('id', r.id);
-        if (error) { console.error(`DB update failed for ${r.id}:`, error.message); }
+        if (error) { console.warn(`DB update failed for ${r.id}:`, error.message); }
         else generated++;
       } catch (err: any) {
+        const isStructured = err instanceof ImageGenError;
         // Stop immediately on payment/credits error — no point retrying
-        if (err.message?.includes('Payment') || err.message?.includes('402') || err.message?.includes('funds') || err.message?.includes('PAYMENT_REQUIRED') || err.message?.includes('credits exhausted')) {
-          toast({ title: '⛔ Credits exhausted', description: 'Bulk generation stopped. Add funds or switch to Vertex AI model.', variant: 'destructive' });
+        if ((isStructured && err.code === 'GATEWAY_PAYMENT_REQUIRED') ||
+            err.message?.includes('Payment') || err.message?.includes('402') || err.message?.includes('funds')) {
+          toast({ title: '⛔ Credits exhausted', description: 'Bulk generation stopped. Add funds or switch model.', variant: 'destructive' });
           break;
         }
-        if (err?.retryable || isRetryableImageError(err.message, err.status)) {
+        const retryable = isStructured ? err.retryable : isRetryableImageError(err.message, err.httpStatus);
+        if (retryable) {
           const cooldownMs = imageAiModel.startsWith('vertex') ? 60000 : 30000;
-          toast({ title: 'Retrying image generation', description: `Rate limit hit. Cooling down ${Math.round(cooldownMs / 1000)}s before retry...`, variant: 'destructive' });
+          const userMsg = isStructured ? err.userMessage : 'Rate limit hit';
+          toast({ title: 'Retrying…', description: `${userMsg} Cooling down ${Math.round(cooldownMs / 1000)}s…` });
           await new Promise(resolve => setTimeout(resolve, cooldownMs));
           if (!stopBulkRef.current) {
             try {
@@ -726,9 +730,10 @@ export function PdfResourcesManager() {
                 featured_image_alt: retryResult.altText || r.featured_image_alt,
               }).eq('id', r.id);
               if (!error) generated++;
-              else console.error(`Retry DB update failed for ${r.id}:`, error.message);
+              else console.warn(`Retry DB update failed for ${r.id}:`, error.message);
             } catch (retryErr: any) {
-              console.error(`Retry also failed for ${r.id}:`, retryErr.message);
+              // Expected business error — warn, not error, to avoid runtime overlay
+              console.warn(`Retry also failed for ${r.id}:`, retryErr instanceof ImageGenError ? retryErr.userMessage : retryErr.message);
             }
           }
         } else {

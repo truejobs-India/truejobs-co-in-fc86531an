@@ -68,11 +68,10 @@ export function PendingActionsPanel({
         .order('created_at', { ascending: false });
       if (error) throw error;
 
-      // Articles needing enrichment: word_count < enrichWordLimit or content < 4000 chars
+      // Articles needing enrichment: live word count below target
       const pending = (data || []).filter(p => {
-        const wc = p.word_count || 0;
-        const contentLen = p.content?.length || 0;
-        return wc < customWordLimit * 0.85 || contentLen < 4000;
+        const liveWc = calcLiveWordCount(p.content);
+        return liveWc < customWordLimit;
       });
 
       setEnrichScan({ count: pending.length, items: pending });

@@ -5,10 +5,17 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
 import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
+import { calcLiveWordCount, calcReadingTime, wordCountFields } from '@/lib/blogWordCount';
+import {
+  analyzeQuality, analyzeSEO, getReadinessStatus, blogPostToMetadata,
+  type ReadinessStatus,
+} from '@/lib/blogArticleAnalyzer';
 import {
   Search, Zap, Loader2, Square, ChevronDown, CheckCircle2, AlertTriangle,
+  RefreshCw,
 } from 'lucide-react';
 
 interface Props {
@@ -16,23 +23,35 @@ interface Props {
   onComplete: () => void;
 }
 
-type Phase = 'idle' | 'scanning' | 'scanned' | 'enriching';
+type Phase = 'idle' | 'scanning' | 'scanned' | 'enriching' | 'syncing';
+type Scope = 'all' | 'published' | 'unpublished';
 
 interface FoundArticle {
   id: string;
   title: string;
   slug: string;
   content: string;
-  word_count: number; // live-calculated word count
-  db_word_count: number; // stale DB value (for sync detection)
+  word_count: number;        // live-calculated
+  db_word_count: number;     // stale DB value
+  is_published: boolean;
+  readiness: ReadinessStatus;
   category: string | null;
   tags: string[] | null;
 }
 
-/** Calculate word count from HTML content — matches the table UI formula */
-function calcLiveWordCount(html: string): number {
-  return html.replace(/<[^>]+>/g, ' ').split(/\s+/).filter((w) => w.length > 0).length;
-}
+const READINESS_COLORS: Record<ReadinessStatus, string> = {
+  'Published': 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
+  'Ready to Publish': 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
+  'Ready as Draft': 'bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-400',
+  'Needs Review': 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400',
+  'Not Ready': 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
+};
+
+const SCOPE_LABELS: Record<Scope, string> = {
+  all: 'All Posts',
+  published: 'Published Only',
+  unpublished: 'Unpublished Only',
+};
 
 export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
   const { toast } = useToast();
@@ -40,13 +59,26 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
 
   const [searchBelow, setSearchBelow] = useState(800);
   const [enrichTo, setEnrichTo] = useState(1200);
+  const [scope, setScope] = useState<Scope>('all');
 
   const [phase, setPhase] = useState<Phase>('idle');
   const [found, setFound] = useState<FoundArticle[]>([]);
+  const [scanSummary, setScanSummary] = useState<{ total: number; scope: Scope } | null>(null);
   const [progress, setProgress] = useState<{ done: number; total: number; failed: number; current: string } | null>(null);
   const abortRef = useRef(false);
 
-  // ── Step 1: Scan — fetch all published, calc live word count, filter client-side ──
+  // ── Sync state ──
+  const [syncProgress, setSyncProgress] = useState<{ done: number; total: number; failed: number } | null>(null);
+
+  // ── Compute readiness for a post (uses the exact same path as the table) ──
+  const computeReadiness = (post: { title: string; slug: string; content: string; is_published: boolean; meta_title?: string | null; meta_description?: string | null; excerpt?: string | null; cover_image_url?: string | null; featured_image_alt?: string | null; category?: string | null; tags?: string[] | null; word_count?: number | null; faq_count?: number | null; has_faq_schema?: boolean | null; internal_links?: any; canonical_url?: string | null; author_name?: string | null; }, liveWc: number): ReadinessStatus => {
+    const meta = blogPostToMetadata({ ...post, word_count: liveWc });
+    const q = analyzeQuality(meta);
+    const s = analyzeSEO(meta);
+    return getReadinessStatus(q, s, meta);
+  };
+
+  // ── Step 1: Scan ──
   const handleScan = useCallback(async () => {
     if (searchBelow < 50) {
       toast({ title: 'Enter a valid word count threshold (≥ 50)', variant: 'destructive' });
@@ -54,17 +86,22 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
     }
     setPhase('scanning');
     setFound([]);
+    setScanSummary(null);
     try {
-      // Fetch ALL published posts in batches of 500 (no DB word_count filter)
+      // Fetch all posts in batches of 500
       let allPosts: any[] = [];
       let from = 0;
       const batchSize = 500;
       while (true) {
-        const { data, error } = await supabase
+        let query = supabase
           .from('blog_posts')
-          .select('id, title, slug, content, word_count, category, tags')
-          .eq('is_published', true)
-          .range(from, from + batchSize - 1);
+          .select('id, title, slug, content, word_count, category, tags, is_published, meta_title, meta_description, excerpt, cover_image_url, featured_image_alt, faq_count, has_faq_schema, internal_links, canonical_url, author_name');
+
+        // Apply scope filter at DB level
+        if (scope === 'published') query = query.eq('is_published', true);
+        else if (scope === 'unpublished') query = query.eq('is_published', false);
+
+        const { data, error } = await query.range(from, from + batchSize - 1);
         if (error) throw error;
         if (!data || data.length === 0) break;
         allPosts = allPosts.concat(data);
@@ -72,10 +109,11 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
         from += batchSize;
       }
 
-      // Calculate live word count and filter
+      // Calculate live word count, compute readiness, and filter
       const matches: FoundArticle[] = allPosts
         .map((p) => {
-          const liveWc = calcLiveWordCount(p.content || '');
+          const liveWc = calcLiveWordCount(p.content);
+          const readiness = computeReadiness(p, liveWc);
           return {
             id: p.id,
             title: p.title,
@@ -83,6 +121,8 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
             content: p.content,
             word_count: liveWc,
             db_word_count: p.word_count || 0,
+            is_published: p.is_published,
+            readiness,
             category: p.category,
             tags: p.tags,
           };
@@ -91,40 +131,19 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
         .sort((a, b) => a.word_count - b.word_count);
 
       setFound(matches);
+      setScanSummary({ total: allPosts.length, scope });
       setPhase('scanned');
 
-      // Sync stale DB word_count values in background
-      const stale = allPosts
-        .map((p) => ({ id: p.id, liveWc: calcLiveWordCount(p.content || ''), dbWc: p.word_count || 0 }))
-        .filter((p) => p.liveWc !== p.dbWc);
-
-      if (stale.length > 0) {
-        // Fire-and-forget batch updates (max 50 at a time to avoid overwhelming)
-        const syncBatch = stale.slice(0, 50);
-        Promise.all(
-          syncBatch.map((s) =>
-            supabase
-              .from('blog_posts')
-              .update({ word_count: s.liveWc, reading_time: Math.max(1, Math.ceil(s.liveWc / 200)) })
-              .eq('id', s.id)
-          )
-        ).then(() => {
-          console.log(`Synced word_count for ${syncBatch.length} articles`);
-        }).catch((err) => {
-          console.warn('Word count sync failed:', err);
-        });
-      }
-
       if (matches.length === 0) {
-        toast({ title: `No articles found below ${searchBelow} words` });
+        toast({ title: `No articles found below ${searchBelow} words (scanned ${allPosts.length} ${SCOPE_LABELS[scope].toLowerCase()})` });
       } else {
-        toast({ title: `Found ${matches.length} article(s) below ${searchBelow} words` });
+        toast({ title: `Found ${matches.length} article(s) below ${searchBelow} words out of ${allPosts.length} scanned` });
       }
     } catch (err: any) {
       toast({ title: 'Scan failed', description: err.message, variant: 'destructive' });
       setPhase('idle');
     }
-  }, [searchBelow, toast]);
+  }, [searchBelow, scope, toast]);
 
   // ── Step 2: Enrich ──
   const handleEnrich = useCallback(async () => {
@@ -155,7 +174,7 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
       if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
         toast({
           title: '⛔ Auto-stopped: too many consecutive failures',
-          description: `${consecutiveFailures} articles failed in a row. Stopped to prevent wasting AI credits. ${done} enriched, ${failed} failed, ${total - done - failed} skipped. Try a different model or lower target.`,
+          description: `${consecutiveFailures} articles failed in a row. ${done} enriched, ${failed} failed, ${total - done - failed} skipped.`,
           variant: 'destructive',
         });
         break;
@@ -178,8 +197,7 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
 
         if (resp.error) {
           const errorMsg = typeof resp.error === 'object' && resp.error?.message
-            ? resp.error.message
-            : String(resp.error);
+            ? resp.error.message : String(resp.error);
           console.warn(`Enrich edge function error for "${post.title}": ${errorMsg}`);
           failed++;
           consecutiveFailures++;
@@ -197,43 +215,52 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
         const enrichedHtml = enrichData?.result;
         const wcValidation = enrichData?.wordCountValidation;
         const actualWc = wcValidation?.actualWordCount
-          || (enrichedHtml ? calcLiveWordCount(enrichedHtml) : 0);
-        // Use the live-calculated word count as baseline (not stale DB value)
-        const originalWc = post.word_count;
+          || calcLiveWordCount(enrichedHtml);
+        const originalWc = post.word_count; // live-calculated baseline
 
         if (!enrichedHtml || typeof enrichedHtml !== 'string' || enrichedHtml.length < 100) {
           console.warn(`Enrich returned empty/short for "${post.title}"`);
           failed++;
           consecutiveFailures++;
         } else if (wcValidation?.status === 'fail') {
-          console.warn(`Enrich word count FAILED for "${post.title}": ${actualWc}/${enrichTo} (${wcValidation.deviation}%). Skipping DB update.`);
+          console.warn(`Enrich word count FAILED for "${post.title}": ${actualWc}/${enrichTo}. Skipping.`);
           failed++;
           consecutiveFailures++;
         } else if (actualWc <= originalWc) {
-          console.warn(`Enrich did not increase word count for "${post.title}": ${originalWc} → ${actualWc}. Skipping DB update.`);
+          console.warn(`Enrich did not increase word count for "${post.title}": ${originalWc} → ${actualWc}. Skipping.`);
           failed++;
           consecutiveFailures++;
         } else {
           consecutiveFailures = 0;
-          const readingTime = Math.max(1, Math.ceil(actualWc / 200));
 
           const linkMatches = [...enrichedHtml.matchAll(/<a\s+[^>]*href="([^"]*)"[^>]*>(.*?)<\/a>/gi)];
           const internalLinks = linkMatches
             .filter((m: RegExpMatchArray) => m[1].startsWith('/'))
             .map((m: RegExpMatchArray) => ({ url: m[1], text: m[2].replace(/<[^>]+>/g, '') }));
 
+          // Save enriched content — word_count computed from the exact payload being saved
+          const savedContent = enrichedHtml;
+          const postSaveWc = calcLiveWordCount(savedContent);
           const { error: updateErr } = await supabase
             .from('blog_posts')
             .update({
-              content: enrichedHtml,
-              word_count: actualWc,
-              reading_time: readingTime,
+              content: savedContent,
+              word_count: postSaveWc,
+              reading_time: calcReadingTime(postSaveWc),
               internal_links: internalLinks.length > 0 ? internalLinks : undefined,
               updated_at: new Date().toISOString(),
             })
             .eq('id', post.id);
 
           if (updateErr) throw updateErr;
+
+          // Post-save verification: report target status
+          const pct = Math.round((postSaveWc / enrichTo) * 100);
+          if (postSaveWc >= enrichTo * 0.85) {
+            console.log(`✅ "${post.title}" — ${postSaveWc} words (${pct}% of target ${enrichTo})`);
+          } else {
+            console.warn(`⚠️ "${post.title}" — ${postSaveWc} words (${pct}% of target ${enrichTo}) — below 85% target`);
+          }
           done++;
         }
       } catch (err: any) {
@@ -250,20 +277,91 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
       const variant = failed > 0 && done === 0 ? 'destructive' : undefined;
       toast({
         title: done > 0 ? '✅ Bulk enrichment complete' : '⚠️ Bulk enrichment finished with issues',
-        description: `${done} enriched, ${failed} failed out of ${total}.${failed > 0 ? ' Failed articles did not meet word count targets — try a different model or lower target.' : ''}`,
+        description: `${done} enriched, ${failed} failed out of ${total}.`,
         variant,
       });
     }
     setPhase('idle');
     setFound([]);
     setProgress(null);
+    setScanSummary(null);
     onComplete();
   }, [found, enrichTo, searchBelow, blogTextModel, toast, onComplete]);
+
+  // ── One-time Word Count Sync (chunked, with progress) ──
+  const handleSyncWordCounts = useCallback(async () => {
+    setPhase('syncing');
+    setSyncProgress({ done: 0, total: 0, failed: 0 });
+    try {
+      // Fetch all posts with content in batches
+      let allPosts: { id: string; content: string; word_count: number | null }[] = [];
+      let from = 0;
+      const batchSize = 500;
+      while (true) {
+        const { data, error } = await supabase
+          .from('blog_posts')
+          .select('id, content, word_count')
+          .range(from, from + batchSize - 1);
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        allPosts = allPosts.concat(data);
+        if (data.length < batchSize) break;
+        from += batchSize;
+      }
+
+      // Find stale rows
+      const staleRows = allPosts
+        .map(p => ({ id: p.id, liveWc: calcLiveWordCount(p.content), dbWc: p.word_count || 0 }))
+        .filter(p => p.liveWc !== p.dbWc);
+
+      if (staleRows.length === 0) {
+        toast({ title: '✅ All word counts are already in sync', description: `Checked ${allPosts.length} articles.` });
+        setPhase('idle');
+        setSyncProgress(null);
+        return;
+      }
+
+      const total = staleRows.length;
+      let done = 0;
+      let failed = 0;
+      setSyncProgress({ done: 0, total, failed: 0 });
+
+      // Process in chunks of 20
+      const CHUNK_SIZE = 20;
+      for (let i = 0; i < staleRows.length; i += CHUNK_SIZE) {
+        const chunk = staleRows.slice(i, i + CHUNK_SIZE);
+        const results = await Promise.allSettled(
+          chunk.map(row =>
+            supabase
+              .from('blog_posts')
+              .update({ word_count: row.liveWc, reading_time: calcReadingTime(row.liveWc) })
+              .eq('id', row.id)
+          )
+        );
+        for (const r of results) {
+          if (r.status === 'fulfilled' && !r.value.error) done++;
+          else failed++;
+        }
+        setSyncProgress({ done: done + failed, total, failed });
+      }
+
+      toast({
+        title: '✅ Word count sync complete',
+        description: `${done} fixed, ${failed} failed out of ${total} stale (${allPosts.length} total checked).`,
+      });
+    } catch (err: any) {
+      toast({ title: 'Sync failed', description: err.message, variant: 'destructive' });
+    }
+    setPhase('idle');
+    setSyncProgress(null);
+    onComplete();
+  }, [toast, onComplete]);
 
   const handleReset = () => {
     setPhase('idle');
     setFound([]);
     setProgress(null);
+    setScanSummary(null);
     abortRef.current = false;
   };
 
@@ -279,6 +377,20 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
         <CollapsibleContent className="mt-3 space-y-4">
           {/* ── Input Row ── */}
           <div className="flex flex-wrap items-end gap-4">
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Scope</Label>
+              <Select value={scope} onValueChange={(v) => setScope(v as Scope)} disabled={phase === 'enriching'}>
+                <SelectTrigger className="w-[160px] h-8 text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Posts</SelectItem>
+                  <SelectItem value="published">Published Only</SelectItem>
+                  <SelectItem value="unpublished">Unpublished Only</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
             <div className="space-y-1">
               <Label className="text-xs text-muted-foreground">Find articles below (words)</Label>
               <Input
@@ -340,11 +452,42 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
             </div>
           </div>
 
+          {/* ── Sync Word Counts Button ── */}
+          {(phase === 'idle' || phase === 'scanned') && (
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={handleSyncWordCounts} className="text-xs">
+                <RefreshCw className="h-3.5 w-3.5 mr-1" />
+                Sync All Word Counts
+              </Button>
+              <span className="text-[11px] text-muted-foreground">
+                Recalculates and fixes stale word_count values in the database for all articles.
+              </span>
+            </div>
+          )}
+
+          {/* ── Sync Progress ── */}
+          {phase === 'syncing' && syncProgress && (
+            <div className="space-y-2">
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>Syncing word counts…</span>
+                <span>{syncProgress.done}/{syncProgress.total} ({syncProgress.failed} failed)</span>
+              </div>
+              <Progress value={syncProgress.total > 0 ? (syncProgress.done / syncProgress.total) * 100 : 0} className="h-2" />
+            </div>
+          )}
+
+          {/* ── Scan summary ── */}
+          {phase === 'scanned' && scanSummary && (
+            <div className="text-[11px] text-muted-foreground">
+              Scanned <strong>{scanSummary.total}</strong> posts ({SCOPE_LABELS[scanSummary.scope]}) — Found <strong>{found.length}</strong> below {searchBelow} words
+            </div>
+          )}
+
           {/* ── Scan results ── */}
           {phase === 'scanned' && found.length === 0 && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <CheckCircle2 className="h-4 w-4" />
-              No published articles found below {searchBelow} words.
+              No articles found below {searchBelow} words.
             </div>
           )}
 
@@ -359,13 +502,18 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
               <div className="max-h-[200px] overflow-y-auto rounded border bg-muted/30 p-2 space-y-1">
                 {found.map((a, i) => (
                   <div key={a.id} className="flex items-center justify-between text-xs py-1 px-2 rounded hover:bg-muted/50">
-                    <span className="truncate flex-1 mr-4">
+                    <span className="truncate flex-1 mr-2">
                       <span className="text-muted-foreground mr-2">{i + 1}.</span>
                       {a.title}
                     </span>
-                    <Badge variant="secondary" className="shrink-0 text-[10px]">
-                      {a.word_count} words
-                    </Badge>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <Badge variant="outline" className={`text-[9px] px-1.5 py-0 ${READINESS_COLORS[a.readiness]}`}>
+                        {a.readiness}
+                      </Badge>
+                      <Badge variant="secondary" className="text-[10px]">
+                        {a.word_count} words
+                      </Badge>
+                    </div>
                   </div>
                 ))}
               </div>

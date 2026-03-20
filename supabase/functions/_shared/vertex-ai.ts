@@ -167,3 +167,83 @@ export async function callVertexGemini(
 
   throw new Error('Vertex AI: max retries exceeded (429)');
 }
+
+/** Same as callVertexGemini but returns { text, finishReason } for callers that need truncation detection. */
+export async function callVertexGeminiWithMeta(
+  model: string,
+  prompt: string,
+  timeoutMs = 60_000,
+  options?: VertexGeminiOptions,
+): Promise<{ text: string; finishReason: string }> {
+  const projectId = Deno.env.get('GCP_PROJECT_ID');
+  const location = Deno.env.get('GCP_LOCATION') || 'us-central1';
+  if (!projectId) throw new Error('GCP_PROJECT_ID not configured');
+
+  const accessToken = await getVertexAccessToken();
+
+  const url = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${model}:generateContent`;
+
+  const generationConfig: Record<string, unknown> = {
+    temperature: options?.temperature ?? 0.6,
+    maxOutputTokens: options?.maxOutputTokens ?? 8192,
+  };
+  if (options?.responseMimeType) generationConfig.responseMimeType = options.responseMimeType;
+  if (options?.topP !== undefined) generationConfig.topP = options.topP;
+
+  console.log(`[vertex-ai-meta] model=${model} timeout=${timeoutMs}ms maxTokens=${generationConfig.maxOutputTokens} promptLen=${prompt.length}`);
+
+  const maxRetries = 3;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          generationConfig,
+        }),
+        signal: controller.signal,
+      });
+
+      if (resp.status === 429 && attempt < maxRetries) {
+        clearTimeout(timer);
+        const wait = Math.min(2000 * Math.pow(2, attempt), 30000) + Math.random() * 1000;
+        console.log(`[vertex-ai-meta] 429 rate limited, retry ${attempt + 1}/${maxRetries} after ${Math.round(wait)}ms`);
+        await new Promise(r => setTimeout(r, wait));
+        continue;
+      }
+
+      if (!resp.ok) {
+        const errText = await resp.text();
+        throw new Error(`Vertex AI error (${resp.status}): ${errText.substring(0, 500)}`);
+      }
+
+      const data = await resp.json();
+      const candidate = data?.candidates?.[0];
+      const finishReason = candidate?.finishReason || 'unknown';
+      const text = candidate?.content?.parts?.[0]?.text || '';
+      console.log(`[vertex-ai-meta] model=${model} responseLen=${text.length} finishReason=${finishReason}`);
+
+      if (!text && attempt < maxRetries) {
+        clearTimeout(timer);
+        const wait = 3000 + Math.random() * 2000;
+        await new Promise(r => setTimeout(r, wait));
+        continue;
+      }
+
+      if (!text) {
+        throw new Error(`Vertex AI returned empty response (finishReason=${finishReason}, blockReason=${data?.promptFeedback?.blockReason || 'none'})`);
+      }
+
+      // Map Vertex finish reasons to normalized values
+      const normalizedReason = finishReason === 'MAX_TOKENS' ? 'length' : finishReason === 'STOP' ? 'stop' : finishReason.toLowerCase();
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  throw new Error('Vertex AI: max retries exceeded (429)');
+}

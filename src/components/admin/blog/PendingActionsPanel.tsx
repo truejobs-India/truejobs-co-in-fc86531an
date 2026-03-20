@@ -102,7 +102,7 @@ export function PendingActionsPanel({
       }
       setEnrichProgress({ done, total, failed, current: post.title });
       try {
-        const { error } = await supabase.functions.invoke('improve-blog-content', {
+        const { data: enrichData, error } = await supabase.functions.invoke('improve-blog-content', {
           body: {
             action: 'enrich-article',
             slug: post.slug,
@@ -115,7 +115,37 @@ export function PendingActionsPanel({
           },
         });
         if (error) throw error;
-        done++;
+
+        // Save the enriched content back to the database
+        const enrichedHtml = enrichData?.result;
+        if (enrichedHtml && typeof enrichedHtml === 'string' && enrichedHtml.length > 0) {
+          const newWordCount = enrichData?.wordCount || enrichedHtml.replace(/<[^>]+>/g, ' ').split(/\s+/).filter((w: string) => w.length > 0).length;
+          const readingTime = Math.max(1, Math.ceil(newWordCount / 200));
+
+          // Extract internal links from enriched content
+          const linkMatches = [...enrichedHtml.matchAll(/<a\s+[^>]*href="([^"]*)"[^>]*>(.*?)<\/a>/gi)];
+          const internalLinks = linkMatches
+            .filter(m => m[1].startsWith('/'))
+            .map(m => ({ url: m[1], text: m[2].replace(/<[^>]+>/g, '') }));
+
+          const { error: updateErr } = await supabase
+            .from('blog_posts')
+            .update({
+              content: enrichedHtml,
+              word_count: newWordCount,
+              reading_time: readingTime,
+              internal_links: internalLinks.length > 0 ? internalLinks : post.content ? undefined : [],
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', post.id);
+
+          if (updateErr) throw updateErr;
+          done++;
+        } else {
+          // Edge function returned no enriched content
+          console.warn(`Enrich returned empty result for "${post.title}"`);
+          failed++;
+        }
       } catch (err: any) {
         console.warn(`Enrich failed for "${post.title}":`, err.message);
         failed++;

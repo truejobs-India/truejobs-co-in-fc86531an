@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Layout } from '@/components/layout/Layout';
 import { supabase } from '@/integrations/supabase/client';
@@ -26,14 +26,22 @@ export function ResourceListing({ resourceType, pageTitle, metaTitle, metaDescri
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState(searchParams.get('q') || '');
+  const [debouncedSearch, setDebouncedSearch] = useState(search);
   const [categoryFilter, setCategoryFilter] = useState(searchParams.get('category') || '');
   const [categories, setCategories] = useState<string[]>([]);
+  const [initialLoad, setInitialLoad] = useState(true);
   const page = parseInt(searchParams.get('page') || '1', 10);
   const typePath = RESOURCE_TYPE_PATHS[resourceType];
   const hubs = getHubsForType(resourceType);
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+
+  useEffect(() => {
+    debounceRef.current = setTimeout(() => setDebouncedSearch(search), 350);
+    return () => clearTimeout(debounceRef.current);
+  }, [search]);
 
   const fetchResources = useCallback(async () => {
-    setLoading(true);
+    if (initialLoad) setLoading(true);
     let query = supabase
       .from('pdf_resources')
       .select('slug, title, excerpt, category, resource_type, cover_image_url, language, download_count, file_size_bytes, page_count, is_featured, is_trending', { count: 'exact' })
@@ -44,13 +52,14 @@ export function ResourceListing({ resourceType, pageTitle, metaTitle, metaDescri
       .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
 
     if (categoryFilter) query = query.eq('category', categoryFilter);
-    if (search) query = query.ilike('title', `%${search}%`);
+    if (debouncedSearch) query = query.ilike('title', `%${debouncedSearch}%`);
 
     const { data, count } = await query;
     setResources(data || []);
     setTotal(count || 0);
     setLoading(false);
-  }, [resourceType, page, categoryFilter, search]);
+    setInitialLoad(false);
+  }, [resourceType, page, categoryFilter, debouncedSearch, initialLoad]);
 
   useEffect(() => {
     fetchResources();

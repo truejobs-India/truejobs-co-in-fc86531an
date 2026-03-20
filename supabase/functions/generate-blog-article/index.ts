@@ -289,7 +289,7 @@ async function callLovableGemini(prompt: string, maxTokens = 16000): Promise<str
 }
 
 // ── 3. OpenAI ──
-async function callOpenAI(prompt: string): Promise<string> {
+async function callOpenAI(prompt: string, maxTokens = 16000): Promise<string> {
   const apiKey = Deno.env.get('OPENAI_API_KEY');
   if (!apiKey) throw new Error('OPENAI_API_KEY not configured');
   const resp = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -298,7 +298,7 @@ async function callOpenAI(prompt: string): Promise<string> {
     body: JSON.stringify({
       model: 'gpt-4o',
       messages: [{ role: 'user', content: prompt }],
-      max_tokens: 16000,
+      max_tokens: maxTokens,
       temperature: 0.5,
     }),
   });

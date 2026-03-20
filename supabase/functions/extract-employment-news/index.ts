@@ -9,45 +9,14 @@ const corsHeaders = {
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-async function callGemini(apiKey: string, systemPrompt: string, userContent: string) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-  const body = {
-    contents: [
-      { role: "user", parts: [{ text: `${systemPrompt}\n\n${userContent}` }] },
-    ],
-    generationConfig: {
-      responseMimeType: "application/json",
-      temperature: 0.1,
-    },
-  };
-
-  let response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+async function callGemini(systemPrompt: string, userContent: string) {
+  const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+  const fullPrompt = `${systemPrompt}\n\n${userContent}`;
+  const rawText = await callVertexGemini('gemini-2.5-flash', fullPrompt, 90_000, {
+    responseMimeType: 'application/json',
+    temperature: 0.1,
   });
-
-  // 429 retry once after 5s
-  if (response.status === 429) {
-    console.log("Rate limited, retrying in 5s...");
-    await delay(5000);
-    response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-  }
-
-  if (!response.ok) {
-    const errText = await response.text();
-    console.error("Gemini error:", response.status, errText);
-    throw new Error(`Gemini API error: ${response.status}`);
-  }
-
-  const data = await response.json();
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw new Error("No content in Gemini response");
-  return JSON.parse(text);
+  return JSON.parse(rawText);
 }
 
 serve(async (req) => {

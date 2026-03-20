@@ -649,7 +649,10 @@ No markdown code blocks.`;
       let finalWordCount = wordCountComputed;
       let finalValidation = wcValidation;
 
-      if (wcValidation.status === 'fail' && !wasTruncated && resultHtml.length > 100) {
+      // Skip correction only when truncated AND under-target (model ran out of tokens).
+      // Over-target truncated content should still attempt trimming.
+      const skipCorrection = wasTruncated && wordCountComputed < validationTarget;
+      if (wcValidation.status === 'fail' && !skipCorrection && resultHtml.length > 100) {
         correctionAttempted = true;
         const direction = wordCountComputed < validationTarget ? 'expand' : 'trim';
         const correctionPrompt = buildCorr(resultHtml, validationTarget, wordCountComputed, direction);

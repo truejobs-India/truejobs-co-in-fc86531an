@@ -662,7 +662,20 @@ No markdown code blocks.`;
           const { computeMaxTokens: computeMT3 } = await import('../_shared/word-count-enforcement.ts');
           const corrMaxTokens = computeMT3(validationTarget, effectiveModel);
           const { raw: corrRaw } = await callAI(effectiveModel, correctionPrompt, corrMaxTokens);
-          let corrHtml = corrRaw.trim();
+          let corrCleaned = corrRaw.trim();
+          if (corrCleaned.startsWith('```')) corrCleaned = corrCleaned.replace(/^```(?:json|html)?\s*\n/, '');
+          if (corrCleaned.endsWith('```')) corrCleaned = corrCleaned.replace(/\n?```\s*$/, '');
+          corrCleaned = corrCleaned.trim();
+
+          let corrHtml = '';
+          try {
+            const parsedCorr = JSON.parse(corrCleaned);
+            corrHtml = typeof parsedCorr?.result === 'string' ? parsedCorr.result : corrCleaned;
+          } catch {
+            const recoveredCorr = extractResultFromPseudoJson(corrCleaned.replace(/^json\s*/i, '').trim());
+            corrHtml = recoveredCorr || corrCleaned;
+          }
+
           if (corrHtml.startsWith('```')) corrHtml = corrHtml.replace(/^```(?:json|html)?\s*\n/, '');
           if (corrHtml.endsWith('```')) corrHtml = corrHtml.replace(/\n?```\s*$/, '');
           corrHtml = corrHtml.trim();

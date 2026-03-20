@@ -175,9 +175,10 @@ export function PdfResourcesManager() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState<string>('sample_paper');
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editItem, setEditItem] = useState<Partial<PdfResource>>(EMPTY_RESOURCE);
   const [saving, setSaving] = useState(false);
@@ -213,10 +214,29 @@ export function PdfResourcesManager() {
 
   const bulkFileRef = useRef<HTMLInputElement>(null);
   const stopBulkRef = useRef(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const initialLoadDone = useRef(false);
+
+  // ─── Search debounce (350ms) ──────────────────────────────
+  useEffect(() => {
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 350);
+    return () => clearTimeout(debounceRef.current);
+  }, [search]);
+
+  // Reset loading skeleton flag when major filters/page change
+  useEffect(() => {
+    initialLoadDone.current = false;
+  }, [typeFilter, statusFilter, page]);
 
   // ─── Fetch ────────────────────────────────────────────────
   const fetchResources = useCallback(async () => {
-    setLoading(true);
+    // Show skeleton only on initial load or filter/page changes, not on search typing
+    if (!initialLoadDone.current) {
+      setLoading(true);
+    }
     let query = supabase
       .from('pdf_resources')
       .select('*', { count: 'exact' })
@@ -225,20 +245,21 @@ export function PdfResourcesManager() {
       .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
 
     if (statusFilter !== 'all') query = query.eq('status', statusFilter);
-    if (search) query = query.ilike('title', `%${search}%`);
+    if (debouncedSearch) query = query.ilike('title', `%${debouncedSearch}%`);
 
     const { data, count, error } = await query;
     if (error) {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+      console.warn('[PdfResourcesManager] fetch error:', error.message);
     } else {
       setResources((data || []) as unknown as PdfResource[]);
       setTotal(count || 0);
     }
     setLoading(false);
+    initialLoadDone.current = true;
     setSelectedIds(new Set());
     setBulkMetaScanResult(null);
     setBulkImageScanResult(null);
-  }, [typeFilter, statusFilter, search, page, toast]);
+  }, [typeFilter, statusFilter, debouncedSearch, page]);
 
   useEffect(() => { fetchResources(); }, [fetchResources]);
 

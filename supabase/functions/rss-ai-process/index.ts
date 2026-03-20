@@ -72,7 +72,7 @@ async function callTextAI(model: string, prompt: string, maxTokens?: number): Pr
     const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.5, max_tokens: 8192 }),
+      body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.5, max_tokens: maxTokens || 8192 }),
     });
     if (!resp.ok) throw new Error(`Groq error: ${resp.status}`);
     const data = await resp.json();

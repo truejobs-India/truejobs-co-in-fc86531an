@@ -41,7 +41,7 @@ export function ResourceListing({ resourceType, pageTitle, metaTitle, metaDescri
   }, [search]);
 
   const fetchResources = useCallback(async () => {
-    setLoading(true);
+    if (initialLoad) setLoading(true);
     let query = supabase
       .from('pdf_resources')
       .select('slug, title, excerpt, category, resource_type, cover_image_url, language, download_count, file_size_bytes, page_count, is_featured, is_trending', { count: 'exact' })
@@ -52,13 +52,14 @@ export function ResourceListing({ resourceType, pageTitle, metaTitle, metaDescri
       .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
 
     if (categoryFilter) query = query.eq('category', categoryFilter);
-    if (search) query = query.ilike('title', `%${search}%`);
+    if (debouncedSearch) query = query.ilike('title', `%${debouncedSearch}%`);
 
     const { data, count } = await query;
     setResources(data || []);
     setTotal(count || 0);
     setLoading(false);
-  }, [resourceType, page, categoryFilter, search]);
+    setInitialLoad(false);
+  }, [resourceType, page, categoryFilter, debouncedSearch, initialLoad]);
 
   useEffect(() => {
     fetchResources();

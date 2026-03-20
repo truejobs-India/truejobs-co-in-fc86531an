@@ -493,7 +493,7 @@ async function callMistralRaw(prompt: string, maxTokensParam?: number): Promise<
   return data?.output?.message?.content?.[0]?.text || '';
 }
 
-async function callClaudeRaw(prompt: string): Promise<string> {
+async function callClaudeRaw(prompt: string, maxTokensParam?: number): Promise<string> {
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured');
   const controller = new AbortController();
@@ -509,7 +509,7 @@ async function callClaudeRaw(prompt: string): Promise<string> {
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: 8192,
+        max_tokens: maxTokensParam || 8192,
         system: 'You are an expert employment news content writer for an Indian job portal. Write structured, SEO-optimized, factual content about government job notifications. Return valid JSON only.',
         messages: [{ role: 'user', content: prompt }],
       }),

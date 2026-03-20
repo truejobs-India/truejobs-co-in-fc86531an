@@ -368,67 +368,8 @@ function autoFillMissingFields(enriched: any, job: any): string[] {
 
 const AI_TIMEOUT_MS = 60000; // 60 seconds timeout for all AI calls
 
-async function fetchGemini(apiKey: string, prompt: string): Promise<string> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-  const body = {
-    contents: [{ role: "user", parts: [{ text: prompt }] }],
-    generationConfig: { responseMimeType: "application/json", temperature: 0.5 },
-  };
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
-
-  let response: Response;
-  try {
-    response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-  } catch (err) {
-    clearTimeout(timeoutId);
-    if (err instanceof DOMException && err.name === "AbortError") {
-      throw new Error("AI model timeout after 60 seconds");
-    }
-    throw err;
-  }
-
-  if (response.status === 429) {
-    console.log("Rate limited, retrying in 5s...");
-    await delay(5000);
-    const c2 = new AbortController();
-    const t2 = setTimeout(() => c2.abort(), AI_TIMEOUT_MS);
-    try {
-      response = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-        signal: c2.signal,
-      });
-    } catch (err) {
-      clearTimeout(t2);
-      if (err instanceof DOMException && err.name === "AbortError") {
-        throw new Error("AI model timeout after 60 seconds (retry)");
-      }
-      throw err;
-    }
-    clearTimeout(t2);
-  }
-
-  clearTimeout(timeoutId);
-
-  if (!response.ok) {
-    const errText = await response.text();
-    console.error("Gemini error:", response.status, errText);
-    throw new Error(`Gemini API error: ${response.status}`);
-  }
-
-  const data = await response.json();
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw new Error("No content in Gemini response");
-  return text;
-}
+// Removed: fetchGemini using GEMINI_API_KEY + generativelanguage.googleapis.com
+// Now handled inline in callAI dispatcher via callVertexGemini
 
 // ── AWS Sig V4 helpers (for Bedrock models) ──
 async function hmacSha256B(key: ArrayBuffer | Uint8Array, data: string): Promise<ArrayBuffer> {
@@ -567,8 +508,8 @@ async function callLovableGeminiRaw(prompt: string, maxTokensParam?: number): Pr
 // Unified AI call: returns parsed JSON
 function resolveProviderInfo(model: string): { provider: string; apiModel: string } {
   switch (model) {
-    case 'gemini-flash': case 'gemini': return { provider: 'google-ai-studio', apiModel: 'gemini-2.5-flash' };
-    case 'gemini-pro': return { provider: 'google-ai-studio', apiModel: 'gemini-2.5-pro' };
+    case 'gemini-flash': case 'gemini': return { provider: 'vertex-ai', apiModel: 'gemini-2.5-flash' };
+    case 'gemini-pro': return { provider: 'vertex-ai', apiModel: 'gemini-2.5-pro' };
     case 'vertex-flash': return { provider: 'vertex-ai', apiModel: 'gemini-2.5-flash' };
     case 'vertex-pro': return { provider: 'vertex-ai', apiModel: 'gemini-2.5-pro' };
     case 'claude-sonnet': case 'claude': return { provider: 'anthropic', apiModel: 'claude-sonnet-4-6' };
@@ -648,15 +589,15 @@ async function callAI(model: string, prompt: string, maxTokensParam?: number): P
     case 'gemini-flash':
     case 'gemini-pro':
     case 'gemini': {
-      const apiKey = Deno.env.get("GEMINI_API_KEY");
-      if (!apiKey) throw new Error("GEMINI_API_KEY not configured");
-      const text = await fetchGemini(apiKey, prompt);
+      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      const vertexModel = model === 'gemini-pro' ? 'gemini-2.5-pro' : 'gemini-2.5-flash';
+      const text = await callVertexGemini(vertexModel, prompt, 90_000, { responseMimeType: 'application/json', temperature: 0.5 });
       try {
         return tryParseJSON(text);
       } catch (e1) {
-        console.warn("Gemini JSON parse failed, retrying...", (e1 as Error).message);
+        console.warn("Vertex Gemini JSON parse failed, retrying...", (e1 as Error).message);
         await delay(2000);
-        const text2 = await fetchGemini(apiKey, prompt);
+        const text2 = await callVertexGemini(vertexModel, prompt, 90_000, { responseMimeType: 'application/json', temperature: 0.5 });
         return tryParseJSON(text2);
       }
     }

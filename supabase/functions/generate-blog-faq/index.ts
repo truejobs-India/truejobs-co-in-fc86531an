@@ -29,21 +29,8 @@ async function verifyAdmin(req: Request): Promise<{ userId: string } | Response>
 // AI Model Providers (same as generate-blog-article)
 // ═══════════════════════════════════════════════════════════════
 
-async function callGemini(prompt: string): Promise<string> {
-  const apiKey = Deno.env.get('GEMINI_API_KEY');
-  if (!apiKey) throw new Error('GEMINI_API_KEY not configured');
-  const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { maxOutputTokens: 4000, temperature: 0.4 },
-    }),
-  });
-  if (!resp.ok) throw new Error(`Gemini API error ${resp.status}`);
-  const data = await resp.json();
-  return data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-}
+// Removed: local callGemini using GEMINI_API_KEY + generativelanguage.googleapis.com
+// Now handled inline in callAI dispatcher via callVertexGemini
 
 async function callLovableGemini(prompt: string): Promise<string> {
   const apiKey = Deno.env.get('LOVABLE_API_KEY');
@@ -177,7 +164,10 @@ async function callMistral(prompt: string): Promise<string> {
 function callAI(model: string, prompt: string): Promise<string> {
   console.log(`[generate-blog-faq] model_requested=${model}`);
   switch (model) {
-    case 'gemini': case 'gemini-flash': return callGemini(prompt);
+    case 'gemini': case 'gemini-flash': {
+      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      return callVertexGemini('gemini-2.5-flash', prompt, 60_000, { maxOutputTokens: 4000, temperature: 0.4 });
+    }
     case 'lovable-gemini': return callLovableGemini(prompt);
     case 'openai': case 'gpt5': case 'gpt5-mini': return callOpenAI(prompt);
     case 'groq': return callGroq(prompt);

@@ -107,46 +107,9 @@ async function awsSigV4Fetch(host: string, rawPath: string, body: string, region
   });
 }
 
-// ── Gemini (direct API) — NO silent fallback ──
-async function callGemini(prompt: string, maxTokens: number, geminiModel = 'gemini-2.5-flash'): Promise<string> {
-  const apiKey = Deno.env.get('GEMINI_API_KEY');
-  if (!apiKey) throw new Error('GEMINI_API_KEY not configured');
-
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${apiKey}`;
-  const maxRetries = 3;
-  let resp: Response | null = null;
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    resp = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { maxOutputTokens: maxTokens, temperature: 0.4 },
-      }),
-    });
-    if (resp.status === 429 && attempt < maxRetries - 1) {
-      const backoffMs = (attempt + 1) * 5000;
-      console.warn(`[improve-blog-content] Gemini 429, retrying in ${backoffMs}ms (attempt ${attempt + 1}/${maxRetries})`);
-      await new Promise(r => setTimeout(r, backoffMs));
-      continue;
-    }
-    break;
-  }
-
-  // If still 429 after retries — throw, NO silent fallback to Gateway
-  if (resp && resp.status === 429) {
-    throw new Error('GEMINI_RATE_LIMITED: Gemini API rate limit exceeded after retries. Please wait a moment and try again.');
-  }
-
-  if (!resp || !resp.ok) {
-    const status = resp?.status || 500;
-    throw new Error(`Gemini API error ${status}`);
-  }
-  const data = await resp.json();
-  const finishReason = data?.candidates?.[0]?.finishReason || '';
-  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-  return JSON.stringify({ __raw: text, __finishReason: finishReason });
-}
+// ── Gemini (Vertex AI) — NO silent fallback ──
+// Removed: local callGemini using GEMINI_API_KEY + generativelanguage.googleapis.com
+// Now handled inline in callAI dispatcher via callVertexGemini
 
 // ── Mistral Large (AWS Bedrock — us-west-2) ──
 async function callMistral(prompt: string, maxTokens: number): Promise<string> {
@@ -293,12 +256,18 @@ async function callAI(aiModel: string, prompt: string, maxTokens: number): Promi
   let actualModelId: string;
 
   switch (model) {
-    case 'gemini': case 'gemini-flash':
-      resultJson = await callGemini(prompt, maxTokens, 'gemini-2.5-flash');
-      actualProvider = 'google-gemini'; actualModelId = 'gemini-2.5-flash'; break;
-    case 'gemini-pro':
-      resultJson = await callGemini(prompt, maxTokens, 'gemini-2.5-pro');
-      actualProvider = 'google-gemini'; actualModelId = 'gemini-2.5-pro'; break;
+    case 'gemini': case 'gemini-flash': {
+      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      const text = await callVertexGemini('gemini-2.5-flash', prompt, 90_000, { maxOutputTokens: maxTokens });
+      resultJson = JSON.stringify({ __raw: text, __finishReason: 'stop' });
+      actualProvider = 'vertex-ai'; actualModelId = 'gemini-2.5-flash'; break;
+    }
+    case 'gemini-pro': {
+      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      const text = await callVertexGemini('gemini-2.5-pro', prompt, 120_000, { maxOutputTokens: maxTokens });
+      resultJson = JSON.stringify({ __raw: text, __finishReason: 'stop' });
+      actualProvider = 'vertex-ai'; actualModelId = 'gemini-2.5-pro'; break;
+    }
     case 'mistral':
       resultJson = await callMistral(prompt, maxTokens);
       actualProvider = 'aws-bedrock'; actualModelId = 'mistral.mistral-large-2407-v1:0'; break;

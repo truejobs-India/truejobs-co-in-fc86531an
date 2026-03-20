@@ -237,33 +237,9 @@ async function verifyAdmin(req: Request): Promise<{ userId: string } | Response>
 // AI Model Providers
 // ═══════════════════════════════════════════════════════════════
 
-// ── 1. Gemini (direct API) — supports optional system instruction ──
-async function callGemini(prompt: string, systemPrompt?: string, maxTokens = 32000, temperature = 0.5, modelName = 'gemini-2.5-flash'): Promise<string> {
-  const apiKey = Deno.env.get('GEMINI_API_KEY');
-  if (!apiKey) throw new Error('GEMINI_API_KEY not configured');
-
-  const requestBody: Record<string, unknown> = {
-    contents: [{ parts: [{ text: prompt }] }],
-    generationConfig: { maxOutputTokens: maxTokens, temperature },
-  };
-
-  if (systemPrompt) {
-    requestBody.systemInstruction = { parts: [{ text: systemPrompt }] };
-  }
-
-  console.log(`[callGemini] model=${modelName} maxTokens=${maxTokens}`);
-  const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(requestBody),
-  });
-  if (!resp.ok) throw new Error(`Gemini API error ${resp.status}`);
-  const data = await resp.json();
-  const candidate = data?.candidates?.[0];
-  console.log(`[callGemini] finishReason=${candidate?.finishReason}`);
-  if (candidate?.finishReason === 'MAX_TOKENS') throw new Error('AI response truncated (MAX_TOKENS). Try shorter target word count.');
-  return candidate?.content?.parts?.[0]?.text || '';
-}
+// ── 1. Gemini (Vertex AI) ──
+// Removed: local callGemini using GEMINI_API_KEY + generativelanguage.googleapis.com
+// Now handled inline in callAI dispatcher via callVertexGemini
 
 // ── 2. Lovable Gemini (gateway) ──
 async function callLovableGemini(prompt: string, maxTokens = 16000): Promise<string> {
@@ -514,8 +490,8 @@ async function callMistral(prompt: string, systemPrompt?: string, maxTokens = 81
 
 function resolveProviderInfo(model: string): { provider: string; apiModel: string } {
   switch (model) {
-    case 'gemini-flash': case 'gemini': return { provider: 'google-ai-studio', apiModel: 'gemini-2.5-flash' };
-    case 'gemini-pro': return { provider: 'google-ai-studio', apiModel: 'gemini-2.5-pro' };
+    case 'gemini-flash': case 'gemini': return { provider: 'vertex-ai', apiModel: 'gemini-2.5-flash' };
+    case 'gemini-pro': return { provider: 'vertex-ai', apiModel: 'gemini-2.5-pro' };
     case 'vertex-flash': return { provider: 'vertex-ai', apiModel: 'gemini-2.5-flash' };
     case 'vertex-pro': return { provider: 'vertex-ai', apiModel: 'gemini-2.5-pro' };
     case 'claude-sonnet': case 'claude': return { provider: 'anthropic', apiModel: 'claude-sonnet-4-6' };
@@ -535,8 +511,14 @@ async function callAI(model: string, prompt: string, wordLimit = 1500): Promise<
   const mt = computeMaxTokens(wordLimit, model);
   console.log(`[generate-blog-article] model_requested=${model} wordLimit=${wordLimit} maxTokens=${mt}`);
   switch (model) {
-    case 'gemini': case 'gemini-flash': return callGemini(prompt, GEMINI_SYSTEM_PROMPT, mt, 0.65, 'gemini-2.5-flash');
-    case 'gemini-pro': return callGemini(prompt, GEMINI_SYSTEM_PROMPT, mt, 0.5, 'gemini-2.5-pro');
+    case 'gemini': case 'gemini-flash': {
+      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      return callVertexGemini('gemini-2.5-flash', GEMINI_SYSTEM_PROMPT + '\n\n' + prompt, 60_000, { maxOutputTokens: mt, temperature: 0.65 });
+    }
+    case 'gemini-pro': {
+      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      return callVertexGemini('gemini-2.5-pro', GEMINI_SYSTEM_PROMPT + '\n\n' + prompt, 120_000, { maxOutputTokens: mt, temperature: 0.5 });
+    }
     case 'lovable-gemini': return callLovableGemini(prompt, mt);
     case 'openai': case 'gpt5': case 'gpt5-mini': return callOpenAI(prompt, mt);
     case 'groq': return callGroq(prompt, mt);

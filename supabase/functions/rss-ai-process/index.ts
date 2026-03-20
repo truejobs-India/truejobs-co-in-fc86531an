@@ -16,8 +16,6 @@ const corsHeaders = {
 // ═══════════════════════════════════════════════════════════════
 
 const GATEWAY_MODELS: Record<string, string> = {
-  'gemini-flash': 'google/gemini-2.5-flash',
-  'gemini-pro': 'google/gemini-2.5-pro',
   'gpt5': 'openai/gpt-5',
   'gpt5-mini': 'openai/gpt-5-mini',
   'mistral': 'google/gemini-2.5-flash',
@@ -31,8 +29,8 @@ const IMAGE_MODELS: Record<string, string> = {
 
 function resolveProviderInfo(model: string): { provider: string; apiModel: string } {
   switch (model) {
-    case 'gemini-flash': case 'gemini': return { provider: 'google-ai-studio', apiModel: 'gemini-2.5-flash' };
-    case 'gemini-pro': return { provider: 'google-ai-studio', apiModel: 'gemini-2.5-pro' };
+    case 'gemini-flash': case 'gemini': return { provider: 'vertex-ai', apiModel: 'gemini-2.5-flash' };
+    case 'gemini-pro': return { provider: 'vertex-ai', apiModel: 'gemini-2.5-pro' };
     case 'vertex-flash': return { provider: 'vertex-ai', apiModel: 'gemini-2.5-flash' };
     case 'vertex-pro': return { provider: 'vertex-ai', apiModel: 'gemini-2.5-pro' };
     case 'claude-sonnet': case 'claude': return { provider: 'anthropic', apiModel: 'claude-sonnet-4-20250514' };
@@ -49,21 +47,13 @@ function resolveProviderInfo(model: string): { provider: string; apiModel: strin
 async function callTextAI(model: string, prompt: string, maxTokens?: number): Promise<string> {
   // Direct API models first
   if (model === 'gemini' || model === 'gemini-flash') {
-    const apiKey = Deno.env.get('GEMINI_API_KEY');
-    if (apiKey) {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-      const resp = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.5, maxOutputTokens: maxTokens || 8192 },
-        }),
-      });
-      if (!resp.ok) throw new Error(`Gemini API error: ${resp.status}`);
-      const data = await resp.json();
-      return data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    }
+    const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+    return callVertexGemini('gemini-2.5-flash', prompt, 90_000, { maxOutputTokens: maxTokens || 8192, temperature: 0.5 });
+  }
+
+  if (model === 'gemini-pro') {
+    const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+    return callVertexGemini('gemini-2.5-pro', prompt, 120_000, { maxOutputTokens: maxTokens || 8192, temperature: 0.5 });
   }
 
   if (model === 'groq') {

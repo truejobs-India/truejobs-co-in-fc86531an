@@ -498,9 +498,11 @@ No JSON wrappers, no markdown, no code blocks, no explanations.`;
         maxTokens = computeMT(Math.max(1200, effectiveTarget), effectiveModel);
 
       } else {
+        const { buildWordCountInstruction: buildWCI2, computeMaxTokens: computeMT2 } = await import('../_shared/word-count-enforcement.ts');
+        const STRICT_WC_BLOCK2 = buildWCI2(effectiveTarget, effectiveModel);
         prompt = `You are a professional content editor for TrueJobs.co.in, an Indian government job portal.
 Expand and improve the following article.
-STRICT Word count target: ${effectiveTarget} words. Do NOT exceed ${Math.round(effectiveTarget * 1.15)} words. Do NOT write fewer than ${Math.round(effectiveTarget * 0.85)} words. Currently ~${currentWords} words.
+${STRICT_WC_BLOCK2} Currently ~${currentWords} words.
 
 CRITICAL RULES:
 - You MUST return the COMPLETE article — every single section from the original MUST be present in your output
@@ -534,18 +536,7 @@ Return ONLY the full enriched article as valid HTML.
 No JSON wrappers, no markdown, no code blocks, no explanations.
 REMINDER: Your output must contain ALL original content plus additions. Do NOT cut short.`;
 
-        const estimatedTokensNeeded = Math.max(8000, Math.ceil(currentWords * 2.5));
-        maxTokens = Math.min(estimatedTokensNeeded, 65536);
-
-        // Nova models need a generous token budget — 1 word ≈ 1.5 tokens for HTML content
-        if (effectiveModel === 'nova-pro' || effectiveModel === 'nova-premier') {
-          maxTokens = Math.max(maxTokens, Math.ceil(effectiveTarget * 2));
-        }
-
-        // Claude Sonnet can hit platform timeouts on very large generations — keep output budget tighter.
-        if (effectiveModel === 'claude-sonnet' || effectiveModel === 'claude') {
-          maxTokens = Math.min(maxTokens, 3500);
-        }
+        maxTokens = computeMT2(effectiveTarget, effectiveModel);
       }
 
     } else if (action === 'structure') {

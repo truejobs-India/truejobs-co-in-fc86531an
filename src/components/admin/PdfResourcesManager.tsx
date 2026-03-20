@@ -737,7 +737,7 @@ export function PdfResourcesManager() {
             }
           }
         } else {
-          console.error(`Bulk image failed for ${r.id}:`, err.message);
+          console.warn(`Bulk image failed for ${r.id}:`, isStructured ? err.userMessage : err.message);
         }
       }
 

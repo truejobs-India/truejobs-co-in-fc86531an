@@ -722,25 +722,58 @@ export function PdfResourcesManager() {
     setGeneratingImage(true);
     try {
       const token = await getAuthToken();
-      const resp = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-resource-image`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({
-            slug: editItem.slug, title: editItem.title, category: editItem.category,
-            subject: editItem.subject, resourceType: editItem.resource_type, imageModel: imageAiModel,
-          }),
-        },
-      );
-      if (resp.status === 429) { toast({ title: 'Rate limited', variant: 'destructive' }); return; }
-      if (resp.status === 402) { toast({ title: 'Payment required', variant: 'destructive' }); return; }
-      const result = await resp.json();
-      if (!result.success && !result.imageUrl) throw new Error(result.error || 'Failed');
-      setEditItem(prev => ({ ...prev, cover_image_url: result.imageUrl, featured_image_alt: result.altText || prev.featured_image_alt }));
+      let resp: Response;
+      try {
+        resp = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-resource-image`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({
+              slug: editItem.slug, title: editItem.title, category: editItem.category,
+              subject: editItem.subject, resourceType: editItem.resource_type, imageModel: imageAiModel,
+            }),
+          },
+        );
+      } catch (networkErr: any) {
+        toast({ title: 'Network error', description: networkErr.message || 'Failed to reach server', variant: 'destructive' });
+        return;
+      }
+
+      // Safe JSON parsing
+      let result: any;
+      try {
+        result = await resp.json();
+      } catch {
+        const text = await resp.text().catch(() => '');
+        toast({ title: 'Server error', description: `Non-JSON response (${resp.status}): ${text.substring(0, 80)}`, variant: 'destructive' });
+        return;
+      }
+
+      // Handle structured errors
+      if (result.ok === false || (!result.success && !result.imageUrl)) {
+        const msg = result.message || result.error || 'Image generation failed';
+        const code = result.code || '';
+        if (resp.status === 429 || code.includes('RATE_LIMITED')) {
+          toast({ title: 'Rate limited', description: 'Try again later', variant: 'destructive' });
+        } else if (resp.status === 402 || code === 'GATEWAY_PAYMENT_REQUIRED') {
+          toast({ title: 'Payment required', description: 'Add funds in Settings → Workspace → Usage', variant: 'destructive' });
+        } else {
+          toast({ title: 'Image failed', description: msg, variant: 'destructive' });
+        }
+        return;
+      }
+
+      const imageUrl = result.imageUrl;
+      if (!imageUrl || typeof imageUrl !== 'string') {
+        toast({ title: 'Image failed', description: 'No image URL in response', variant: 'destructive' });
+        return;
+      }
+
+      setEditItem(prev => ({ ...prev, cover_image_url: imageUrl, featured_image_alt: result.altText || prev.featured_image_alt }));
       toast({ title: '🖼️ Cover image generated' });
     } catch (err: any) {
-      toast({ title: 'Image failed', description: err.message, variant: 'destructive' });
+      toast({ title: 'Image failed', description: err.message || 'Unknown error', variant: 'destructive' });
     } finally {
       setGeneratingImage(false);
     }

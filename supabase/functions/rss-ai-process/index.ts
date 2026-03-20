@@ -4,6 +4,7 @@
  * Each action processes an array of rss_item_ids with per-row isolation.
  */
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { computeMaxTokens, countWordsFromHtml, validateWordCount, buildWordCountInstruction } from '../_shared/word-count-enforcement.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -28,7 +29,24 @@ const IMAGE_MODELS: Record<string, string> = {
   'gemini-pro-image': 'google/gemini-3-pro-image-preview',
 };
 
-async function callTextAI(model: string, prompt: string): Promise<string> {
+function resolveProviderInfo(model: string): { provider: string; apiModel: string } {
+  switch (model) {
+    case 'gemini-flash': case 'gemini': return { provider: 'google-ai-studio', apiModel: 'gemini-2.5-flash' };
+    case 'gemini-pro': return { provider: 'google-ai-studio', apiModel: 'gemini-2.5-pro' };
+    case 'vertex-flash': return { provider: 'vertex-ai', apiModel: 'gemini-2.5-flash' };
+    case 'vertex-pro': return { provider: 'vertex-ai', apiModel: 'gemini-2.5-pro' };
+    case 'claude-sonnet': case 'claude': return { provider: 'anthropic', apiModel: 'claude-sonnet-4-20250514' };
+    case 'groq': return { provider: 'groq', apiModel: 'llama-3.3-70b-versatile' };
+    case 'nova-pro': return { provider: 'bedrock', apiModel: 'us.amazon.nova-pro-v1:0' };
+    case 'nova-premier': return { provider: 'bedrock', apiModel: 'us.amazon.nova-premier-v1:0' };
+    case 'lovable-gemini': return { provider: 'lovable-gateway', apiModel: 'google/gemini-2.5-flash' };
+    case 'gpt5': return { provider: 'lovable-gateway', apiModel: 'openai/gpt-5' };
+    case 'gpt5-mini': return { provider: 'lovable-gateway', apiModel: 'openai/gpt-5-mini' };
+    default: return { provider: model, apiModel: model };
+  }
+}
+
+async function callTextAI(model: string, prompt: string, maxTokens?: number): Promise<string> {
   // Direct API models first
   if (model === 'gemini' || model === 'gemini-flash') {
     const apiKey = Deno.env.get('GEMINI_API_KEY');
@@ -39,7 +57,7 @@ async function callTextAI(model: string, prompt: string): Promise<string> {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.5, maxOutputTokens: 8192 },
+          generationConfig: { temperature: 0.5, maxOutputTokens: maxTokens || 8192 },
         }),
       });
       if (!resp.ok) throw new Error(`Gemini API error: ${resp.status}`);
@@ -54,7 +72,7 @@ async function callTextAI(model: string, prompt: string): Promise<string> {
     const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.5, max_tokens: 8192 }),
+      body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.5, max_tokens: maxTokens || 8192 }),
     });
     if (!resp.ok) throw new Error(`Groq error: ${resp.status}`);
     const data = await resp.json();
@@ -67,7 +85,7 @@ async function callTextAI(model: string, prompt: string): Promise<string> {
     const resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'x-api-key': apiKey, 'Content-Type': 'application/json', 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 8192, messages: [{ role: 'user', content: prompt }] }),
+      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: maxTokens || 8192, messages: [{ role: 'user', content: prompt }] }),
     });
     if (!resp.ok) throw new Error(`Claude error: ${resp.status}`);
     const data = await resp.json();
@@ -77,31 +95,35 @@ async function callTextAI(model: string, prompt: string): Promise<string> {
   if (model === 'vertex-flash' || model === 'vertex-pro') {
     const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
     const vertexModel = model === 'vertex-pro' ? 'gemini-2.5-pro' : 'gemini-2.5-flash';
-    return callVertexGemini(vertexModel, prompt, 90_000, { maxOutputTokens: 8192, temperature: 0.5 });
+    return callVertexGemini(vertexModel, prompt, 90_000, { maxOutputTokens: maxTokens || 8192, temperature: 0.5 });
   }
 
   if (model === 'nova-pro' || model === 'nova-premier') {
     const { callBedrockNova } = await import('../_shared/bedrock-nova.ts');
-    return callBedrockNova(model, prompt, { maxTokens: 8192, temperature: 0.5 });
+    return callBedrockNova(model, prompt, { maxTokens: maxTokens || 8192, temperature: 0.5 });
   }
 
-  // Fallback: Lovable Gateway
-  const apiKey = Deno.env.get('LOVABLE_API_KEY');
-  if (!apiKey) throw new Error('LOVABLE_API_KEY not configured');
-  const gatewayModel = GATEWAY_MODELS[model] || 'google/gemini-2.5-flash';
-  const resp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: gatewayModel, messages: [{ role: 'user', content: prompt }], temperature: 0.5, max_tokens: 8192 }),
-  });
-  if (!resp.ok) {
-    const errText = await resp.text();
-    if (resp.status === 429) throw new Error('Rate limit exceeded, please try again later');
-    if (resp.status === 402) throw new Error('Payment required, please add credits');
-    throw new Error(`AI Gateway error (${resp.status}): ${errText.substring(0, 300)}`);
+  // Known Lovable Gateway models
+  if (model === 'lovable-gemini' || model === 'gpt5' || model === 'gpt5-mini') {
+    const apiKey = Deno.env.get('LOVABLE_API_KEY');
+    if (!apiKey) throw new Error('LOVABLE_API_KEY not configured');
+    const gatewayModel = GATEWAY_MODELS[model] || 'google/gemini-2.5-flash';
+    const resp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: gatewayModel, messages: [{ role: 'user', content: prompt }], temperature: 0.5, max_tokens: maxTokens || 8192 }),
+    });
+    if (!resp.ok) {
+      const errText = await resp.text();
+      if (resp.status === 429) throw new Error('Rate limit exceeded, please try again later');
+      if (resp.status === 402) throw new Error('Payment required, please add credits');
+      throw new Error(`AI Gateway error (${resp.status}): ${errText.substring(0, 300)}`);
+    }
+    const data = await resp.json();
+    return data?.choices?.[0]?.message?.content || '';
   }
-  const data = await resp.json();
-  return data?.choices?.[0]?.message?.content || '';
+
+  throw new Error(`Unsupported AI model: "${model}". No silent fallback allowed.`);
 }
 
 async function callImageAI(model: string, prompt: string): Promise<{ base64: string; mimeType: string }> {
@@ -214,7 +236,6 @@ ${analysis.analysis_notes ? `ANALYSIS NOTES: ${analysis.analysis_notes}` : ''}
 ${analysis.key_entities ? `KEY ENTITIES: ${JSON.stringify(analysis.key_entities)}` : ''}
 ${analysis.important_dates ? `IMPORTANT DATES: ${JSON.stringify(analysis.important_dates)}` : ''}
 
-STRICT Word count target: ${wordLimit} words. Do NOT exceed ${Math.round(wordLimit * 1.15)} words.
 ${wordLimit <= 500 ? 'Keep sections brief and skip subsections.' : ''}
 
 Return ONLY valid JSON:
@@ -454,9 +475,15 @@ async function handleEnrich(
       // Get analysis output if available
       const { data: proc } = await client.from('rss_ai_processing').select('analysis_output').eq('rss_item_id', itemId).single();
 
-      const prompt = buildEnrichPrompt(item, proc?.analysis_output, wordLimit);
-      const raw = await callTextAI(model, prompt);
+      const enrichMaxTokens = computeMaxTokens(wordLimit, model);
+      const wcInstruction = buildWordCountInstruction(wordLimit, model);
+      const prompt = buildEnrichPrompt(item, proc?.analysis_output, wordLimit) + '\n\n' + wcInstruction;
+      const raw = await callTextAI(model, prompt, enrichMaxTokens);
       const parsed = parseJsonSafe(raw);
+
+      const articleBody = typeof parsed?.article_body === 'string' ? parsed.article_body : '';
+      const wcValidation = articleBody ? validateWordCount(articleBody, wordLimit, enrichMaxTokens) : null;
+      const providerInfo = resolveProviderInfo(model);
 
       await client.from('rss_ai_processing').update({
         enrichment_status: 'completed',
@@ -465,8 +492,15 @@ async function handleEnrich(
         enrichment_error: null,
       }).eq('id', procId);
 
-      results.push({ itemId, status: 'completed' });
+      results.push({
+        itemId, status: 'completed',
+        selectedModelId: model,
+        actualProviderUsed: providerInfo.provider,
+        actualModelUsed: providerInfo.apiModel,
+        wordCountValidation: wcValidation,
+      });
     } catch (e: any) {
+      const providerInfo = resolveProviderInfo(model);
       const procId = await ensureProcessingRow(client, itemId).catch(() => null);
       if (procId) {
         await client.from('rss_ai_processing').update({
@@ -475,7 +509,13 @@ async function handleEnrich(
           enrichment_run_at: new Date().toISOString(),
         }).eq('id', procId);
       }
-      results.push({ itemId, status: 'error', error: e.message?.substring(0, 200) });
+      results.push({
+        itemId, status: 'error', error: e.message?.substring(0, 200),
+        selectedModelId: model,
+        actualProviderUsed: providerInfo.provider,
+        actualModelUsed: providerInfo.apiModel,
+        wordCountValidation: null,
+      });
     }
   }
   return results;

@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { computeMaxTokens, countWordsFromHtml, validateWordCount, buildWordCountInstruction } from '../_shared/word-count-enforcement.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -475,13 +476,13 @@ async function awsSigV4Fetch(host: string, rawPath: string, body: string, region
   });
 }
 
-async function callMistralRaw(prompt: string): Promise<string> {
+async function callMistralRaw(prompt: string, maxTokensParam?: number): Promise<string> {
   const modelId = 'mistral.mistral-large-2407-v1:0';
   const region = 'us-west-2';
   const host = `bedrock-runtime.${region}.amazonaws.com`;
   const body = JSON.stringify({
     messages: [{ role: 'user', content: [{ text: prompt }] }],
-    inferenceConfig: { maxTokens: 16384, temperature: 0.5 },
+    inferenceConfig: { maxTokens: maxTokensParam || 16384, temperature: 0.5 },
   });
   const resp = await Promise.race([
     awsSigV4Fetch(host, `/model/${modelId}/converse`, body, region, 'bedrock'),
@@ -492,7 +493,7 @@ async function callMistralRaw(prompt: string): Promise<string> {
   return data?.output?.message?.content?.[0]?.text || '';
 }
 
-async function callClaudeRaw(prompt: string): Promise<string> {
+async function callClaudeRaw(prompt: string, maxTokensParam?: number): Promise<string> {
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured');
   const controller = new AbortController();
@@ -508,7 +509,7 @@ async function callClaudeRaw(prompt: string): Promise<string> {
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: 8192,
+        max_tokens: maxTokensParam || 8192,
         system: 'You are an expert employment news content writer for an Indian job portal. Write structured, SEO-optimized, factual content about government job notifications. Return valid JSON only.',
         messages: [{ role: 'user', content: prompt }],
       }),
@@ -528,7 +529,7 @@ async function callClaudeRaw(prompt: string): Promise<string> {
   return textBlocks.map((b: any) => b.text).join('') || '';
 }
 
-async function callLovableGeminiRaw(prompt: string): Promise<string> {
+async function callLovableGeminiRaw(prompt: string, maxTokensParam?: number): Promise<string> {
   const apiKey = Deno.env.get('LOVABLE_API_KEY');
   if (!apiKey) throw new Error('LOVABLE_API_KEY not configured');
   const controller = new AbortController();
@@ -541,7 +542,7 @@ async function callLovableGeminiRaw(prompt: string): Promise<string> {
       body: JSON.stringify({
         model: 'google/gemini-2.5-flash',
         messages: [{ role: 'user', content: prompt }],
-        max_tokens: 8192,
+        max_tokens: maxTokensParam || 8192,
         temperature: 0.5,
       }),
       signal: controller.signal,
@@ -564,37 +565,55 @@ async function callLovableGeminiRaw(prompt: string): Promise<string> {
 }
 
 // Unified AI call: returns parsed JSON
-async function callAI(model: string, prompt: string): Promise<any> {
+function resolveProviderInfo(model: string): { provider: string; apiModel: string } {
+  switch (model) {
+    case 'gemini-flash': case 'gemini': return { provider: 'google-ai-studio', apiModel: 'gemini-2.5-flash' };
+    case 'gemini-pro': return { provider: 'google-ai-studio', apiModel: 'gemini-2.5-pro' };
+    case 'vertex-flash': return { provider: 'vertex-ai', apiModel: 'gemini-2.5-flash' };
+    case 'vertex-pro': return { provider: 'vertex-ai', apiModel: 'gemini-2.5-pro' };
+    case 'claude-sonnet': case 'claude': return { provider: 'anthropic', apiModel: 'claude-sonnet-4-6' };
+    case 'groq': return { provider: 'groq', apiModel: 'llama-3.3-70b-versatile' };
+    case 'mistral': return { provider: 'bedrock', apiModel: 'mistral.mistral-large-2407-v1:0' };
+    case 'lovable-gemini': return { provider: 'lovable-gateway', apiModel: 'google/gemini-2.5-flash' };
+    case 'gpt5': return { provider: 'lovable-gateway', apiModel: 'openai/gpt-5' };
+    case 'gpt5-mini': return { provider: 'lovable-gateway', apiModel: 'openai/gpt-5-mini' };
+    case 'nova-pro': return { provider: 'bedrock', apiModel: 'us.amazon.nova-pro-v1:0' };
+    case 'nova-premier': return { provider: 'bedrock', apiModel: 'us.amazon.nova-premier-v1:0' };
+    default: return { provider: model, apiModel: model };
+  }
+}
+
+async function callAI(model: string, prompt: string, maxTokensParam?: number): Promise<any> {
   let rawText: string;
 
   switch (model) {
     case 'mistral': {
-      rawText = await callMistralRaw(prompt);
+      rawText = await callMistralRaw(prompt, maxTokensParam);
       break;
     }
     case 'claude-sonnet':
     case 'claude': {
-      rawText = await callClaudeRaw(prompt);
+      rawText = await callClaudeRaw(prompt, maxTokensParam);
       break;
     }
     case 'lovable-gemini': {
-      rawText = await callLovableGeminiRaw(prompt);
+      rawText = await callLovableGeminiRaw(prompt, maxTokensParam);
       break;
     }
     case 'vertex-flash': {
       const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-      rawText = await callVertexGemini('gemini-2.5-flash', prompt, 60_000);
+      rawText = await callVertexGemini('gemini-2.5-flash', prompt, 60_000, { maxOutputTokens: maxTokensParam || 16384 });
       break;
     }
     case 'vertex-pro': {
       const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-      rawText = await callVertexGemini('gemini-2.5-pro', prompt, 120_000);
+      rawText = await callVertexGemini('gemini-2.5-pro', prompt, 120_000, { maxOutputTokens: maxTokensParam || 16384 });
       break;
     }
     case 'nova-pro':
     case 'nova-premier': {
       const { callBedrockNova } = await import('../_shared/bedrock-nova.ts');
-      rawText = await callBedrockNova(model, prompt, { maxTokens: 16384, temperature: 0.5 });
+      rawText = await callBedrockNova(model, prompt, { maxTokens: maxTokensParam || 16384, temperature: 0.5 });
       break;
     }
     case 'gemini':
@@ -632,7 +651,7 @@ async function callAI(model: string, prompt: string): Promise<any> {
       const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
       retryText = await callVertexGemini('gemini-2.5-pro', prompt, 120_000);
     }
-    else retryText = await callLovableGeminiRaw(prompt);
+    else throw new Error(`JSON parse retry not supported for model: ${model}. Re-select and try again.`);
     retryText = retryText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     return tryParseJSON(retryText);
   }
@@ -762,9 +781,12 @@ Apply Link: ${job.apply_link || "N/A"}
 OUTPUT LANGUAGE: ${detectedLang}`;
 
           // Combine master prompt with user data
-          const combinedPrompt = MASTER_ENRICH_PROMPT + "\n\n" + userDataPrompt;
+          const enrichTargetWords = 1200;
+          const enrichMaxTokens = computeMaxTokens(enrichTargetWords, useModel);
+          const wcInstruction = buildWordCountInstruction(enrichTargetWords, useModel);
+          const combinedPrompt = MASTER_ENRICH_PROMPT + "\n\n" + wcInstruction + "\n\n" + userDataPrompt;
 
-          const enriched = await callAI(useModel, combinedPrompt);
+          const enriched = await callAI(useModel, combinedPrompt, enrichMaxTokens);
 
           // Check required fields and try auto-fill for missing ones
           const criticalFields = ['enriched_title', 'enriched_description'] as const;
@@ -834,7 +856,17 @@ OUTPUT LANGUAGE: ${detectedLang}`;
             return { id: jobId, success: false, error: updateErr.message };
           }
 
-          return { id: jobId, success: true };
+          const wcValidation = enriched.enriched_description
+            ? validateWordCount(enriched.enriched_description, enrichTargetWords, enrichMaxTokens)
+            : null;
+          const providerInfo = resolveProviderInfo(useModel);
+          return {
+            id: jobId, success: true,
+            selectedModelId: useModel,
+            actualProviderUsed: providerInfo.provider,
+            actualModelUsed: providerInfo.apiModel,
+            wordCountValidation: wcValidation,
+          };
         } catch (err) {
           const errorMsg = err instanceof Error ? err.message : "Unknown error";
           console.error(`Enrich error for ${jobId}:`, errorMsg);
@@ -867,10 +899,15 @@ OUTPUT LANGUAGE: ${detectedLang}`;
             console.error(`Failed to update failure status for ${jobId}:`, dbErr);
           }
 
+          const errProviderInfo = resolveProviderInfo(useModel);
           return {
             id: jobId,
             success: false,
             error: errorMsg,
+            selectedModelId: useModel,
+            actualProviderUsed: errProviderInfo.provider,
+            actualModelUsed: errProviderInfo.apiModel,
+            wordCountValidation: null,
           };
         }
       });

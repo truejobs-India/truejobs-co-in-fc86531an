@@ -97,6 +97,14 @@ export function RssAiActionModal({ open, onOpenChange, action, itemIds, onComple
           error: r.error,
         }));
         allResults.push(...batchResults);
+        // Log word count warnings (non-blocking)
+        const wcIssues = batchResults.filter((_, idx) =>
+          (data?.results?.[idx] as any)?.wordCountValidation?.status === 'warn' ||
+          (data?.results?.[idx] as any)?.wordCountValidation?.status === 'fail'
+        ).length;
+        if (wcIssues > 0) {
+          console.log(`[rss-ai] ${wcIssues} enriched items had word count outside target range`);
+        }
 
         // Check for quota/rate limit errors to stop early
         const hasQuotaError = batchResults.some(r => 

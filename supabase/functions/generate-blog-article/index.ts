@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { computeMaxTokens, countWordsFromHtml, validateWordCount, buildWordCountInstruction } from '../_shared/word-count-enforcement.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -265,7 +266,7 @@ async function callGemini(prompt: string, systemPrompt?: string, maxTokens = 320
 }
 
 // ── 2. Lovable Gemini (gateway) ──
-async function callLovableGemini(prompt: string): Promise<string> {
+async function callLovableGemini(prompt: string, maxTokens = 16000): Promise<string> {
   const apiKey = Deno.env.get('LOVABLE_API_KEY');
   if (!apiKey) throw new Error('LOVABLE_API_KEY not configured');
   const resp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
@@ -274,7 +275,7 @@ async function callLovableGemini(prompt: string): Promise<string> {
     body: JSON.stringify({
       model: 'google/gemini-2.5-flash',
       messages: [{ role: 'user', content: prompt }],
-      max_tokens: 16000,
+      max_tokens: maxTokens,
       temperature: 0.5,
     }),
   });
@@ -288,7 +289,7 @@ async function callLovableGemini(prompt: string): Promise<string> {
 }
 
 // ── 3. OpenAI ──
-async function callOpenAI(prompt: string): Promise<string> {
+async function callOpenAI(prompt: string, maxTokens = 16000): Promise<string> {
   const apiKey = Deno.env.get('OPENAI_API_KEY');
   if (!apiKey) throw new Error('OPENAI_API_KEY not configured');
   const resp = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -297,7 +298,7 @@ async function callOpenAI(prompt: string): Promise<string> {
     body: JSON.stringify({
       model: 'gpt-4o',
       messages: [{ role: 'user', content: prompt }],
-      max_tokens: 16000,
+      max_tokens: maxTokens,
       temperature: 0.5,
     }),
   });
@@ -307,7 +308,7 @@ async function callOpenAI(prompt: string): Promise<string> {
 }
 
 // ── 4. Groq ──
-async function callGroq(prompt: string): Promise<string> {
+async function callGroq(prompt: string, maxTokens = 16000): Promise<string> {
   const apiKey = Deno.env.get('GROQ_API_KEY');
   if (!apiKey) throw new Error('GROQ_API_KEY not configured');
   const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -316,7 +317,7 @@ async function callGroq(prompt: string): Promise<string> {
     body: JSON.stringify({
       model: 'llama-3.3-70b-versatile',
       messages: [{ role: 'user', content: prompt }],
-      max_tokens: 16000,
+      max_tokens: maxTokens,
       temperature: 0.5,
     }),
   });
@@ -447,7 +448,7 @@ async function callClaude(prompt: string, wordLimit: number): Promise<string> {
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: Math.max(4096, Math.min(Math.ceil(wordLimit * 2.5), 8192)),
+        max_tokens: computeMaxTokens(wordLimit, 'claude-sonnet'),
         system: CLAUDE_SYSTEM_PROMPT,
         messages: [
           {
@@ -489,7 +490,7 @@ async function callClaude(prompt: string, wordLimit: number): Promise<string> {
 }
 
 // ── 6. Mistral Large (AWS Bedrock Converse — us-west-2) ──
-async function callMistral(prompt: string, systemPrompt?: string): Promise<string> {
+async function callMistral(prompt: string, systemPrompt?: string, maxTokens = 8192): Promise<string> {
   const modelId = 'mistral.mistral-large-2407-v1:0';
   const region = 'us-west-2';
   const host = `bedrock-runtime.${region}.amazonaws.com`;
@@ -497,7 +498,7 @@ async function callMistral(prompt: string, systemPrompt?: string): Promise<strin
 
   const payload: Record<string, unknown> = {
     messages: [{ role: 'user', content: [{ text: prompt }] }],
-    inferenceConfig: { maxTokens: 8192, temperature: 0.5 },
+    inferenceConfig: { maxTokens, temperature: 0.5 },
   };
 
   if (systemPrompt) {
@@ -511,32 +512,51 @@ async function callMistral(prompt: string, systemPrompt?: string): Promise<strin
   return data?.output?.message?.content?.[0]?.text || '';
 }
 
+function resolveProviderInfo(model: string): { provider: string; apiModel: string } {
+  switch (model) {
+    case 'gemini-flash': case 'gemini': return { provider: 'google-ai-studio', apiModel: 'gemini-2.5-flash' };
+    case 'gemini-pro': return { provider: 'google-ai-studio', apiModel: 'gemini-2.5-pro' };
+    case 'vertex-flash': return { provider: 'vertex-ai', apiModel: 'gemini-2.5-flash' };
+    case 'vertex-pro': return { provider: 'vertex-ai', apiModel: 'gemini-2.5-pro' };
+    case 'claude-sonnet': case 'claude': return { provider: 'anthropic', apiModel: 'claude-sonnet-4-6' };
+    case 'groq': return { provider: 'groq', apiModel: 'llama-3.3-70b-versatile' };
+    case 'mistral': return { provider: 'bedrock', apiModel: 'mistral.mistral-large-2407-v1:0' };
+    case 'lovable-gemini': return { provider: 'lovable-gateway', apiModel: 'google/gemini-2.5-flash' };
+    case 'openai': case 'gpt5': return { provider: 'openai', apiModel: 'gpt-4o' };
+    case 'gpt5-mini': return { provider: 'openai', apiModel: 'gpt-4o' };
+    case 'nova-pro': return { provider: 'bedrock', apiModel: 'us.amazon.nova-pro-v1:0' };
+    case 'nova-premier': return { provider: 'bedrock', apiModel: 'us.amazon.nova-premier-v1:0' };
+    default: return { provider: model, apiModel: model };
+  }
+}
+
 // ── Model dispatcher — NO silent fallback ──
 async function callAI(model: string, prompt: string, wordLimit = 1500): Promise<string> {
-  console.log(`[generate-blog-article] model_requested=${model} wordLimit=${wordLimit}`);
+  const mt = computeMaxTokens(wordLimit, model);
+  console.log(`[generate-blog-article] model_requested=${model} wordLimit=${wordLimit} maxTokens=${mt}`);
   switch (model) {
-    case 'gemini': case 'gemini-flash': return callGemini(prompt, GEMINI_SYSTEM_PROMPT, 16384, 0.65, 'gemini-2.5-flash');
-    case 'gemini-pro': return callGemini(prompt, GEMINI_SYSTEM_PROMPT, 32768, 0.5, 'gemini-2.5-pro');
-    case 'lovable-gemini': return callLovableGemini(prompt);
-    case 'openai': case 'gpt5': case 'gpt5-mini': return callOpenAI(prompt);
-    case 'groq': return callGroq(prompt);
+    case 'gemini': case 'gemini-flash': return callGemini(prompt, GEMINI_SYSTEM_PROMPT, mt, 0.65, 'gemini-2.5-flash');
+    case 'gemini-pro': return callGemini(prompt, GEMINI_SYSTEM_PROMPT, mt, 0.5, 'gemini-2.5-pro');
+    case 'lovable-gemini': return callLovableGemini(prompt, mt);
+    case 'openai': case 'gpt5': case 'gpt5-mini': return callOpenAI(prompt, mt);
+    case 'groq': return callGroq(prompt, mt);
     case 'claude-sonnet':
     case 'claude': return callClaude(prompt, wordLimit);
-    case 'mistral': return callMistral(prompt, MISTRAL_SYSTEM_PROMPT);
+    case 'mistral': return callMistral(prompt, MISTRAL_SYSTEM_PROMPT, mt);
     case 'vertex-flash': {
       const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-      return callVertexGemini('gemini-2.5-flash', prompt, 60_000);
+      return callVertexGemini('gemini-2.5-flash', prompt, 60_000, { maxOutputTokens: mt });
     }
     case 'vertex-pro': {
       const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-      return callVertexGemini('gemini-2.5-pro', prompt, 120_000);
+      return callVertexGemini('gemini-2.5-pro', prompt, 120_000, { maxOutputTokens: mt });
     }
     case 'nova-pro': case 'nova-premier': {
       const { callBedrockNova } = await import('../_shared/bedrock-nova.ts');
-      return callBedrockNova(model, prompt, { maxTokens: model === 'nova-pro' ? 8192 : 10000, temperature: 0.5 });
+      return callBedrockNova(model, prompt, { maxTokens: mt, temperature: 0.5 });
     }
     default:
-      throw new Error(`Unsupported AI model: "${model}". Supported: gemini, gemini-flash, gemini-pro, mistral, claude-sonnet, openai, gpt5, groq, lovable-gemini, vertex-flash, vertex-pro, nova-pro, nova-premier`);
+      throw new Error(`Unsupported AI model: "${model}".`);
   }
 }
 
@@ -718,6 +738,8 @@ Format: {"title": "...", "slug": "...", "content": "...", "metaTitle": "...", "m
 No markdown code blocks. Return ONLY the JSON object.`;
     }
 
+    prompt += '\n\n' + buildWordCountInstruction(wordTarget, useModel);
+
     const raw = await callAI(useModel, prompt, wordTarget);
     const cleaned = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
 
@@ -778,6 +800,10 @@ No markdown code blocks. Return ONLY the JSON object.`;
       || VALID_CATEGORIES.find(c => rawCategory.toLowerCase().includes(c.toLowerCase()))
       || 'Career Advice';
 
+    const wcMaxTokens = computeMaxTokens(wordTarget, useModel);
+    const wcValidation = parsed.content ? validateWordCount(parsed.content, wordTarget, wcMaxTokens) : null;
+    const providerInfo = resolveProviderInfo(useModel);
+
     return new Response(JSON.stringify({
       title: parsed.title,
       slug,
@@ -790,9 +816,19 @@ No markdown code blocks. Return ONLY the JSON object.`;
       primaryKeyword: parsed.primaryKeyword || '',
       secondaryKeywords: Array.isArray(parsed.secondaryKeywords) ? parsed.secondaryKeywords : [],
       suggestedInternalLinks: Array.isArray(parsed.suggestedInternalLinks) ? parsed.suggestedInternalLinks : [],
+      selectedModelId: useModel,
+      actualProviderUsed: providerInfo.provider,
+      actualModelUsed: providerInfo.apiModel,
+      wordCountValidation: wcValidation,
     }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   } catch (err) {
     console.error('generate-blog-article error:', err);
-    return new Response(JSON.stringify({ error: err instanceof Error ? err.message : 'Unknown error' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    return new Response(JSON.stringify({
+      error: err instanceof Error ? err.message : 'Unknown error',
+      selectedModelId: useModel || 'unknown',
+      actualProviderUsed: 'unknown',
+      actualModelUsed: 'unknown',
+      wordCountValidation: null,
+    }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 });

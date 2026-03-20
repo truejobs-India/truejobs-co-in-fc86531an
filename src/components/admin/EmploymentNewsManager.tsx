@@ -404,6 +404,13 @@ export function EmploymentNewsManager() {
       } else {
         successTotal += data?.successCount || 0;
         failTotal += data?.failCount || 0;
+        // Log word count warnings (non-blocking — content already saved)
+        const wcIssues = (data?.results || []).filter((r: any) =>
+          r.wordCountValidation?.status === 'warn' || r.wordCountValidation?.status === 'fail'
+        ).length;
+        if (wcIssues > 0) {
+          console.log(`[enrich] ${wcIssues} items had word count outside target range`);
+        }
       }
 
       setEnrichProgress({ current: Math.min(i + batchSize, ids.length), total: ids.length });

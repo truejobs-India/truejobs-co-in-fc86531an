@@ -95,7 +95,7 @@ async function callTextAI(model: string, prompt: string, maxTokens?: number): Pr
   if (model === 'vertex-flash' || model === 'vertex-pro') {
     const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
     const vertexModel = model === 'vertex-pro' ? 'gemini-2.5-pro' : 'gemini-2.5-flash';
-    return callVertexGemini(vertexModel, prompt, 90_000, { maxOutputTokens: 8192, temperature: 0.5 });
+    return callVertexGemini(vertexModel, prompt, 90_000, { maxOutputTokens: maxTokens || 8192, temperature: 0.5 });
   }
 
   if (model === 'nova-pro' || model === 'nova-premier') {

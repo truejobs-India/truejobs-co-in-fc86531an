@@ -410,57 +410,8 @@ async function callClaudeWithRetry(
 // MODEL INTEGRATIONS (non-Claude)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// ── Gemini (Direct API) ──
-async function fetchGemini(prompt: string, model = 'gemini-2.5-flash', timeoutMs = 60_000, maxOutputTokens = 16384): Promise<string> {
-  const apiKey = Deno.env.get('GEMINI_API_KEY');
-  if (!apiKey) throw new Error('GEMINI_API_KEY not configured — please add it to secrets');
-
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      signal: controller.signal,
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: 0.5,
-          topP: 0.8,
-          maxOutputTokens,
-          responseMimeType: 'application/json',
-        },
-      }),
-    });
-
-    if (response.status === 429) {
-      console.warn('Gemini 429 — retrying in 5s...');
-      await new Promise(r => setTimeout(r, 5000));
-      const retry = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.5, topP: 0.8, maxOutputTokens, responseMimeType: 'application/json' },
-        }),
-      });
-      if (!retry.ok) throw new Error(`Gemini retry failed: ${retry.status}`);
-      const d = await retry.json();
-      return d.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    }
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Gemini API error ${response.status}: ${errorText.substring(0, 500)}`);
-    }
-    const data = await response.json();
-    return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-  } finally {
-    clearTimeout(timer);
-  }
-}
+// Removed: fetchGemini using GEMINI_API_KEY + generativelanguage.googleapis.com
+// Now handled inline in callAI dispatcher via callVertexGemini
 
 // ── Groq (Llama 3.3 70B) ──
 async function callGroqRaw(prompt: string, timeoutMs = 30_000, maxTokens = 16384): Promise<string> {

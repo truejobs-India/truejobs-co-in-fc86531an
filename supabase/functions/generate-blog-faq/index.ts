@@ -164,7 +164,10 @@ async function callMistral(prompt: string): Promise<string> {
 function callAI(model: string, prompt: string): Promise<string> {
   console.log(`[generate-blog-faq] model_requested=${model}`);
   switch (model) {
-    case 'gemini': case 'gemini-flash': return callGemini(prompt);
+    case 'gemini': case 'gemini-flash': {
+      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      return callVertexGemini('gemini-2.5-flash', prompt, 60_000, { maxOutputTokens: 4000, temperature: 0.4 });
+    }
     case 'lovable-gemini': return callLovableGemini(prompt);
     case 'openai': case 'gpt5': case 'gpt5-mini': return callOpenAI(prompt);
     case 'groq': return callGroq(prompt);

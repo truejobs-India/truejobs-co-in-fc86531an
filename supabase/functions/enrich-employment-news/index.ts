@@ -589,15 +589,15 @@ async function callAI(model: string, prompt: string, maxTokensParam?: number): P
     case 'gemini-flash':
     case 'gemini-pro':
     case 'gemini': {
-      const apiKey = Deno.env.get("GEMINI_API_KEY");
-      if (!apiKey) throw new Error("GEMINI_API_KEY not configured");
-      const text = await fetchGemini(apiKey, prompt);
+      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      const vertexModel = model === 'gemini-pro' ? 'gemini-2.5-pro' : 'gemini-2.5-flash';
+      const text = await callVertexGemini(vertexModel, prompt, 90_000, { responseMimeType: 'application/json', temperature: 0.5 });
       try {
         return tryParseJSON(text);
       } catch (e1) {
-        console.warn("Gemini JSON parse failed, retrying...", (e1 as Error).message);
+        console.warn("Vertex Gemini JSON parse failed, retrying...", (e1 as Error).message);
         await delay(2000);
-        const text2 = await fetchGemini(apiKey, prompt);
+        const text2 = await callVertexGemini(vertexModel, prompt, 90_000, { responseMimeType: 'application/json', temperature: 0.5 });
         return tryParseJSON(text2);
       }
     }

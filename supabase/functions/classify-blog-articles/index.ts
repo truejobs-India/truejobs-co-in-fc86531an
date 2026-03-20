@@ -295,12 +295,18 @@ async function callClassifierAI(
   let actualModelId: string;
 
   switch (model) {
-    case 'gemini': case 'gemini-flash':
-      rawText = await callGeminiClassifier(systemPrompt, userPrompt, maxTokens, 'gemini-2.5-flash');
-      actualProvider = 'google-gemini'; actualModelId = 'gemini-2.5-flash'; break;
-    case 'gemini-pro':
-      rawText = await callGeminiClassifier(systemPrompt, userPrompt, maxTokens, 'gemini-2.5-pro');
-      actualProvider = 'google-gemini'; actualModelId = 'gemini-2.5-pro'; break;
+    case 'gemini': case 'gemini-flash': {
+      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      const fullPrompt = systemPrompt + '\n\n' + userPrompt;
+      rawText = await callVertexGemini('gemini-2.5-flash', fullPrompt, 90_000, { temperature: 0.1, maxOutputTokens: maxTokens, responseMimeType: 'application/json' });
+      actualProvider = 'vertex-ai'; actualModelId = 'gemini-2.5-flash'; break;
+    }
+    case 'gemini-pro': {
+      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      const fullPrompt = systemPrompt + '\n\n' + userPrompt;
+      rawText = await callVertexGemini('gemini-2.5-pro', fullPrompt, 120_000, { temperature: 0.1, maxOutputTokens: maxTokens, responseMimeType: 'application/json' });
+      actualProvider = 'vertex-ai'; actualModelId = 'gemini-2.5-pro'; break;
+    }
     case 'mistral':
       rawText = await callMistralClassifier(systemPrompt, userPrompt, maxTokens);
       actualProvider = 'aws-bedrock'; actualModelId = 'mistral.mistral-large-2407-v1:0'; break;

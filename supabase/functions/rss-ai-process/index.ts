@@ -236,7 +236,6 @@ ${analysis.analysis_notes ? `ANALYSIS NOTES: ${analysis.analysis_notes}` : ''}
 ${analysis.key_entities ? `KEY ENTITIES: ${JSON.stringify(analysis.key_entities)}` : ''}
 ${analysis.important_dates ? `IMPORTANT DATES: ${JSON.stringify(analysis.important_dates)}` : ''}
 
-STRICT Word count target: ${wordLimit} words. Do NOT exceed ${Math.round(wordLimit * 1.15)} words.
 ${wordLimit <= 500 ? 'Keep sections brief and skip subsections.' : ''}
 
 Return ONLY valid JSON:

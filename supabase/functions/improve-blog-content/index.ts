@@ -461,7 +461,12 @@ No markdown code blocks.`;
         prompt = `You are a professional content writer for TrueJobs.co.in, an Indian government job portal.
 
 Write a comprehensive, well-structured article on the topic below.
-STRICT Word count target: ${Math.max(1200, effectiveTarget)} words. Do NOT exceed ${Math.round(Math.max(1200, effectiveTarget) * 1.15)} words. Do NOT write fewer than ${Math.round(Math.max(1200, effectiveTarget) * 0.85)} words.
+const { buildWordCountInstruction: buildWCI } = await import('../_shared/word-count-enforcement.ts');
+STRICT_WC_BLOCK = buildWCI(Math.max(1200, effectiveTarget), effectiveModel);
+prompt = `You are a professional content writer for TrueJobs.co.in, an Indian government job portal.
+
+Write a comprehensive, well-structured article on the topic below.
+${STRICT_WC_BLOCK}
 ${effectiveTarget <= 1200 ? 'Keep sections brief (3-5 sentences max) and skip subsections.' : ''}
 
 TOPIC: ${title}

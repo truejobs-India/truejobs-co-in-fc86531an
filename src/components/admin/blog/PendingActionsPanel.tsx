@@ -6,6 +6,7 @@ import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { calcLiveWordCount, calcReadingTime } from '@/lib/blogWordCount';
 import {
   Zap, ImageIcon, Loader2, Square, CheckCircle2, AlertTriangle, Search,
 } from 'lucide-react';

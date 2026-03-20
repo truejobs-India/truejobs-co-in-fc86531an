@@ -257,6 +257,33 @@ export function PdfResourcesManager() {
     return session.data.session?.access_token;
   };
 
+  /** Structured error class for edge-function business errors — NOT runtime crashes */
+  class ImageGenError extends Error {
+    code: string;
+    httpStatus: number;
+    retryable: boolean;
+    userMessage: string;
+    constructor(opts: { code: string; message: string; httpStatus: number; retryable: boolean; userMessage: string }) {
+      super(opts.message);
+      this.name = 'ImageGenError';
+      this.code = opts.code;
+      this.httpStatus = opts.httpStatus;
+      this.retryable = opts.retryable;
+      this.userMessage = opts.userMessage;
+    }
+  }
+
+  const STRUCTURED_ERROR_MAP: Record<string, { retryable: boolean; userMessage: string }> = {
+    VERTEX_RATE_LIMITED: { retryable: true, userMessage: 'Vertex AI rate limit exceeded. Retry shortly or switch model.' },
+    VERTEX_TIMEOUT: { retryable: true, userMessage: 'Vertex AI timed out. Retry or switch model.' },
+    GATEWAY_RATE_LIMITED: { retryable: true, userMessage: 'Gateway rate limit exceeded. Retry shortly.' },
+    GATEWAY_PAYMENT_REQUIRED: { retryable: false, userMessage: 'Payment required — add funds in Settings.' },
+    GEMINI_BLOCKED: { retryable: false, userMessage: 'Gemini blocked this prompt. Try different content.' },
+    MODEL_RETURNED_NO_IMAGE: { retryable: true, userMessage: 'Model returned no image. Retry or switch model.' },
+    IMAGE_DECODE_FAILED: { retryable: false, userMessage: 'Image decoding failed. Try a different model.' },
+    STORAGE_UPLOAD_FAILED: { retryable: true, userMessage: 'Storage upload failed. Retry.' },
+  };
+
   const isRetryableImageError = (message: string, status?: number) => {
     const normalized = message.toLowerCase();
     return status === 429
@@ -384,17 +411,23 @@ export function PdfResourcesManager() {
       throw new Error(`Server returned non-JSON (${resp.status}): ${text.substring(0, 100)}`);
     }
 
-    // Handle structured error responses
+    // Handle structured error responses — throw ImageGenError, not generic Error
     if (result.ok === false || (!result.success && !result.imageUrl)) {
-      const code = result.code || '';
+      const code = result.code || 'UNKNOWN';
       const msg = result.message || result.error || 'Image generation failed';
-      if (code === 'GATEWAY_RATE_LIMITED' || code === 'VERTEX_RATE_LIMITED' || resp.status === 429) {
-        throw new Error('Rate limited — try again later');
+      const mapped = STRUCTURED_ERROR_MAP[code];
+      if (mapped) {
+        throw new ImageGenError({
+          code, message: msg, httpStatus: resp.status,
+          retryable: mapped.retryable, userMessage: mapped.userMessage,
+        });
       }
-      if (code === 'GATEWAY_PAYMENT_REQUIRED' || resp.status === 402) {
-        throw new Error('Payment required — add funds');
-      }
-      throw new Error(msg);
+      // Fallback for unmapped codes
+      const retryable = resp.status === 429 || resp.status === 408 || resp.status === 503;
+      throw new ImageGenError({
+        code, message: msg, httpStatus: resp.status,
+        retryable, userMessage: msg,
+      });
     }
     return result;
   };
@@ -412,7 +445,8 @@ export function PdfResourcesManager() {
       toast({ title: '🖼️ Cover generated', description: `Image created for "${r.title}"` });
       fetchResources();
     } catch (err: any) {
-      toast({ title: 'Image failed', description: err.message, variant: 'destructive' });
+      const msg = err instanceof ImageGenError ? err.userMessage : (err.message || 'Unknown error');
+      toast({ title: 'Image failed', description: msg, variant: 'destructive' });
     } finally {
       setRowImageId(null);
     }
@@ -672,17 +706,21 @@ export function PdfResourcesManager() {
           cover_image_url: result.imageUrl,
           featured_image_alt: result.altText || r.featured_image_alt,
         }).eq('id', r.id);
-        if (error) { console.error(`DB update failed for ${r.id}:`, error.message); }
+        if (error) { console.warn(`DB update failed for ${r.id}:`, error.message); }
         else generated++;
       } catch (err: any) {
+        const isStructured = err instanceof ImageGenError;
         // Stop immediately on payment/credits error — no point retrying
-        if (err.message?.includes('Payment') || err.message?.includes('402') || err.message?.includes('funds') || err.message?.includes('PAYMENT_REQUIRED') || err.message?.includes('credits exhausted')) {
-          toast({ title: '⛔ Credits exhausted', description: 'Bulk generation stopped. Add funds or switch to Vertex AI model.', variant: 'destructive' });
+        if ((isStructured && err.code === 'GATEWAY_PAYMENT_REQUIRED') ||
+            err.message?.includes('Payment') || err.message?.includes('402') || err.message?.includes('funds')) {
+          toast({ title: '⛔ Credits exhausted', description: 'Bulk generation stopped. Add funds or switch model.', variant: 'destructive' });
           break;
         }
-        if (err?.retryable || isRetryableImageError(err.message, err.status)) {
+        const retryable = isStructured ? err.retryable : isRetryableImageError(err.message, err.httpStatus);
+        if (retryable) {
           const cooldownMs = imageAiModel.startsWith('vertex') ? 60000 : 30000;
-          toast({ title: 'Retrying image generation', description: `Rate limit hit. Cooling down ${Math.round(cooldownMs / 1000)}s before retry...`, variant: 'destructive' });
+          const userMsg = isStructured ? err.userMessage : 'Rate limit hit';
+          toast({ title: 'Retrying…', description: `${userMsg} Cooling down ${Math.round(cooldownMs / 1000)}s…` });
           await new Promise(resolve => setTimeout(resolve, cooldownMs));
           if (!stopBulkRef.current) {
             try {
@@ -692,13 +730,14 @@ export function PdfResourcesManager() {
                 featured_image_alt: retryResult.altText || r.featured_image_alt,
               }).eq('id', r.id);
               if (!error) generated++;
-              else console.error(`Retry DB update failed for ${r.id}:`, error.message);
+              else console.warn(`Retry DB update failed for ${r.id}:`, error.message);
             } catch (retryErr: any) {
-              console.error(`Retry also failed for ${r.id}:`, retryErr.message);
+              // Expected business error — warn, not error, to avoid runtime overlay
+              console.warn(`Retry also failed for ${r.id}:`, retryErr instanceof ImageGenError ? retryErr.userMessage : retryErr.message);
             }
           }
         } else {
-          console.error(`Bulk image failed for ${r.id}:`, err.message);
+          console.warn(`Bulk image failed for ${r.id}:`, isStructured ? err.userMessage : err.message);
         }
       }
 

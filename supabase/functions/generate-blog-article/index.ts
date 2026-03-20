@@ -308,7 +308,7 @@ async function callOpenAI(prompt: string, maxTokens = 16000): Promise<string> {
 }
 
 // ── 4. Groq ──
-async function callGroq(prompt: string): Promise<string> {
+async function callGroq(prompt: string, maxTokens = 16000): Promise<string> {
   const apiKey = Deno.env.get('GROQ_API_KEY');
   if (!apiKey) throw new Error('GROQ_API_KEY not configured');
   const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -317,7 +317,7 @@ async function callGroq(prompt: string): Promise<string> {
     body: JSON.stringify({
       model: 'llama-3.3-70b-versatile',
       messages: [{ role: 'user', content: prompt }],
-      max_tokens: 16000,
+      max_tokens: maxTokens,
       temperature: 0.5,
     }),
   });

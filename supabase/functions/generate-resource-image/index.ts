@@ -378,9 +378,9 @@ Deno.serve(async (req) => {
               provider = 'vertex-ai-fallback';
               modelUsed = 'vertex/gemini-2.5-flash-image';
               console.log(`[generate-resource-image] Vertex AI fallback succeeded for slug: ${slug}`);
+              // Fallback succeeded — continue to upload step below
             } catch (vertexErr: any) {
               console.error(`[generate-resource-image] Vertex AI fallback also failed:`, vertexErr.message);
-              // Return the original gateway error
               const status = err.message === 'GATEWAY_PAYMENT_REQUIRED' ? 402 : 429;
               const msg = err.message === 'GATEWAY_PAYMENT_REQUIRED'
                 ? 'Lovable AI credits exhausted and Vertex AI fallback failed'
@@ -388,16 +388,17 @@ Deno.serve(async (req) => {
               return new Response(JSON.stringify({ error: msg, provider, model: modelUsed }), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
             }
           } else {
-            // No GCP credentials — return the gateway error as-is
             const status = err.message === 'GATEWAY_PAYMENT_REQUIRED' ? 402 : 429;
             const msg = err.message === 'GATEWAY_PAYMENT_REQUIRED'
               ? 'Lovable AI credits exhausted — add funds in Settings → Workspace → Usage'
               : 'Rate limit exceeded';
             return new Response(JSON.stringify({ error: msg, provider, model: modelUsed }), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
           }
+        } else {
+          // Non-recoverable gateway error
+          console.error(`[generate-resource-image] Gateway error:`, err.message);
+          return new Response(JSON.stringify({ error: err.message, provider, model: modelUsed }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
         }
-        console.error(`[generate-resource-image] Gateway error:`, err.message);
-        return new Response(JSON.stringify({ error: err.message, provider, model: modelUsed }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
     }
 

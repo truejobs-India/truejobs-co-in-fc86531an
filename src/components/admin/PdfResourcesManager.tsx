@@ -653,7 +653,7 @@ export function PdfResourcesManager() {
         else generated++;
       } catch (err: any) {
         // Stop immediately on payment/credits error — no point retrying
-        if (err.message?.includes('Payment') || err.message?.includes('402') || err.message?.includes('funds')) {
+        if (err.message?.includes('Payment') || err.message?.includes('402') || err.message?.includes('funds') || err.message?.includes('PAYMENT_REQUIRED') || err.message?.includes('credits exhausted')) {
           toast({ title: '⛔ Credits exhausted', description: 'Bulk generation stopped. Add funds or switch to Vertex AI model.', variant: 'destructive' });
           break;
         }

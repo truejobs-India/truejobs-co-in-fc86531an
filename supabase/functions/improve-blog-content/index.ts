@@ -107,7 +107,7 @@ async function awsSigV4Fetch(host: string, rawPath: string, body: string, region
   });
 }
 
-// ── Gemini (direct API) ──
+// ── Gemini (direct API) — falls back to Lovable Gateway on persistent 429 ──
 async function callGemini(prompt: string, maxTokens: number, geminiModel = 'gemini-2.5-flash'): Promise<string> {
   const apiKey = Deno.env.get('GEMINI_API_KEY');
   if (!apiKey) throw new Error('GEMINI_API_KEY not configured');
@@ -132,9 +132,39 @@ async function callGemini(prompt: string, maxTokens: number, geminiModel = 'gemi
     }
     break;
   }
+
+  // If still 429 after retries, try Lovable AI Gateway as fallback
+  if (resp && resp.status === 429) {
+    const lovableKey = Deno.env.get('LOVABLE_API_KEY');
+    if (lovableKey) {
+      console.warn(`[improve-blog-content] Gemini 429 exhausted retries — falling back to Lovable AI Gateway`);
+      const gatewayResp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${lovableKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: geminiModel === 'gemini-2.5-pro' ? 'google/gemini-2.5-pro' : 'google/gemini-2.5-flash',
+          messages: [{ role: 'user', content: prompt }],
+          max_tokens: maxTokens,
+          temperature: 0.4,
+        }),
+      });
+      if (gatewayResp.ok) {
+        const gData = await gatewayResp.json();
+        const text = gData?.choices?.[0]?.message?.content || '';
+        console.log(`[improve-blog-content] Lovable Gateway fallback succeeded, len=${text.length}`);
+        return JSON.stringify({ __raw: text, __finishReason: gData?.choices?.[0]?.finish_reason || 'stop' });
+      }
+      const gStatus = gatewayResp.status;
+      const gBody = await gatewayResp.text();
+      console.error(`[improve-blog-content] Lovable Gateway fallback failed [${gStatus}]: ${gBody.substring(0, 200)}`);
+      if (gStatus === 402) throw new Error('Lovable AI credits exhausted. Please add funds or try later.');
+      if (gStatus === 429) throw new Error('Both Gemini and Lovable AI rate-limited. Please wait a moment and try again.');
+    }
+    throw new Error('Gemini API rate limit exceeded. Please wait a moment and try again.');
+  }
+
   if (!resp || !resp.ok) {
     const status = resp?.status || 500;
-    if (status === 429) throw new Error('Gemini API rate limit exceeded. Please wait a moment and try again.');
     throw new Error(`Gemini API error ${status}`);
   }
   const data = await resp.json();

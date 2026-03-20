@@ -14,27 +14,8 @@ const corsHeaders = {
 // AI MODEL DISPATCHER
 // ═══════════════════════════════════════════════════════════════
 
-async function callGemini(prompt: string, maxTokens = 8192, timeout = 60_000): Promise<string> {
-  const apiKey = Deno.env.get('GEMINI_API_KEY');
-  if (!apiKey) throw new Error('GEMINI_API_KEY not configured');
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeout);
-  try {
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.6, maxOutputTokens: maxTokens },
-      }),
-      signal: controller.signal,
-    });
-    if (!resp.ok) throw new Error(`Gemini error: ${resp.status}`);
-    const data = await resp.json();
-    return data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-  } finally { clearTimeout(timer); }
-}
+// Removed: local callGemini using GEMINI_API_KEY + generativelanguage.googleapis.com
+// Now handled inline in callAI dispatcher via callVertexGemini
 
 async function callGroq(prompt: string, maxTokens = 8192): Promise<string> {
   const apiKey = Deno.env.get('GROQ_API_KEY');

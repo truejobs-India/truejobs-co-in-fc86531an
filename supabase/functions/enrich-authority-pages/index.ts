@@ -1320,6 +1320,28 @@ serve(async (req) => {
       version: version ?? undefined,
     };
 
+    // Word count validation — only on visible content fields
+    const CONTENT_FIELD_KEYS = new Set([
+      'overview', 'eligibility', 'vacancyDetails', 'examPattern', 'salary',
+      'applicationProcess', 'importantDates', 'preparationTips', 'cutoffTrends', 'importantLinks',
+    ]);
+    const contentHtmlForValidation = Object.entries(enrichmentData)
+      .filter(([key, value]) => {
+        if (key === 'faq' && Array.isArray(value)) return true;
+        return CONTENT_FIELD_KEYS.has(key) && typeof value === 'string';
+      })
+      .map(([key, value]) => {
+        if (key === 'faq' && Array.isArray(value)) {
+          return (value as any[]).map(f => `${f.question || ''} ${f.answer || ''}`).join(' ');
+        }
+        return value as string;
+      })
+      .join(' ');
+    const wcTargetWords = getMinWordCount(pageType);
+    const wcRequestedMaxTokens = computeMaxTokens(wcTargetWords, selectedModel);
+    const wcValidation = validateWordCount(contentHtmlForValidation, wcTargetWords, wcRequestedMaxTokens);
+    const providerInfo = resolveProviderInfo(selectedModel);
+
     return new Response(JSON.stringify({
       status: resultStatus,
       slug,
@@ -1328,6 +1350,10 @@ serve(async (req) => {
       sectionCount: quality.sectionCount,
       version,
       diagnostics: aiDiagnostics || null,
+      selectedModelId: selectedModel,
+      actualProviderUsed: providerInfo.provider,
+      actualModelUsed: providerInfo.apiModel,
+      wordCountValidation: wcValidation,
       results: [result],
     }), {
       status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },

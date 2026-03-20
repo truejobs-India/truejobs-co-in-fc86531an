@@ -800,6 +800,10 @@ No markdown code blocks. Return ONLY the JSON object.`;
       || VALID_CATEGORIES.find(c => rawCategory.toLowerCase().includes(c.toLowerCase()))
       || 'Career Advice';
 
+    const wcMaxTokens = computeMaxTokens(wordTarget, useModel);
+    const wcValidation = parsed.content ? validateWordCount(parsed.content, wordTarget, wcMaxTokens) : null;
+    const providerInfo = resolveProviderInfo(useModel);
+
     return new Response(JSON.stringify({
       title: parsed.title,
       slug,
@@ -812,9 +816,19 @@ No markdown code blocks. Return ONLY the JSON object.`;
       primaryKeyword: parsed.primaryKeyword || '',
       secondaryKeywords: Array.isArray(parsed.secondaryKeywords) ? parsed.secondaryKeywords : [],
       suggestedInternalLinks: Array.isArray(parsed.suggestedInternalLinks) ? parsed.suggestedInternalLinks : [],
+      selectedModelId: useModel,
+      actualProviderUsed: providerInfo.provider,
+      actualModelUsed: providerInfo.apiModel,
+      wordCountValidation: wcValidation,
     }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   } catch (err) {
     console.error('generate-blog-article error:', err);
-    return new Response(JSON.stringify({ error: err instanceof Error ? err.message : 'Unknown error' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    return new Response(JSON.stringify({
+      error: err instanceof Error ? err.message : 'Unknown error',
+      selectedModelId: useModel || 'unknown',
+      actualProviderUsed: 'unknown',
+      actualModelUsed: 'unknown',
+      wordCountValidation: null,
+    }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 });

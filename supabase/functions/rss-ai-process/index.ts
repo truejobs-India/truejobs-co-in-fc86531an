@@ -475,9 +475,15 @@ async function handleEnrich(
       // Get analysis output if available
       const { data: proc } = await client.from('rss_ai_processing').select('analysis_output').eq('rss_item_id', itemId).single();
 
-      const prompt = buildEnrichPrompt(item, proc?.analysis_output, wordLimit);
-      const raw = await callTextAI(model, prompt);
+      const enrichMaxTokens = computeMaxTokens(wordLimit, model);
+      const wcInstruction = buildWordCountInstruction(wordLimit, model);
+      const prompt = buildEnrichPrompt(item, proc?.analysis_output, wordLimit) + '\n\n' + wcInstruction;
+      const raw = await callTextAI(model, prompt, enrichMaxTokens);
       const parsed = parseJsonSafe(raw);
+
+      const articleBody = typeof parsed?.article_body === 'string' ? parsed.article_body : '';
+      const wcValidation = articleBody ? validateWordCount(articleBody, wordLimit, enrichMaxTokens) : null;
+      const providerInfo = resolveProviderInfo(model);
 
       await client.from('rss_ai_processing').update({
         enrichment_status: 'completed',
@@ -486,8 +492,15 @@ async function handleEnrich(
         enrichment_error: null,
       }).eq('id', procId);
 
-      results.push({ itemId, status: 'completed' });
+      results.push({
+        itemId, status: 'completed',
+        selectedModelId: model,
+        actualProviderUsed: providerInfo.provider,
+        actualModelUsed: providerInfo.apiModel,
+        wordCountValidation: wcValidation,
+      });
     } catch (e: any) {
+      const providerInfo = resolveProviderInfo(model);
       const procId = await ensureProcessingRow(client, itemId).catch(() => null);
       if (procId) {
         await client.from('rss_ai_processing').update({
@@ -496,7 +509,13 @@ async function handleEnrich(
           enrichment_run_at: new Date().toISOString(),
         }).eq('id', procId);
       }
-      results.push({ itemId, status: 'error', error: e.message?.substring(0, 200) });
+      results.push({
+        itemId, status: 'error', error: e.message?.substring(0, 200),
+        selectedModelId: model,
+        actualProviderUsed: providerInfo.provider,
+        actualModelUsed: providerInfo.apiModel,
+        wordCountValidation: null,
+      });
     }
   }
   return results;

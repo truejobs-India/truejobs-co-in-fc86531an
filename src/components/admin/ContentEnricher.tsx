@@ -284,8 +284,17 @@ export function ContentEnricher() {
 
         if (result.status === 'success' || result.status === 'flagged') {
           succeeded++;
-          addMessage('success', `✓ ${slug}`,
-            `${result.totalWords} words · ${result.sectionsAdded.length} sections · Score: W${result.qualityScore.wordScore}/S${result.qualityScore.sectionScore}`);
+          const wcv = data?.wordCountValidation;
+          let wcNote = '';
+          if (wcv?.status === 'fail') {
+            wcNote = ` · ⚠ Word count: ${wcv.actualWordCount}/${wcv.targetWordCount} (significantly off target)`;
+          } else if (wcv?.status === 'warn') {
+            wcNote = ` · ℹ Word count: ${wcv.actualWordCount}/${wcv.targetWordCount} (slightly outside range)`;
+          }
+          addMessage(
+            result.status === 'flagged' ? 'warning' : 'success',
+            `✓ ${slug}`,
+            `${result.totalWords} words · ${result.sectionsAdded.length} sections · Score: W${result.qualityScore.wordScore}/S${result.qualityScore.sectionScore}${wcNote}`);
         } else {
           failed++;
           addMessage('error', `✗ ${slug}`, result.failureReason || 'Unknown error');

@@ -899,10 +899,15 @@ OUTPUT LANGUAGE: ${detectedLang}`;
             console.error(`Failed to update failure status for ${jobId}:`, dbErr);
           }
 
+          const errProviderInfo = resolveProviderInfo(useModel);
           return {
             id: jobId,
             success: false,
             error: errorMsg,
+            selectedModelId: useModel,
+            actualProviderUsed: errProviderInfo.provider,
+            actualModelUsed: errProviderInfo.apiModel,
+            wordCountValidation: null,
           };
         }
       });

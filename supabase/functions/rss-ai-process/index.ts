@@ -85,7 +85,7 @@ async function callTextAI(model: string, prompt: string, maxTokens?: number): Pr
     const resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'x-api-key': apiKey, 'Content-Type': 'application/json', 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 8192, messages: [{ role: 'user', content: prompt }] }),
+      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: maxTokens || 8192, messages: [{ role: 'user', content: prompt }] }),
     });
     if (!resp.ok) throw new Error(`Claude error: ${resp.status}`);
     const data = await resp.json();

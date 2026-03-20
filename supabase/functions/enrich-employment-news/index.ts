@@ -781,9 +781,12 @@ Apply Link: ${job.apply_link || "N/A"}
 OUTPUT LANGUAGE: ${detectedLang}`;
 
           // Combine master prompt with user data
-          const combinedPrompt = MASTER_ENRICH_PROMPT + "\n\n" + userDataPrompt;
+          const enrichTargetWords = 1200;
+          const enrichMaxTokens = computeMaxTokens(enrichTargetWords, useModel);
+          const wcInstruction = buildWordCountInstruction(enrichTargetWords, useModel);
+          const combinedPrompt = MASTER_ENRICH_PROMPT + "\n\n" + wcInstruction + "\n\n" + userDataPrompt;
 
-          const enriched = await callAI(useModel, combinedPrompt);
+          const enriched = await callAI(useModel, combinedPrompt, enrichMaxTokens);
 
           // Check required fields and try auto-fill for missing ones
           const criticalFields = ['enriched_title', 'enriched_description'] as const;

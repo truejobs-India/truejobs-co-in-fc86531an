@@ -454,7 +454,7 @@ No markdown code blocks.`;
       const plainText = (content || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
       const currentWords = plainText.split(/\s+/).filter((w: string) => w.length > 0).length;
       const dynamicTarget = Math.max(Math.ceil(currentWords * 1.3), currentWords + 300);
-      const effectiveTarget = Math.min(Math.max(Number(targetWordCount) || dynamicTarget, 800), 5000);
+      effectiveTarget = Math.min(Math.max(Number(targetWordCount) || dynamicTarget, 800), 5000);
 
       const criteriaBlock = buildCriteriaInstructions(Array.isArray(failingCriteria) ? failingCriteria : []);
 

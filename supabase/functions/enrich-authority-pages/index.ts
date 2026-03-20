@@ -463,7 +463,7 @@ async function fetchGemini(prompt: string, model = 'gemini-2.5-flash', timeoutMs
 }
 
 // ── Groq (Llama 3.3 70B) ──
-async function callGroqRaw(prompt: string, timeoutMs = 30_000): Promise<string> {
+async function callGroqRaw(prompt: string, timeoutMs = 30_000, maxTokens = 16384): Promise<string> {
   const apiKey = Deno.env.get('GROQ_API_KEY');
   if (!apiKey) throw new Error('GROQ_API_KEY not configured — please add it to secrets');
 

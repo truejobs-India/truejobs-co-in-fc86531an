@@ -92,9 +92,7 @@ serve(async (req) => {
       batchUploadedAt = existingBatch?.uploaded_at || new Date().toISOString();
     }
 
-    // Call Gemini
-    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-    if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY not configured");
+    // Vertex AI via shared helper (no GEMINI_API_KEY needed)
 
     const systemPrompt = `You are an expert at extracting government job notifications from Indian Employment News newspaper issues.
 

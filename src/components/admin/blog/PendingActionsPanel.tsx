@@ -83,7 +83,7 @@ export function PendingActionsPanel({
       toast({ title: 'Scan failed', description: err.message, variant: 'destructive' });
       setEnrichPhase('idle');
     }
-  }, [enrichWordLimit, toast]);
+  }, [customWordLimit, toast]);
 
   const executeEnrich = useCallback(async () => {
     if (!enrichScan || enrichScan.count === 0) return;

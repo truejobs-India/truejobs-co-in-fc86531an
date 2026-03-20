@@ -411,7 +411,7 @@ async function callClaudeWithRetry(
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // ── Gemini (Direct API) ──
-async function fetchGemini(prompt: string, model = 'gemini-2.5-flash', timeoutMs = 60_000): Promise<string> {
+async function fetchGemini(prompt: string, model = 'gemini-2.5-flash', timeoutMs = 60_000, maxOutputTokens = 16384): Promise<string> {
   const apiKey = Deno.env.get('GEMINI_API_KEY');
   if (!apiKey) throw new Error('GEMINI_API_KEY not configured — please add it to secrets');
 

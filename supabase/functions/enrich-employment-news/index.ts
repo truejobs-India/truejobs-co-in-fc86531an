@@ -856,7 +856,17 @@ OUTPUT LANGUAGE: ${detectedLang}`;
             return { id: jobId, success: false, error: updateErr.message };
           }
 
-          return { id: jobId, success: true };
+          const wcValidation = enriched.enriched_description
+            ? validateWordCount(enriched.enriched_description, enrichTargetWords, enrichMaxTokens)
+            : null;
+          const providerInfo = resolveProviderInfo(useModel);
+          return {
+            id: jobId, success: true,
+            selectedModelId: useModel,
+            actualProviderUsed: providerInfo.provider,
+            actualModelUsed: providerInfo.apiModel,
+            wordCountValidation: wcValidation,
+          };
         } catch (err) {
           const errorMsg = err instanceof Error ? err.message : "Unknown error";
           console.error(`Enrich error for ${jobId}:`, errorMsg);

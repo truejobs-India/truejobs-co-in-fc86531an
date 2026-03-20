@@ -237,33 +237,9 @@ async function verifyAdmin(req: Request): Promise<{ userId: string } | Response>
 // AI Model Providers
 // ═══════════════════════════════════════════════════════════════
 
-// ── 1. Gemini (direct API) — supports optional system instruction ──
-async function callGemini(prompt: string, systemPrompt?: string, maxTokens = 32000, temperature = 0.5, modelName = 'gemini-2.5-flash'): Promise<string> {
-  const apiKey = Deno.env.get('GEMINI_API_KEY');
-  if (!apiKey) throw new Error('GEMINI_API_KEY not configured');
-
-  const requestBody: Record<string, unknown> = {
-    contents: [{ parts: [{ text: prompt }] }],
-    generationConfig: { maxOutputTokens: maxTokens, temperature },
-  };
-
-  if (systemPrompt) {
-    requestBody.systemInstruction = { parts: [{ text: systemPrompt }] };
-  }
-
-  console.log(`[callGemini] model=${modelName} maxTokens=${maxTokens}`);
-  const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(requestBody),
-  });
-  if (!resp.ok) throw new Error(`Gemini API error ${resp.status}`);
-  const data = await resp.json();
-  const candidate = data?.candidates?.[0];
-  console.log(`[callGemini] finishReason=${candidate?.finishReason}`);
-  if (candidate?.finishReason === 'MAX_TOKENS') throw new Error('AI response truncated (MAX_TOKENS). Try shorter target word count.');
-  return candidate?.content?.parts?.[0]?.text || '';
-}
+// ── 1. Gemini (Vertex AI) ──
+// Removed: local callGemini using GEMINI_API_KEY + generativelanguage.googleapis.com
+// Now handled inline in callAI dispatcher via callVertexGemini
 
 // ── 2. Lovable Gemini (gateway) ──
 async function callLovableGemini(prompt: string, maxTokens = 16000): Promise<string> {

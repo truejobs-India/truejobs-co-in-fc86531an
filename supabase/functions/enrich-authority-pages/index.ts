@@ -724,7 +724,7 @@ async function callAI(
       rawText = await fetchGemini(prompt, 'gemini-2.5-flash', timeout, maxTokens || 16384);
       return { data: tryParseJSON(rawText) };
     case 'gemini-pro':
-      rawText = await fetchGemini(prompt, 'gemini-2.5-pro', timeout);
+      rawText = await fetchGemini(prompt, 'gemini-2.5-pro', timeout, maxTokens || 16384);
       return { data: tryParseJSON(rawText) };
 
     case 'vertex-flash': {

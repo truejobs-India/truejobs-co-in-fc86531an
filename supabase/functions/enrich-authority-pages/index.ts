@@ -721,7 +721,7 @@ async function callAI(
   switch (model) {
     case 'gemini-flash':
     case 'gemini':
-      rawText = await fetchGemini(prompt, 'gemini-2.5-flash', timeout);
+      rawText = await fetchGemini(prompt, 'gemini-2.5-flash', timeout, maxTokens || 16384);
       return { data: tryParseJSON(rawText) };
     case 'gemini-pro':
       rawText = await fetchGemini(prompt, 'gemini-2.5-pro', timeout);

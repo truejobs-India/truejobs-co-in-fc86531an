@@ -761,7 +761,7 @@ async function callAI(
       rawText = await callGroqRaw(prompt, timeout, maxTokens || 16384);
       return { data: tryParseJSON(rawText) };
     case 'mistral':
-      rawText = await callMistralRaw(prompt, timeout);
+      rawText = await callMistralRaw(prompt, timeout, maxTokens || 16384);
       return { data: tryParseJSON(rawText) };
     case 'lovable-gemini':
       rawText = await callLovableGeminiRaw(prompt, timeout);

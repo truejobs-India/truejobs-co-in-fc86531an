@@ -10,9 +10,7 @@ const corsHeaders = {
 // STRICT COMPLIANCE: Max tokens limit 800-1000
 const MAX_TOKENS = 900;
 
-// Use external Gemini API as primary AI provider
-const GEMINI_MODEL = "gemini-2.5-flash";
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+// Vertex AI is the primary Gemini provider
 
 // ─── AWS Bedrock Converse API Support ─────────────────────────────────────────
 

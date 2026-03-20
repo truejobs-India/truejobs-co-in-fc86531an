@@ -666,14 +666,70 @@ No markdown code blocks.`;
         resultHtml = markdownToHtml(resultHtml);
       }
 
-      const wordCountComputed = resultHtml.replace(/<[^>]+>/g, ' ').split(/\s+/).filter(w => w.length > 0).length;
+      // ── Word count validation using clean text counting ──
+      const { countWordsFromHtml, validateWordCount, buildCorrectionPrompt: buildCorr } = await import('../_shared/word-count-enforcement.ts');
+      const wordCountComputed = countWordsFromHtml(resultHtml);
+
+      // Determine the effective target for validation
+      const validationTarget = isStubRebuild ? Math.max(1200, effectiveTarget) : effectiveTarget;
+      const wcValidation = validateWordCount(resultHtml, validationTarget, maxTokens);
+
+      // ── Optional single correction retry for 'fail' state ──
+      let correctionAttempted = false;
+      let finalResultHtml = resultHtml;
+      let finalWordCount = wordCountComputed;
+      let finalValidation = wcValidation;
+
+      if (wcValidation.status === 'fail' && !wasTruncated && resultHtml.length > 100) {
+        correctionAttempted = true;
+        const direction = wordCountComputed < validationTarget ? 'expand' : 'trim';
+        const correctionPrompt = buildCorr(resultHtml, validationTarget, wordCountComputed, direction);
+        console.log(`[improve-blog-content] Word count ${wcValidation.status}: ${wordCountComputed}/${validationTarget} (${wcValidation.deviation}%). Attempting ${direction} correction.`);
+
+        try {
+          const { computeMaxTokens: computeMT3 } = await import('../_shared/word-count-enforcement.ts');
+          const corrMaxTokens = computeMT3(validationTarget, effectiveModel);
+          const { raw: corrRaw } = await callAI(effectiveModel, correctionPrompt, corrMaxTokens);
+          let corrHtml = corrRaw.trim();
+          if (corrHtml.startsWith('```')) corrHtml = corrHtml.replace(/^```(?:json|html)?\s*\n/, '');
+          if (corrHtml.endsWith('```')) corrHtml = corrHtml.replace(/\n?```\s*$/, '');
+          corrHtml = corrHtml.trim();
+
+          const corrWordCount = countWordsFromHtml(corrHtml);
+          const corrValidation = validateWordCount(corrHtml, validationTarget, corrMaxTokens);
+
+          // Use whichever version is closer to target
+          const origDist = Math.abs(wordCountComputed - validationTarget);
+          const corrDist = Math.abs(corrWordCount - validationTarget);
+          if (corrDist < origDist && corrHtml.length > 100) {
+            finalResultHtml = corrHtml;
+            finalWordCount = corrWordCount;
+            finalValidation = corrValidation;
+            console.log(`[improve-blog-content] Correction improved: ${wordCountComputed} → ${corrWordCount} words`);
+          } else {
+            console.log(`[improve-blog-content] Correction did not improve: original=${wordCountComputed}, corrected=${corrWordCount}. Keeping original.`);
+          }
+        } catch (corrErr: any) {
+          console.warn(`[improve-blog-content] Correction retry failed: ${corrErr.message}. Keeping original.`);
+        }
+      }
+
       return new Response(JSON.stringify({
-        result: resultHtml,
-        wordCount: wordCountComputed,
+        result: finalResultHtml,
+        wordCount: finalWordCount,
         wasTruncated,
         changes: Array.isArray(changes) ? changes : [],
         actualProvider,
         actualModelId,
+        selectedModelId: effectiveModel,
+        correctionAttempted,
+        wordCountValidation: {
+          targetWordCount: finalValidation.targetWordCount,
+          actualWordCount: finalValidation.actualWordCount,
+          maxTokensRequested: maxTokens,
+          status: finalValidation.status,
+          deviation: finalValidation.deviation,
+        },
       }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 

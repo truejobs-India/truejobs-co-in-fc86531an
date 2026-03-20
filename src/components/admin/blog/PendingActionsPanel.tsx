@@ -131,7 +131,7 @@ export function PendingActionsPanel({
     setEnrichScan(null);
     setEnrichProgress(null);
     onComplete();
-  }, [enrichScan, enrichWordLimit, blogTextModel, toast, onComplete]);
+  }, [enrichScan, customWordLimit, blogTextModel, toast, onComplete]);
 
   // ═══════════════════════════════════════════════
   // 2. CREATE PENDING COVER IMAGES

@@ -14,7 +14,7 @@ const corsHeaders = {
 // AI MODEL DISPATCHER
 // ═══════════════════════════════════════════════════════════════
 
-async function callGemini(prompt: string, timeout = 60_000): Promise<string> {
+async function callGemini(prompt: string, maxTokens = 8192, timeout = 60_000): Promise<string> {
   const apiKey = Deno.env.get('GEMINI_API_KEY');
   if (!apiKey) throw new Error('GEMINI_API_KEY not configured');
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
@@ -26,7 +26,7 @@ async function callGemini(prompt: string, timeout = 60_000): Promise<string> {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.6, maxOutputTokens: 8192 },
+        generationConfig: { temperature: 0.6, maxOutputTokens: maxTokens },
       }),
       signal: controller.signal,
     });

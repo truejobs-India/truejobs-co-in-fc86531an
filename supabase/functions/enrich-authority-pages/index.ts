@@ -671,12 +671,28 @@ async function callAI(
 
   switch (model) {
     case 'gemini-flash':
-    case 'gemini':
-      rawText = await fetchGemini(prompt, 'gemini-2.5-flash', timeout, maxTokens || 16384);
+    case 'gemini': {
+      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      console.log(`[enrich-vertex] slug=${slug} model=gemini-flash timeout=${timeout}ms`);
+      rawText = await callVertexGemini('gemini-2.5-flash', prompt, timeout, {
+        maxOutputTokens: maxTokens || 16384,
+        responseMimeType: 'application/json',
+        temperature: 0.5,
+        topP: 0.8,
+      });
       return { data: tryParseJSON(rawText) };
-    case 'gemini-pro':
-      rawText = await fetchGemini(prompt, 'gemini-2.5-pro', timeout, maxTokens || 16384);
+    }
+    case 'gemini-pro': {
+      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      console.log(`[enrich-vertex] slug=${slug} model=gemini-pro timeout=${timeout}ms`);
+      rawText = await callVertexGemini('gemini-2.5-pro', prompt, timeout, {
+        maxOutputTokens: maxTokens || 16384,
+        responseMimeType: 'application/json',
+        temperature: 0.5,
+        topP: 0.8,
+      });
       return { data: tryParseJSON(rawText) };
+    }
 
     case 'vertex-flash': {
       const { callVertexGemini } = await import('../_shared/vertex-ai.ts');

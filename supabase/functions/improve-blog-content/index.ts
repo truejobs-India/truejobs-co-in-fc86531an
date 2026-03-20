@@ -256,12 +256,18 @@ async function callAI(aiModel: string, prompt: string, maxTokens: number): Promi
   let actualModelId: string;
 
   switch (model) {
-    case 'gemini': case 'gemini-flash':
-      resultJson = await callGemini(prompt, maxTokens, 'gemini-2.5-flash');
-      actualProvider = 'google-gemini'; actualModelId = 'gemini-2.5-flash'; break;
-    case 'gemini-pro':
-      resultJson = await callGemini(prompt, maxTokens, 'gemini-2.5-pro');
-      actualProvider = 'google-gemini'; actualModelId = 'gemini-2.5-pro'; break;
+    case 'gemini': case 'gemini-flash': {
+      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      const text = await callVertexGemini('gemini-2.5-flash', prompt, 90_000, { maxOutputTokens: maxTokens });
+      resultJson = JSON.stringify({ __raw: text, __finishReason: 'stop' });
+      actualProvider = 'vertex-ai'; actualModelId = 'gemini-2.5-flash'; break;
+    }
+    case 'gemini-pro': {
+      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      const text = await callVertexGemini('gemini-2.5-pro', prompt, 120_000, { maxOutputTokens: maxTokens });
+      resultJson = JSON.stringify({ __raw: text, __finishReason: 'stop' });
+      actualProvider = 'vertex-ai'; actualModelId = 'gemini-2.5-pro'; break;
+    }
     case 'mistral':
       resultJson = await callMistral(prompt, maxTokens);
       actualProvider = 'aws-bedrock'; actualModelId = 'mistral.mistral-large-2407-v1:0'; break;

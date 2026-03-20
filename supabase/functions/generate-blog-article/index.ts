@@ -511,8 +511,14 @@ async function callAI(model: string, prompt: string, wordLimit = 1500): Promise<
   const mt = computeMaxTokens(wordLimit, model);
   console.log(`[generate-blog-article] model_requested=${model} wordLimit=${wordLimit} maxTokens=${mt}`);
   switch (model) {
-    case 'gemini': case 'gemini-flash': return callGemini(prompt, GEMINI_SYSTEM_PROMPT, mt, 0.65, 'gemini-2.5-flash');
-    case 'gemini-pro': return callGemini(prompt, GEMINI_SYSTEM_PROMPT, mt, 0.5, 'gemini-2.5-pro');
+    case 'gemini': case 'gemini-flash': {
+      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      return callVertexGemini('gemini-2.5-flash', GEMINI_SYSTEM_PROMPT + '\n\n' + prompt, 60_000, { maxOutputTokens: mt, temperature: 0.65 });
+    }
+    case 'gemini-pro': {
+      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      return callVertexGemini('gemini-2.5-pro', GEMINI_SYSTEM_PROMPT + '\n\n' + prompt, 120_000, { maxOutputTokens: mt, temperature: 0.5 });
+    }
     case 'lovable-gemini': return callLovableGemini(prompt, mt);
     case 'openai': case 'gpt5': case 'gpt5-mini': return callOpenAI(prompt, mt);
     case 'groq': return callGroq(prompt, mt);

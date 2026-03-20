@@ -141,7 +141,10 @@ async function callVertexPro(prompt: string, maxTokens = 16384): Promise<string>
 
 async function callAI(model: string, prompt: string, maxTokens = 8192): Promise<string> {
   switch (model) {
-    case 'gemini': case 'gemini-flash': return callGemini(prompt, maxTokens);
+    case 'gemini': case 'gemini-flash': {
+      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      return callVertexGemini('gemini-2.5-flash', prompt, 60_000, { maxOutputTokens: maxTokens, temperature: 0.6 });
+    }
     case 'gemini-pro': return callGeminiPro(prompt, maxTokens);
     case 'groq': return callGroq(prompt, maxTokens);
     case 'claude': case 'claude-sonnet': return callClaude(prompt, maxTokens);

@@ -93,8 +93,10 @@ async function callAI(model: string, prompt: string): Promise<string> {
   switch (model) {
     // ── Direct API models (user's own API keys) ──
     case 'gemini-flash':
-    case 'gemini':
-      return callGemini(prompt);
+    case 'gemini': {
+      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      return callVertexGemini('gemini-2.5-flash', prompt, 60_000, { maxOutputTokens: 8192, temperature: 0.65 });
+    }
 
     case 'groq':
       return callGroq(prompt);

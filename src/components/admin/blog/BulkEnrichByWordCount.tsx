@@ -88,6 +88,8 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
     const total = found.length;
     let done = 0;
     let failed = 0;
+    let consecutiveFailures = 0;
+    const MAX_CONSECUTIVE_FAILURES = 3;
     setProgress({ done: 0, total, failed: 0, current: found[0]?.title || '' });
 
     for (const post of found) {
@@ -95,10 +97,18 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
         toast({ title: '⏹️ Enrichment stopped', description: `${done} enriched, ${failed} failed, ${total - done - failed} skipped.` });
         break;
       }
+      if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+        toast({
+          title: '⛔ Auto-stopped: too many consecutive failures',
+          description: `${consecutiveFailures} articles failed in a row. Stopped to prevent wasting AI credits. ${done} enriched, ${failed} failed, ${total - done - failed} skipped. Try a different model or lower target.`,
+          variant: 'destructive',
+        });
+        break;
+      }
       setProgress({ done, total, failed, current: post.title });
 
       try {
-        const { data: enrichData, error } = await supabase.functions.invoke('improve-blog-content', {
+        const resp = await supabase.functions.invoke('improve-blog-content', {
           body: {
             action: 'enrich-article',
             slug: post.slug,
@@ -110,7 +120,25 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
             aiModel: blogTextModel,
           },
         });
-        if (error) throw error;
+
+        // Handle structured error responses (edge function returned non-2xx with JSON body)
+        if (resp.error) {
+          const errorMsg = typeof resp.error === 'object' && resp.error?.message
+            ? resp.error.message
+            : String(resp.error);
+          console.warn(`Enrich edge function error for "${post.title}": ${errorMsg}`);
+          failed++;
+          consecutiveFailures++;
+          continue;
+        }
+
+        const enrichData = resp.data;
+        if (!enrichData || enrichData.error) {
+          console.warn(`Enrich returned error for "${post.title}": ${enrichData?.error || 'no data'}`);
+          failed++;
+          consecutiveFailures++;
+          continue;
+        }
 
         const enrichedHtml = enrichData?.result;
         const wcValidation = enrichData?.wordCountValidation;
@@ -122,13 +150,17 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
         if (!enrichedHtml || typeof enrichedHtml !== 'string' || enrichedHtml.length < 100) {
           console.warn(`Enrich returned empty/short for "${post.title}"`);
           failed++;
+          consecutiveFailures++;
         } else if (wcValidation?.status === 'fail') {
           console.warn(`Enrich word count FAILED for "${post.title}": ${actualWc}/${enrichTo} (${wcValidation.deviation}%). Skipping DB update.`);
           failed++;
+          consecutiveFailures++;
         } else if (actualWc <= originalWc) {
           console.warn(`Enrich did not increase word count for "${post.title}": ${originalWc} → ${actualWc}. Skipping DB update.`);
           failed++;
+          consecutiveFailures++;
         } else {
+          consecutiveFailures = 0; // Reset on success
           const readingTime = Math.max(1, Math.ceil(actualWc / 200));
 
           const linkMatches = [...enrichedHtml.matchAll(/<a\s+[^>]*href="([^"]*)"[^>]*>(.*?)<\/a>/gi)];
@@ -153,13 +185,14 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
       } catch (err: any) {
         console.warn(`Enrich failed for "${post.title}":`, err.message);
         failed++;
+        consecutiveFailures++;
       }
 
       setProgress({ done: done + failed, total, failed, current: post.title });
       if (done + failed < total) await new Promise(r => setTimeout(r, 2000));
     }
 
-    if (!abortRef.current) {
+    if (!abortRef.current && consecutiveFailures < MAX_CONSECUTIVE_FAILURES) {
       const variant = failed > 0 && done === 0 ? 'destructive' : undefined;
       toast({
         title: done > 0 ? '✅ Bulk enrichment complete' : '⚠️ Bulk enrichment finished with issues',

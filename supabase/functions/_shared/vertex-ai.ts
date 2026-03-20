@@ -240,6 +240,7 @@ export async function callVertexGeminiWithMeta(
 
       // Map Vertex finish reasons to normalized values
       const normalizedReason = finishReason === 'MAX_TOKENS' ? 'length' : finishReason === 'STOP' ? 'stop' : finishReason.toLowerCase();
+      return { text, finishReason: normalizedReason };
     } finally {
       clearTimeout(timer);
     }

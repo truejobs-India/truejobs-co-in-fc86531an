@@ -731,7 +731,7 @@ async function callAI(
       const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
       console.log(`[enrich-vertex] slug=${slug} model=vertex-flash timeout=${timeout}ms`);
       rawText = await callVertexGemini('gemini-2.5-flash', prompt, timeout, {
-        maxOutputTokens: 16384,
+        maxOutputTokens: maxTokens || 16384,
         responseMimeType: 'application/json',
         temperature: 0.5,
         topP: 0.8,

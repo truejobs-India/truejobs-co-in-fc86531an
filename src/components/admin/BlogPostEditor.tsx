@@ -57,6 +57,7 @@ import { normalizeBlogCategory, VALID_BLOG_CATEGORIES } from '@/lib/blogCategory
 import { BulkWorkflowPanel } from './blog/BulkWorkflowPanel';
 import { PendingActionsPanel } from './blog/PendingActionsPanel';
 import { SeoMetadataWorkflowPanel } from './blog/SeoMetadataWorkflowPanel';
+import { BulkEnrichByWordCount } from './blog/BulkEnrichByWordCount';
 import { BlogScoreBreakdown } from './blog/BlogScoreBreakdown';
 import { VertexAITools } from './blog/VertexAITools';
 import { AiModelSelector } from '@/components/admin/AiModelSelector';
@@ -1422,6 +1423,9 @@ export function BlogPostEditor() {
         enrichWordLimit={enrichWordLimit}
         onComplete={fetchPosts}
       />
+
+      {/* ── Search & Enrich by Word Count ── */}
+      <BulkEnrichByWordCount blogTextModel={blogTextModel} onComplete={fetchPosts} />
 
       {/* ── Bulk Article Generator ── */}
       <div className="px-6 pb-4 border-b">

@@ -602,6 +602,10 @@ Rules:
       const { state_ut, board_name, board_abbr, result_url, official_board_url, seo_intro, variant, target_word_count, sibling_slugs } = body;
       if (!state_ut || !board_name) return new Response(JSON.stringify({ error: 'state_ut and board_name required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
+      const twc = target_word_count || 2000;
+      const { computeMaxTokens: computeMT, validateWordCount: validateWC, countWordsFromHtml: countWC } = await import('../_shared/word-count-enforcement.ts');
+      const resultMaxTokens = computeMT(twc, model);
+
       const prompt = generateResultPagePrompt({
         state_ut,
         board_name,
@@ -610,15 +614,22 @@ Rules:
         official_board_url: official_board_url || '',
         seo_intro: seo_intro || '',
         variant: variant || 'main',
-        target_word_count: target_word_count || 2000,
+        target_word_count: twc,
         sibling_slugs: sibling_slugs || [],
       });
 
-      console.log(`[generate-custom-page] generate-result action, model=${model}, board=${board_abbr}, variant=${variant}`);
-      const raw = await callAI(model, prompt);
+      console.log(`[generate-custom-page] generate-result action, model=${model}, board=${board_abbr}, variant=${variant}, targetWc=${twc}, maxTokens=${resultMaxTokens}`);
+      const raw = await callAI(model, prompt, resultMaxTokens);
       const parsed = parseAIResponse(raw);
 
-      return new Response(JSON.stringify({ success: true, data: parsed, model, action }), {
+      // Add word count validation
+      let wordCountValidation = null;
+      if (parsed?.content) {
+        wordCountValidation = validateWC(parsed.content, twc, resultMaxTokens);
+        parsed.word_count = countWC(parsed.content);
+      }
+
+      return new Response(JSON.stringify({ success: true, data: parsed, model, action, wordCountValidation }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }

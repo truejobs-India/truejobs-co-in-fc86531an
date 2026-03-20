@@ -1,4 +1,6 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { supabase } from '@/integrations/supabase/client';
 import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
 import { Button } from '@/components/ui/button';
@@ -33,10 +35,13 @@ export function PendingActionsPanel({
   const { toast } = useToast();
 
   // ── Enrich state ──
+  const [customWordLimit, setCustomWordLimit] = useState(enrichWordLimit);
   const [enrichPhase, setEnrichPhase] = useState<ScanPhase>('idle');
   const [enrichScan, setEnrichScan] = useState<ScanResult | null>(null);
   const [enrichProgress, setEnrichProgress] = useState<{ done: number; total: number; failed: number; current: string } | null>(null);
   const enrichAbortRef = useRef(false);
+
+  useEffect(() => { setCustomWordLimit(enrichWordLimit); }, [enrichWordLimit]);
 
   // ── Cover image state ──
   const [coverPhase, setCoverPhase] = useState<ScanPhase>('idle');
@@ -66,7 +71,7 @@ export function PendingActionsPanel({
       const pending = (data || []).filter(p => {
         const wc = p.word_count || 0;
         const contentLen = p.content?.length || 0;
-        return wc < enrichWordLimit * 0.85 || contentLen < 4000;
+        return wc < customWordLimit * 0.85 || contentLen < 4000;
       });
 
       setEnrichScan({ count: pending.length, items: pending });
@@ -78,7 +83,7 @@ export function PendingActionsPanel({
       toast({ title: 'Scan failed', description: err.message, variant: 'destructive' });
       setEnrichPhase('idle');
     }
-  }, [enrichWordLimit, toast]);
+  }, [customWordLimit, toast]);
 
   const executeEnrich = useCallback(async () => {
     if (!enrichScan || enrichScan.count === 0) return;
@@ -105,7 +110,7 @@ export function PendingActionsPanel({
             content: post.content,
             category: post.category,
             tags: post.tags,
-            targetWordCount: enrichWordLimit,
+            targetWordCount: customWordLimit,
             aiModel: blogTextModel,
           },
         });
@@ -126,7 +131,7 @@ export function PendingActionsPanel({
     setEnrichScan(null);
     setEnrichProgress(null);
     onComplete();
-  }, [enrichScan, enrichWordLimit, blogTextModel, toast, onComplete]);
+  }, [enrichScan, customWordLimit, blogTextModel, toast, onComplete]);
 
   // ═══════════════════════════════════════════════
   // 2. CREATE PENDING COVER IMAGES
@@ -389,14 +394,30 @@ export function PendingActionsPanel({
         <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Pending Actions</span>
       </div>
       <div className="flex flex-wrap gap-3">
-        {renderActionButton(
-          'Enrich Pending Articles',
-          <Zap className="h-4 w-4" />,
-          enrichPhase, enrichScan, enrichProgress,
-          scanEnrich, executeEnrich,
-          () => { enrichAbortRef.current = true; },
-          'primary',
-        )}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
+            <Label htmlFor="enrich-word-limit" className="text-xs text-muted-foreground whitespace-nowrap">Target words:</Label>
+            <Input
+              id="enrich-word-limit"
+              type="number"
+              min={500}
+              max={10000}
+              step={100}
+              value={customWordLimit}
+              onChange={(e) => setCustomWordLimit(Number(e.target.value) || enrichWordLimit)}
+              className="w-20 h-8 text-xs"
+              disabled={enrichPhase === 'executing'}
+            />
+          </div>
+          {renderActionButton(
+            'Enrich Pending Articles',
+            <Zap className="h-4 w-4" />,
+            enrichPhase, enrichScan, enrichProgress,
+            scanEnrich, executeEnrich,
+            () => { enrichAbortRef.current = true; },
+            'primary',
+          )}
+        </div>
         {renderActionButton(
           'Create Pending Cover Images',
           <ImageIcon className="h-4 w-4" />,

@@ -284,9 +284,9 @@ async function callAI(aiModel: string, prompt: string, maxTokens: number): Promi
       resultJson = await callLovableGemini(prompt, maxTokens);
       actualProvider = 'lovable-gateway'; actualModelId = 'google/gemini-2.5-flash'; break;
     case 'vertex-flash': {
-      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-      const text = await callVertexGemini('gemini-2.5-flash', prompt, 90_000, { maxOutputTokens: maxTokens });
-      resultJson = JSON.stringify({ __raw: text, __finishReason: 'stop' });
+      const { callVertexGeminiWithMeta } = await import('../_shared/vertex-ai.ts');
+      const result = await callVertexGeminiWithMeta('gemini-2.5-flash', prompt, 90_000, { maxOutputTokens: maxTokens });
+      resultJson = JSON.stringify({ __raw: result.text, __finishReason: result.finishReason });
       actualProvider = 'vertex-ai'; actualModelId = 'gemini-2.5-flash';
       break;
     }

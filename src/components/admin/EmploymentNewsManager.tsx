@@ -14,6 +14,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
 import { supabase } from '@/integrations/supabase/client';
 import mammoth from 'mammoth';
+import { getRecommendedModelsForTarget } from '@/lib/aiModels';
 import {
   Upload, FileText, Sparkles, CheckCircle, XCircle, Eye, Pencil, Trash2,
   Search, ChevronLeft, ChevronRight, Loader2, AlertCircle, Info

@@ -403,9 +403,12 @@ export function BlogPostEditor() {
   };
 
   const togglePublish = async (post: BlogPost) => {
+    const { word_count, reading_time } = wordCountFields(post.content);
     const { error } = await supabase.from('blog_posts').update({
       is_published: !post.is_published,
       published_at: !post.is_published ? new Date().toISOString() : null,
+      word_count,
+      reading_time,
     }).eq('id', post.id);
     if (!error) {
       fetchPosts();

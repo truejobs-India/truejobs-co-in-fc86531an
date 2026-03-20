@@ -29,21 +29,8 @@ async function verifyAdmin(req: Request): Promise<{ userId: string } | Response>
 // AI Model Providers (same as generate-blog-article)
 // ═══════════════════════════════════════════════════════════════
 
-async function callGemini(prompt: string): Promise<string> {
-  const apiKey = Deno.env.get('GEMINI_API_KEY');
-  if (!apiKey) throw new Error('GEMINI_API_KEY not configured');
-  const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { maxOutputTokens: 4000, temperature: 0.4 },
-    }),
-  });
-  if (!resp.ok) throw new Error(`Gemini API error ${resp.status}`);
-  const data = await resp.json();
-  return data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-}
+// Removed: local callGemini using GEMINI_API_KEY + generativelanguage.googleapis.com
+// Now handled inline in callAI dispatcher via callVertexGemini
 
 async function callLovableGemini(prompt: string): Promise<string> {
   const apiKey = Deno.env.get('LOVABLE_API_KEY');

@@ -58,7 +58,7 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
         .limit(500);
       if (error) throw error;
 
-      const matches = (data || []).filter(p => (p.word_count || 0) < searchBelow);
+      const matches = (data || []) as FoundArticle[];
       setFound(matches as FoundArticle[]);
       setPhase('scanned');
 

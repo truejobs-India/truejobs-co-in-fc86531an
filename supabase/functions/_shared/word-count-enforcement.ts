@@ -185,8 +185,68 @@ export function validateWordCount(html: string, target: number, maxTokensRequest
 }
 
 // ═══════════════════════════════════════════════════════════════
-// CORRECTION PROMPT BUILDER
+// CORRECTION / CONTINUATION PASS
 // ═══════════════════════════════════════════════════════════════
+
+/** Models where a continuation pass can realistically recover content */
+const CONTINUATION_ELIGIBLE_MODELS = new Set([
+  'gemini-flash', 'gemini-pro', 'vertex-flash', 'vertex-pro',
+  'claude-sonnet', 'claude', 'gpt5', 'gpt5-mini', 'lovable-gemini', 'mistral',
+]);
+
+/** Models where continuation is NOT useful — they stop early by design */
+const CONTINUATION_INELIGIBLE_MODELS = new Set([
+  'groq', 'nova-pro', 'nova-premier',
+]);
+
+/**
+ * Check if a continuation pass should be attempted.
+ * Conservative: only when first output is reasonably close (≥50% of target)
+ * and the model is eligible.
+ */
+export function shouldAttemptContinuation(
+  modelId: string,
+  actualWords: number,
+  targetWords: number,
+  enableContinuation: boolean = false,
+): boolean {
+  if (!enableContinuation) return false;
+  if (CONTINUATION_INELIGIBLE_MODELS.has(modelId)) return false;
+  if (!CONTINUATION_ELIGIBLE_MODELS.has(modelId)) return false;
+  // Only continue if output is ≥50% of target (otherwise model is fundamentally unsuitable)
+  const ratio = actualWords / targetWords;
+  return ratio >= 0.50 && ratio < 0.75;
+}
+
+/**
+ * Build a continuation prompt that asks the model to extend existing content.
+ * Designed to produce a seamless extension, not a rewrite.
+ */
+export function buildContinuationPrompt(
+  existingContent: string,
+  targetWords: number,
+  actualWords: number,
+): string {
+  const remaining = targetWords - actualWords;
+  return `You are a professional content writer. The following article is incomplete — it needs approximately ${remaining} more words to reach the target of ${targetWords} words.
+
+CONTINUE writing the article from exactly where it stopped. Do NOT rewrite or repeat existing content.
+
+Rules:
+- Add new subsections, examples, tips, or depth to reach ${targetWords} words total
+- Maintain the same tone, style, and formatting
+- Use the same heading hierarchy (H2/H3) as the existing content
+- Output ONLY the continuation content (new sections to append)
+- Do NOT include the existing content in your output
+- Do NOT add a conclusion if one already exists — add depth to middle sections instead
+
+Current word count: ${actualWords}
+Target word count: ${targetWords}
+Words needed: ~${remaining}
+
+EXISTING ARTICLE (do not repeat):
+${existingContent}`;
+}
 
 /**
  * Build a correction prompt for a single retry when word count is in 'fail' state.

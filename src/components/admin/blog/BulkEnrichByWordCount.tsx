@@ -160,7 +160,12 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
     }
 
     if (!abortRef.current) {
-      toast({ title: '✅ Bulk enrichment complete', description: `${done} enriched, ${failed} failed out of ${total}.` });
+      const variant = failed > 0 && done === 0 ? 'destructive' : undefined;
+      toast({
+        title: done > 0 ? '✅ Bulk enrichment complete' : '⚠️ Bulk enrichment finished with issues',
+        description: `${done} enriched, ${failed} failed out of ${total}.${failed > 0 ? ' Failed articles did not meet word count targets — try a different model or lower target.' : ''}`,
+        variant,
+      });
     }
     setPhase('idle');
     setFound([]);

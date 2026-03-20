@@ -411,17 +411,23 @@ export function PdfResourcesManager() {
       throw new Error(`Server returned non-JSON (${resp.status}): ${text.substring(0, 100)}`);
     }
 
-    // Handle structured error responses
+    // Handle structured error responses — throw ImageGenError, not generic Error
     if (result.ok === false || (!result.success && !result.imageUrl)) {
-      const code = result.code || '';
+      const code = result.code || 'UNKNOWN';
       const msg = result.message || result.error || 'Image generation failed';
-      if (code === 'GATEWAY_RATE_LIMITED' || code === 'VERTEX_RATE_LIMITED' || resp.status === 429) {
-        throw new Error('Rate limited — try again later');
+      const mapped = STRUCTURED_ERROR_MAP[code];
+      if (mapped) {
+        throw new ImageGenError({
+          code, message: msg, httpStatus: resp.status,
+          retryable: mapped.retryable, userMessage: mapped.userMessage,
+        });
       }
-      if (code === 'GATEWAY_PAYMENT_REQUIRED' || resp.status === 402) {
-        throw new Error('Payment required — add funds');
-      }
-      throw new Error(msg);
+      // Fallback for unmapped codes
+      const retryable = resp.status === 429 || resp.status === 408 || resp.status === 503;
+      throw new ImageGenError({
+        code, message: msg, httpStatus: resp.status,
+        retryable, userMessage: msg,
+      });
     }
     return result;
   };

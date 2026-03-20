@@ -565,37 +565,55 @@ async function callLovableGeminiRaw(prompt: string, maxTokensParam?: number): Pr
 }
 
 // Unified AI call: returns parsed JSON
-async function callAI(model: string, prompt: string): Promise<any> {
+function resolveProviderInfo(model: string): { provider: string; apiModel: string } {
+  switch (model) {
+    case 'gemini-flash': case 'gemini': return { provider: 'google-ai-studio', apiModel: 'gemini-2.5-flash' };
+    case 'gemini-pro': return { provider: 'google-ai-studio', apiModel: 'gemini-2.5-pro' };
+    case 'vertex-flash': return { provider: 'vertex-ai', apiModel: 'gemini-2.5-flash' };
+    case 'vertex-pro': return { provider: 'vertex-ai', apiModel: 'gemini-2.5-pro' };
+    case 'claude-sonnet': case 'claude': return { provider: 'anthropic', apiModel: 'claude-sonnet-4-6' };
+    case 'groq': return { provider: 'groq', apiModel: 'llama-3.3-70b-versatile' };
+    case 'mistral': return { provider: 'bedrock', apiModel: 'mistral.mistral-large-2407-v1:0' };
+    case 'lovable-gemini': return { provider: 'lovable-gateway', apiModel: 'google/gemini-2.5-flash' };
+    case 'gpt5': return { provider: 'lovable-gateway', apiModel: 'openai/gpt-5' };
+    case 'gpt5-mini': return { provider: 'lovable-gateway', apiModel: 'openai/gpt-5-mini' };
+    case 'nova-pro': return { provider: 'bedrock', apiModel: 'us.amazon.nova-pro-v1:0' };
+    case 'nova-premier': return { provider: 'bedrock', apiModel: 'us.amazon.nova-premier-v1:0' };
+    default: return { provider: model, apiModel: model };
+  }
+}
+
+async function callAI(model: string, prompt: string, maxTokensParam?: number): Promise<any> {
   let rawText: string;
 
   switch (model) {
     case 'mistral': {
-      rawText = await callMistralRaw(prompt);
+      rawText = await callMistralRaw(prompt, maxTokensParam);
       break;
     }
     case 'claude-sonnet':
     case 'claude': {
-      rawText = await callClaudeRaw(prompt);
+      rawText = await callClaudeRaw(prompt, maxTokensParam);
       break;
     }
     case 'lovable-gemini': {
-      rawText = await callLovableGeminiRaw(prompt);
+      rawText = await callLovableGeminiRaw(prompt, maxTokensParam);
       break;
     }
     case 'vertex-flash': {
       const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-      rawText = await callVertexGemini('gemini-2.5-flash', prompt, 60_000);
+      rawText = await callVertexGemini('gemini-2.5-flash', prompt, 60_000, { maxOutputTokens: maxTokensParam || 16384 });
       break;
     }
     case 'vertex-pro': {
       const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-      rawText = await callVertexGemini('gemini-2.5-pro', prompt, 120_000);
+      rawText = await callVertexGemini('gemini-2.5-pro', prompt, 120_000, { maxOutputTokens: maxTokensParam || 16384 });
       break;
     }
     case 'nova-pro':
     case 'nova-premier': {
       const { callBedrockNova } = await import('../_shared/bedrock-nova.ts');
-      rawText = await callBedrockNova(model, prompt, { maxTokens: 16384, temperature: 0.5 });
+      rawText = await callBedrockNova(model, prompt, { maxTokens: maxTokensParam || 16384, temperature: 0.5 });
       break;
     }
     case 'gemini':

@@ -164,6 +164,7 @@ export function RssAiActionModal({ open, onOpenChange, action, itemIds, onComple
               value={model}
               onValueChange={setModel}
               capability={capability}
+              wordTarget={action === 'enrich' ? wordLimit : undefined}
               triggerClassName="w-full"
             />
           </div>

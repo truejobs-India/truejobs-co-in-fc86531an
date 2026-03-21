@@ -251,13 +251,14 @@ async function callLovableGemini(prompt: string, maxTokens: number): Promise<str
 
 const SUPPORTED_MODELS = ['gemini', 'gemini-flash', 'gemini-pro', 'mistral', 'claude-sonnet', 'claude', 'openai', 'gpt5', 'gpt5-mini', 'groq', 'lovable-gemini', 'vertex-flash', 'vertex-pro', 'nova-pro', 'nova-premier'];
 
-async function callAI(aiModel: string, prompt: string, maxTokens: number): Promise<{ raw: string; finishReason: string; actualProvider: string; actualModelId: string }> {
+async function callAI(aiModel: string, prompt: string, maxTokens: number): Promise<{ raw: string; finishReason: string; actualProvider: string; actualModelId: string; usage?: { inputTokens?: number; outputTokens?: number } }> {
   const model = aiModel || 'gemini';
   console.log(`[improve-blog-content] dispatcher model_requested="${model}" maxTokens=${maxTokens}`);
 
   let resultJson: string;
   let actualProvider: string;
   let actualModelId: string;
+  let usage: { inputTokens?: number; outputTokens?: number } | undefined;
 
   switch (model) {
     case 'gemini': case 'gemini-flash': {
@@ -274,7 +275,9 @@ async function callAI(aiModel: string, prompt: string, maxTokens: number): Promi
     }
     case 'mistral':
       resultJson = await callMistral(prompt, maxTokens);
-      actualProvider = 'aws-bedrock'; actualModelId = 'mistral.mistral-large-2407-v1:0'; break;
+      actualProvider = 'aws-bedrock'; actualModelId = 'mistral.mistral-large-2407-v1:0';
+      try { usage = JSON.parse(resultJson).__usage; } catch { /* ignore */ }
+      break;
     case 'claude-sonnet': case 'claude':
       resultJson = await callClaude(prompt, maxTokens);
       actualProvider = 'anthropic'; actualModelId = 'claude-sonnet-4-6'; break;
@@ -303,11 +306,11 @@ async function callAI(aiModel: string, prompt: string, maxTokens: number): Promi
     }
     case 'nova-pro': case 'nova-premier': {
       const { callBedrockNovaWithMeta } = await import('../_shared/bedrock-nova.ts');
-      const { computeMaxTokens: computeNovaBudget } = await import('../_shared/word-count-enforcement.ts');
-      const novaBudget = computeNovaBudget(Math.ceil(maxTokens / 2), model); // maxTokens was already computed from target, reverse to get approx target
-      const result = await callBedrockNovaWithMeta(model, prompt, { maxTokens: novaBudget, temperature: 0.5 });
+      // Pass maxTokens directly — already computed model-aware by computeMaxTokens at caller
+      const result = await callBedrockNovaWithMeta(model, prompt, { maxTokens, temperature: 0.5 });
       resultJson = JSON.stringify({ __raw: result.text, __finishReason: result.stopReason });
-      actualProvider = 'aws-bedrock'; actualModelId = model === 'nova-pro' ? 'amazon.nova-pro-v1:0' : 'amazon.nova-premier-v1:0'; break;
+      usage = result.usage;
+      actualProvider = 'aws-bedrock'; actualModelId = model === 'nova-pro' ? 'us.amazon.nova-pro-v1:0' : 'us.amazon.nova-premier-v1:0'; break;
     }
     default:
       throw new Error(`Unsupported AI model: "${model}". Supported models: ${SUPPORTED_MODELS.join(', ')}`);
@@ -315,7 +318,7 @@ async function callAI(aiModel: string, prompt: string, maxTokens: number): Promi
 
   const parsed = JSON.parse(resultJson);
   console.log(`[improve-blog-content] dispatcher actual_provider=${actualProvider} actual_model=${actualModelId} finish_reason=${parsed.__finishReason}`);
-  return { raw: parsed.__raw, finishReason: parsed.__finishReason, actualProvider, actualModelId };
+  return { raw: parsed.__raw, finishReason: parsed.__finishReason, actualProvider, actualModelId, usage };
 }
 
 // ── Build criteria-specific enrichment instructions ──

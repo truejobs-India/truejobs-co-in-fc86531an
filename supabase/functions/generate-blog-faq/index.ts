@@ -161,7 +161,7 @@ async function callMistral(prompt: string): Promise<string> {
   return data?.output?.message?.content?.[0]?.text || '';
 }
 
-function callAI(model: string, prompt: string): Promise<string> {
+async function callAI(model: string, prompt: string): Promise<string> {
   console.log(`[generate-blog-faq] model_requested=${model}`);
   switch (model) {
     case 'gemini': case 'gemini-flash': {

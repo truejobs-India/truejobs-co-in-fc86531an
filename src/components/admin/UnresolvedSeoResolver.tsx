@@ -317,7 +317,7 @@ export function UnresolvedSeoResolver() {
                 }
               } else if (item.category === 'internal_links') {
                 const content = record.content || '';
-                const linkCount = (content.match(/href=[\"']\\/[^\"']+[\"']/gi) || []).length;
+                const linkCount = (content.match(/href=["']\/[^"']+["']/gi) || []).length;
                 if (linkCount >= 3) {
                   item.stillUnfixed = false;
                   item.verificationNote = `${linkCount} internal links found`;

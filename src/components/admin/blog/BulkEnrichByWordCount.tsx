@@ -264,7 +264,10 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
         const proposedWc = calcLiveWordCount(enrichedHtml);
         consecutiveFailures = 0;
 
-        await supabase.from('blog_enrichment_proposals').insert({
+        // Extract diagnostics from edge function response for audit
+        const diagnosticsPayload = enrichData?.diagnostics || null;
+
+        const { error: insertErr } = await supabase.from('blog_enrichment_proposals').insert({
           batch_id: batchId,
           article_id: post.id,
           article_title: post.title,
@@ -277,6 +280,23 @@ export function BulkEnrichByWordCount({ blogTextModel, onComplete }: Props) {
           status: 'pending_review',
           model_used: blogTextModel,
         });
+        if (insertErr) {
+          console.error('[BulkEnrich] Proposal insert failed:', insertErr);
+        } else {
+          console.log('[BulkEnrich] Proposal stored:', {
+            articleId: post.id,
+            proposedWc,
+            targetWc: enrichTo,
+            status: 'pending_review',
+            diagnostics: diagnosticsPayload ? {
+              maxTokensSent: diagnosticsPayload.maxTokensSent,
+              finishReason: diagnosticsPayload.finishReason,
+              firstPassWc: diagnosticsPayload.firstPassWordCount,
+              correctionAttempted: diagnosticsPayload.correctionAttempted,
+              finalWc: diagnosticsPayload.finalWordCount,
+            } : 'none',
+          });
+        }
         done++;
       } catch (err: any) {
         await supabase.from('blog_enrichment_proposals').insert({

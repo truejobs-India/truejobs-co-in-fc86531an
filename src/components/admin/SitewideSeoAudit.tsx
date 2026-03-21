@@ -35,6 +35,11 @@ import {
   fetchAuditRunById,
   type AuditRunRecord,
 } from '@/lib/seoAuditHistory';
+import {
+  SEO_FIX_MODEL_VALUES,
+  getModelLabel,
+  normalizeAiModelValue,
+} from '@/lib/aiModels';
 
 // ═══════════════════════════════════════════════════════════════
 // Constants
@@ -88,7 +93,7 @@ export function SitewideSeoAudit() {
   const [report, setReport] = useState<SeoAuditReport | null>(null);
   const [phase, setPhase] = useState<WorkflowPhase>('idle');
   const [progressMsg, setProgressMsg] = useState('');
-  const [aiModel, setAiModel] = useState(() => getLastUsedModel('text', 'google/gemini-2.5-pro'));
+  const [aiModel, setAiModel] = useState(() => getLastUsedModel('text', 'gemini-pro', SEO_FIX_MODEL_VALUES));
 
   // Fix state
   const [fixProgress, setFixProgress] = useState<FixProgress | null>(null);
@@ -107,6 +112,20 @@ export function SitewideSeoAudit() {
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [filterFixable, setFilterFixable] = useState<string>('all');
 
+  useEffect(() => {
+    const normalized = normalizeAiModelValue(aiModel, 'gemini-pro');
+    const safeModel = SEO_FIX_MODEL_VALUES.includes(normalized as typeof SEO_FIX_MODEL_VALUES[number])
+      ? normalized
+      : 'gemini-pro';
+
+    if (safeModel !== aiModel) {
+      setAiModel(safeModel);
+      try {
+        localStorage.setItem('ai_model_last_text', safeModel);
+      } catch {}
+    }
+  }, [aiModel]);
+
   const handleScan = async () => {
     setPhase('scanning');
     setReport(null);
@@ -119,7 +138,6 @@ export function SitewideSeoAudit() {
       setPhase('report');
       toast({ title: `SEO Audit Complete`, description: `${result.issues.length} issues found across ${Object.values(result.totalScanned).reduce((a, b) => a + b, 0)} pages` });
 
-      // Persist audit run
       await saveAuditRun(result, scanStartedAt.current);
     } catch (err: any) {
       toast({ title: 'Scan failed', description: err.message, variant: 'destructive' });
@@ -137,6 +155,8 @@ export function SitewideSeoAudit() {
       return;
     }
 
+    const safeModel = SEO_FIX_MODEL_VALUES.includes(aiModel as typeof SEO_FIX_MODEL_VALUES[number]) ? aiModel : 'gemini-pro';
+
     setPhase('fixing');
     stopSignal.current = { stopped: false };
     setFixResults([]);
@@ -146,14 +166,14 @@ export function SitewideSeoAudit() {
     try {
       const results = await executeFixAll(
         autoFixableIssues,
-        aiModel,
+        safeModel,
         (p) => {
           if (p.lastWarning) {
             fixWarnings.current.push(p.lastWarning);
             toast({ title: 'AI Response Warning', description: p.lastWarning, variant: 'destructive' });
             p.lastWarning = undefined;
           }
-          setFixProgress({ ...p });
+          setFixProgress({ ...p, currentModel: safeModel });
         },
         stopSignal.current,
       );
@@ -168,8 +188,7 @@ export function SitewideSeoAudit() {
         description: `${fixed} fixed, ${failed} failed, ${review} need review`,
       });
 
-      // Persist fix run
-      await saveFixRun(report, results, aiModel, fixStartedAt.current!, fixWarnings.current);
+      await saveFixRun(report, results, safeModel, fixStartedAt.current!, fixWarnings.current);
     } catch (err: any) {
       toast({ title: 'Fix All failed', description: err.message, variant: 'destructive' });
       setPhase('report');

@@ -404,7 +404,7 @@ export function SitewideSeoAudit() {
                   report={report}
                   fixResults={fixResults}
                   onRetry={handleRetry}
-                  disabled={phase === 'fixing'}
+                  disabled={false}
                 />
               )}
 

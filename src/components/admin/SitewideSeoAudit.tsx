@@ -424,6 +424,10 @@ export function SitewideSeoAudit() {
             <TabsContent value="history" className="mt-0">
               <AuditHistoryPanel />
             </TabsContent>
+
+            <TabsContent value="resolve" className="mt-0">
+              <UnresolvedSeoResolver />
+            </TabsContent>
           </Tabs>
         </CardContent>
       </Card>

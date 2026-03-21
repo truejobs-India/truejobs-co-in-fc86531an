@@ -128,11 +128,11 @@ export function SitewideSeoAudit() {
         autoFixableIssues,
         aiModel,
         (p) => {
-          setFixProgress({ ...p });
-          // Surface truncation/parseError warnings via toast (once per occurrence)
           if (p.lastWarning) {
             toast({ title: 'AI Response Warning', description: p.lastWarning, variant: 'destructive' });
+            p.lastWarning = undefined; // Clear so it doesn't fire repeatedly
           }
+          setFixProgress({ ...p });
         },
         stopSignal.current,
       );

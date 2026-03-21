@@ -7,8 +7,10 @@ const corsHeaders = {
 
 /**
  * seo-audit-fix: Takes a page's SEO issues and generates fixes using AI.
- * Groups issues by page to minimize AI calls.
- * Returns structured fix suggestions with validation metadata.
+ * Routes to the correct provider:
+ *   - nova-pro / nova-premier → AWS Bedrock (Nova Converse API)
+ *   - mistral → AWS Bedrock (Mistral Converse API)
+ *   - gemini-flash / gemini-pro / gpt5 / gpt5-mini / lovable-gemini → Lovable AI Gateway
  */
 
 interface IssueInput {
@@ -19,14 +21,42 @@ interface IssueInput {
 }
 
 interface FixRequest {
-  source: string;       // blog_posts | pdf_resources | custom_pages
+  source: string;
   recordId: string;
   slug: string;
   title: string;
   isPublished: boolean;
   issues: IssueInput[];
-  contentSnippet?: string; // first 2000 chars of content for context
+  contentSnippet?: string;
   aiModel?: string;
+}
+
+// ── Provider routing ──
+
+type ProviderRoute =
+  | { provider: 'lovable-gateway'; gatewayModel: string }
+  | { provider: 'bedrock-nova'; modelKey: string }
+  | { provider: 'bedrock-mistral' };
+
+function resolveProvider(uiModelKey: string): ProviderRoute {
+  switch (uiModelKey) {
+    case 'nova-pro':
+      return { provider: 'bedrock-nova', modelKey: 'nova-pro' };
+    case 'nova-premier':
+      return { provider: 'bedrock-nova', modelKey: 'nova-premier' };
+    case 'mistral':
+      return { provider: 'bedrock-mistral' };
+    case 'gemini-pro':
+      return { provider: 'lovable-gateway', gatewayModel: 'google/gemini-2.5-pro' };
+    case 'gpt5':
+      return { provider: 'lovable-gateway', gatewayModel: 'openai/gpt-5' };
+    case 'gpt5-mini':
+      return { provider: 'lovable-gateway', gatewayModel: 'openai/gpt-5-mini' };
+    case 'gemini-flash':
+    case 'lovable-gemini':
+    default:
+      return { provider: 'lovable-gateway', gatewayModel: 'google/gemini-2.5-flash' };
+  }
 }
 
 serve(async (req: Request) => {
@@ -44,39 +74,34 @@ serve(async (req: Request) => {
       });
     }
 
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    if (!LOVABLE_API_KEY) {
-      return new Response(JSON.stringify({ error: 'LOVABLE_API_KEY not configured' }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    const rawModel = aiModel || 'gemini-flash';
+    const route = resolveProvider(rawModel);
+    console.log(`[SEO-FIX] Model: "${rawModel}" → provider: ${route.provider}${route.provider === 'lovable-gateway' ? ` (${route.gatewayModel})` : route.provider === 'bedrock-nova' ? ` (${route.modelKey})` : ''}`);
+
+    // Validate provider-specific credentials upfront
+    if (route.provider === 'lovable-gateway') {
+      const key = Deno.env.get('LOVABLE_API_KEY');
+      if (!key) {
+        return new Response(JSON.stringify({ error: 'LOVABLE_API_KEY not configured' }), {
+          status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    } else {
+      // Bedrock models need AWS credentials
+      const ak = Deno.env.get('AWS_ACCESS_KEY_ID');
+      const sk = Deno.env.get('AWS_SECRET_ACCESS_KEY');
+      if (!ak || !sk) {
+        return new Response(JSON.stringify({ error: 'AWS credentials not configured for Bedrock models' }), {
+          status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
     }
 
-    // Map UI model keys to Lovable AI gateway model IDs
-    const MODEL_MAP: Record<string, string> = {
-      'gemini-flash': 'google/gemini-2.5-flash',
-      'gemini-pro': 'google/gemini-2.5-pro',
-      'gpt5': 'openai/gpt-5',
-      'gpt5-mini': 'openai/gpt-5-mini',
-      'lovable-gemini': 'google/gemini-2.5-flash',
-      // External/unsupported models fall back to gateway-compatible default
-      'nova-pro': 'google/gemini-2.5-flash',
-      'nova-premier': 'google/gemini-2.5-pro',
-      'vertex-flash': 'google/gemini-2.5-flash',
-      'vertex-pro': 'google/gemini-2.5-pro',
-      'claude-sonnet': 'google/gemini-2.5-pro',
-      'groq': 'google/gemini-2.5-flash',
-      'mistral': 'google/gemini-2.5-flash',
-    };
-    const rawModel = aiModel || 'gemini-flash';
-    const model = MODEL_MAP[rawModel] || (rawModel.includes('/') ? rawModel : 'google/gemini-2.5-flash');
-    console.log(`[SEO-FIX] Model mapping: "${rawModel}" → "${model}"`);
     const results: any[] = [];
 
-    // Process each page sequentially to avoid overwhelming the API
     for (const page of pages) {
       try {
-        const fix = await generateFixesForPage(page, model, LOVABLE_API_KEY);
+        const fix = await generateFixesForPage(page, route);
         results.push({ recordId: page.recordId, source: page.source, slug: page.slug, ...fix });
       } catch (err) {
         console.error(`[SEO-FIX] Error fixing ${page.slug}:`, err);
@@ -102,14 +127,18 @@ serve(async (req: Request) => {
   }
 });
 
-async function generateFixesForPage(page: FixRequest, model: string, apiKey: string) {
+// ── Build the SEO prompt (shared across all providers) ──
+
+function buildSeoPrompt(page: FixRequest): { system: string; user: string } {
   const issueList = page.issues.map((i, idx) =>
     `${idx + 1}. [${i.category}] ${i.message}${i.currentValue ? ` | Current: "${i.currentValue.substring(0, 100)}"` : ''}${i.fixHint ? ` | Hint: ${i.fixHint}` : ''}`
   ).join('\n');
 
   const urlPrefix = page.source === 'blog_posts' ? 'blog' : page.source === 'pdf_resources' ? 'resources' : 'pages';
 
-  const prompt = `You are an SEO expert for truejobs.co.in. Fix the SEO issues for this page.
+  const system = 'You are a precise SEO fixing engine. Return only valid JSON arrays. No markdown. No explanations outside the JSON.';
+
+  const user = `You are an SEO expert for truejobs.co.in. Fix the SEO issues for this page.
 
 Page: "${page.title}" (/${page.slug})
 Source: ${page.source}
@@ -143,6 +172,23 @@ Rules:
 - Keep explanations ≤15 words
 - Return ONLY the JSON array, no markdown fences`;
 
+  return { system, user };
+}
+
+// ── Call the AI based on resolved provider ──
+
+async function callAI(route: ProviderRoute, system: string, user: string): Promise<string> {
+  if (route.provider === 'lovable-gateway') {
+    return callLovableGateway(route.gatewayModel, system, user);
+  } else if (route.provider === 'bedrock-nova') {
+    return callBedrockNovaForSeo(route.modelKey, system, user);
+  } else {
+    return callBedrockMistralForSeo(system, user);
+  }
+}
+
+async function callLovableGateway(model: string, system: string, user: string): Promise<string> {
+  const apiKey = Deno.env.get('LOVABLE_API_KEY')!;
   const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -152,8 +198,8 @@ Rules:
     body: JSON.stringify({
       model,
       messages: [
-        { role: 'system', content: 'You are a precise SEO fixing engine. Return only valid JSON arrays. No markdown. No explanations outside the JSON.' },
-        { role: 'user', content: prompt },
+        { role: 'system', content: system },
+        { role: 'user', content: user },
       ],
       temperature: 0.3,
       max_tokens: 4096,
@@ -169,7 +215,57 @@ Rules:
   }
 
   const data = await response.json();
-  let raw = data.choices?.[0]?.message?.content || '';
+  return data.choices?.[0]?.message?.content || '';
+}
+
+async function callBedrockNovaForSeo(modelKey: string, system: string, user: string): Promise<string> {
+  const { callBedrockNova } = await import('../_shared/bedrock-nova.ts');
+  // Combine system + user into a single prompt for Nova (system goes via systemPrompt option)
+  return callBedrockNova(modelKey, user, {
+    maxTokens: 4096,
+    temperature: 0.3,
+    timeoutMs: 120_000,
+    systemPrompt: system,
+  });
+}
+
+async function callBedrockMistralForSeo(system: string, user: string): Promise<string> {
+  const { awsSigV4Fetch } = await import('../_shared/bedrock-nova.ts');
+  const modelId = 'mistral.mistral-large-2407-v1:0';
+  const region = 'us-west-2';
+  const host = `bedrock-runtime.${region}.amazonaws.com`;
+
+  const body = JSON.stringify({
+    messages: [
+      { role: 'user', content: [{ text: `${system}\n\n${user}` }] },
+    ],
+    inferenceConfig: { maxTokens: 4096, temperature: 0.3 },
+  });
+
+  const resp = await Promise.race([
+    awsSigV4Fetch(host, `/model/${modelId}/converse`, body, region, 'bedrock'),
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Mistral timeout after 120s')), 120_000),
+    ),
+  ]);
+
+  if (!resp.ok) {
+    const status = resp.status;
+    const errText = await resp.text().catch(() => 'unknown');
+    if (status === 429) throw new Error('Bedrock rate limited — try again later');
+    throw new Error(`Mistral Bedrock error ${status}: ${errText.substring(0, 300)}`);
+  }
+
+  const data = await resp.json();
+  return data?.output?.message?.content?.[0]?.text || '';
+}
+
+// ── Generate fixes with response parsing ──
+
+async function generateFixesForPage(page: FixRequest, route: ProviderRoute) {
+  const { system, user } = buildSeoPrompt(page);
+
+  let raw = await callAI(route, system, user);
 
   // Strip markdown fences
   raw = raw.replace(/```json\s*/gi, '').replace(/```\s*/gi, '').trim();
@@ -206,7 +302,12 @@ Rules:
     }
   }
 
-  console.log(`[SEO-FIX] ${page.slug}: ${fixes.length} fixes, truncated=${truncated}, parseError=${parseError}`);
+  const providerLabel = route.provider === 'lovable-gateway'
+    ? route.gatewayModel
+    : route.provider === 'bedrock-nova'
+      ? route.modelKey
+      : 'mistral';
+  console.log(`[SEO-FIX] ${page.slug}: ${fixes.length} fixes via ${providerLabel}, truncated=${truncated}, parseError=${parseError}`);
 
   return { fixes, truncated, parseError };
 }

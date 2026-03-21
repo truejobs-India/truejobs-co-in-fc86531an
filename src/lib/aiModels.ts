@@ -334,11 +334,8 @@ const LEGACY_MODEL_ALIASES: Record<string, string> = {
   'google/gemini-3.1-pro-preview': 'gemini-pro',
   'vertex-flash': 'gemini-flash',
   'vertex-pro': 'gemini-pro',
-  'nova-pro': 'gemini-flash',
-  'nova-premier': 'gemini-pro',
   'groq': 'gemini-flash',
   'claude-sonnet': 'gemini-pro',
-  'mistral': 'gemini-flash',
 };
 
 /** Normalize saved/legacy model values to a current registry key. */

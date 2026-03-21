@@ -125,12 +125,16 @@ async function callMistral(prompt: string, maxTokens: number): Promise<string> {
       messages: [{ role: 'user', content: [{ text: prompt }] }],
       inferenceConfig: { maxTokens: Math.min(maxTokens, 16384), temperature: 0.5 },
     });
+    console.log(`[callMistral] request: maxTokens=${Math.min(maxTokens, 16384)}`);
     const resp = await awsSigV4Fetch(host, `/model/${modelId}/converse`, body, region, 'bedrock');
     clearTimeout(timeoutId);
     if (!resp.ok) throw new Error(`Mistral Bedrock ${resp.status}: ${await resp.text()}`);
     const data = await resp.json();
     const text = data?.output?.message?.content?.[0]?.text || '';
-    return JSON.stringify({ __raw: text, __finishReason: data?.stopReason || 'end_turn' });
+    const stopReason = data?.stopReason || 'end_turn';
+    const usage = { inputTokens: data?.usage?.inputTokens, outputTokens: data?.usage?.outputTokens };
+    console.log(`[callMistral] response: len=${text.length}, stop=${stopReason}, usage=${JSON.stringify(usage)}`);
+    return JSON.stringify({ __raw: text, __finishReason: stopReason, __usage: usage });
   } catch (err) {
     clearTimeout(timeoutId);
     if (err instanceof DOMException && err.name === 'AbortError') {

@@ -11,8 +11,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Search, Loader2, AlertTriangle, XCircle, CheckCircle2, ChevronDown,
   Sparkles, FileText, Download, Globe, Filter, Zap, Square, RotateCcw,
-  SkipForward, Eye, History, ArrowLeft, Clock, RefreshCw,
+  SkipForward, Eye, History, ArrowLeft, Clock, RefreshCw, Wrench,
 } from 'lucide-react';
+import { UnresolvedSeoResolver } from '@/components/admin/UnresolvedSeoResolver';
 import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSelector';
 import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
 import {

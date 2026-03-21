@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
-import { filterValidInternalLinks } from '@/lib/blogLinkValidator';
+import { filterValidInternalLinks, isValidInternalPagePath } from '@/lib/blogLinkValidator';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';

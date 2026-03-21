@@ -319,6 +319,9 @@ export const SEO_FIX_MODEL_VALUES = [
   'gpt5-mini',
   'gpt5',
   'lovable-gemini',
+  'nova-pro',
+  'nova-premier',
+  'mistral',
 ] as const;
 
 const LEGACY_MODEL_ALIASES: Record<string, string> = {

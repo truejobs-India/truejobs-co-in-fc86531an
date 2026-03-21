@@ -1,113 +1,121 @@
 
 
-# Review-First Bulk Enrichment — Implementation Plan
+# Fix Nova/Mistral Length Control — Logging-First Implementation
 
-## Current Problem
+## What Changes
 
-`BulkEnrichByWordCount.tsx` lines 244-253 auto-save enriched content directly into `blog_posts`. Lines 225-228 auto-fail on word count mismatch (`wcValidation?.status === 'fail'`). Both behaviors must be replaced with a review-first flow.
+### 1. Structured Diagnostic Summary (bedrock-nova.ts)
 
-## Architecture
+**File:** `supabase/functions/_shared/bedrock-nova.ts`
 
-```text
-Scan → Generate → Store proposals (new table) → Show summary → Admin reviews → Save only on Accept
+Update `callBedrockNovaWithMeta` to:
+- Log `maxTokens` sent in request payload
+- Parse and return `data.usage` (inputTokens, outputTokens) from Bedrock response
+- Return a richer object: `{ text, stopReason, usage }` where `usage = { inputTokens, outputTokens }`
+
+### 2. Structured Diagnostic Summary (improve-blog-content/index.ts)
+
+**File:** `supabase/functions/improve-blog-content/index.ts`
+
+Add a structured `[ENRICHMENT_DIAGNOSTIC]` JSON log line emitted just before the final response for `enrich-article` action. This single log line contains all 11 requested data points:
+
+```json
+{
+  "tag": "ENRICHMENT_DIAGNOSTIC",
+  "articleTitle": "...",
+  "modelRequested": "nova-pro",
+  "actualProvider": "aws-bedrock",
+  "actualModelId": "amazon.nova-pro-v1:0",
+  "targetWordCount": 1500,
+  "maxTokensSent": 3000,
+  "finishReason": "end_turn",
+  "usageTokens": { "inputTokens": 1200, "outputTokens": 2800 },
+  "firstPassWordCount": 780,
+  "correctionAttempted": false,
+  "correctionSkipped": true,
+  "correctionSkipReason": "model in CONTINUATION_INELIGIBLE_MODELS",
+  "finalWordCount": 780,
+  "finalValidationStatus": "fail",
+  "finalDeviation": -48
+}
 ```
 
-## Changes
+Changes to the dispatcher (`callAI`):
+- Return `usage` from Nova calls (passed through from `callBedrockNovaWithMeta`)
+- Return `usage` from Mistral calls (parse `data.usage` from Converse API response)
+- For other models, return `usage: null` (no change to their code)
+- Update `callAI` return type to include `usage?: { inputTokens?: number; outputTokens?: number }`
 
-### 1. Database Migration
+Changes to `callMistral`:
+- Parse and include `data.usage` and `data.stopReason` in the returned JSON string (for logging only, no behavior change)
 
-New table `blog_enrichment_proposals`:
+Changes to the `enrich-article` response path (lines 638-718):
+- Capture `firstPassWordCount` before any correction logic
+- Add explicit `correctionSkipReason` logging when correction is not attempted
+- Emit the `[ENRICHMENT_DIAGNOSTIC]` structured log line
+- Include diagnostic summary in the response JSON as `diagnostics` field (so the client can also display/store it)
 
-```sql
-CREATE TABLE public.blog_enrichment_proposals (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  batch_id uuid NOT NULL,
-  article_id uuid NOT NULL,
-  article_title text NOT NULL,
-  article_slug text NOT NULL,
-  original_content text NOT NULL,
-  original_word_count integer NOT NULL DEFAULT 0,
-  proposed_content text,
-  proposed_word_count integer NOT NULL DEFAULT 0,
-  target_word_count integer NOT NULL,
-  word_count_delta integer GENERATED ALWAYS AS (proposed_word_count - target_word_count) STORED,
-  status text NOT NULL DEFAULT 'pending_review',
-  model_used text,
-  error_message text,
-  reviewed_at timestamptz,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
-);
+### 3. Enable Nova Correction (word-count-enforcement.ts)
 
-ALTER TABLE public.blog_enrichment_proposals ENABLE ROW LEVEL SECURITY;
+**File:** `supabase/functions/_shared/word-count-enforcement.ts`
 
-CREATE POLICY "Admins can manage enrichment proposals"
-  ON public.blog_enrichment_proposals FOR ALL TO authenticated
-  USING (public.has_role(auth.uid(), 'admin'::app_role));
+- Remove `'nova-pro'` and `'nova-premier'` from `CONTINUATION_INELIGIBLE_MODELS` (line 198-199)
+- Add them to `CONTINUATION_ELIGIBLE_MODELS` (line 192-194)
 
-CREATE INDEX idx_bep_batch ON public.blog_enrichment_proposals(batch_id);
-CREATE INDEX idx_bep_status ON public.blog_enrichment_proposals(status);
+This is the one proven fix: Nova models are currently blocked from any correction/retry pass.
+
+### 4. Clean Up Nova Dispatcher (improve-blog-content/index.ts)
+
+**File:** `supabase/functions/improve-blog-content/index.ts` lines 300-307
+
+Remove the redundant `computeNovaBudget(Math.ceil(maxTokens / 2), model)` re-computation. Pass `maxTokens` directly to `callBedrockNovaWithMeta`. The value is identical today but the double-computation is confusing and fragile.
+
+Before:
+```typescript
+const { computeMaxTokens: computeNovaBudget } = await import(...);
+const novaBudget = computeNovaBudget(Math.ceil(maxTokens / 2), model);
+const result = await callBedrockNovaWithMeta(model, prompt, { maxTokens: novaBudget, ... });
 ```
 
-Statuses: `pending_review`, `accepted`, `rejected`, `discarded`, `generation_failed`
+After:
+```typescript
+const result = await callBedrockNovaWithMeta(model, prompt, { maxTokens, ... });
+```
 
-### 2. Modify `BulkEnrichByWordCount.tsx`
+### 5. Persistence Proof Logging (BulkEnrichByWordCount.tsx)
 
-- Add new phase: `'generated'` to Phase type
-- Refactor `handleEnrich`:
-  - Generate a `batch_id` (UUID) at start
-  - For each article, call `improve-blog-content` as before
-  - Instead of writing to `blog_posts`, insert into `blog_enrichment_proposals` with `status: 'pending_review'`
-  - If generation fails (API error, empty response), insert with `status: 'generation_failed'` and `error_message`
-  - Word count mismatch no longer causes failure — all successful generations stored as `pending_review`
-  - Remove lines 225-265 (auto-save + auto-fail logic)
-- After generation loop, show summary: succeeded/failed counts + "Review Results" button
-- Store `currentBatchId` in state, pass to review component
+**File:** `src/components/admin/blog/BulkEnrichByWordCount.tsx`
 
-### 3. New Component: `EnrichmentReviewQueue.tsx`
+After each proposal insert (line 267-279), log the insert result to console:
+```typescript
+const { error: insertErr } = await supabase.from('blog_enrichment_proposals').insert({...});
+if (insertErr) console.error('[BulkEnrich] Proposal insert failed:', insertErr);
+else console.log('[BulkEnrich] Proposal stored:', { articleId: post.id, proposedWc, status: 'pending_review' });
+```
 
-A Dialog that opens when admin clicks "Review Results". Shows a table of proposals for the batch:
+Also include `diagnostics` from the edge function response in the proposal row's `generation_config` jsonb field for post-hoc review.
 
-**Table columns:** Title | Original WC | Proposed WC | Target | Delta | Status | Actions
+### 6. Include Diagnostics in Proposal Storage
 
-**Delta color coding:**
-- Red badge: under target by >15%
-- Green badge: within ±15% of target
-- Amber badge: over target by >15%
-- Destructive badge: `generation_failed`
+Store the structured diagnostic from the edge function response into the `generation_config` jsonb column of `blog_enrichment_proposals` so the admin can review exact runtime data per proposal without needing to read logs.
 
-**Per-row actions:** Accept | Reject | Discard | View Detail
+## Files Changed
 
-**Bulk actions:** Accept All Pending | Reject All Pending (with confirmation)
+| File | Change Type |
+|------|------------|
+| `supabase/functions/_shared/bedrock-nova.ts` | Add usage logging + return usage in result |
+| `supabase/functions/_shared/word-count-enforcement.ts` | Move Nova to CONTINUATION_ELIGIBLE (proven fix) |
+| `supabase/functions/improve-blog-content/index.ts` | Structured diagnostic log, Nova dispatcher cleanup, Mistral usage parsing |
+| `src/components/admin/blog/BulkEnrichByWordCount.tsx` | Store diagnostics in proposal, log persistence result |
 
-### 4. New Component: `EnrichmentProposalDetail.tsx`
+## What This Does NOT Change
 
-A Dialog opened from the review queue for a single proposal:
+- No token multiplier changes (pending log evidence)
+- No Mistral system prompt addition (pending log evidence)
+- No Nova Pro ceiling change (correct per AWS docs)
+- No new UI components (diagnostics stored in existing `generation_config` column)
 
-- Shows original content (read-only, left/top) and proposed content (right/bottom)
-- Word count metrics: original → proposed, target, delta
-- "Edit" button toggles proposed content into a textarea for manual editing
-- Action buttons:
-  - **Accept & Save**: writes `proposed_content` (or edited version) to `blog_posts.content`, updates `word_count`, `reading_time`, `updated_at`. Sets proposal `status = 'accepted'`.
-  - **Reject**: sets `status = 'rejected'`. No change to `blog_posts`.
-  - **Discard**: sets `status = 'discarded'`. No change to `blog_posts`.
-  - **Save Edited**: if admin edited, saves the edited version to `blog_posts` and updates proposal.
+## After Deployment
 
-### 5. Safety Rules
-
-- `blog_posts` is ONLY updated when admin clicks Accept/Save
-- `original_content` preserved in proposal row for audit
-- Reject/Discard never touch `blog_posts`
-- Word count mismatch is informational only — shown via colored delta badge
-
-### 6. Files Changed
-
-| File | Change |
-|------|--------|
-| `src/components/admin/blog/BulkEnrichByWordCount.tsx` | Refactor `handleEnrich` to store proposals, add `'generated'` phase, add summary + review button |
-| `src/components/admin/blog/EnrichmentReviewQueue.tsx` | **New** — batch review table with filters and bulk actions |
-| `src/components/admin/blog/EnrichmentProposalDetail.tsx` | **New** — per-proposal detail view with accept/reject/edit/discard |
-| Migration SQL | **New** — `blog_enrichment_proposals` table |
-
-No edge function changes. No other component changes.
+Run enrichment tests for Nova Pro, Nova Premier, and Mistral at 1500 words. Read the `[ENRICHMENT_DIAGNOSTIC]` logs and proposal `generation_config` to produce the evidence report with the 11 data points per model.
 

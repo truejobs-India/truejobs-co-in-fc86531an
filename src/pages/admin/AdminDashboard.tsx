@@ -60,6 +60,7 @@ import { CustomPagesManager } from '@/components/admin/CustomPagesManager';
 import { PdfResourcesManager } from '@/components/admin/PdfResourcesManager';
 import { ChatbotSettingsManager } from '@/components/admin/ChatbotSettingsManager';
 import { ChatbotAnalytics } from '@/components/admin/ChatbotAnalytics';
+import { SitewideSeoAudit } from '@/components/admin/SitewideSeoAudit';
 import { useNavigate } from 'react-router-dom';
 
 type DrilldownView = 

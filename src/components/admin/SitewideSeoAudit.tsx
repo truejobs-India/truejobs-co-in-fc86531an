@@ -516,13 +516,140 @@ function AuditHistoryPanel() {
     );
   }
 
+  const downloadHistoryTxt = () => {
+    const lines: string[] = [];
+    lines.push('═══════════════════════════════════════════════════════════════');
+    lines.push('  SITE-WIDE SEO AUDIT & FIX — COMPLETE HISTORY REPORT');
+    lines.push(`  Generated: ${new Date().toLocaleString()}`);
+    lines.push(`  Total Runs: ${runs.length}`);
+    lines.push('═══════════════════════════════════════════════════════════════');
+    lines.push('');
+
+    // Group runs by date
+    const byDate: Record<string, AuditRunRecord[]> = {};
+    for (const run of runs) {
+      const dateKey = new Date(run.started_at).toLocaleDateString('en-IN', {
+        year: 'numeric', month: 'long', day: 'numeric', weekday: 'long',
+      });
+      if (!byDate[dateKey]) byDate[dateKey] = [];
+      byDate[dateKey].push(run);
+    }
+
+    for (const [date, dateRuns] of Object.entries(byDate)) {
+      lines.push(`━━━ ${date} (${dateRuns.length} run${dateRuns.length > 1 ? 's' : ''}) ━━━`);
+      lines.push('');
+
+      for (const run of dateRuns) {
+        const startTime = new Date(run.started_at).toLocaleTimeString();
+        const endTime = run.completed_at ? new Date(run.completed_at).toLocaleTimeString() : 'N/A';
+        const durationSec = run.completed_at
+          ? Math.round((new Date(run.completed_at).getTime() - new Date(run.started_at).getTime()) / 1000)
+          : null;
+
+        lines.push(`  ┌─ ${run.run_type === 'fix' ? '⚡ FIX ALL RUN' : '🔍 SEO AUDIT SCAN'}`);
+        lines.push(`  │  ID: ${run.id}`);
+        lines.push(`  │  Started: ${startTime}  |  Ended: ${endTime}${durationSec ? `  |  Duration: ${durationSec}s` : ''}`);
+        if (run.ai_model) lines.push(`  │  AI Model: ${run.ai_model}`);
+
+        // Scanned summary
+        const scanned = run.total_scanned as Record<string, number>;
+        if (scanned && Object.keys(scanned).length > 0) {
+          const parts = Object.entries(scanned).map(([k, v]) => `${k}: ${v}`);
+          lines.push(`  │  Scanned: ${parts.join(', ')}`);
+        }
+
+        lines.push(`  │  Total Issues Found: ${run.total_issues}`);
+
+        if (run.run_type === 'fix') {
+          lines.push(`  │  ✅ Fixed: ${run.total_fixed}`);
+          lines.push(`  │  ⏭️  Skipped: ${run.total_skipped}`);
+          lines.push(`  │  ❌ Failed: ${run.total_failed}`);
+          lines.push(`  │  👁️  Review Required: ${run.total_review_required}`);
+        }
+
+        // Issue summary breakdown
+        const summary = run.issue_summary as Record<string, any>;
+        if (summary) {
+          if (summary.bySeverity && Object.keys(summary.bySeverity).length > 0) {
+            lines.push(`  │  By Severity: ${Object.entries(summary.bySeverity).map(([k, v]) => `${k}=${v}`).join(', ')}`);
+          }
+          if (summary.byCategory && Object.keys(summary.byCategory).length > 0) {
+            lines.push(`  │  By Category: ${Object.entries(summary.byCategory).map(([k, v]) => `${k}=${v}`).join(', ')}`);
+          }
+          if (summary.bySource && Object.keys(summary.bySource).length > 0) {
+            lines.push(`  │  By Source: ${Object.entries(summary.bySource).map(([k, v]) => `${k}=${v}`).join(', ')}`);
+          }
+          if (summary.autoFixable != null) lines.push(`  │  Auto-Fixable: ${summary.autoFixable}  |  Review Required: ${summary.reviewRequired ?? 0}`);
+        }
+
+        // Warnings
+        if (run.warnings && run.warnings.length > 0) {
+          lines.push(`  │  ⚠️  Warnings (${run.warnings.length}):`);
+          for (const w of run.warnings) {
+            lines.push(`  │    - ${w}`);
+          }
+        }
+
+        // Detailed fix results
+        const fixes = (run.fix_details || []) as any[];
+        if (fixes.length > 0) {
+          lines.push(`  │`);
+          lines.push(`  │  ── Fix Details (${fixes.length} entries) ──`);
+
+          const grouped: Record<string, any[]> = { fixed: [], failed: [], review_required: [], skipped: [] };
+          for (const f of fixes) {
+            const status = f.status || 'unknown';
+            if (!grouped[status]) grouped[status] = [];
+            grouped[status].push(f);
+          }
+
+          for (const [status, items] of Object.entries(grouped)) {
+            if (items.length === 0) continue;
+            const icon = status === 'fixed' ? '✅' : status === 'failed' ? '❌' : status === 'review_required' ? '👁️' : '⏭️';
+            lines.push(`  │`);
+            lines.push(`  │  ${icon} ${status.toUpperCase()} (${items.length}):`);
+            for (const item of items) {
+              const slug = item.slug || 'unknown';
+              const source = item.source || '';
+              const category = item.category || '';
+              const field = item.field ? ` [${item.field}]` : '';
+              const reason = item.reason ? ` — ${item.reason}` : '';
+              const after = item.afterValue ? ` → "${item.afterValue}"` : '';
+              lines.push(`  │    • ${slug} (${source}/${category})${field}${reason}${after}`);
+            }
+          }
+        }
+
+        lines.push(`  └──────────────────────────────────────────`);
+        lines.push('');
+      }
+    }
+
+    lines.push('═══════════════════════════════════════════════════════════════');
+    lines.push('  END OF REPORT');
+    lines.push('═══════════════════════════════════════════════════════════════');
+
+    const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `SEO_Audit_History_${new Date().toISOString().slice(0, 10)}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between mb-3">
         <p className="text-xs text-muted-foreground">{runs.length} past runs</p>
-        <Button size="sm" variant="ghost" onClick={loadHistory} className="h-7 text-xs">
-          <RotateCcw className="h-3 w-3 mr-1" /> Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={downloadHistoryTxt} className="h-7 text-xs">
+            <Download className="h-3 w-3 mr-1" /> Download .txt
+          </Button>
+          <Button size="sm" variant="ghost" onClick={loadHistory} className="h-7 text-xs">
+            <RotateCcw className="h-3 w-3 mr-1" /> Refresh
+          </Button>
+        </div>
       </div>
       <ScrollArea className="max-h-[500px]">
         <div className="space-y-2">

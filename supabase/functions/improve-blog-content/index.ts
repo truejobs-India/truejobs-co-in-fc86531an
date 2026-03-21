@@ -112,7 +112,7 @@ async function awsSigV4Fetch(host: string, rawPath: string, body: string, region
 // Now handled inline in callAI dispatcher via callVertexGemini
 
 // ── Mistral Large (AWS Bedrock — us-west-2) ──
-async function callMistral(prompt: string, maxTokens: number): Promise<string> {
+async function callMistral(prompt: string, maxTokens: number, systemPrompt?: string): Promise<string> {
   const modelId = 'mistral.mistral-large-2407-v1:0';
   const region = 'us-west-2';
   const host = `bedrock-runtime.${region}.amazonaws.com`;
@@ -121,11 +121,16 @@ async function callMistral(prompt: string, maxTokens: number): Promise<string> {
   const timeoutId = setTimeout(() => controller.abort(), 120_000);
 
   try {
-    const body = JSON.stringify({
+    const payload: any = {
       messages: [{ role: 'user', content: [{ text: prompt }] }],
-      inferenceConfig: { maxTokens: Math.min(maxTokens, 16384), temperature: 0.5 },
-    });
-    console.log(`[callMistral] request: maxTokens=${Math.min(maxTokens, 16384)}`);
+      inferenceConfig: { maxTokens: Math.min(maxTokens, 8192), temperature: 0.5 },
+    };
+    // Add system message for Mistral — Converse API supports top-level system field
+    if (systemPrompt) {
+      payload.system = [{ text: systemPrompt }];
+    }
+    const body = JSON.stringify(payload);
+    console.log(`[callMistral] request: maxTokens=${Math.min(maxTokens, 8192)}, hasSystem=${!!systemPrompt}`);
     const resp = await awsSigV4Fetch(host, `/model/${modelId}/converse`, body, region, 'bedrock');
     clearTimeout(timeoutId);
     if (!resp.ok) throw new Error(`Mistral Bedrock ${resp.status}: ${await resp.text()}`);

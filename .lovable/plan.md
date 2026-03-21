@@ -1,134 +1,140 @@
 
 
-# Phase 2 Plan: Internal Links Auto-Apply
+# Phase 1: Backend Reliability Fixes
 
-## Root Cause
+## Files to Change
 
-The AI prompt instructs Gemini to use `replace_section` for internal-link fixes. The `handleFixAll` loop has no auto-apply handler for `replace_section` — it falls through to `reviewRequired`. This means every internal-link fix requires manual review, even though the actual fix is just adding a few links.
+1. `supabase/functions/generate-blog-faq/index.ts`
+2. `supabase/functions/analyze-blog-compliance-fixes/index.ts`
 
-## Strategy
+No frontend changes in this phase.
 
-Convert internal-link fixes from destructive `replace_section` to safe additive `append_content`, then allow the fixAll loop to auto-apply them with strict validation and sanitization.
+---
 
-## Changes
+## Change 1: Fix `generate-blog-faq` syntax error
 
-### File 1: `supabase/functions/analyze-blog-compliance-fixes/index.ts`
+**File**: `generate-blog-faq/index.ts`, line 164
 
-**A. Prompt update (lines 163-164)**
+**Problem**: `function callAI` uses `await` inside (line 168) but is not declared `async`. This crashes on deploy.
 
-Add explicit instruction:
-```
-- For internal link fixes: use fixType "internal_links" with applyMode "append_content". Return suggestedValue as a small HTML block with heading "Related Resources" containing 3-5 internal link items as an unordered list. Do NOT use replace_section for internal links.
-```
+**Fix**: Change `function callAI` → `async function callAI`
 
-**B. Server-side safety net in `normalizeFix` (after line 87)**
+---
 
-If `fixType === 'internal_links'` and `applyMode` is `replace_section` or `review_replacement`, force it to `append_content`. This ensures even if the AI ignores the prompt instruction, internal links never use destructive modes.
+## Change 2: `analyze-blog-compliance-fixes` — increase token budget
 
-### File 2: `src/components/admin/blog/BlogAITools.tsx`
+**File**: line 184
 
-**C. Add import for `isValidInternalPagePath` (line 4)**
+Change `maxOutputTokens: 4000` → `maxOutputTokens: 8192`
 
-Update existing import from `blogLinkValidator` to also import `isValidInternalPagePath`.
+---
 
-**D. Add HTML sanitizer helper (~line 165)**
+## Change 3: Compact and improve the prompt
 
-Small function `sanitizeLinkBlockHtml(html: string): string` that:
-- Parses with regex (no DOM needed for this tiny subset)
-- Allows only: `<h3>`, `<p>`, `<ul>`, `<li>`, `<a href="...">` 
-- Strips all attributes except `href` on `<a>` tags
-- Removes `<script>`, `<style>`, event handlers, `<iframe>`, `<img>`, etc.
-- Returns cleaned HTML or empty string if nothing valid remains
+**File**: lines 138-180 — rewrite the prompt to be shorter and add new instructions.
 
-**E. Add link extraction + dedup helpers (~line 175)**
+Key prompt changes:
+- Shorten the fix-object field descriptions into a compact list instead of verbose bullets
+- Change meta_description target from "140-155" to "130-155 characters strictly, never above 155"
+- Add canonical_url instruction: "value must be exactly `https://truejobs.co.in/blog/{slug}`"
+- Add FAQ schema eligibility instruction: "For FAQ fixes, include `faqSchemaEligible` (boolean). If true, include `faqSchema` as a JSON array of `{question, answer}` objects. If not eligible, set false and explain why in `explanation`."
+- Tell AI to keep `explanation` ≤ 15 words to reduce output size
+- Keep all existing internal_links, intro, conclusion instructions (already good)
 
-```typescript
-function extractHrefsFromHtml(html: string): string[] {
-  // Returns all href values from <a> tags
-}
+---
 
-function linkAlreadyInContent(content: string, href: string): boolean {
-  // Checks if article already contains an <a> pointing to this href
-}
+## Change 4: Expand `VALID_FIX_TYPES`
 
-function hasRelatedResourcesBlock(content: string): boolean {
-  // Checks if article already has a "Related Resources" or "Related Articles" heading
-}
-```
+**File**: lines 33-38
 
-**F. Internal links handler in fixAll loop (after line 571, before `reviewRequired.push`)**
+Add `'h1'`, `'heading_structure'`, `'excerpt'` to the set.
 
-Add a new block in the else branch:
-```typescript
-const APPEND_ALLOWLIST = new Set(['conclusion', 'faq', 'content-block', 'internal_links']);
-```
+---
 
-For `internal_links` specifically within the `append_content` path:
-1. Check `hasRelatedResourcesBlock` — skip if already exists
-2. Sanitize the AI HTML with `sanitizeLinkBlockHtml`
-3. Extract all hrefs from sanitized HTML
-4. Filter: keep only hrefs passing `isValidInternalPagePath`
-5. Filter: remove hrefs already in `formData.content` via `linkAlreadyInContent`
-6. Cap at 6 links max
-7. If 0 valid new links remain → skip silently
-8. Rebuild clean HTML block with only valid new links
-9. Append via `editorInstance.commands.insertContent`
-10. Log audit entry
-11. Push to `autoFixed`
+## Change 5: Expand `normalizeFix` to pass through FAQ schema fields
 
-**G. `contentBlockAlreadyExists` guard still applies** — prevents exact duplicate blocks on re-run.
+**File**: lines 60-95
 
-## Sanitization Rules
+Add to return type and extraction:
+- `faqSchemaEligible?: boolean` — pass through if present
+- `faqSchema?: Array<{question: string, answer: string}>` — pass through if valid array
 
-| Allowed | Blocked |
-|---------|---------|
-| `<h3>`, `<p>`, `<ul>`, `<li>`, `<a>` | `<script>`, `<style>`, `<iframe>`, `<img>`, `<div>`, `<span>`, all others |
-| `href` attribute on `<a>` only | `onclick`, `onload`, `class`, `style`, `id`, `data-*`, all other attributes |
-| Relative paths starting with `/` | `javascript:`, `mailto:`, `tel:`, `data:`, full URLs, empty hrefs |
+Also add slug safety: if `field === 'slug'` and `confidence !== 'high'`, downgrade `applyMode` to `'advisory'`.
 
-## Validation Rules
+---
 
-1. Path must pass `isValidInternalPagePath` (existing validator)
-2. No external URLs (blocked by validator)
-3. No duplicate hrefs within the block
-4. No hrefs already present in article content
-5. Max 6 links per block
-6. Block must have at least 1 valid link to insert
+## Change 6: Truncation detection + parse-failure handling
 
-## Internal Links Flow
+**File**: lines 187-200 — replace the current silent parse logic.
+
+New logic after receiving `raw`:
 
 ```text
-Edge function prompt → AI returns:
-  fixType: "internal_links"
-  applyMode: "append_content"    ← forced by prompt + server normalization
-  suggestedValue: "<h3>Related Resources</h3><ul><li>...</li></ul>"
-
-Frontend fixAll loop:
-  1. Match: mode=append_content, fixType=internal_links
-  2. Guard: hasRelatedResourcesBlock → skip if exists
-  3. Sanitize HTML (whitelist tags only)
-  4. Extract hrefs → validate each with isValidInternalPagePath
-  5. Deduplicate against existing article content
-  6. Cap at 6 links
-  7. Rebuild clean HTML with valid links only
-  8. Append to article end
-  9. Audit log + autoFixed
+1. Strip markdown code fences (existing)
+2. Check if raw ends with ']' — if not, log "[COMPLIANCE] Truncation detected"
+3. Attempt bounded recovery:
+   - Find last complete object via lastIndexOf('},')
+   - If found, trim and close array: raw.substring(0, pos+1) + ']'
+   - Log "[COMPLIANCE] Recovery attempted — salvaged N chars"
+   - Set truncated=true, recoveryAttempted=true
+   - If not found, set parseError=true
+4. JSON.parse — if fails, set parseError=true, fixes=[]
+5. Log: "[COMPLIANCE] Result: N fixes, truncated=X, parseError=X"
+6. Return: { fixes, truncated, parseError, recoveryAttempted }
 ```
 
-## Files Modified
+**Before**: Parse failure → silent `[]` → frontend thinks "no issues found"
+**After**: Parse failure → `{ fixes: [], parseError: true }` → frontend can show warning
 
-1. `supabase/functions/analyze-blog-compliance-fixes/index.ts` — prompt + normalization safety net
-2. `src/components/admin/blog/BlogAITools.tsx` — sanitizer, validators, fixAll handler for internal_links
+---
 
-## Regression Checklist
+## Sample response shape after changes
 
-1. `internal_links` with `append_content` → auto-applies clean link block
-2. Duplicate links not added (checked against existing content)
-3. Invalid/external links rejected by `isValidInternalPagePath`
-4. Unsafe HTML sanitized (scripts, styles, event handlers stripped)
-5. Running Fix All twice → `hasRelatedResourcesBlock` + `contentBlockAlreadyExists` prevent duplication
-6. `replace_section` for non-link fixes → still goes to `reviewRequired`
-7. Existing intro/FAQ/conclusion auto-apply (Phase 1) unaffected
-8. Max 6 links enforced
-9. Empty/all-duplicate results → silent skip, no broken HTML inserted
+```json
+{
+  "fixes": [
+    {
+      "issueKey": "missing-meta-desc",
+      "issueLabel": "Meta description missing",
+      "priority": "high",
+      "fixType": "metadata",
+      "field": "meta_description",
+      "suggestedValue": "Check latest government job updates...",
+      "explanation": "Empty meta description hurts SEO",
+      "applyMode": "apply_field",
+      "confidence": "high"
+    },
+    {
+      "issueKey": "missing-faq",
+      "issueLabel": "No FAQ section",
+      "priority": "medium",
+      "fixType": "faq",
+      "field": "",
+      "suggestedValue": "<h2>FAQ</h2><h3>Q1?</h3><p>A1</p>...",
+      "explanation": "FAQ improves rich snippets",
+      "applyMode": "append_content",
+      "confidence": "high",
+      "faqSchemaEligible": true,
+      "faqSchema": [
+        {"question": "Q1?", "answer": "A1"},
+        {"question": "Q2?", "answer": "A2"}
+      ]
+    }
+  ],
+  "truncated": false,
+  "parseError": false,
+  "recoveryAttempted": false
+}
+```
+
+---
+
+## Remaining for Phase 2 (frontend)
+
+- Expanded `shouldAutoOverwriteField` logic in `BlogAITools.tsx`
+- `validateFieldValue` pre-save checks
+- Strict canonical URL validator (`isValidCanonicalUrl`)
+- FAQ schema DB write on auto-apply
+- Truncation/parseError toast feedback in UI
+- `h1` and `heading_structure` in frontend allowlists
 

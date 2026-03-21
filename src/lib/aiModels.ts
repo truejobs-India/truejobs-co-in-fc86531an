@@ -263,6 +263,34 @@ export const AI_MODELS: readonly AiModelDef[] = [
     longFormReliability: 'poor',
     supportsContinuationPass: false,
   },
+
+  // ── Sarvam AI models (Indian languages specialist) ──
+  {
+    value: 'sarvam-30b',
+    label: 'Sarvam 30B',
+    desc: 'Indian languages · 30B MoE · ~25s/page',
+    speed: 25,
+    source: 'external-api',
+    provider: 'Sarvam AI',
+    capabilities: ['text'],
+    recommendedMaxWords: 1500,
+    warnAboveWords: 1200,
+    longFormReliability: 'good',
+    supportsContinuationPass: false,
+  },
+  {
+    value: 'sarvam-105b',
+    label: 'Sarvam 105B',
+    desc: 'Indian languages · Flagship · ~45s/page',
+    speed: 45,
+    source: 'external-api',
+    provider: 'Sarvam AI',
+    capabilities: ['text', 'text-premium'],
+    recommendedMaxWords: 2000,
+    warnAboveWords: 1500,
+    longFormReliability: 'good',
+    supportsContinuationPass: false,
+  },
 ] as const;
 
 // ═══════════════════════════════════════════════════════════════

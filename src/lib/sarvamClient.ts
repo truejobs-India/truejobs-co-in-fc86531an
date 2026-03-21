@@ -194,10 +194,10 @@ export const SARVAM_LANGUAGES = [
 ] as const;
 
 export const SARVAM_TTS_SPEAKERS = [
-  'Shubh', 'Aditya', 'Ritu', 'Priya', 'Neha', 'Rahul', 'Pooja', 'Rohan',
-  'Simran', 'Kavya', 'Amit', 'Dev', 'Ishita', 'Shreya', 'Ratan', 'Varun',
-  'Manan', 'Sumit', 'Roopa', 'Kabir', 'Aayan', 'Ashutosh', 'Advait',
-  'Amelia', 'Sophia', 'Anand', 'Tanya', 'Tarun', 'Sunny', 'Mani',
-  'Gokul', 'Vijay', 'Shruti', 'Suhani', 'Mohit', 'Kavitha', 'Rehan',
-  'Soham', 'Rupali',
+  'shubh', 'aditya', 'ritu', 'priya', 'neha', 'rahul', 'pooja', 'rohan',
+  'simran', 'kavya', 'amit', 'dev', 'ishita', 'shreya', 'ratan', 'varun',
+  'manan', 'sumit', 'roopa', 'kabir', 'aayan', 'ashutosh', 'advait',
+  'amelia', 'sophia', 'anand', 'tanya', 'tarun', 'sunny', 'mani',
+  'gokul', 'vijay', 'shruti', 'suhani', 'mohit', 'kavitha', 'rehan',
+  'soham', 'rupali',
 ] as const;

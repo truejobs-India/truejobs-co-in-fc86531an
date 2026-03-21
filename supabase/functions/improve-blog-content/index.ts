@@ -687,52 +687,68 @@ No markdown code blocks.`;
         correctionSkipReason = 'result too short (<100 chars)';
       }
 
+      let t0_correction = 0;
+      let t1_correction = 0;
+
       if (wcValidation.status === 'fail' && !skipCorrection && resultHtml.length > 100) {
-        correctionAttempted = true;
-        const direction = wordCountComputed < validationTarget ? 'expand' : 'trim';
-        const correctionPrompt = buildCorr(resultHtml, validationTarget, wordCountComputed, direction);
-        console.log(`[improve-blog-content] Word count ${wcValidation.status}: ${wordCountComputed}/${validationTarget} (${wcValidation.deviation}%). Attempting ${direction} correction.`);
+        // For Mistral: if first pass stopped with end_turn (not token exhaustion) and produced <50% of target,
+        // skip correction — the model is ignoring length instructions and a second call won't help.
+        const mistralObedienceIssue = effectiveModel === 'mistral' && finishReason === 'end_turn' && wordCountComputed < validationTarget * 0.6;
+        if (mistralObedienceIssue) {
+          correctionSkipped = true;
+          correctionSkipReason = `mistral end_turn at ${wordCountComputed}/${validationTarget} (<60% target) — model obedience issue, correction unlikely to help`;
+          console.log(`[improve-blog-content] Skipping correction: ${correctionSkipReason}`);
+        } else {
+          correctionAttempted = true;
+          t0_correction = Date.now();
+          const direction = wordCountComputed < validationTarget ? 'expand' : 'trim';
+          const correctionPrompt = buildCorr(resultHtml, validationTarget, wordCountComputed, direction);
+          console.log(`[improve-blog-content] Word count ${wcValidation.status}: ${wordCountComputed}/${validationTarget} (${wcValidation.deviation}%). Attempting ${direction} correction.`);
 
-        try {
-          const { computeMaxTokens: computeMT3 } = await import('../_shared/word-count-enforcement.ts');
-          const corrMaxTokens = computeMT3(validationTarget, effectiveModel);
-          const { raw: corrRaw } = await callAI(effectiveModel, correctionPrompt, corrMaxTokens);
-          let corrCleaned = corrRaw.trim();
-          if (corrCleaned.startsWith('```')) corrCleaned = corrCleaned.replace(/^```(?:json|html)?\s*\n/, '');
-          if (corrCleaned.endsWith('```')) corrCleaned = corrCleaned.replace(/\n?```\s*$/, '');
-          corrCleaned = corrCleaned.trim();
-
-          let corrHtml = '';
           try {
-            const parsedCorr = JSON.parse(corrCleaned);
-            corrHtml = typeof parsedCorr?.result === 'string' ? parsedCorr.result : corrCleaned;
-          } catch {
-            const recoveredCorr = extractResultFromPseudoJson(corrCleaned.replace(/^json\s*/i, '').trim());
-            corrHtml = recoveredCorr || corrCleaned;
+            const { computeMaxTokens: computeMT3 } = await import('../_shared/word-count-enforcement.ts');
+            const corrMaxTokens = computeMT3(validationTarget, effectiveModel);
+            const { raw: corrRaw } = await callAI(effectiveModel, correctionPrompt, corrMaxTokens);
+            t1_correction = Date.now();
+            let corrCleaned = corrRaw.trim();
+            if (corrCleaned.startsWith('```')) corrCleaned = corrCleaned.replace(/^```(?:json|html)?\s*\n/, '');
+            if (corrCleaned.endsWith('```')) corrCleaned = corrCleaned.replace(/\n?```\s*$/, '');
+            corrCleaned = corrCleaned.trim();
+
+            let corrHtml = '';
+            try {
+              const parsedCorr = JSON.parse(corrCleaned);
+              corrHtml = typeof parsedCorr?.result === 'string' ? parsedCorr.result : corrCleaned;
+            } catch {
+              const recoveredCorr = extractResultFromPseudoJson(corrCleaned.replace(/^json\s*/i, '').trim());
+              corrHtml = recoveredCorr || corrCleaned;
+            }
+
+            if (corrHtml.startsWith('```')) corrHtml = corrHtml.replace(/^```(?:json|html)?\s*\n/, '');
+            if (corrHtml.endsWith('```')) corrHtml = corrHtml.replace(/\n?```\s*$/, '');
+            corrHtml = corrHtml.trim();
+
+            const corrWordCount = countWordsFromHtml(corrHtml);
+            const corrValidation = validateWordCount(corrHtml, validationTarget, corrMaxTokens);
+
+            const origDist = Math.abs(wordCountComputed - validationTarget);
+            const corrDist = Math.abs(corrWordCount - validationTarget);
+            if (corrDist < origDist && corrHtml.length > 100) {
+              finalResultHtml = corrHtml;
+              finalWordCount = corrWordCount;
+              finalValidation = corrValidation;
+              console.log(`[improve-blog-content] Correction improved: ${wordCountComputed} → ${corrWordCount} words (correctionMs=${t1_correction - t0_correction})`);
+            } else {
+              console.log(`[improve-blog-content] Correction did not improve: original=${wordCountComputed}, corrected=${corrWordCount}. Keeping original. (correctionMs=${t1_correction - t0_correction})`);
+            }
+          } catch (corrErr: any) {
+            t1_correction = Date.now();
+            console.warn(`[improve-blog-content] Correction retry failed: ${corrErr.message}. Keeping original. (correctionMs=${t1_correction - t0_correction})`);
           }
-
-          if (corrHtml.startsWith('```')) corrHtml = corrHtml.replace(/^```(?:json|html)?\s*\n/, '');
-          if (corrHtml.endsWith('```')) corrHtml = corrHtml.replace(/\n?```\s*$/, '');
-          corrHtml = corrHtml.trim();
-
-          const corrWordCount = countWordsFromHtml(corrHtml);
-          const corrValidation = validateWordCount(corrHtml, validationTarget, corrMaxTokens);
-
-          // Use whichever version is closer to target
-          const origDist = Math.abs(wordCountComputed - validationTarget);
-          const corrDist = Math.abs(corrWordCount - validationTarget);
-          if (corrDist < origDist && corrHtml.length > 100) {
-            finalResultHtml = corrHtml;
-            finalWordCount = corrWordCount;
-            finalValidation = corrValidation;
-            console.log(`[improve-blog-content] Correction improved: ${wordCountComputed} → ${corrWordCount} words`);
-          } else {
-            console.log(`[improve-blog-content] Correction did not improve: original=${wordCountComputed}, corrected=${corrWordCount}. Keeping original.`);
-          }
-        } catch (corrErr: any) {
-          console.warn(`[improve-blog-content] Correction retry failed: ${corrErr.message}. Keeping original.`);
         }
       }
+
+      const t1_total = Date.now();
 
       // ── Structured Diagnostic Summary ──
       const diagnostics = {

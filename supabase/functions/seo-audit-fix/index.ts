@@ -52,7 +52,25 @@ serve(async (req: Request) => {
       });
     }
 
-    const model = aiModel || 'google/gemini-2.5-flash';
+    // Map UI model keys to Lovable AI gateway model IDs
+    const MODEL_MAP: Record<string, string> = {
+      'gemini-flash': 'google/gemini-2.5-flash',
+      'gemini-pro': 'google/gemini-2.5-pro',
+      'gpt5': 'openai/gpt-5',
+      'gpt5-mini': 'openai/gpt-5-mini',
+      'lovable-gemini': 'google/gemini-2.5-flash',
+      // External/unsupported models fall back to gateway-compatible default
+      'nova-pro': 'google/gemini-2.5-flash',
+      'nova-premier': 'google/gemini-2.5-pro',
+      'vertex-flash': 'google/gemini-2.5-flash',
+      'vertex-pro': 'google/gemini-2.5-pro',
+      'claude-sonnet': 'google/gemini-2.5-pro',
+      'groq': 'google/gemini-2.5-flash',
+      'mistral': 'google/gemini-2.5-flash',
+    };
+    const rawModel = aiModel || 'gemini-flash';
+    const model = MODEL_MAP[rawModel] || (rawModel.includes('/') ? rawModel : 'google/gemini-2.5-flash');
+    console.log(`[SEO-FIX] Model mapping: "${rawModel}" → "${model}"`);
     const results: any[] = [];
 
     // Process each page sequentially to avoid overwhelming the API

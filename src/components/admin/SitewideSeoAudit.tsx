@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useCallback } from 'react';
+import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -7,10 +7,11 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Search, Loader2, AlertTriangle, XCircle, CheckCircle2, ChevronDown,
   Sparkles, FileText, Download, Globe, Filter, Zap, Square, RotateCcw,
-  SkipForward, Eye,
+  SkipForward, Eye, History, ArrowLeft, Clock,
 } from 'lucide-react';
 import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSelector';
 import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
@@ -27,6 +28,13 @@ import {
   type FixResult,
   type FixProgress,
 } from '@/lib/seoFixEngine';
+import {
+  saveAuditRun,
+  saveFixRun,
+  fetchAuditHistory,
+  fetchAuditRunById,
+  type AuditRunRecord,
+} from '@/lib/seoAuditHistory';
 
 // ═══════════════════════════════════════════════════════════════
 // Constants
@@ -76,6 +84,7 @@ type WorkflowPhase = 'idle' | 'scanning' | 'report' | 'fixing' | 'done';
 
 export function SitewideSeoAudit() {
   const { toast } = useToast();
+  const [activeTab, setActiveTab] = useState<string>('audit');
   const [report, setReport] = useState<SeoAuditReport | null>(null);
   const [phase, setPhase] = useState<WorkflowPhase>('idle');
   const [progressMsg, setProgressMsg] = useState('');
@@ -85,6 +94,11 @@ export function SitewideSeoAudit() {
   const [fixProgress, setFixProgress] = useState<FixProgress | null>(null);
   const [fixResults, setFixResults] = useState<FixResult[]>([]);
   const stopSignal = useRef({ stopped: false });
+
+  // Persistence refs
+  const scanStartedAt = useRef<Date | null>(null);
+  const fixStartedAt = useRef<Date | null>(null);
+  const fixWarnings = useRef<string[]>([]);
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -98,11 +112,15 @@ export function SitewideSeoAudit() {
     setReport(null);
     setFixResults([]);
     setFixProgress(null);
+    scanStartedAt.current = new Date();
     try {
       const result = await runSitewideSeoAudit(setProgressMsg);
       setReport(result);
       setPhase('report');
       toast({ title: `SEO Audit Complete`, description: `${result.issues.length} issues found across ${Object.values(result.totalScanned).reduce((a, b) => a + b, 0)} pages` });
+
+      // Persist audit run
+      await saveAuditRun(result, scanStartedAt.current);
     } catch (err: any) {
       toast({ title: 'Scan failed', description: err.message, variant: 'destructive' });
       setPhase('idle');
@@ -122,6 +140,8 @@ export function SitewideSeoAudit() {
     setPhase('fixing');
     stopSignal.current = { stopped: false };
     setFixResults([]);
+    fixStartedAt.current = new Date();
+    fixWarnings.current = [];
 
     try {
       const results = await executeFixAll(
@@ -129,8 +149,9 @@ export function SitewideSeoAudit() {
         aiModel,
         (p) => {
           if (p.lastWarning) {
+            fixWarnings.current.push(p.lastWarning);
             toast({ title: 'AI Response Warning', description: p.lastWarning, variant: 'destructive' });
-            p.lastWarning = undefined; // Clear so it doesn't fire repeatedly
+            p.lastWarning = undefined;
           }
           setFixProgress({ ...p });
         },
@@ -146,6 +167,9 @@ export function SitewideSeoAudit() {
         title: stopSignal.current.stopped ? 'Fix All Stopped' : 'Fix All Complete',
         description: `${fixed} fixed, ${failed} failed, ${review} need review`,
       });
+
+      // Persist fix run
+      await saveFixRun(report, results, aiModel, fixStartedAt.current!, fixWarnings.current);
     } catch (err: any) {
       toast({ title: 'Fix All failed', description: err.message, variant: 'destructive' });
       setPhase('report');
@@ -218,80 +242,91 @@ export function SitewideSeoAudit() {
             </div>
           </div>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <Button onClick={handleScan} disabled={phase === 'scanning' || phase === 'fixing'} size="lg">
-              {phase === 'scanning' ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Search className="h-4 w-4 mr-2" />}
-              {phase === 'scanning' ? 'Scanning…' : 'Run Full SEO Audit'}
-            </Button>
+        <CardContent>
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <TabsList className="mb-4">
+              <TabsTrigger value="audit">
+                <Search className="h-3.5 w-3.5 mr-1.5" />
+                Audit & Fix
+              </TabsTrigger>
+              <TabsTrigger value="history">
+                <History className="h-3.5 w-3.5 mr-1.5" />
+                Run History
+              </TabsTrigger>
+            </TabsList>
 
-            <div className="flex items-center gap-2 ml-auto">
-              <span className="text-xs text-muted-foreground">AI Model:</span>
-              <AiModelSelector
-                value={aiModel}
-                onValueChange={setAiModel}
-                capability="text"
-                size="sm"
-                triggerClassName="w-[200px]"
-              />
-            </div>
+            <TabsContent value="audit" className="mt-0 space-y-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <Button onClick={handleScan} disabled={phase === 'scanning' || phase === 'fixing'} size="lg">
+                  {phase === 'scanning' ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Search className="h-4 w-4 mr-2" />}
+                  {phase === 'scanning' ? 'Scanning…' : 'Run Full SEO Audit'}
+                </Button>
 
-            {phase === 'fixing' ? (
-              <Button size="lg" variant="destructive" onClick={handleStop}>
-                <Square className="h-4 w-4 mr-2" /> Stop
-              </Button>
-            ) : (
-              <Button
-                size="lg"
-                disabled={!report || report.summary.autoFixable === 0 || phase === 'scanning'}
-                className="bg-gradient-to-r from-primary to-primary/80"
-                onClick={handleFixAll}
-              >
-                <Zap className="h-4 w-4 mr-2" />
-                Fix All Using AI
-                {report && report.summary.autoFixable > 0 && (
-                  <Badge variant="secondary" className="ml-2 bg-white/20 text-white">{report.summary.autoFixable}</Badge>
+                <div className="flex items-center gap-2 ml-auto">
+                  <span className="text-xs text-muted-foreground">AI Model:</span>
+                  <AiModelSelector
+                    value={aiModel}
+                    onValueChange={setAiModel}
+                    capability="text"
+                    size="sm"
+                    triggerClassName="w-[200px]"
+                  />
+                </div>
+
+                {phase === 'fixing' ? (
+                  <Button size="lg" variant="destructive" onClick={handleStop}>
+                    <Square className="h-4 w-4 mr-2" /> Stop
+                  </Button>
+                ) : (
+                  <Button
+                    size="lg"
+                    disabled={!report || report.summary.autoFixable === 0 || phase === 'scanning'}
+                    className="bg-gradient-to-r from-primary to-primary/80"
+                    onClick={handleFixAll}
+                  >
+                    <Zap className="h-4 w-4 mr-2" />
+                    Fix All Using AI
+                    {report && report.summary.autoFixable > 0 && (
+                      <Badge variant="secondary" className="ml-2 bg-white/20 text-white">{report.summary.autoFixable}</Badge>
+                    )}
+                  </Button>
                 )}
-              </Button>
-            )}
 
-            {phase === 'done' && (
-              <Button size="sm" variant="outline" onClick={handleReset}>
-                <RotateCcw className="h-3 w-3 mr-1" /> Start Fresh
-              </Button>
-            )}
-          </div>
+                {phase === 'done' && (
+                  <Button size="sm" variant="outline" onClick={handleReset}>
+                    <RotateCcw className="h-3 w-3 mr-1" /> Start Fresh
+                  </Button>
+                )}
+              </div>
 
-          {/* Scanning progress */}
-          {phase === 'scanning' && (
-            <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">{progressMsg}</p>
-              <Progress value={undefined} className="h-1.5" />
-            </div>
-          )}
+              {phase === 'scanning' && (
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">{progressMsg}</p>
+                  <Progress value={undefined} className="h-1.5" />
+                </div>
+              )}
 
-          {/* Fix progress */}
-          {phase === 'fixing' && fixProgress && (
-            <FixProgressBar progress={fixProgress} />
-          )}
+              {phase === 'fixing' && fixProgress && <FixProgressBar progress={fixProgress} />}
 
-          {/* Done summary */}
-          {phase === 'done' && fixResults.length > 0 && (
-            <FixSummaryBar results={fixResults} />
-          )}
+              {phase === 'done' && fixResults.length > 0 && <FixSummaryBar results={fixResults} />}
 
-          {/* Info text */}
-          {phase === 'report' && report && (
-            <p className="text-xs text-muted-foreground">
-              {report.summary.autoFixable} auto-fixable issues will be processed using <strong>{aiModel.split('/').pop()}</strong>.
-              {report.summary.reviewRequired > 0 && ` ${report.summary.reviewRequired} issues require manual review and will be skipped.`}
-            </p>
-          )}
+              {phase === 'report' && report && (
+                <p className="text-xs text-muted-foreground">
+                  {report.summary.autoFixable} auto-fixable issues will be processed using <strong>{aiModel.split('/').pop()}</strong>.
+                  {report.summary.reviewRequired > 0 && ` ${report.summary.reviewRequired} issues require manual review and will be skipped.`}
+                </p>
+              )}
+            </TabsContent>
+
+            <TabsContent value="history" className="mt-0">
+              <AuditHistoryPanel />
+            </TabsContent>
+          </Tabs>
         </CardContent>
       </Card>
 
-      {/* Summary cards */}
-      {report && (
+      {/* Summary cards — only on audit tab */}
+      {activeTab === 'audit' && report && (
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
           {(Object.entries(report.totalScanned) as [ContentSource, number][]).map(([src, count]) => {
             const Icon = SOURCE_ICONS[src];
@@ -334,12 +369,12 @@ export function SitewideSeoAudit() {
       )}
 
       {/* Fix results detail */}
-      {phase === 'done' && fixResults.length > 0 && (
+      {activeTab === 'audit' && phase === 'done' && fixResults.length > 0 && (
         <FixResultsPanel results={fixResults} />
       )}
 
       {/* Filters + Issues */}
-      {report && (
+      {activeTab === 'audit' && report && (
         <Card>
           <CardHeader className="pb-3">
             <div className="flex flex-wrap items-center gap-2">
@@ -408,6 +443,278 @@ export function SitewideSeoAudit() {
                 )}
                 {groupedByPage.map(page => (
                   <PageIssueRow key={`${page.source}:${page.slug}`} page={page} fixResults={fixResults} />
+                ))}
+              </div>
+            </ScrollArea>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Audit History Panel
+// ═══════════════════════════════════════════════════════════════
+
+function AuditHistoryPanel() {
+  const [runs, setRuns] = useState<AuditRunRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedRun, setSelectedRun] = useState<AuditRunRecord | null>(null);
+
+  useEffect(() => {
+    loadHistory();
+  }, []);
+
+  const loadHistory = async () => {
+    setLoading(true);
+    const data = await fetchAuditHistory(30);
+    setRuns(data);
+    setLoading(false);
+  };
+
+  if (selectedRun) {
+    return <RunDetailView run={selectedRun} onBack={() => setSelectedRun(null)} />;
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12 text-muted-foreground">
+        <Loader2 className="h-5 w-5 animate-spin mr-2" />
+        Loading history…
+      </div>
+    );
+  }
+
+  if (runs.length === 0) {
+    return (
+      <div className="text-center py-12 text-muted-foreground text-sm">
+        <History className="h-8 w-8 mx-auto mb-2 opacity-40" />
+        <p>No audit or fix runs recorded yet.</p>
+        <p className="text-xs mt-1">Run an SEO audit to start building history.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-xs text-muted-foreground">{runs.length} past runs</p>
+        <Button size="sm" variant="ghost" onClick={loadHistory} className="h-7 text-xs">
+          <RotateCcw className="h-3 w-3 mr-1" /> Refresh
+        </Button>
+      </div>
+      <ScrollArea className="max-h-[500px]">
+        <div className="space-y-2">
+          {runs.map(run => (
+            <Card
+              key={run.id}
+              className="cursor-pointer hover:shadow-sm transition-shadow"
+              onClick={() => setSelectedRun(run)}
+            >
+              <CardContent className="p-3">
+                <div className="flex items-center gap-3">
+                  <div className={`p-1.5 rounded ${run.run_type === 'fix' ? 'bg-primary/10' : 'bg-muted'}`}>
+                    {run.run_type === 'fix' ? (
+                      <Zap className="h-4 w-4 text-primary" />
+                    ) : (
+                      <Search className="h-4 w-4 text-muted-foreground" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium capitalize">{run.run_type === 'fix' ? 'Fix All Run' : 'SEO Audit'}</span>
+                      {run.ai_model && (
+                        <Badge variant="outline" className="text-[9px]">{run.ai_model.split('/').pop()}</Badge>
+                      )}
+                      {run.warnings && run.warnings.length > 0 && (
+                        <Badge variant="outline" className="text-[9px] border-amber-500/40 text-amber-700">
+                          {run.warnings.length} warning{run.warnings.length !== 1 ? 's' : ''}
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1 text-[10px] text-muted-foreground mt-0.5">
+                      <Clock className="h-2.5 w-2.5" />
+                      {new Date(run.started_at).toLocaleString()}
+                      {run.completed_at && (
+                        <span className="ml-1">
+                          ({Math.round((new Date(run.completed_at).getTime() - new Date(run.started_at).getTime()) / 1000)}s)
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs shrink-0">
+                    <span className="text-muted-foreground">{run.total_issues} issues</span>
+                    {run.run_type === 'fix' && (
+                      <>
+                        <Badge variant="outline" className="text-[9px] border-primary/40 text-primary">✓ {run.total_fixed}</Badge>
+                        {run.total_failed > 0 && (
+                          <Badge variant="outline" className="text-[9px] border-destructive/40 text-destructive">✗ {run.total_failed}</Badge>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </ScrollArea>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Run Detail View
+// ═══════════════════════════════════════════════════════════════
+
+function RunDetailView({ run, onBack }: { run: AuditRunRecord; onBack: () => void }) {
+  const scanned = run.total_scanned as Record<string, number>;
+  const summary = run.issue_summary as Record<string, any>;
+  const fixes = (run.fix_details || []) as any[];
+  const duration = run.completed_at
+    ? Math.round((new Date(run.completed_at).getTime() - new Date(run.started_at).getTime()) / 1000)
+    : null;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <Button size="sm" variant="ghost" onClick={onBack} className="h-7">
+          <ArrowLeft className="h-3 w-3 mr-1" /> Back
+        </Button>
+        <div>
+          <h3 className="text-sm font-semibold capitalize">
+            {run.run_type === 'fix' ? 'Fix All Run' : 'SEO Audit'}
+          </h3>
+          <p className="text-[10px] text-muted-foreground">
+            {new Date(run.started_at).toLocaleString()}
+            {duration !== null && ` • ${duration}s`}
+            {run.ai_model && ` • ${run.ai_model.split('/').pop()}`}
+          </p>
+        </div>
+      </div>
+
+      {/* Sources scanned */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-xs font-medium text-muted-foreground">Content Sources Scanned</CardTitle>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <div className="flex flex-wrap gap-3">
+            {Object.entries(scanned).map(([src, count]) => (
+              <div key={src} className="flex items-center gap-1.5 text-xs">
+                {src === 'blog_posts' && <FileText className="h-3 w-3 text-muted-foreground" />}
+                {src === 'pdf_resources' && <Download className="h-3 w-3 text-muted-foreground" />}
+                {src === 'custom_pages' && <Globe className="h-3 w-3 text-muted-foreground" />}
+                <span className="font-medium">{SOURCE_LABELS[src as ContentSource] || src}:</span>
+                <span>{count}</span>
+              </div>
+            ))}
+            <span className="text-xs text-muted-foreground ml-auto">
+              Total issues: {run.total_issues}
+            </span>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Issue counts by category */}
+      {summary?.byCategory && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs font-medium text-muted-foreground">Issues by Category</CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="flex flex-wrap gap-1.5">
+              {Object.entries(summary.byCategory as Record<string, number>)
+                .sort(([, a], [, b]) => b - a)
+                .map(([cat, count]) => (
+                  <Badge key={cat} variant="outline" className="text-[10px]">
+                    {CATEGORY_LABELS[cat as IssueCategory] || cat}: {count}
+                  </Badge>
+                ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Fix result counts */}
+      {run.run_type === 'fix' && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs font-medium text-muted-foreground">Fix Results</CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="grid grid-cols-4 gap-3 text-center">
+              <div>
+                <div className="text-lg font-bold text-primary">{run.total_fixed}</div>
+                <div className="text-[10px] text-muted-foreground">Fixed</div>
+              </div>
+              <div>
+                <div className="text-lg font-bold text-muted-foreground">{run.total_skipped}</div>
+                <div className="text-[10px] text-muted-foreground">Skipped</div>
+              </div>
+              <div>
+                <div className="text-lg font-bold text-destructive">{run.total_failed}</div>
+                <div className="text-[10px] text-muted-foreground">Failed</div>
+              </div>
+              <div>
+                <div className="text-lg font-bold">{run.total_review_required}</div>
+                <div className="text-[10px] text-muted-foreground">Review</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Warnings */}
+      {run.warnings && run.warnings.length > 0 && (
+        <Card className="border-amber-500/30">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs font-medium text-amber-700 flex items-center gap-1">
+              <AlertTriangle className="h-3 w-3" /> Warnings ({run.warnings.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0 space-y-1">
+            {run.warnings.map((w, i) => (
+              <p key={i} className="text-xs text-amber-800">{w}</p>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Fix details */}
+      {fixes.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs font-medium text-muted-foreground">
+              Fix Details ({fixes.length} items — skipped items omitted)
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <ScrollArea className="max-h-[400px]">
+              <div className="space-y-1">
+                {fixes.map((f, idx) => (
+                  <div key={idx} className="flex items-start gap-2 text-xs border rounded px-2.5 py-1.5">
+                    {f.status === 'fixed' && <CheckCircle2 className="h-3.5 w-3.5 text-primary shrink-0 mt-0.5" />}
+                    {f.status === 'failed' && <XCircle className="h-3.5 w-3.5 text-destructive shrink-0 mt-0.5" />}
+                    {f.status === 'review_required' && <Eye className="h-3.5 w-3.5 shrink-0 mt-0.5" style={{ color: 'hsl(var(--muted-foreground))' }} />}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-medium truncate">{f.slug}</span>
+                        <Badge variant="outline" className="text-[8px]">{f.category}</Badge>
+                        {f.field && <span className="text-muted-foreground">→ {f.field}</span>}
+                      </div>
+                      <p className="text-muted-foreground">{f.reason}</p>
+                      {f.afterValue && <p className="text-[10px] text-primary truncate">New: {f.afterValue}</p>}
+                    </div>
+                    <Badge variant="outline" className={`text-[8px] shrink-0 ${
+                      f.status === 'fixed' ? 'border-primary/40 text-primary' :
+                      f.status === 'failed' ? 'border-destructive/40 text-destructive' :
+                      'border-amber-500/40 text-amber-700'
+                    }`}>
+                      {f.status === 'fixed' ? '✓' : f.status === 'failed' ? '✗' : '👁'} {f.status}
+                    </Badge>
+                  </div>
                 ))}
               </div>
             </ScrollArea>
@@ -543,7 +850,7 @@ function FixResultsPanel({ results }: { results: FixResult[] }) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// Per-page issue row (with fix status overlay)
+// Per-page issue row
 // ═══════════════════════════════════════════════════════════════
 
 function PageIssueRow({ page, fixResults }: {
@@ -558,7 +865,6 @@ function PageIssueRow({ page, fixResults }: {
   }, 'low');
   const autoCount = page.issues.filter(i => i.autoFixable).length;
 
-  // Check if any of this page's issues were fixed
   const pageResults = fixResults.filter(r => r.slug === page.slug && r.source === page.source);
   const fixedCount = pageResults.filter(r => r.status === 'fixed').length;
 

@@ -3197,6 +3197,63 @@ export type Database = {
         }
         Relationships: []
       }
+      seo_audit_runs: {
+        Row: {
+          ai_model: string | null
+          completed_at: string | null
+          created_at: string
+          fix_details: Json | null
+          id: string
+          issue_summary: Json | null
+          run_type: string
+          started_at: string
+          started_by: string | null
+          total_failed: number | null
+          total_fixed: number | null
+          total_issues: number | null
+          total_review_required: number | null
+          total_scanned: Json | null
+          total_skipped: number | null
+          warnings: string[] | null
+        }
+        Insert: {
+          ai_model?: string | null
+          completed_at?: string | null
+          created_at?: string
+          fix_details?: Json | null
+          id?: string
+          issue_summary?: Json | null
+          run_type?: string
+          started_at?: string
+          started_by?: string | null
+          total_failed?: number | null
+          total_fixed?: number | null
+          total_issues?: number | null
+          total_review_required?: number | null
+          total_scanned?: Json | null
+          total_skipped?: number | null
+          warnings?: string[] | null
+        }
+        Update: {
+          ai_model?: string | null
+          completed_at?: string | null
+          created_at?: string
+          fix_details?: Json | null
+          id?: string
+          issue_summary?: Json | null
+          run_type?: string
+          started_at?: string
+          started_by?: string | null
+          total_failed?: number | null
+          total_fixed?: number | null
+          total_issues?: number | null
+          total_review_required?: number | null
+          total_scanned?: Json | null
+          total_skipped?: number | null
+          warnings?: string[] | null
+        }
+        Relationships: []
+      }
       seo_page_cache: {
         Row: {
           body_html: string | null

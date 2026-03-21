@@ -35,6 +35,7 @@ export interface FixProgress {
   reviewRequired: number;
   currentSlug: string;
   currentModel: string;
+  lastWarning?: string;
 }
 
 export interface PageFixGroup {

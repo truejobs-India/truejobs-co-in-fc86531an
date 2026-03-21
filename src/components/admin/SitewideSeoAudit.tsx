@@ -11,8 +11,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Search, Loader2, AlertTriangle, XCircle, CheckCircle2, ChevronDown,
   Sparkles, FileText, Download, Globe, Filter, Zap, Square, RotateCcw,
-  SkipForward, Eye, History, ArrowLeft, Clock, RefreshCw,
+  SkipForward, Eye, History, ArrowLeft, Clock, RefreshCw, Wrench,
 } from 'lucide-react';
+import { UnresolvedSeoResolver } from '@/components/admin/UnresolvedSeoResolver';
 import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSelector';
 import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
 import {
@@ -340,6 +341,10 @@ export function SitewideSeoAudit() {
                 <History className="h-3.5 w-3.5 mr-1.5" />
                 Run History
               </TabsTrigger>
+              <TabsTrigger value="resolve">
+                <Wrench className="h-3.5 w-3.5 mr-1.5" />
+                Resolve Unfixed
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="audit" className="mt-0 space-y-3">
@@ -418,6 +423,10 @@ export function SitewideSeoAudit() {
 
             <TabsContent value="history" className="mt-0">
               <AuditHistoryPanel />
+            </TabsContent>
+
+            <TabsContent value="resolve" className="mt-0">
+              <UnresolvedSeoResolver />
             </TabsContent>
           </Tabs>
         </CardContent>

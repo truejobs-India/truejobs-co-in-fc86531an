@@ -81,6 +81,12 @@ function normalizeFix(raw: any): {
   // Whitelist enforcement — unknown values downgrade to advisory
   if (!VALID_FIX_TYPES.has(fixType)) fixType = 'advisory';
   if (!VALID_APPLY_MODES.has(applyMode)) applyMode = 'advisory';
+
+  // Safety net: internal_links must NEVER use destructive modes
+  if (fixType === 'internal_links' && (applyMode === 'replace_section' || applyMode === 'review_replacement')) {
+    applyMode = 'append_content';
+  }
+
   if (fixType === 'metadata' && field && !EDITABLE_FIELDS.has(field)) {
     // Non-editable field → suggestion only
     applyMode = 'advisory';
@@ -161,6 +167,7 @@ IMPORTANT RULES:
 - For intro fixes: use applyMode "insert_before_first_heading"
 - For conclusion fixes: use applyMode "append_content"
 - For trust signal fixes: use applyMode "review_replacement"
+- For internal link fixes: use fixType "internal_links" with applyMode "append_content". Return suggestedValue as a small HTML block with heading "Related Resources" containing 3-5 internal link items as an unordered list with descriptive anchor text. Do NOT use replace_section for internal links. Never rewrite existing content to add links. Example format: <h3>Related Resources</h3><ul><li><a href="/sarkari-naukri/railway">Railway Government Jobs</a> — Latest railway recruitment updates</li></ul>
 - For affiliate link fixes: use applyMode "advisory"
 - For metadata fixes, provide the COMPLETE ready-to-use value
 - For content-block fixes, provide actual HTML to append/prepend

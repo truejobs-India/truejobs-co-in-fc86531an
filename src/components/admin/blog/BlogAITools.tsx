@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
-import { filterValidInternalLinks } from '@/lib/blogLinkValidator';
+import { filterValidInternalLinks, isValidInternalPagePath } from '@/lib/blogLinkValidator';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -196,6 +196,43 @@ function normalizeComplianceFixes(rawFixes: any[]): any[] {
 // ── FAQ detection helper ──
 function hasFaqHeading(content: string): boolean {
   return /<h[2-3][^>]*>.*(?:FAQ|Frequently Asked Questions)/i.test(content);
+}
+
+// ── Internal links helpers ──
+const MAX_AUTO_LINKS = 6;
+
+function extractHrefsFromHtml(html: string): string[] {
+  const hrefs: string[] = [];
+  const re = /<a\s[^>]*href=["']([^"']+)["'][^>]*>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) {
+    hrefs.push(m[1]);
+  }
+  return hrefs;
+}
+
+function linkAlreadyInContent(content: string, href: string): boolean {
+  const escaped = href.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`<a\\s[^>]*href=["']${escaped}["']`, 'i').test(content);
+}
+
+function hasRelatedResourcesBlock(content: string): boolean {
+  return /<h[2-4][^>]*>\s*(?:Related\s+Resources|Related\s+Articles|संबंधित\s+लेख)/i.test(content);
+}
+
+function sanitizeLinkBlockHtml(html: string): string {
+  let clean = html.replace(/<script[\s\S]*?<\/script>/gi, '');
+  clean = clean.replace(/<style[\s\S]*?<\/style>/gi, '');
+  clean = clean.replace(/\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '');
+  clean = clean.replace(/<(h3|p|ul|li)(\s[^>]*)?>/gi, '<$1>');
+  clean = clean.replace(/<a\s[^>]*href=["']([^"']+)["'][^>]*>/gi, '<a href="$1">');
+  clean = clean.replace(/<(?!\/?(?:h3|p|ul|li|a)\b)[^>]+>/gi, '');
+  return clean.trim();
+}
+
+function buildCleanLinkBlock(links: { href: string; text: string }[]): string {
+  const items = links.map(l => `<li><a href="${l.href}">${l.text}</a></li>`).join('');
+  return `<h3>Related Resources</h3><ul>${items}</ul>`;
 }
 
 // ── Status derivation ──
@@ -542,7 +579,10 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
         const mode = normalizeApplyMode(fix.applyMode);
         if (mode === 'apply_field' && fix.field && EDITABLE_FIELDS.has(fix.field) && fix.suggestedValue) {
           const currentVal = (formData as any)[fix.field] || '';
-          if (!currentVal || currentVal.length < 3) {
+          // Phase 1: Allow meta_title overwrite when objectively bad (>60 chars)
+          const shouldOverwrite = !currentVal || currentVal.length < 3
+            || (fix.field === 'meta_title' && currentVal.length > 60);
+          if (shouldOverwrite) {
             onApplyField(fix.field, fix.suggestedValue);
             logBlogAiAudit({ tool_name: 'fixAll', before_value: currentVal, after_value: fix.suggestedValue, apply_mode: mode, target_field: fix.field, slug: formData.slug });
             autoFixed.push({ field: fix.field, value: fix.suggestedValue });
@@ -552,8 +592,9 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
         } else if (mode === 'advisory' || fix.confidence === 'low') {
           unresolved.push(fix);
         } else {
-          // Safe additive content — only if duplicates don't exist
-          if (mode === 'insert_before_first_heading' && fix.fixType === 'intro' && editorInstance) {
+          // Phase 1: Intro allowlist — intro + content-block
+          const INTRO_ALLOWLIST = new Set(['intro', 'content-block']);
+          if (mode === 'insert_before_first_heading' && INTRO_ALLOWLIST.has(fix.fixType) && editorInstance) {
             if (!hasExistingIntro(formData.content) && !contentBlockAlreadyExists(formData.content, fix.suggestedValue)) {
               insertBeforeFirstHeading(editorInstance, fix.suggestedValue);
               logBlogAiAudit({ tool_name: 'fixAll', before_value: '', after_value: fix.suggestedValue.substring(0, 500), apply_mode: mode, slug: formData.slug });
@@ -561,12 +602,65 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
               continue;
             }
           }
-          if (mode === 'append_content' && fix.fixType === 'conclusion' && editorInstance) {
-            if (!hasExistingConclusion(formData.content) && !contentBlockAlreadyExists(formData.content, fix.suggestedValue)) {
+          // Phase 1: Append allowlist — conclusion + faq + content-block
+          const APPEND_ALLOWLIST = new Set(['conclusion', 'faq', 'content-block', 'internal_links']);
+          if (mode === 'append_content' && APPEND_ALLOWLIST.has(fix.fixType) && editorInstance) {
+            // FAQ-specific guard
+            if (fix.fixType === 'faq' && hasFaqHeading(formData.content)) {
+              reviewRequired.push(fix);
+              continue;
+            }
+            // Conclusion guard
+            if (fix.fixType === 'conclusion' && hasExistingConclusion(formData.content)) {
+              reviewRequired.push(fix);
+              continue;
+            }
+            // Phase 2: Internal links — sanitize, validate, deduplicate, then append
+            if (fix.fixType === 'internal_links') {
+              if (hasRelatedResourcesBlock(formData.content)) {
+                // Already has a related resources block — skip silently
+                continue;
+              }
+              const sanitized = sanitizeLinkBlockHtml(fix.suggestedValue);
+              const rawHrefs = extractHrefsFromHtml(sanitized);
+              // Extract anchor texts paired with hrefs
+              const linkPairs: { href: string; text: string }[] = [];
+              const aTagRe = /<a\s+href="([^"]+)">([\s\S]*?)<\/a>/gi;
+              let aMatch: RegExpExecArray | null;
+              while ((aMatch = aTagRe.exec(sanitized)) !== null) {
+                linkPairs.push({ href: aMatch[1], text: aMatch[2].replace(/<[^>]+>/g, '').trim() });
+              }
+              // Validate and deduplicate
+              const seen = new Set<string>();
+              const validLinks: { href: string; text: string }[] = [];
+              for (const lp of linkPairs) {
+                if (!isValidInternalPagePath(lp.href)) continue;
+                if (seen.has(lp.href)) continue;
+                if (linkAlreadyInContent(formData.content, lp.href)) continue;
+                if (!lp.text || lp.text.length < 2) continue;
+                seen.add(lp.href);
+                validLinks.push(lp);
+                if (validLinks.length >= MAX_AUTO_LINKS) break;
+              }
+              if (validLinks.length === 0) {
+                // All links invalid or already exist — skip silently
+                continue;
+              }
+              const cleanBlock = buildCleanLinkBlock(validLinks);
+              if (!contentBlockAlreadyExists(formData.content, cleanBlock)) {
+                editorInstance.commands.focus('end');
+                editorInstance.commands.insertContent(cleanBlock);
+                logBlogAiAudit({ tool_name: 'fixAll', before_value: '', after_value: cleanBlock.substring(0, 500), apply_mode: mode, target_field: 'internal_links', slug: formData.slug });
+                autoFixed.push({ field: 'internal_links', value: `${validLinks.length} internal links added` });
+              }
+              continue;
+            }
+            // Generic append (conclusion, faq, content-block)
+            if (!contentBlockAlreadyExists(formData.content, fix.suggestedValue)) {
               editorInstance.commands.focus('end');
               editorInstance.commands.insertContent(fix.suggestedValue);
               logBlogAiAudit({ tool_name: 'fixAll', before_value: '', after_value: fix.suggestedValue.substring(0, 500), apply_mode: mode, slug: formData.slug });
-              autoFixed.push({ field: 'conclusion', value: 'Conclusion added' });
+              autoFixed.push({ field: fix.fixType || 'content', value: `${fix.fixType || 'Content'} added` });
               continue;
             }
           }

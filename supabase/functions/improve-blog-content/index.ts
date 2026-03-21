@@ -564,10 +564,10 @@ No markdown code blocks.`;
     }
 
     // ── Call AI via unified dispatcher ──
-    const { raw, finishReason, actualProvider, actualModelId } = await callAI(effectiveModel, prompt, maxTokens);
+    const { raw, finishReason, actualProvider, actualModelId, usage: aiUsage } = await callAI(effectiveModel, prompt, maxTokens);
     const wasTruncated = finishReason === 'MAX_TOKENS' || finishReason === 'LENGTH' || finishReason === 'max_tokens' || finishReason === 'length';
 
-    console.log(`[improve-blog-content] AI response received provider=${actualProvider} model=${actualModelId} finishReason=${finishReason} rawLength=${raw.length} wasTruncated=${wasTruncated}`);
+    console.log(`[improve-blog-content] AI response received provider=${actualProvider} model=${actualModelId} finishReason=${finishReason} rawLength=${raw.length} wasTruncated=${wasTruncated} usage=${JSON.stringify(aiUsage || null)}`);
 
     if (action === 'rewrite-section') {
       const cleaned = raw.replace(/```html\n?/g, '').replace(/```\n?/g, '').trim();

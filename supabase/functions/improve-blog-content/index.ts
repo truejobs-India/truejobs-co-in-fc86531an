@@ -568,11 +568,20 @@ No markdown code blocks.`;
       return new Response(JSON.stringify({ error: 'Invalid action. Use "structure", "rewrite-section", "generate-intro", "generate-conclusion", or "enrich-article"' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    // ── Call AI via unified dispatcher ──
-    const { raw, finishReason, actualProvider, actualModelId, usage: aiUsage } = await callAI(effectiveModel, prompt, maxTokens);
+    // ── Call AI via unified dispatcher (with timing) ──
+    const t0_total = Date.now();
+    const t0_firstPass = Date.now();
+
+    // For Mistral enrichment, add a system prompt to reinforce word count compliance
+    const mistralSystemPrompt = (effectiveModel === 'mistral' && action === 'enrich-article')
+      ? `You are a professional content writer. You MUST write approximately ${effectiveTarget} words. Do NOT stop early. Keep generating content until you reach the target word count. Output ONLY HTML content — no JSON, no markdown, no code blocks.`
+      : undefined;
+
+    const { raw, finishReason, actualProvider, actualModelId, usage: aiUsage } = await callAI(effectiveModel, prompt, maxTokens, { systemPrompt: mistralSystemPrompt });
+    const t1_firstPass = Date.now();
     const wasTruncated = finishReason === 'MAX_TOKENS' || finishReason === 'LENGTH' || finishReason === 'max_tokens' || finishReason === 'length';
 
-    console.log(`[improve-blog-content] AI response received provider=${actualProvider} model=${actualModelId} finishReason=${finishReason} rawLength=${raw.length} wasTruncated=${wasTruncated} usage=${JSON.stringify(aiUsage || null)}`);
+    console.log(`[improve-blog-content] AI response received provider=${actualProvider} model=${actualModelId} finishReason=${finishReason} rawLength=${raw.length} wasTruncated=${wasTruncated} usage=${JSON.stringify(aiUsage || null)} firstPassMs=${t1_firstPass - t0_firstPass}`);
 
     if (action === 'rewrite-section') {
       const cleaned = raw.replace(/```html\n?/g, '').replace(/```\n?/g, '').trim();

@@ -442,6 +442,10 @@ function AdminDashboardInner() {
               <TabsContent value="rss-intake">
                 <RssIntakeManager />
               </TabsContent>
+
+              <TabsContent value="seo-audit">
+                <SitewideSeoAudit />
+              </TabsContent>
             </Tabs>
           </>
         ) : currentView.type === 'users' ? (

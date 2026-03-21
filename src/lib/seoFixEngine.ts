@@ -78,8 +78,7 @@ export function validateFixValue(field: string, value: string): { valid: boolean
 
     case 'meta_description':
       if (value.length < 50) return { valid: false, reason: `Meta description too short: ${value.length} chars` };
-      if (value.length > 160) return { valid: false, reason: `Meta description too long: ${value.length} chars` };
-      // Target is 130-155, warn but still valid if 100-160
+      if (value.length > 155) return { valid: false, reason: `Meta description exceeds 155 chars (${value.length})` };
       return { valid: true };
 
     case 'canonical_url':

@@ -127,7 +127,13 @@ export function SitewideSeoAudit() {
       const results = await executeFixAll(
         autoFixableIssues,
         aiModel,
-        (p) => setFixProgress({ ...p }),
+        (p) => {
+          setFixProgress({ ...p });
+          // Surface truncation/parseError warnings via toast (once per occurrence)
+          if (p.lastWarning) {
+            toast({ title: 'AI Response Warning', description: p.lastWarning, variant: 'destructive' });
+          }
+        },
         stopSignal.current,
       );
       setFixResults(results);

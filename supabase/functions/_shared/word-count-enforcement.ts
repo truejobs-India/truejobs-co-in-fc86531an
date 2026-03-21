@@ -93,9 +93,10 @@ export function computeMaxTokens(targetWordCount: number, modelId: string): numb
       return Math.min(Math.ceil(target * 2.5), 8192);
 
     case 'mistral':
-      // Mistral via Bedrock — 4x multiplier needed for non-Latin scripts (Hindi ~6-7 tokens/word)
-      // Evidence: 1500-word Hindi target at 2x (3000 tokens) hit exact max_tokens limit producing only 484 words
-      return Math.min(Math.ceil(target * 4), 16384);
+      // Mistral via Bedrock — Hindi/Devanagari tokenizes at ~6.67 tokens/word
+      // Evidence: 6000 tokens → 900 words at 1500-word target (still exhausted)
+      // Need ~10000 tokens for 1500 Hindi words; use target * 7, capped at 16384
+      return Math.min(Math.ceil(target * 7), 16384);
 
     case 'gemini':
     case 'gemini-flash':

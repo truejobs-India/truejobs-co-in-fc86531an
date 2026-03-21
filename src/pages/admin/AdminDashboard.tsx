@@ -349,6 +349,10 @@ function AdminDashboardInner() {
                   <Rss className="h-4 w-4" />
                   <span className="hidden sm:inline">RSS Intake</span>
                 </TabsTrigger>
+                <TabsTrigger value="seo-audit" className="flex items-center gap-2">
+                  <Search className="h-4 w-4" />
+                  <span className="hidden sm:inline">SEO Audit</span>
+                </TabsTrigger>
               </TabsList>
 
               <TabsContent value="users">

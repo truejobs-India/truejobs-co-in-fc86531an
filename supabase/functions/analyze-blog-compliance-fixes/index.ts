@@ -27,14 +27,13 @@ async function verifyAdmin(req: Request): Promise<{ userId: string } | Response>
   return { userId };
 }
 
-// Vertex AI Gemini via shared helper
-
 // ── Server-side normalization whitelists ──
 const VALID_FIX_TYPES = new Set([
   'metadata', 'content-block', 'rewrite', 'advisory',
   'canonical_url', 'slug', 'meta_description', 'image_alt',
   'faq', 'intro', 'conclusion', 'trust_signal',
   'affiliate_links', 'internal_links', 'content_rewrite',
+  'h1', 'heading_structure', 'excerpt',
 ]);
 
 const VALID_APPLY_MODES = new Set([
@@ -61,6 +60,7 @@ function normalizeFix(raw: any): {
   issueKey: string; issueLabel: string; priority: string; fixType: string;
   field: string; suggestedValue: string; explanation: string; applyMode: string;
   targetSnippet?: string; confidence: string;
+  faqSchemaEligible?: boolean; faqSchema?: Array<{ question: string; answer: string }>;
 } {
   const issueKey = typeof raw.issueKey === 'string' ? raw.issueKey : 'unknown';
   const issueLabel = typeof raw.issueLabel === 'string' ? raw.issueLabel : (typeof raw.issue === 'string' ? raw.issue : 'Unknown issue');
@@ -88,11 +88,51 @@ function normalizeFix(raw: any): {
   }
 
   if (fixType === 'metadata' && field && !EDITABLE_FIELDS.has(field)) {
-    // Non-editable field → suggestion only
     applyMode = 'advisory';
   }
 
-  return { issueKey, issueLabel, priority, fixType, field, suggestedValue, explanation, applyMode, targetSnippet, confidence };
+  // Slug safety: only auto-apply if confidence is high
+  if (field === 'slug' && confidence !== 'high') {
+    applyMode = 'advisory';
+  }
+
+  // FAQ schema fields — pass through if valid
+  let faqSchemaEligible: boolean | undefined;
+  let faqSchema: Array<{ question: string; answer: string }> | undefined;
+
+  if (fixType === 'faq') {
+    faqSchemaEligible = typeof raw.faqSchemaEligible === 'boolean' ? raw.faqSchemaEligible : undefined;
+    if (raw.faqSchemaEligible === true && Array.isArray(raw.faqSchema)) {
+      const validated = raw.faqSchema.filter(
+        (item: any) => typeof item?.question === 'string' && item.question.length > 0
+          && typeof item?.answer === 'string' && item.answer.length > 0
+      );
+      if (validated.length > 0) {
+        faqSchema = validated;
+      }
+    }
+  }
+
+  return { issueKey, issueLabel, priority, fixType, field, suggestedValue, explanation, applyMode, targetSnippet, confidence, faqSchemaEligible, faqSchema };
+}
+
+// ── Truncation recovery ──
+function attemptTruncationRecovery(raw: string): { recovered: string | null; itemCount: number } {
+  // Find the last complete JSON object boundary
+  const lastClose = raw.lastIndexOf('},');
+  if (lastClose === -1) {
+    // Try single-object case: lastIndexOf('}')
+    const lastBrace = raw.lastIndexOf('}');
+    if (lastBrace > 0) {
+      const attempt = raw.substring(0, lastBrace + 1) + ']';
+      return { recovered: attempt, itemCount: 1 };
+    }
+    return { recovered: null, itemCount: 0 };
+  }
+  const attempt = raw.substring(0, lastClose + 1) + ']';
+  // Rough count of complete objects
+  const count = (attempt.match(/\}/g) || []).length;
+  return { recovered: attempt, itemCount: count };
 }
 
 Deno.serve(async (req) => {
@@ -102,8 +142,6 @@ Deno.serve(async (req) => {
     const authResult = await verifyAdmin(req);
     if (authResult instanceof Response) return authResult;
 
-    // No GEMINI_API_KEY needed — uses Vertex AI via shared helper
-
     const { title, content, issues, slug, existingMeta } = await req.json();
     if (!title || !issues || !Array.isArray(issues)) {
       return new Response(JSON.stringify({ error: 'title and issues[] required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
@@ -112,92 +150,118 @@ Deno.serve(async (req) => {
     const plainText = (content || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 2000);
     const issueList = issues.map((i: any) => `- ${i.label}: ${i.detail}${i.recommendation ? ` (${i.recommendation})` : ''}`).join('\n');
 
-    // Build existing metadata context for the AI
+    // Build existing metadata context
     const meta = existingMeta || {};
     const headingsList = Array.isArray(meta.headings)
       ? meta.headings.map((h: any) => `  H${h.level}: ${h.text}`).join('\n')
-      : '(no headings data)';
+      : '(none)';
 
     const metaContext = [
-      `Current meta_title: ${meta.meta_title || '(empty)'}`,
-      `Current meta_description: ${meta.meta_description || '(empty)'}`,
-      `Current excerpt: ${meta.excerpt || '(empty)'}`,
-      `Current featured_image_alt: ${meta.featured_image_alt || '(empty)'}`,
-      `Current author_name: ${meta.author_name || '(empty)'}`,
-      `Current canonical_url: ${meta.canonical_url || '(empty)'}`,
-      `Has cover image: ${meta.hasCoverImage ? 'yes' : 'no'}`,
-      `Has featured image: ${meta.featured_image ? 'yes' : 'no'}`,
-      `Has intro: ${meta.hasIntro ? 'yes' : 'no'}`,
-      `Has conclusion: ${meta.hasConclusion ? 'yes' : 'no'}`,
-      `Word count: ${meta.wordCount ?? 'unknown'}`,
-      `FAQ count: ${meta.faqCount ?? 0}`,
-      `Internal link count: ${meta.internalLinkCount ?? 0}`,
-      `Headings:\n${headingsList}`,
+      `meta_title: ${meta.meta_title || '(empty)'}`,
+      `meta_description: ${meta.meta_description || '(empty)'}`,
+      `excerpt: ${meta.excerpt || '(empty)'}`,
+      `featured_image_alt: ${meta.featured_image_alt || '(empty)'}`,
+      `canonical_url: ${meta.canonical_url || '(empty)'}`,
+      `cover_image: ${meta.hasCoverImage ? 'yes' : 'no'}`,
+      `has_intro: ${meta.hasIntro ? 'yes' : 'no'}`,
+      `has_conclusion: ${meta.hasConclusion ? 'yes' : 'no'}`,
+      `words: ${meta.wordCount ?? '?'}, FAQs: ${meta.faqCount ?? 0}, internal_links: ${meta.internalLinkCount ?? 0}`,
+      `headings:\n${headingsList}`,
     ].join('\n');
 
-    const prompt = `You are an editorial compliance expert for TrueJobs.co.in, an Indian government job portal.
-The following compliance issues were detected in a blog article. For each issue, provide a SPECIFIC, ACTIONABLE fix with concrete values.
+    const prompt = `You are an SEO compliance expert for TrueJobs.co.in (Indian govt job portal).
+For each issue below, return a specific fix object. Keep explanation ≤15 words. Be concise.
 
-Article title: ${title}
-Article slug: ${slug || 'unknown'}
-Article excerpt: ${plainText}
+Article: "${title}" | slug: ${slug || '?'}
+Excerpt (first 2000 chars): ${plainText}
 
-Current article metadata:
+Current metadata:
 ${metaContext}
 
-Issues detected:
+Issues:
 ${issueList}
 
-For each issue, return a structured fix object:
-- issueKey: short machine key (e.g., "missing-meta-title", "weak-trust-signals")
-- issueLabel: human-readable issue name
-- priority: "high", "medium", or "low"
-- fixType: one of "metadata" (for editable fields), "content-block" (for content to append/prepend), "rewrite" (for content replacement), "advisory" (for manual guidance), "canonical_url", "slug", "meta_description", "image_alt", "faq", "intro", "conclusion", "trust_signal", "affiliate_links", "internal_links", "content_rewrite"
-- field: the target field name if fixType is "metadata". Use ONLY these field names: meta_title, meta_description, excerpt, featured_image_alt, author_name, canonical_url, slug. For non-editable fields, use fixType "advisory" instead.
-- suggestedValue: the EXACT value to use (complete meta title text, full meta description, HTML block, etc.)
-- explanation: why this fix is needed (1 sentence)
-- applyMode: one of "apply_field" (for metadata field updates), "append_content" (for content to append at end), "prepend_content" (for content at start), "insert_before_first_heading" (for intro before first H1/H2), "replace_section" (for replacing a section), "review_replacement" (for reviewed replacement), or "advisory" (for manual guidance)
-- targetSnippet: (optional, for rewrite/replace types only) the original text snippet to be replaced
-- confidence: "high", "medium", or "low"
+Each fix object fields:
+issueKey (machine key), issueLabel (human name), priority (high/medium/low), fixType, field, suggestedValue, explanation (≤15 words), applyMode, confidence (high/medium/low), targetSnippet (optional for rewrites).
 
-IMPORTANT RULES:
-- For canonical_url fixes: the value should be https://truejobs.co.in/blog/{cleaned-slug} (no double slashes)
-- For slug fixes: lowercase, hyphens only, no trailing hyphens
-- For meta_description: target 140-155 characters
-- For intro fixes: use applyMode "insert_before_first_heading"
-- For conclusion fixes: use applyMode "append_content"
-- For trust signal fixes: use applyMode "review_replacement"
-- For internal link fixes: use fixType "internal_links" with applyMode "append_content". Return suggestedValue as a small HTML block with heading "Related Resources" containing 3-5 internal link items as an unordered list with descriptive anchor text. Do NOT use replace_section for internal links. Never rewrite existing content to add links. Example format: <h3>Related Resources</h3><ul><li><a href="/sarkari-naukri/railway">Railway Government Jobs</a> — Latest railway recruitment updates</li></ul>
-- For affiliate link fixes: use applyMode "advisory"
-- For metadata fixes, provide the COMPLETE ready-to-use value
-- For content-block fixes, provide actual HTML to append/prepend
-- For rewrite fixes, include both targetSnippet and suggestedValue
-- For advisory fixes, provide clear manual instructions
-- Meta titles must be under 60 characters
-- Maintain informational, non-official tone appropriate for TrueJobs.co.in
+fixType: metadata | content-block | rewrite | advisory | canonical_url | slug | meta_description | image_alt | faq | intro | conclusion | trust_signal | affiliate_links | internal_links | content_rewrite | h1 | heading_structure | excerpt
+applyMode: apply_field | append_content | prepend_content | insert_before_first_heading | replace_section | review_replacement | advisory
+field (for metadata): meta_title | meta_description | excerpt | featured_image_alt | author_name | canonical_url | slug
 
-Return ONLY a JSON array: [{ ... }]
+RULES:
+- meta_description: target 130-155 chars strictly. Never above 155. applyMode=apply_field, field=meta_description
+- meta_title: under 60 chars. applyMode=apply_field, field=meta_title
+- canonical_url: must be exactly https://truejobs.co.in/blog/${slug || '{slug}'}. applyMode=apply_field, field=canonical_url
+- slug: lowercase, hyphens only, no trailing hyphens. applyMode=apply_field, field=slug
+- H1 missing: fixType=intro, applyMode=insert_before_first_heading. Include <h1> tag + intro paragraph.
+- intro missing: fixType=intro, applyMode=insert_before_first_heading
+- conclusion missing: fixType=conclusion, applyMode=append_content
+- FAQ: fixType=faq, applyMode=append_content. Include faqSchemaEligible (boolean). If true, include faqSchema as [{question,answer},...]. If not eligible, explain why. Article eligible if >300 words, informational/how-to, has user questions.
+- internal_links: fixType=internal_links, applyMode=append_content. Return <h3>Related Resources</h3><ul><li><a href="/path">text</a> — desc</li></ul>. Never use replace_section.
+- trust_signal: applyMode=review_replacement
+- affiliate_links: applyMode=advisory
+- Provide COMPLETE ready-to-use values. No placeholders.
+
+Return ONLY a JSON array: [{...}]
 No markdown code blocks.`;
 
     const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-    let raw = await callVertexGemini('gemini-2.5-pro', prompt, 60_000, {
-      maxOutputTokens: 4000,
+    let raw = await callVertexGemini('gemini-2.5-pro', prompt, 120_000, {
+      maxOutputTokens: 8192,
       temperature: 0.3,
     });
+
+    console.log(`[COMPLIANCE] Raw response length: ${raw.length} chars`);
+
+    // Strip markdown fences
     raw = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
 
-    let parsed: any[];
-    try {
-      parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) parsed = [];
-    } catch {
-      parsed = [];
+    let truncated = false;
+    let parseError = false;
+    let recoveryAttempted = false;
+
+    // Truncation detection: valid JSON array must end with ]
+    const trimmed = raw.trimEnd();
+    if (!trimmed.endsWith(']')) {
+      console.log(`[COMPLIANCE] Truncation detected — response does not end with ']'`);
+      truncated = true;
+
+      const recovery = attemptTruncationRecovery(raw);
+      if (recovery.recovered) {
+        console.log(`[COMPLIANCE] Recovery attempted — salvaged ~${recovery.itemCount} objects`);
+        raw = recovery.recovered;
+        recoveryAttempted = true;
+      } else {
+        console.log(`[COMPLIANCE] Recovery failed — no complete objects found`);
+        parseError = true;
+      }
+    }
+
+    let parsed: any[] = [];
+    if (!parseError) {
+      try {
+        parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) {
+          console.log(`[COMPLIANCE] Parse produced non-array type: ${typeof parsed}`);
+          parsed = [];
+          parseError = true;
+        }
+      } catch (e) {
+        console.log(`[COMPLIANCE] JSON.parse failed: ${(e as Error).message}`);
+        parseError = true;
+        parsed = [];
+      }
     }
 
     // Normalize each fix with whitelist enforcement
     const fixes = parsed.map(normalizeFix).filter(f => f.issueLabel !== 'Unknown issue' || f.explanation);
 
-    return new Response(JSON.stringify({ fixes }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    console.log(`[COMPLIANCE] Result: ${fixes.length} fixes, truncated=${truncated}, parseError=${parseError}, recoveryAttempted=${recoveryAttempted}`);
+
+    return new Response(JSON.stringify({ fixes, truncated, parseError, recoveryAttempted }), {
+      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   } catch (err) {
     console.error('analyze-blog-compliance-fixes error:', err);
     return new Response(JSON.stringify({ error: err instanceof Error ? err.message : 'Unknown error' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });

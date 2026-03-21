@@ -537,6 +537,9 @@ async function callAI(model: string, prompt: string, wordLimit = 1500): Promise<
       const { callBedrockNova } = await import('../_shared/bedrock-nova.ts');
       return callBedrockNova(model, prompt, { maxTokens: mt, temperature: 0.5 });
     }
+    case 'sarvam-30b': case 'sarvam-105b': {
+      return callSarvamChat(model, prompt, mt);
+    }
     default:
       throw new Error(`Unsupported AI model: "${model}".`);
   }

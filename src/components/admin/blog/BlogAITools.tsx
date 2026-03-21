@@ -650,106 +650,182 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
           faqCount: existingFaqCount ?? 0, internalLinkCount: currentMetadata?.internalLinks?.length ?? 0,
         },
       });
+      // ── Truncation / parse-failure feedback ──
+      if (data?.truncated) {
+        toast({ title: 'AI response was truncated', description: 'Some fixes may be missing. Consider running Fix All again.', variant: 'destructive' });
+      }
+      if (data?.parseError) {
+        toast({ title: 'AI response parse failed', description: 'Could not parse compliance fixes. Try running again.', variant: 'destructive' });
+      }
+
       const fixes = normalizeComplianceFixes(data?.fixes);
+
+      if (fixes.length === 0 && !data?.truncated && !data?.parseError) {
+        setFixAllResults({ autoFixed: [], reviewRequired: [], unresolved: [{ issueLabel: 'No AI fixes generated', explanation: 'The AI did not return actionable fixes for the detected issues.' }] });
+        setFixAllRunning(false);
+        return;
+      }
+
       const autoFixed: { field: string; value: string }[] = [];
       const reviewRequired: any[] = [];
       const unresolved: any[] = [];
 
       for (const fix of fixes) {
         const mode = normalizeApplyMode(fix.applyMode);
+
+        // ── 1. apply_field: metadata / SEO fields ──
         if (mode === 'apply_field' && fix.field && EDITABLE_FIELDS.has(fix.field) && fix.suggestedValue) {
           const currentVal = (formData as any)[fix.field] || '';
-          // Phase 1: Allow meta_title overwrite when objectively bad (>60 chars)
-          const shouldOverwrite = !currentVal || currentVal.length < 3
-            || (fix.field === 'meta_title' && currentVal.length > 60);
-          if (shouldOverwrite) {
-            onApplyField(fix.field, fix.suggestedValue);
-            logBlogAiAudit({ tool_name: 'fixAll', before_value: currentVal, after_value: fix.suggestedValue, apply_mode: mode, target_field: fix.field, slug: formData.slug });
-            autoFixed.push({ field: fix.field, value: fix.suggestedValue });
+
+          // Phase 2: Smart overwrite — checks if field is objectively bad
+          if (shouldAutoOverwriteField(fix.field, currentVal)) {
+            // Validate AI-suggested value before applying
+            const validation = validateFieldValue(fix.field, fix.suggestedValue);
+            if (validation.valid) {
+              onApplyField(fix.field, fix.suggestedValue);
+              logBlogAiAudit({ tool_name: 'fixAll', before_value: currentVal, after_value: fix.suggestedValue, apply_mode: mode, target_field: fix.field, slug: formData.slug });
+              autoFixed.push({ field: fix.field, value: fix.suggestedValue });
+            } else {
+              // AI value failed validation — send to review with reason
+              reviewRequired.push({ ...fix, explanation: `${fix.explanation || ''} (AI value rejected: ${validation.reason})`.trim() });
+            }
           } else {
             reviewRequired.push(fix);
           }
-        } else if (mode === 'advisory' || fix.confidence === 'low') {
+          continue;
+        }
+
+        // ── 2. advisory / low-confidence → unresolved ──
+        if (mode === 'advisory' || fix.confidence === 'low') {
           unresolved.push(fix);
-        } else {
-          // Phase 1: Intro allowlist — intro + content-block
-          const INTRO_ALLOWLIST = new Set(['intro', 'content-block']);
-          if (mode === 'insert_before_first_heading' && INTRO_ALLOWLIST.has(fix.fixType) && editorInstance) {
-            if (!hasExistingIntro(formData.content) && !contentBlockAlreadyExists(formData.content, fix.suggestedValue)) {
-              insertBeforeFirstHeading(editorInstance, fix.suggestedValue);
-              logBlogAiAudit({ tool_name: 'fixAll', before_value: '', after_value: fix.suggestedValue.substring(0, 500), apply_mode: mode, slug: formData.slug });
-              autoFixed.push({ field: 'intro', value: 'Introduction added' });
-              continue;
-            }
+          continue;
+        }
+
+        // ── 3. replace_section / review_replacement → always review ──
+        if (mode === 'replace_section' || mode === 'review_replacement') {
+          reviewRequired.push(fix);
+          continue;
+        }
+
+        // ── 4. insert_before_first_heading: intro / H1 ──
+        const INTRO_ALLOWLIST = new Set(['intro', 'content-block', 'h1']);
+        if (mode === 'insert_before_first_heading' && INTRO_ALLOWLIST.has(fix.fixType) && editorInstance) {
+          if (!hasExistingIntro(formData.content) && !contentBlockAlreadyExists(formData.content, fix.suggestedValue)) {
+            insertBeforeFirstHeading(editorInstance, fix.suggestedValue);
+            logBlogAiAudit({ tool_name: 'fixAll', before_value: '', after_value: fix.suggestedValue.substring(0, 500), apply_mode: mode, slug: formData.slug });
+            autoFixed.push({ field: fix.fixType || 'intro', value: 'Introduction / H1 added' });
+            continue;
           }
-          // Phase 1: Append allowlist — conclusion + faq + content-block
-          const APPEND_ALLOWLIST = new Set(['conclusion', 'faq', 'content-block', 'internal_links']);
-          if (mode === 'append_content' && APPEND_ALLOWLIST.has(fix.fixType) && editorInstance) {
-            // FAQ-specific guard
-            if (fix.fixType === 'faq' && hasFaqHeading(formData.content)) {
+        }
+
+        // ── 5. append_content: FAQ, conclusion, internal_links, heading_structure ──
+        const APPEND_ALLOWLIST = new Set(['conclusion', 'faq', 'content-block', 'internal_links', 'heading_structure']);
+        if (mode === 'append_content' && APPEND_ALLOWLIST.has(fix.fixType) && editorInstance) {
+          // FAQ-specific guard + schema auto-apply
+          if (fix.fixType === 'faq') {
+            if (hasFaqHeading(formData.content)) {
               reviewRequired.push(fix);
               continue;
             }
-            // Conclusion guard
-            if (fix.fixType === 'conclusion' && hasExistingConclusion(formData.content)) {
-              reviewRequired.push(fix);
-              continue;
-            }
-            // Phase 2: Internal links — sanitize, validate, deduplicate, then append
-            if (fix.fixType === 'internal_links') {
-              if (hasRelatedResourcesBlock(formData.content)) {
-                // Already has a related resources block — skip silently
-                continue;
-              }
-              const sanitized = sanitizeLinkBlockHtml(fix.suggestedValue);
-              const rawHrefs = extractHrefsFromHtml(sanitized);
-              // Extract anchor texts paired with hrefs
-              const linkPairs: { href: string; text: string }[] = [];
-              const aTagRe = /<a\s+href="([^"]+)">([\s\S]*?)<\/a>/gi;
-              let aMatch: RegExpExecArray | null;
-              while ((aMatch = aTagRe.exec(sanitized)) !== null) {
-                linkPairs.push({ href: aMatch[1], text: aMatch[2].replace(/<[^>]+>/g, '').trim() });
-              }
-              // Validate and deduplicate
-              const seen = new Set<string>();
-              const validLinks: { href: string; text: string }[] = [];
-              for (const lp of linkPairs) {
-                if (!isValidInternalPagePath(lp.href)) continue;
-                if (seen.has(lp.href)) continue;
-                if (linkAlreadyInContent(formData.content, lp.href)) continue;
-                if (!lp.text || lp.text.length < 2) continue;
-                seen.add(lp.href);
-                validLinks.push(lp);
-                if (validLinks.length >= MAX_AUTO_LINKS) break;
-              }
-              if (validLinks.length === 0) {
-                // All links invalid or already exist — skip silently
-                continue;
-              }
-              const cleanBlock = buildCleanLinkBlock(validLinks);
-              if (!contentBlockAlreadyExists(formData.content, cleanBlock)) {
-                editorInstance.commands.focus('end');
-                editorInstance.commands.insertContent(cleanBlock);
-                logBlogAiAudit({ tool_name: 'fixAll', before_value: '', after_value: cleanBlock.substring(0, 500), apply_mode: mode, target_field: 'internal_links', slug: formData.slug });
-                autoFixed.push({ field: 'internal_links', value: `${validLinks.length} internal links added` });
-              }
-              continue;
-            }
-            // Generic append (conclusion, faq, content-block)
-            if (!contentBlockAlreadyExists(formData.content, fix.suggestedValue)) {
+            // Append FAQ content
+            if (fix.suggestedValue && !contentBlockAlreadyExists(formData.content, fix.suggestedValue)) {
               editorInstance.commands.focus('end');
               editorInstance.commands.insertContent(fix.suggestedValue);
-              logBlogAiAudit({ tool_name: 'fixAll', before_value: '', after_value: fix.suggestedValue.substring(0, 500), apply_mode: mode, slug: formData.slug });
-              autoFixed.push({ field: fix.fixType || 'content', value: `${fix.fixType || 'Content'} added` });
-              continue;
+              logBlogAiAudit({ tool_name: 'fixAll', before_value: '', after_value: fix.suggestedValue.substring(0, 500), apply_mode: mode, target_field: 'faq_content', slug: formData.slug });
+              autoFixed.push({ field: 'faq', value: 'FAQ section added' });
             }
+            // FAQ schema auto-apply to DB
+            if (fix.faqSchemaEligible === true) {
+              const validSchema = validateFaqSchema(fix.faqSchema);
+              if (validSchema) {
+                try {
+                  const { error: schemaErr } = await supabase
+                    .from('blog_posts')
+                    .update({
+                      faq_schema: validSchema as any,
+                      has_faq_schema: true,
+                      faq_count: validSchema.length,
+                    })
+                    .eq('slug', formData.slug);
+                  if (!schemaErr) {
+                    logBlogAiAudit({ tool_name: 'fixAll', before_value: '', after_value: JSON.stringify(validSchema).substring(0, 500), apply_mode: 'apply_field', target_field: 'faq_schema', slug: formData.slug });
+                    autoFixed.push({ field: 'faq_schema', value: `FAQ schema applied (${validSchema.length} items)` });
+                  } else {
+                    console.warn('[FixAll] FAQ schema DB write failed:', schemaErr.message);
+                    reviewRequired.push({ ...fix, explanation: `FAQ schema DB write failed: ${schemaErr.message}` });
+                  }
+                } catch (dbErr: any) {
+                  console.warn('[FixAll] FAQ schema write error:', dbErr.message);
+                  reviewRequired.push({ ...fix, explanation: `FAQ schema write error: ${dbErr.message}` });
+                }
+              } else {
+                reviewRequired.push({ ...fix, explanation: 'FAQ schema data was invalid or incomplete' });
+              }
+            } else if (fix.faqSchemaEligible === false) {
+              unresolved.push({ ...fix, explanation: fix.explanation || 'Article not eligible for FAQ schema' });
+            }
+            continue;
           }
-          reviewRequired.push(fix);
+
+          // Conclusion guard
+          if (fix.fixType === 'conclusion' && hasExistingConclusion(formData.content)) {
+            reviewRequired.push(fix);
+            continue;
+          }
+
+          // Internal links — sanitize, validate, deduplicate, then append
+          if (fix.fixType === 'internal_links') {
+            if (hasRelatedResourcesBlock(formData.content)) {
+              continue; // Already has related resources
+            }
+            const sanitized = sanitizeLinkBlockHtml(fix.suggestedValue);
+            const linkPairs: { href: string; text: string }[] = [];
+            const aTagRe = /<a\s+href="([^"]+)">([\s\S]*?)<\/a>/gi;
+            let aMatch: RegExpExecArray | null;
+            while ((aMatch = aTagRe.exec(sanitized)) !== null) {
+              linkPairs.push({ href: aMatch[1], text: aMatch[2].replace(/<[^>]+>/g, '').trim() });
+            }
+            const seen = new Set<string>();
+            const validLinks: { href: string; text: string }[] = [];
+            for (const lp of linkPairs) {
+              if (!isValidInternalPagePath(lp.href)) continue;
+              if (seen.has(lp.href)) continue;
+              if (linkAlreadyInContent(formData.content, lp.href)) continue;
+              if (!lp.text || lp.text.length < 2) continue;
+              seen.add(lp.href);
+              validLinks.push(lp);
+              if (validLinks.length >= MAX_AUTO_LINKS) break;
+            }
+            if (validLinks.length === 0) continue;
+            const cleanBlock = buildCleanLinkBlock(validLinks);
+            if (!contentBlockAlreadyExists(formData.content, cleanBlock)) {
+              editorInstance.commands.focus('end');
+              editorInstance.commands.insertContent(cleanBlock);
+              logBlogAiAudit({ tool_name: 'fixAll', before_value: '', after_value: cleanBlock.substring(0, 500), apply_mode: mode, target_field: 'internal_links', slug: formData.slug });
+              autoFixed.push({ field: 'internal_links', value: `${validLinks.length} internal links added` });
+            }
+            continue;
+          }
+
+          // Generic append (conclusion, heading_structure, content-block)
+          if (fix.suggestedValue && !contentBlockAlreadyExists(formData.content, fix.suggestedValue)) {
+            editorInstance.commands.focus('end');
+            editorInstance.commands.insertContent(fix.suggestedValue);
+            logBlogAiAudit({ tool_name: 'fixAll', before_value: '', after_value: fix.suggestedValue.substring(0, 500), apply_mode: mode, slug: formData.slug });
+            autoFixed.push({ field: fix.fixType || 'content', value: `${fix.fixType || 'Content'} added` });
+            continue;
+          }
         }
+
+        // ── Fallback: anything not handled → review ──
+        reviewRequired.push(fix);
       }
+
+      // Mark truncated runs as partial
+      const finalStatus = data?.truncated ? 'partial' : 'success';
       setFixAllResults({ autoFixed, reviewRequired, unresolved });
       setResultsOpen(true);
-      trackBlogToolEvent({ event_name: 'fix_all_completed', tool_name: 'fixAll', status: 'success', item_count: autoFixed.length, slug: formData.slug });
+      trackBlogToolEvent({ event_name: 'fix_all_completed', tool_name: 'fixAll', status: finalStatus, item_count: autoFixed.length, slug: formData.slug });
     } catch (err: any) {
       toast({ title: 'Fix All failed', description: err.message, variant: 'destructive' });
       trackBlogToolEvent({ event_name: 'fix_all_completed', tool_name: 'fixAll', status: 'error', error_message: err.message, slug: formData.slug });

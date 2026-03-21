@@ -279,7 +279,7 @@ async function callAI(aiModel: string, prompt: string, maxTokens: number, option
       actualProvider = 'vertex-ai'; actualModelId = 'gemini-2.5-pro'; break;
     }
     case 'mistral':
-      resultJson = await callMistral(prompt, maxTokens);
+      resultJson = await callMistral(prompt, maxTokens, options?.systemPrompt);
       actualProvider = 'aws-bedrock'; actualModelId = 'mistral.mistral-large-2407-v1:0';
       try { usage = JSON.parse(resultJson).__usage; } catch { /* ignore */ }
       break;

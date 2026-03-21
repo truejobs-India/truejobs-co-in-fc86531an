@@ -198,6 +198,43 @@ function hasFaqHeading(content: string): boolean {
   return /<h[2-3][^>]*>.*(?:FAQ|Frequently Asked Questions)/i.test(content);
 }
 
+// ── Internal links helpers ──
+const MAX_AUTO_LINKS = 6;
+
+function extractHrefsFromHtml(html: string): string[] {
+  const hrefs: string[] = [];
+  const re = /<a\s[^>]*href=["']([^"']+)["'][^>]*>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) {
+    hrefs.push(m[1]);
+  }
+  return hrefs;
+}
+
+function linkAlreadyInContent(content: string, href: string): boolean {
+  const escaped = href.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`<a\\s[^>]*href=["']${escaped}["']`, 'i').test(content);
+}
+
+function hasRelatedResourcesBlock(content: string): boolean {
+  return /<h[2-4][^>]*>\s*(?:Related\s+Resources|Related\s+Articles|संबंधित\s+लेख)/i.test(content);
+}
+
+function sanitizeLinkBlockHtml(html: string): string {
+  let clean = html.replace(/<script[\s\S]*?<\/script>/gi, '');
+  clean = clean.replace(/<style[\s\S]*?<\/style>/gi, '');
+  clean = clean.replace(/\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '');
+  clean = clean.replace(/<(h3|p|ul|li)(\s[^>]*)?>/gi, '<$1>');
+  clean = clean.replace(/<a\s[^>]*href=["']([^"']+)["'][^>]*>/gi, '<a href="$1">');
+  clean = clean.replace(/<(?!\/?(?:h3|p|ul|li|a)\b)[^>]+>/gi, '');
+  return clean.trim();
+}
+
+function buildCleanLinkBlock(links: { href: string; text: string }[]): string {
+  const items = links.map(l => `<li><a href="${l.href}">${l.text}</a></li>`).join('');
+  return `<h3>Related Resources</h3><ul>${items}</ul>`;
+}
+
 // ── Status derivation ──
 function deriveSeoStatus(tool: ToolState, formData: BlogAIToolsProps['formData']): ToolStatus {
   if (tool.isLoading) return 'running';

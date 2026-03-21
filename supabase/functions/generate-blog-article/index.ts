@@ -502,7 +502,56 @@ function resolveProviderInfo(model: string): { provider: string; apiModel: strin
     case 'gpt5-mini': return { provider: 'openai', apiModel: 'gpt-4o' };
     case 'nova-pro': return { provider: 'bedrock', apiModel: 'us.amazon.nova-pro-v1:0' };
     case 'nova-premier': return { provider: 'bedrock', apiModel: 'us.amazon.nova-premier-v1:0' };
+    case 'sarvam-30b': return { provider: 'sarvam', apiModel: 'sarvam-m1' };
+    case 'sarvam-105b': return { provider: 'sarvam', apiModel: 'sarvam-m1' };
     default: return { provider: model, apiModel: model };
+  }
+}
+
+// ── Sarvam Chat caller ──
+async function callSarvamChat(model: string, prompt: string, maxTokens: number): Promise<string> {
+  const apiKey = Deno.env.get('SARVAM_API_KEY');
+  if (!apiKey) throw new Error('SARVAM_API_KEY not configured');
+
+  const sarvamModel = model === 'sarvam-105b' ? 'sarvam-m1' : 'sarvam-m1';
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 120_000);
+
+  try {
+    const res = await fetch('https://api.sarvam.ai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'api-subscription-key': apiKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: sarvamModel,
+        messages: [
+          { role: 'system', content: 'You are a professional content writer for TrueJobs.co.in, an Indian government job portal. Write detailed, SEO-optimized blog articles. Return ONLY valid JSON.' },
+          { role: 'user', content: prompt },
+        ],
+        max_tokens: Math.max(maxTokens, 4000),
+        temperature: 0.6,
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`[Sarvam] HTTP ${res.status}: ${errText}`);
+      throw new Error(`Sarvam API error ${res.status}: ${errText.substring(0, 200)}`);
+    }
+
+    const data = await res.json();
+    const content = data?.choices?.[0]?.message?.content;
+    if (!content) throw new Error('Sarvam returned empty content');
+    console.log(`[Sarvam] Response received, length=${content.length}, usage=${JSON.stringify(data?.usage || {})}`);
+    return content;
+  } catch (e) {
+    clearTimeout(timer);
+    if (e.name === 'AbortError') throw new Error('Sarvam request timed out (120s)');
+    throw e;
   }
 }
 

@@ -180,7 +180,7 @@ Return ONLY a JSON array: [{ ... }]
 No markdown code blocks.`;
 
     const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-    let raw = await callVertexGemini('gemini-2.5-flash', prompt, 60_000, {
+    let raw = await callVertexGemini('gemini-2.5-pro', prompt, 60_000, {
       maxOutputTokens: 4000,
       temperature: 0.3,
     });

@@ -750,7 +750,12 @@ No markdown code blocks.`;
 
       const t1_total = Date.now();
 
-      // ── Structured Diagnostic Summary ──
+      // ── Structured Diagnostic Summary (with timing) ──
+      const timingMs = {
+        firstPass: t1_firstPass - t0_firstPass,
+        correction: correctionAttempted ? (t1_correction - t0_correction) : 0,
+        total: t1_total - t0_total,
+      };
       const diagnostics = {
         tag: 'ENRICHMENT_DIAGNOSTIC',
         articleTitle: title?.substring(0, 80),
@@ -768,6 +773,7 @@ No markdown code blocks.`;
         finalWordCount,
         finalValidationStatus: finalValidation.status,
         finalDeviation: finalValidation.deviation,
+        timingMs,
       };
       console.log(`[ENRICHMENT_DIAGNOSTIC] ${JSON.stringify(diagnostics)}`);
 

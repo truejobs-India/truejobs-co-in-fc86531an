@@ -28,6 +28,7 @@ import {
   Download,
   MessageSquare,
   Rss,
+  Search,
 } from 'lucide-react';
 import { RssIntakeManager } from '@/components/admin/rss-intake/RssIntakeManager';
 import { RestrictedDomainsManager } from '@/components/admin/RestrictedDomainsManager';

@@ -76,7 +76,7 @@ serve(async (req: Request) => {
 
     const rawModel = aiModel || 'gemini-flash';
     const route = resolveProvider(rawModel);
-    console.log(`[SEO-FIX] Model: "${rawModel}" → provider: ${route.provider}${route.provider === 'lovable-gateway' ? ` (${route.gatewayModel})` : route.provider === 'bedrock-nova' ? ` (${route.modelKey})` : ''}`);
+    console.log(`[SEO-FIX] Model: "${rawModel}" → provider: ${route.provider}${route.provider === 'lovable-gateway' ? ` (${(route as any).gatewayModel})` : route.provider === 'bedrock-nova' ? ` (${(route as any).modelKey})` : ''}`);
 
     // Validate provider-specific credentials upfront
     if (route.provider === 'lovable-gateway') {
@@ -87,7 +87,6 @@ serve(async (req: Request) => {
         });
       }
     } else {
-      // Bedrock models need AWS credentials
       const ak = Deno.env.get('AWS_ACCESS_KEY_ID');
       const sk = Deno.env.get('AWS_SECRET_ACCESS_KEY');
       if (!ak || !sk) {
@@ -111,6 +110,7 @@ serve(async (req: Request) => {
           slug: page.slug,
           fixes: [],
           error: err instanceof Error ? err.message : 'Unknown error',
+          failureReason: `Exception during AI call: ${err instanceof Error ? err.message : 'unknown'}`,
         });
       }
     }
@@ -131,46 +131,45 @@ serve(async (req: Request) => {
 
 function buildSeoPrompt(page: FixRequest): { system: string; user: string } {
   const issueList = page.issues.map((i, idx) =>
-    `${idx + 1}. [${i.category}] ${i.message}${i.currentValue ? ` | Current: "${i.currentValue.substring(0, 100)}"` : ''}${i.fixHint ? ` | Hint: ${i.fixHint}` : ''}`
+    `${idx + 1}. [${i.category}] ${i.message}${i.currentValue ? ` | Current: "${i.currentValue.substring(0, 80)}"` : ''}${i.fixHint ? ` | Hint: ${i.fixHint}` : ''}`
   ).join('\n');
 
   const urlPrefix = page.source === 'blog_posts' ? 'blog' : page.source === 'pdf_resources' ? 'resources' : 'pages';
 
-  const system = 'You are a precise SEO fixing engine. Return only valid JSON arrays. No markdown. No explanations outside the JSON.';
+  // Limit content snippet to prevent token overflow
+  const snippet = page.contentSnippet ? page.contentSnippet.substring(0, 800) : '';
 
-  const user = `You are an SEO expert for truejobs.co.in. Fix the SEO issues for this page.
+  const system = 'You are a precise SEO fixing engine. Return only valid JSON arrays. No markdown. No explanations outside the JSON. Keep responses compact.';
+
+  const user = `Fix SEO issues for this page on truejobs.co.in.
 
 Page: "${page.title}" (/${page.slug})
 Source: ${page.source}
 Published: ${page.isPublished}
-${page.contentSnippet ? `Content preview: ${page.contentSnippet.substring(0, 1500)}` : ''}
+${snippet ? `Content preview: ${snippet}` : ''}
 
 Issues to fix:
 ${issueList}
 
 Return a JSON array of fix objects. Each fix must have:
-- category: exact category from the issue (meta_title, meta_description, canonical_url, excerpt, featured_image_alt, h1, internal_links, faq_opportunity, faq_schema, intro_missing, heading_structure)
+- category: exact category from the issue
 - field: the DB field to update (meta_title, meta_description, canonical_url, excerpt, featured_image_alt, content, faq_schema, has_faq_schema)
 - action: "set_field" | "append_content" | "set_faq_schema"
-- value: the new value to set or HTML to append
+- value: the new value
 - confidence: "high" | "medium" | "low"
-- explanation: ≤15 words explaining the fix
+- explanation: ≤15 words
 
 Rules:
 - meta_title: 30-60 chars, include primary keyword
 - meta_description: 130-155 chars strictly, never above 155
 - canonical_url: exactly https://truejobs.co.in/${urlPrefix}/${page.slug}
-- excerpt: 100-200 chars, compelling summary
-- featured_image_alt: descriptive, 10-80 chars
-- h1: if missing, generate and use action "append_content" with value "<h1>title</h1>" to prepend
-- h1: if multiple, keep best one, provide replacement content section
-- internal_links: generate 3-5 relevant links as an HTML block using action "append_content". Use only paths like /blog/*, /resources/*, /govt-jobs/*, /results/*
-- faq_opportunity: generate 5 relevant Q&A pairs. Use action "set_faq_schema" with value as JSON array of {question,answer}. Also use a second fix with action "append_content" to add FAQ HTML section
-- faq_schema: fix malformed FAQ items
-- intro_missing: generate a 2-3 sentence intro paragraph, action "append_content"
+- excerpt: 100-200 chars
+- featured_image_alt: 10-80 chars
+- h1: if missing, use action "append_content" with "<h1>title</h1>"
+- internal_links: generate 3-5 links as HTML, action "append_content", paths like /blog/*, /resources/*
+- faq_opportunity: use action "set_faq_schema" with JSON array of {question,answer}
 - Do NOT fix slug for published pages
-- Keep explanations ≤15 words
-- Return ONLY the JSON array, no markdown fences`;
+- Return ONLY the JSON array, no markdown fences, no extra text`;
 
   return { system, user };
 }
@@ -202,7 +201,7 @@ async function callLovableGateway(model: string, system: string, user: string): 
         { role: 'user', content: user },
       ],
       temperature: 0.3,
-      max_tokens: 4096,
+      max_tokens: 6144, // Increased from 4096 to reduce truncation
     }),
   });
 
@@ -220,9 +219,8 @@ async function callLovableGateway(model: string, system: string, user: string): 
 
 async function callBedrockNovaForSeo(modelKey: string, system: string, user: string): Promise<string> {
   const { callBedrockNova } = await import('../_shared/bedrock-nova.ts');
-  // Combine system + user into a single prompt for Nova (system goes via systemPrompt option)
   return callBedrockNova(modelKey, user, {
-    maxTokens: 4096,
+    maxTokens: 6144,
     temperature: 0.3,
     timeoutMs: 120_000,
     systemPrompt: system,
@@ -239,7 +237,7 @@ async function callBedrockMistralForSeo(system: string, user: string): Promise<s
     messages: [
       { role: 'user', content: [{ text: `${system}\n\n${user}` }] },
     ],
-    inferenceConfig: { maxTokens: 4096, temperature: 0.3 },
+    inferenceConfig: { maxTokens: 6144, temperature: 0.3 },
   });
 
   const resp = await Promise.race([
@@ -260,54 +258,102 @@ async function callBedrockMistralForSeo(system: string, user: string): Promise<s
   return data?.output?.message?.content?.[0]?.text || '';
 }
 
-// ── Generate fixes with response parsing ──
+// ── Generate fixes with robust response parsing ──
+
+function extractJsonArray(raw: string): { parsed: any[] | null; truncated: boolean } {
+  // Step 1: Strip markdown fences
+  let cleaned = raw.replace(/```json\s*/gi, '').replace(/```\s*/gi, '').trim();
+
+  // Step 2: Try direct parse
+  try {
+    const result = JSON.parse(cleaned);
+    return { parsed: Array.isArray(result) ? result : [result], truncated: false };
+  } catch { /* continue */ }
+
+  // Step 3: Find the first [ and try to extract array
+  const arrayStart = cleaned.indexOf('[');
+  if (arrayStart === -1) {
+    return { parsed: null, truncated: false };
+  }
+  cleaned = cleaned.substring(arrayStart);
+
+  // Step 4: Try parsing from the array start
+  try {
+    const result = JSON.parse(cleaned);
+    return { parsed: Array.isArray(result) ? result : [result], truncated: false };
+  } catch { /* continue */ }
+
+  // Step 5: Truncation recovery — find last complete object
+  let truncated = true;
+
+  // Try: cut at last "},\n" or "}," and close array
+  const lastComplete = cleaned.lastIndexOf('},');
+  if (lastComplete > 0) {
+    const attempt = cleaned.substring(0, lastComplete + 1) + ']';
+    try {
+      const result = JSON.parse(attempt);
+      return { parsed: Array.isArray(result) ? result : [result], truncated };
+    } catch { /* continue */ }
+  }
+
+  // Try: cut at last "}" and close array
+  const lastObj = cleaned.lastIndexOf('}');
+  if (lastObj > 0) {
+    const attempt = cleaned.substring(0, lastObj + 1) + ']';
+    try {
+      const result = JSON.parse(attempt);
+      return { parsed: Array.isArray(result) ? result : [result], truncated };
+    } catch { /* continue */ }
+  }
+
+  return { parsed: null, truncated };
+}
 
 async function generateFixesForPage(page: FixRequest, route: ProviderRoute) {
   const { system, user } = buildSeoPrompt(page);
 
-  let raw = await callAI(route, system, user);
-
-  // Strip markdown fences
-  raw = raw.replace(/```json\s*/gi, '').replace(/```\s*/gi, '').trim();
-
-  // Truncation recovery
-  let truncated = false;
-  let parseError = false;
-
-  if (raw && !raw.endsWith(']')) {
-    console.log(`[SEO-FIX] Truncation detected for ${page.slug}`);
-    truncated = true;
-    const lastComplete = raw.lastIndexOf('},');
-    if (lastComplete > 0) {
-      raw = raw.substring(0, lastComplete + 1) + ']';
-      console.log(`[SEO-FIX] Recovery: salvaged ${raw.length} chars`);
-    } else {
-      const lastObj = raw.lastIndexOf('}');
-      if (lastObj > 0) {
-        raw = raw.substring(0, lastObj + 1) + ']';
-      } else {
-        parseError = true;
-      }
-    }
+  let raw: string;
+  try {
+    raw = await callAI(route, system, user);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Unknown AI call error';
+    console.error(`[SEO-FIX] AI call failed for ${page.slug}: ${msg}`);
+    return {
+      fixes: [],
+      truncated: false,
+      parseError: true,
+      failureReason: `AI call failed: ${msg}`,
+    };
   }
 
-  let fixes: any[] = [];
-  if (!parseError) {
-    try {
-      fixes = JSON.parse(raw);
-      if (!Array.isArray(fixes)) fixes = [fixes];
-    } catch {
-      parseError = true;
-      console.error(`[SEO-FIX] Parse error for ${page.slug}:`, raw.substring(0, 200));
-    }
+  if (!raw || raw.trim().length === 0) {
+    console.error(`[SEO-FIX] Empty AI response for ${page.slug}`);
+    return {
+      fixes: [],
+      truncated: false,
+      parseError: true,
+      failureReason: 'AI returned empty response',
+    };
+  }
+
+  const { parsed, truncated } = extractJsonArray(raw);
+
+  if (!parsed) {
+    console.error(`[SEO-FIX] Parse failed for ${page.slug}. Raw (first 300 chars):`, raw.substring(0, 300));
+    return {
+      fixes: [],
+      truncated,
+      parseError: true,
+      failureReason: `Could not extract JSON array from AI response (${raw.length} chars). First 100: ${raw.substring(0, 100)}`,
+    };
   }
 
   const providerLabel = route.provider === 'lovable-gateway'
-    ? route.gatewayModel
+    ? (route as any).gatewayModel
     : route.provider === 'bedrock-nova'
-      ? route.modelKey
+      ? (route as any).modelKey
       : 'mistral';
-  console.log(`[SEO-FIX] ${page.slug}: ${fixes.length} fixes via ${providerLabel}, truncated=${truncated}, parseError=${parseError}`);
+  console.log(`[SEO-FIX] ${page.slug}: ${parsed.length} fixes via ${providerLabel}, truncated=${truncated}`);
 
-  return { fixes, truncated, parseError };
+  return { fixes: parsed, truncated, parseError: false, failureReason: null };
 }

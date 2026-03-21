@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Search, Loader2, AlertTriangle, XCircle, CheckCircle2, ChevronDown,
   Sparkles, FileText, Download, Globe, Filter, Zap, Square, RotateCcw,
-  SkipForward, Eye, History, ArrowLeft, Clock,
+  SkipForward, Eye, History, ArrowLeft, Clock, RefreshCw,
 } from 'lucide-react';
 import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSelector';
 import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
@@ -25,8 +25,10 @@ import {
 } from '@/lib/sitewideSeoAudit';
 import {
   executeFixAll,
+  executeRetry,
   type FixResult,
   type FixProgress,
+  type RetryFilter,
 } from '@/lib/seoFixEngine';
 import {
   saveAuditRun,
@@ -80,6 +82,11 @@ const CATEGORY_LABELS: Record<IssueCategory, string> = {
   intro_missing: 'Intro Missing',
   compliance: 'Compliance',
 };
+
+const RETRY_CATEGORIES: IssueCategory[] = [
+  'h1', 'canonical_url', 'internal_links', 'faq_opportunity',
+  'meta_description', 'featured_image_alt', 'meta_title', 'excerpt',
+];
 
 type WorkflowPhase = 'idle' | 'scanning' | 'report' | 'fixing' | 'done';
 
@@ -171,7 +178,6 @@ export function SitewideSeoAudit() {
           if (p.lastWarning) {
             fixWarnings.current.push(p.lastWarning);
             toast({ title: 'AI Response Warning', description: p.lastWarning, variant: 'destructive' });
-            p.lastWarning = undefined;
           }
           setFixProgress({ ...p, currentModel: safeModel });
         },
@@ -194,6 +200,65 @@ export function SitewideSeoAudit() {
       setPhase('report');
     }
   }, [report, aiModel, toast]);
+
+  // ── Retry handlers ──
+
+  const handleRetry = useCallback(async (filter: RetryFilter, label: string) => {
+    if (!report) return;
+    const safeModel = SEO_FIX_MODEL_VALUES.includes(aiModel as typeof SEO_FIX_MODEL_VALUES[number]) ? aiModel : 'gemini-pro';
+
+    setPhase('fixing');
+    stopSignal.current = { stopped: false };
+    fixStartedAt.current = new Date();
+    fixWarnings.current = [];
+
+    try {
+      const retryResults = await executeRetry(
+        report.issues,
+        fixResults,
+        filter,
+        safeModel,
+        (p) => {
+          if (p.lastWarning) {
+            fixWarnings.current.push(p.lastWarning);
+          }
+          setFixProgress({ ...p, currentModel: safeModel });
+        },
+        stopSignal.current,
+      );
+
+      if (retryResults.length === 0) {
+        toast({ title: 'Nothing to retry', description: `No eligible items for: ${label}` });
+        setPhase('done');
+        return;
+      }
+
+      // Merge retry results: replace previous results for the same issueIds
+      const retryIdMap = new Map(retryResults.map(r => [r.issueId, r]));
+      const mergedResults = fixResults.map(r => retryIdMap.get(r.issueId) || r);
+      // Add any new results not in previous
+      for (const r of retryResults) {
+        if (!mergedResults.some(m => m.issueId === r.issueId)) {
+          mergedResults.push(r);
+        }
+      }
+
+      setFixResults(mergedResults);
+      setPhase('done');
+
+      const fixed = retryResults.filter(r => r.status === 'fixed').length;
+      const failed = retryResults.filter(r => r.status === 'failed').length;
+      toast({
+        title: `Retry Complete: ${label}`,
+        description: `${retryResults.length} retried → ${fixed} fixed, ${failed} failed`,
+      });
+
+      await saveFixRun(report, mergedResults, safeModel, fixStartedAt.current!, fixWarnings.current);
+    } catch (err: any) {
+      toast({ title: 'Retry failed', description: err.message, variant: 'destructive' });
+      setPhase('done');
+    }
+  }, [report, fixResults, aiModel, toast]);
 
   const handleStop = () => {
     stopSignal.current.stopped = true;
@@ -243,6 +308,9 @@ export function SitewideSeoAudit() {
     if (!report) return [];
     return Array.from(new Set(report.issues.map(i => i.category))).sort();
   }, [report]);
+
+  // Stats for retry controls
+  const failedCount = fixResults.filter(r => r.status === 'failed').length;
 
   return (
     <div className="space-y-6">
@@ -329,6 +397,16 @@ export function SitewideSeoAudit() {
               {phase === 'fixing' && fixProgress && <FixProgressBar progress={fixProgress} />}
 
               {phase === 'done' && fixResults.length > 0 && <FixSummaryBar results={fixResults} />}
+
+              {/* ── Retry Controls (shown after fix completes with failures) ── */}
+              {phase === 'done' && report && failedCount > 0 && (
+                <RetryControls
+                  report={report}
+                  fixResults={fixResults}
+                  onRetry={handleRetry}
+                  disabled={phase === 'fixing'}
+                />
+              )}
 
               {phase === 'report' && report && (
                 <p className="text-xs text-muted-foreground">
@@ -474,6 +552,87 @@ export function SitewideSeoAudit() {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// Retry Controls Panel
+// ═══════════════════════════════════════════════════════════════
+
+function RetryControls({
+  report,
+  fixResults,
+  onRetry,
+  disabled,
+}: {
+  report: SeoAuditReport;
+  fixResults: FixResult[];
+  onRetry: (filter: RetryFilter, label: string) => void;
+  disabled?: boolean;
+}) {
+  const failedCount = fixResults.filter(r => r.status === 'failed').length;
+  const failedSources = new Set(fixResults.filter(r => r.status === 'failed').map(r => r.source));
+  const failedCategories = new Set(fixResults.filter(r => r.status === 'failed').map(r => r.category));
+
+  return (
+    <Card className="border-amber-500/20 bg-amber-50/30 dark:bg-amber-950/10">
+      <CardContent className="p-3 space-y-2">
+        <div className="flex items-center gap-2 text-xs font-medium text-amber-800 dark:text-amber-400">
+          <RefreshCw className="h-3.5 w-3.5" />
+          Targeted Retry — {failedCount} failed items
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {/* Retry Failed Only */}
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 text-[10px] border-amber-500/40 hover:bg-amber-100/50"
+            disabled={disabled || failedCount === 0}
+            onClick={() => onRetry({ type: 'failed_only' }, 'Failed Items Only')}
+          >
+            <RefreshCw className="h-3 w-3 mr-1" />
+            Retry All Failed ({failedCount})
+          </Button>
+
+          {/* Retry By Source */}
+          {(['blog_posts', 'pdf_resources', 'custom_pages'] as ContentSource[]).map(src => {
+            const srcFailed = fixResults.filter(r => r.status === 'failed' && r.source === src).length;
+            if (srcFailed === 0) return null;
+            return (
+              <Button
+                key={src}
+                size="sm"
+                variant="outline"
+                className="h-7 text-[10px]"
+                disabled={disabled}
+                onClick={() => onRetry({ type: 'by_source', source: src }, SOURCE_LABELS[src])}
+              >
+                {SOURCE_LABELS[src]} ({srcFailed})
+              </Button>
+            );
+          })}
+        </div>
+
+        {/* Retry By Category */}
+        <div className="flex flex-wrap gap-1.5">
+          {RETRY_CATEGORIES.map(cat => {
+            const catFailed = fixResults.filter(r => r.status === 'failed' && r.category === cat).length;
+            if (catFailed === 0) return null;
+            return (
+              <Badge
+                key={cat}
+                variant="outline"
+                className="text-[9px] cursor-pointer hover:bg-primary/10 transition-colors"
+                onClick={() => !disabled && onRetry({ type: 'by_category', category: cat }, CATEGORY_LABELS[cat])}
+              >
+                {CATEGORY_LABELS[cat]}: {catFailed} failed
+              </Badge>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
 // Audit History Panel
 // ═══════════════════════════════════════════════════════════════
 
@@ -525,7 +684,6 @@ function AuditHistoryPanel() {
     lines.push('═══════════════════════════════════════════════════════════════');
     lines.push('');
 
-    // Group runs by date
     const byDate: Record<string, AuditRunRecord[]> = {};
     for (const run of runs) {
       const dateKey = new Date(run.started_at).toLocaleDateString('en-IN', {
@@ -551,23 +709,27 @@ function AuditHistoryPanel() {
         lines.push(`  │  Started: ${startTime}  |  Ended: ${endTime}${durationSec ? `  |  Duration: ${durationSec}s` : ''}`);
         if (run.ai_model) lines.push(`  │  AI Model: ${run.ai_model}`);
 
-        // Scanned summary
         const scanned = run.total_scanned as Record<string, number>;
         if (scanned && Object.keys(scanned).length > 0) {
           const parts = Object.entries(scanned).map(([k, v]) => `${k}: ${v}`);
           lines.push(`  │  Scanned: ${parts.join(', ')}`);
         }
 
-        lines.push(`  │  Total Issues Found: ${run.total_issues}`);
+        lines.push(`  │  Issues Found (scan phase): ${run.total_issues}`);
 
         if (run.run_type === 'fix') {
-          lines.push(`  │  ✅ Fixed: ${run.total_fixed}`);
-          lines.push(`  │  ⏭️  Skipped: ${run.total_skipped}`);
-          lines.push(`  │  ❌ Failed: ${run.total_failed}`);
+          const summary = run.issue_summary as Record<string, any>;
+          const attempted = summary?.fixesAttempted ?? (run.total_fixed + run.total_failed + run.total_skipped + run.total_review_required);
+          lines.push(`  │  Fixes Attempted: ${attempted}`);
+          lines.push(`  │  ✅ Fixes Applied (DB saved): ${run.total_fixed}`);
+          lines.push(`  │  ❌ Fixes Failed: ${run.total_failed}`);
+          lines.push(`  │  ⏭️  Fixes Skipped (no AI output): ${run.total_skipped}`);
           lines.push(`  │  👁️  Review Required: ${run.total_review_required}`);
+          if (summary?.reviewRequired_scan != null) {
+            lines.push(`  │  📋 Non-auto-fixable (scan phase): ${summary.reviewRequired_scan}`);
+          }
         }
 
-        // Issue summary breakdown
         const summary = run.issue_summary as Record<string, any>;
         if (summary) {
           if (summary.bySeverity && Object.keys(summary.bySeverity).length > 0) {
@@ -576,21 +738,17 @@ function AuditHistoryPanel() {
           if (summary.byCategory && Object.keys(summary.byCategory).length > 0) {
             lines.push(`  │  By Category: ${Object.entries(summary.byCategory).map(([k, v]) => `${k}=${v}`).join(', ')}`);
           }
-          if (summary.bySource && Object.keys(summary.bySource).length > 0) {
-            lines.push(`  │  By Source: ${Object.entries(summary.bySource).map(([k, v]) => `${k}=${v}`).join(', ')}`);
-          }
-          if (summary.autoFixable != null) lines.push(`  │  Auto-Fixable: ${summary.autoFixable}  |  Review Required: ${summary.reviewRequired ?? 0}`);
         }
 
-        // Warnings
+        // Warnings (deduplicated)
         if (run.warnings && run.warnings.length > 0) {
-          lines.push(`  │  ⚠️  Warnings (${run.warnings.length}):`);
-          for (const w of run.warnings) {
+          const uniqueWarnings = Array.from(new Set(run.warnings));
+          lines.push(`  │  ⚠️  Warnings (${uniqueWarnings.length} unique):`);
+          for (const w of uniqueWarnings) {
             lines.push(`  │    - ${w}`);
           }
         }
 
-        // Detailed fix results
         const fixes = (run.fix_details || []) as any[];
         if (fixes.length > 0) {
           lines.push(`  │`);
@@ -615,7 +773,8 @@ function AuditHistoryPanel() {
               const field = item.field ? ` [${item.field}]` : '';
               const reason = item.reason ? ` — ${item.reason}` : '';
               const after = item.afterValue ? ` → "${item.afterValue}"` : '';
-              lines.push(`  │    • ${slug} (${source}/${category})${field}${reason}${after}`);
+              const verify = item.verificationPassed === false ? ' ⚠️VERIFY_FAIL' : '';
+              lines.push(`  │    • ${slug} (${source}/${category})${field}${reason}${after}${verify}`);
             }
           }
         }
@@ -676,7 +835,7 @@ function AuditHistoryPanel() {
                       )}
                       {run.warnings && run.warnings.length > 0 && (
                         <Badge variant="outline" className="text-[9px] border-amber-500/40 text-amber-700">
-                          {run.warnings.length} warning{run.warnings.length !== 1 ? 's' : ''}
+                          {new Set(run.warnings).size} warning{new Set(run.warnings).size !== 1 ? 's' : ''}
                         </Badge>
                       )}
                     </div>
@@ -758,7 +917,7 @@ function RunDetailView({ run, onBack }: { run: AuditRunRecord; onBack: () => voi
               </div>
             ))}
             <span className="text-xs text-muted-foreground ml-auto">
-              Total issues: {run.total_issues}
+              Issues found: {run.total_issues}
             </span>
           </div>
         </CardContent>
@@ -784,50 +943,62 @@ function RunDetailView({ run, onBack }: { run: AuditRunRecord; onBack: () => voi
         </Card>
       )}
 
-      {/* Fix result counts */}
+      {/* Fix result counts — with clear terminology */}
       {run.run_type === 'fix' && (
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-medium text-muted-foreground">Fix Results</CardTitle>
           </CardHeader>
-          <CardContent className="pt-0">
-            <div className="grid grid-cols-4 gap-3 text-center">
+          <CardContent className="pt-0 space-y-3">
+            <div className="grid grid-cols-5 gap-3 text-center">
               <div>
-                <div className="text-lg font-bold text-primary">{run.total_fixed}</div>
-                <div className="text-[10px] text-muted-foreground">Fixed</div>
+                <div className="text-sm font-bold text-muted-foreground">
+                  {summary?.fixesAttempted ?? (run.total_fixed + run.total_failed + run.total_skipped + run.total_review_required)}
+                </div>
+                <div className="text-[9px] text-muted-foreground">Attempted</div>
               </div>
               <div>
-                <div className="text-lg font-bold text-muted-foreground">{run.total_skipped}</div>
-                <div className="text-[10px] text-muted-foreground">Skipped</div>
+                <div className="text-sm font-bold text-primary">{run.total_fixed}</div>
+                <div className="text-[9px] text-muted-foreground">Applied</div>
               </div>
               <div>
-                <div className="text-lg font-bold text-destructive">{run.total_failed}</div>
-                <div className="text-[10px] text-muted-foreground">Failed</div>
+                <div className="text-sm font-bold text-destructive">{run.total_failed}</div>
+                <div className="text-[9px] text-muted-foreground">Failed</div>
               </div>
               <div>
-                <div className="text-lg font-bold">{run.total_review_required}</div>
-                <div className="text-[10px] text-muted-foreground">Review</div>
+                <div className="text-sm font-bold text-muted-foreground">{run.total_skipped}</div>
+                <div className="text-[9px] text-muted-foreground">Skipped</div>
+              </div>
+              <div>
+                <div className="text-sm font-bold">{run.total_review_required}</div>
+                <div className="text-[9px] text-muted-foreground">Review</div>
               </div>
             </div>
+            <p className="text-[10px] text-muted-foreground italic">
+              "Applied" = successfully saved to DB. "Attempted" = total fix operations processed (may exceed issue count when AI generates multiple fixes per issue).
+            </p>
           </CardContent>
         </Card>
       )}
 
-      {/* Warnings */}
-      {run.warnings && run.warnings.length > 0 && (
-        <Card className="border-amber-500/30">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-amber-700 flex items-center gap-1">
-              <AlertTriangle className="h-3 w-3" /> Warnings ({run.warnings.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0 space-y-1">
-            {run.warnings.map((w, i) => (
-              <p key={i} className="text-xs text-amber-800">{w}</p>
-            ))}
-          </CardContent>
-        </Card>
-      )}
+      {/* Warnings (deduplicated) */}
+      {run.warnings && run.warnings.length > 0 && (() => {
+        const uniqueWarnings = Array.from(new Set(run.warnings));
+        return (
+          <Card className="border-amber-500/30">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-xs font-medium text-amber-700 flex items-center gap-1">
+                <AlertTriangle className="h-3 w-3" /> Warnings ({uniqueWarnings.length} unique)
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0 space-y-1">
+              {uniqueWarnings.map((w, i) => (
+                <p key={i} className="text-xs text-amber-800">{w}</p>
+              ))}
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* Fix details */}
       {fixes.length > 0 && (
@@ -850,6 +1021,9 @@ function RunDetailView({ run, onBack }: { run: AuditRunRecord; onBack: () => voi
                         <span className="font-medium truncate">{f.slug}</span>
                         <Badge variant="outline" className="text-[8px]">{f.category}</Badge>
                         {f.field && <span className="text-muted-foreground">→ {f.field}</span>}
+                        {f.verificationPassed === false && (
+                          <Badge variant="outline" className="text-[8px] border-destructive/40 text-destructive">⚠ verify fail</Badge>
+                        )}
                       </div>
                       <p className="text-muted-foreground">{f.reason}</p>
                       {f.afterValue && <p className="text-[10px] text-primary truncate">New: {f.afterValue}</p>}
@@ -886,7 +1060,7 @@ function FixProgressBar({ progress }: { progress: FixProgress }) {
       </div>
       <Progress value={pct} className="h-2" />
       <div className="flex flex-wrap gap-3 text-xs">
-        <span className="text-primary font-medium">✓ {progress.fixed} fixed</span>
+        <span className="text-primary font-medium">✓ {progress.fixed} applied</span>
         <span className="text-muted-foreground">⏭ {progress.skipped} skipped</span>
         <span className="text-destructive">✗ {progress.failed} failed</span>
         <span style={{ color: 'hsl(var(--muted-foreground))' }}>👁 {progress.reviewRequired} review</span>
@@ -911,14 +1085,15 @@ function FixSummaryBar({ results }: { results: FixResult[] }) {
   return (
     <div className="flex items-center gap-3 text-xs bg-muted/50 rounded-lg p-3">
       <CheckCircle2 className="h-4 w-4 text-primary" />
-      <span className="font-medium">Fix All Complete:</span>
-      <span className="text-primary font-semibold">{fixed} fixed</span>
+      <span className="font-medium">Complete:</span>
+      <span className="text-primary font-semibold">{fixed} applied</span>
       <span>•</span>
       <span>{skipped} skipped</span>
       <span>•</span>
       <span className="text-destructive">{failed} failed</span>
       <span>•</span>
-      <span>{review} need review</span>
+      <span>{review} review</span>
+      <span className="text-muted-foreground ml-1">({results.length} total)</span>
     </div>
   );
 }

@@ -76,7 +76,10 @@ export async function saveFixRun(
   const failed = results.filter(r => r.status === 'failed').length;
   const review = results.filter(r => r.status === 'review_required').length;
 
-  // Compact fix details — keep only non-skipped for storage efficiency
+  // Deduplicate warnings
+  const uniqueWarnings = Array.from(new Set(warnings));
+
+  // Compact fix details — include all non-skipped for transparency
   const compactDetails = results
     .filter(r => r.status !== 'skipped')
     .map(r => ({
@@ -87,14 +90,25 @@ export async function saveFixRun(
       reason: r.reason,
       field: r.field || null,
       afterValue: r.afterValue ? r.afterValue.substring(0, 200) : null,
+      verificationPassed: r.verificationPassed ?? null,
+      verificationNote: r.verificationNote || null,
     }));
 
+  // Build truthful issue summary
+  // total_issues = scan-phase issue count (from report)
+  // total_fixed/failed/skipped/review = fix-phase result counts
+  // These are different dimensions and both are recorded honestly
   const issueSummary: Record<string, any> = {
     bySource: report.summary.bySource,
     bySeverity: report.summary.bySeverity,
     byCategory: report.summary.byCategory,
     autoFixable: report.summary.autoFixable,
-    reviewRequired: report.summary.reviewRequired,
+    reviewRequired_scan: report.summary.reviewRequired, // Scan-phase: non-auto-fixable issues
+    reviewRequired_fix: review, // Fix-phase: AI returned low-confidence or unknown actions
+    fixesAttempted: results.length,
+    fixesApplied: fixed,
+    fixesFailed: failed,
+    fixesSkipped: skipped,
   };
 
   const { data, error } = await supabase
@@ -110,7 +124,7 @@ export async function saveFixRun(
       total_skipped: skipped,
       total_failed: failed,
       total_review_required: review,
-      warnings,
+      warnings: uniqueWarnings,
       issue_summary: issueSummary,
       fix_details: compactDetails,
       started_by: user?.user?.id || null,

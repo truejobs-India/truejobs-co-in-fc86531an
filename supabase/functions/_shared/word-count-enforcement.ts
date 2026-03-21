@@ -192,11 +192,12 @@ export function validateWordCount(html: string, target: number, maxTokensRequest
 const CONTINUATION_ELIGIBLE_MODELS = new Set([
   'gemini-flash', 'gemini-pro', 'vertex-flash', 'vertex-pro',
   'claude-sonnet', 'claude', 'gpt5', 'gpt5-mini', 'lovable-gemini', 'mistral',
+  'nova-pro', 'nova-premier',
 ]);
 
 /** Models where continuation is NOT useful — they stop early by design */
 const CONTINUATION_INELIGIBLE_MODELS = new Set([
-  'groq', 'nova-pro', 'nova-premier',
+  'groq',
 ]);
 
 /**

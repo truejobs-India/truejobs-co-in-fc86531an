@@ -213,7 +213,7 @@ export async function callBedrockNovaWithMeta(
   modelKey: string,
   prompt: string,
   options: NovaCallOptions = {},
-): Promise<{ text: string; stopReason: string }> {
+): Promise<{ text: string; stopReason: string; usage: { inputTokens?: number; outputTokens?: number } }> {
   const modelDef = NOVA_MODELS[modelKey];
   if (!modelDef) {
     throw new Error(`Unknown Nova model key: "${modelKey}"`);
@@ -225,6 +225,8 @@ export async function callBedrockNovaWithMeta(
     timeoutMs = 120_000,
     systemPrompt,
   } = options;
+
+  console.log(`[bedrock-nova] ${modelDef.label} request: maxTokens=${maxTokens}, temperature=${temperature}`);
 
   const processedPrompt = applyNovaHindiSafeguard(prompt);
   const region = Deno.env.get('AWS_REGION') || 'us-east-1';
@@ -254,7 +256,11 @@ export async function callBedrockNovaWithMeta(
   const data = await resp.json();
   const text = data?.output?.message?.content?.[0]?.text || '';
   const stopReason = data?.stopReason || 'end_turn';
+  const usage = {
+    inputTokens: data?.usage?.inputTokens as number | undefined,
+    outputTokens: data?.usage?.outputTokens as number | undefined,
+  };
 
-  console.log(`[bedrock-nova] ${modelDef.label} success, len=${text.length}, stop=${stopReason}`);
-  return { text, stopReason };
+  console.log(`[bedrock-nova] ${modelDef.label} response: len=${text.length}, stop=${stopReason}, usage=${JSON.stringify(usage)}`);
+  return { text, stopReason, usage };
 }

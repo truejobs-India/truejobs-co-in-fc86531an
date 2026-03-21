@@ -125,12 +125,16 @@ async function callMistral(prompt: string, maxTokens: number): Promise<string> {
       messages: [{ role: 'user', content: [{ text: prompt }] }],
       inferenceConfig: { maxTokens: Math.min(maxTokens, 16384), temperature: 0.5 },
     });
+    console.log(`[callMistral] request: maxTokens=${Math.min(maxTokens, 16384)}`);
     const resp = await awsSigV4Fetch(host, `/model/${modelId}/converse`, body, region, 'bedrock');
     clearTimeout(timeoutId);
     if (!resp.ok) throw new Error(`Mistral Bedrock ${resp.status}: ${await resp.text()}`);
     const data = await resp.json();
     const text = data?.output?.message?.content?.[0]?.text || '';
-    return JSON.stringify({ __raw: text, __finishReason: data?.stopReason || 'end_turn' });
+    const stopReason = data?.stopReason || 'end_turn';
+    const usage = { inputTokens: data?.usage?.inputTokens, outputTokens: data?.usage?.outputTokens };
+    console.log(`[callMistral] response: len=${text.length}, stop=${stopReason}, usage=${JSON.stringify(usage)}`);
+    return JSON.stringify({ __raw: text, __finishReason: stopReason, __usage: usage });
   } catch (err) {
     clearTimeout(timeoutId);
     if (err instanceof DOMException && err.name === 'AbortError') {
@@ -247,13 +251,14 @@ async function callLovableGemini(prompt: string, maxTokens: number): Promise<str
 
 const SUPPORTED_MODELS = ['gemini', 'gemini-flash', 'gemini-pro', 'mistral', 'claude-sonnet', 'claude', 'openai', 'gpt5', 'gpt5-mini', 'groq', 'lovable-gemini', 'vertex-flash', 'vertex-pro', 'nova-pro', 'nova-premier'];
 
-async function callAI(aiModel: string, prompt: string, maxTokens: number): Promise<{ raw: string; finishReason: string; actualProvider: string; actualModelId: string }> {
+async function callAI(aiModel: string, prompt: string, maxTokens: number): Promise<{ raw: string; finishReason: string; actualProvider: string; actualModelId: string; usage?: { inputTokens?: number; outputTokens?: number } }> {
   const model = aiModel || 'gemini';
   console.log(`[improve-blog-content] dispatcher model_requested="${model}" maxTokens=${maxTokens}`);
 
   let resultJson: string;
   let actualProvider: string;
   let actualModelId: string;
+  let usage: { inputTokens?: number; outputTokens?: number } | undefined;
 
   switch (model) {
     case 'gemini': case 'gemini-flash': {
@@ -270,7 +275,9 @@ async function callAI(aiModel: string, prompt: string, maxTokens: number): Promi
     }
     case 'mistral':
       resultJson = await callMistral(prompt, maxTokens);
-      actualProvider = 'aws-bedrock'; actualModelId = 'mistral.mistral-large-2407-v1:0'; break;
+      actualProvider = 'aws-bedrock'; actualModelId = 'mistral.mistral-large-2407-v1:0';
+      try { usage = JSON.parse(resultJson).__usage; } catch { /* ignore */ }
+      break;
     case 'claude-sonnet': case 'claude':
       resultJson = await callClaude(prompt, maxTokens);
       actualProvider = 'anthropic'; actualModelId = 'claude-sonnet-4-6'; break;
@@ -299,11 +306,11 @@ async function callAI(aiModel: string, prompt: string, maxTokens: number): Promi
     }
     case 'nova-pro': case 'nova-premier': {
       const { callBedrockNovaWithMeta } = await import('../_shared/bedrock-nova.ts');
-      const { computeMaxTokens: computeNovaBudget } = await import('../_shared/word-count-enforcement.ts');
-      const novaBudget = computeNovaBudget(Math.ceil(maxTokens / 2), model); // maxTokens was already computed from target, reverse to get approx target
-      const result = await callBedrockNovaWithMeta(model, prompt, { maxTokens: novaBudget, temperature: 0.5 });
+      // Pass maxTokens directly — already computed model-aware by computeMaxTokens at caller
+      const result = await callBedrockNovaWithMeta(model, prompt, { maxTokens, temperature: 0.5 });
       resultJson = JSON.stringify({ __raw: result.text, __finishReason: result.stopReason });
-      actualProvider = 'aws-bedrock'; actualModelId = model === 'nova-pro' ? 'amazon.nova-pro-v1:0' : 'amazon.nova-premier-v1:0'; break;
+      usage = result.usage;
+      actualProvider = 'aws-bedrock'; actualModelId = model === 'nova-pro' ? 'us.amazon.nova-pro-v1:0' : 'us.amazon.nova-premier-v1:0'; break;
     }
     default:
       throw new Error(`Unsupported AI model: "${model}". Supported models: ${SUPPORTED_MODELS.join(', ')}`);
@@ -311,7 +318,7 @@ async function callAI(aiModel: string, prompt: string, maxTokens: number): Promi
 
   const parsed = JSON.parse(resultJson);
   console.log(`[improve-blog-content] dispatcher actual_provider=${actualProvider} actual_model=${actualModelId} finish_reason=${parsed.__finishReason}`);
-  return { raw: parsed.__raw, finishReason: parsed.__finishReason, actualProvider, actualModelId };
+  return { raw: parsed.__raw, finishReason: parsed.__finishReason, actualProvider, actualModelId, usage };
 }
 
 // ── Build criteria-specific enrichment instructions ──
@@ -557,10 +564,10 @@ No markdown code blocks.`;
     }
 
     // ── Call AI via unified dispatcher ──
-    const { raw, finishReason, actualProvider, actualModelId } = await callAI(effectiveModel, prompt, maxTokens);
+    const { raw, finishReason, actualProvider, actualModelId, usage: aiUsage } = await callAI(effectiveModel, prompt, maxTokens);
     const wasTruncated = finishReason === 'MAX_TOKENS' || finishReason === 'LENGTH' || finishReason === 'max_tokens' || finishReason === 'length';
 
-    console.log(`[improve-blog-content] AI response received provider=${actualProvider} model=${actualModelId} finishReason=${finishReason} rawLength=${raw.length} wasTruncated=${wasTruncated}`);
+    console.log(`[improve-blog-content] AI response received provider=${actualProvider} model=${actualModelId} finishReason=${finishReason} rawLength=${raw.length} wasTruncated=${wasTruncated} usage=${JSON.stringify(aiUsage || null)}`);
 
     if (action === 'rewrite-section') {
       const cleaned = raw.replace(/```html\n?/g, '').replace(/```\n?/g, '').trim();
@@ -645,6 +652,8 @@ No markdown code blocks.`;
 
       // ── Optional single correction retry for 'fail' state ──
       let correctionAttempted = false;
+      let correctionSkipped = false;
+      let correctionSkipReason = '';
       let finalResultHtml = resultHtml;
       let finalWordCount = wordCountComputed;
       let finalValidation = wcValidation;
@@ -652,6 +661,18 @@ No markdown code blocks.`;
       // Skip correction only when truncated AND under-target (model ran out of tokens).
       // Over-target truncated content should still attempt trimming.
       const skipCorrection = wasTruncated && wordCountComputed < validationTarget;
+
+      if (wcValidation.status !== 'fail') {
+        correctionSkipped = true;
+        correctionSkipReason = `validation_status=${wcValidation.status} (not fail)`;
+      } else if (skipCorrection) {
+        correctionSkipped = true;
+        correctionSkipReason = 'truncated AND under-target (model ran out of tokens)';
+      } else if (resultHtml.length <= 100) {
+        correctionSkipped = true;
+        correctionSkipReason = 'result too short (<100 chars)';
+      }
+
       if (wcValidation.status === 'fail' && !skipCorrection && resultHtml.length > 100) {
         correctionAttempted = true;
         const direction = wordCountComputed < validationTarget ? 'expand' : 'trim';
@@ -699,6 +720,27 @@ No markdown code blocks.`;
         }
       }
 
+      // ── Structured Diagnostic Summary ──
+      const diagnostics = {
+        tag: 'ENRICHMENT_DIAGNOSTIC',
+        articleTitle: title?.substring(0, 80),
+        modelRequested: effectiveModel,
+        actualProvider,
+        actualModelId,
+        targetWordCount: validationTarget,
+        maxTokensSent: maxTokens,
+        finishReason,
+        usageTokens: aiUsage || null,
+        firstPassWordCount: wordCountComputed,
+        correctionAttempted,
+        correctionSkipped,
+        correctionSkipReason: correctionSkipReason || null,
+        finalWordCount,
+        finalValidationStatus: finalValidation.status,
+        finalDeviation: finalValidation.deviation,
+      };
+      console.log(`[ENRICHMENT_DIAGNOSTIC] ${JSON.stringify(diagnostics)}`);
+
       return new Response(JSON.stringify({
         result: finalResultHtml,
         wordCount: finalWordCount,
@@ -708,6 +750,7 @@ No markdown code blocks.`;
         actualModelId,
         selectedModelId: effectiveModel,
         correctionAttempted,
+        diagnostics,
         wordCountValidation: {
           targetWordCount: finalValidation.targetWordCount,
           actualWordCount: finalValidation.actualWordCount,

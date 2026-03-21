@@ -652,6 +652,8 @@ No markdown code blocks.`;
 
       // ── Optional single correction retry for 'fail' state ──
       let correctionAttempted = false;
+      let correctionSkipped = false;
+      let correctionSkipReason = '';
       let finalResultHtml = resultHtml;
       let finalWordCount = wordCountComputed;
       let finalValidation = wcValidation;
@@ -659,6 +661,18 @@ No markdown code blocks.`;
       // Skip correction only when truncated AND under-target (model ran out of tokens).
       // Over-target truncated content should still attempt trimming.
       const skipCorrection = wasTruncated && wordCountComputed < validationTarget;
+
+      if (wcValidation.status !== 'fail') {
+        correctionSkipped = true;
+        correctionSkipReason = `validation_status=${wcValidation.status} (not fail)`;
+      } else if (skipCorrection) {
+        correctionSkipped = true;
+        correctionSkipReason = 'truncated AND under-target (model ran out of tokens)';
+      } else if (resultHtml.length <= 100) {
+        correctionSkipped = true;
+        correctionSkipReason = 'result too short (<100 chars)';
+      }
+
       if (wcValidation.status === 'fail' && !skipCorrection && resultHtml.length > 100) {
         correctionAttempted = true;
         const direction = wordCountComputed < validationTarget ? 'expand' : 'trim';
@@ -706,6 +720,27 @@ No markdown code blocks.`;
         }
       }
 
+      // ── Structured Diagnostic Summary ──
+      const diagnostics = {
+        tag: 'ENRICHMENT_DIAGNOSTIC',
+        articleTitle: title?.substring(0, 80),
+        modelRequested: effectiveModel,
+        actualProvider,
+        actualModelId,
+        targetWordCount: validationTarget,
+        maxTokensSent: maxTokens,
+        finishReason,
+        usageTokens: aiUsage || null,
+        firstPassWordCount: wordCountComputed,
+        correctionAttempted,
+        correctionSkipped,
+        correctionSkipReason: correctionSkipReason || null,
+        finalWordCount,
+        finalValidationStatus: finalValidation.status,
+        finalDeviation: finalValidation.deviation,
+      };
+      console.log(`[ENRICHMENT_DIAGNOSTIC] ${JSON.stringify(diagnostics)}`);
+
       return new Response(JSON.stringify({
         result: finalResultHtml,
         wordCount: finalWordCount,
@@ -715,6 +750,7 @@ No markdown code blocks.`;
         actualModelId,
         selectedModelId: effectiveModel,
         correctionAttempted,
+        diagnostics,
         wordCountValidation: {
           targetWordCount: finalValidation.targetWordCount,
           actualWordCount: finalValidation.actualWordCount,

@@ -256,7 +256,7 @@ async function callLovableGemini(prompt: string, maxTokens: number): Promise<str
 
 const SUPPORTED_MODELS = ['gemini', 'gemini-flash', 'gemini-pro', 'mistral', 'claude-sonnet', 'claude', 'openai', 'gpt5', 'gpt5-mini', 'groq', 'lovable-gemini', 'vertex-flash', 'vertex-pro', 'nova-pro', 'nova-premier'];
 
-async function callAI(aiModel: string, prompt: string, maxTokens: number): Promise<{ raw: string; finishReason: string; actualProvider: string; actualModelId: string; usage?: { inputTokens?: number; outputTokens?: number } }> {
+async function callAI(aiModel: string, prompt: string, maxTokens: number, options?: { systemPrompt?: string }): Promise<{ raw: string; finishReason: string; actualProvider: string; actualModelId: string; usage?: { inputTokens?: number; outputTokens?: number } }> {
   const model = aiModel || 'gemini';
   console.log(`[improve-blog-content] dispatcher model_requested="${model}" maxTokens=${maxTokens}`);
 

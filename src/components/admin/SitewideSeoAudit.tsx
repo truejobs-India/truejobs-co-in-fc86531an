@@ -289,6 +289,7 @@ export function SitewideSeoAudit() {
                     capability="text"
                     size="sm"
                     triggerClassName="w-[200px]"
+                    allowedValues={SEO_FIX_MODEL_VALUES}
                   />
                 </div>
 
@@ -331,7 +332,7 @@ export function SitewideSeoAudit() {
 
               {phase === 'report' && report && (
                 <p className="text-xs text-muted-foreground">
-                  {report.summary.autoFixable} auto-fixable issues will be processed using <strong>{aiModel.split('/').pop()}</strong>.
+                  {report.summary.autoFixable} auto-fixable issues will be processed using <strong>{getModelLabel(aiModel)}</strong>.
                   {report.summary.reviewRequired > 0 && ` ${report.summary.reviewRequired} issues require manual review and will be skipped.`}
                 </p>
               )}

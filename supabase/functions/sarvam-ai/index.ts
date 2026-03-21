@@ -88,7 +88,9 @@ async function callSarvamMultipart(
       signal: controller.signal,
     });
     clearTimeout(timer);
-    const data = await res.json().catch(async () => ({ raw: await res.text() }));
+    let data: unknown;
+    const text = await res.text();
+    try { data = JSON.parse(text); } catch { data = { raw: text }; }
     return { ok: res.ok, status: res.status, data };
   } catch (err) {
     clearTimeout(timer);

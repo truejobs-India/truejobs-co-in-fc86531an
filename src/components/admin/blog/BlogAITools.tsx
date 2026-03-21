@@ -241,8 +241,18 @@ function isValidCanonicalUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
     if (parsed.protocol !== 'https:') return false;
-    if (parsed.hostname !== 'truejobs.co.in' && !parsed.hostname.endsWith('.truejobs.co.in')) return false;
+    // Strict hostname: exact match or subdomain with dot prefix to prevent suffix attacks
+    const h = parsed.hostname;
+    if (h !== 'truejobs.co.in' && !h.endsWith('.truejobs.co.in')) return false;
+    // Extra guard: ensure the subdomain part before .truejobs.co.in is preceded by a dot
+    if (h !== 'truejobs.co.in') {
+      const subIdx = h.indexOf('.truejobs.co.in');
+      if (subIdx <= 0) return false; // no empty subdomain
+    }
     if (parsed.pathname.includes('//')) return false;
+    // Reject junk query/hash unless intentional
+    if (parsed.search && parsed.search.length > 1) return false;
+    if (parsed.hash && parsed.hash.length > 1) return false;
     return true;
   } catch { return false; }
 }

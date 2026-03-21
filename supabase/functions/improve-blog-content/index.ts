@@ -112,7 +112,7 @@ async function awsSigV4Fetch(host: string, rawPath: string, body: string, region
 // Now handled inline in callAI dispatcher via callVertexGemini
 
 // ── Mistral Large (AWS Bedrock — us-west-2) ──
-async function callMistral(prompt: string, maxTokens: number): Promise<string> {
+async function callMistral(prompt: string, maxTokens: number, systemPrompt?: string): Promise<string> {
   const modelId = 'mistral.mistral-large-2407-v1:0';
   const region = 'us-west-2';
   const host = `bedrock-runtime.${region}.amazonaws.com`;
@@ -121,11 +121,16 @@ async function callMistral(prompt: string, maxTokens: number): Promise<string> {
   const timeoutId = setTimeout(() => controller.abort(), 120_000);
 
   try {
-    const body = JSON.stringify({
+    const payload: any = {
       messages: [{ role: 'user', content: [{ text: prompt }] }],
-      inferenceConfig: { maxTokens: Math.min(maxTokens, 16384), temperature: 0.5 },
-    });
-    console.log(`[callMistral] request: maxTokens=${Math.min(maxTokens, 16384)}`);
+      inferenceConfig: { maxTokens: Math.min(maxTokens, 8192), temperature: 0.5 },
+    };
+    // Add system message for Mistral — Converse API supports top-level system field
+    if (systemPrompt) {
+      payload.system = [{ text: systemPrompt }];
+    }
+    const body = JSON.stringify(payload);
+    console.log(`[callMistral] request: maxTokens=${Math.min(maxTokens, 8192)}, hasSystem=${!!systemPrompt}`);
     const resp = await awsSigV4Fetch(host, `/model/${modelId}/converse`, body, region, 'bedrock');
     clearTimeout(timeoutId);
     if (!resp.ok) throw new Error(`Mistral Bedrock ${resp.status}: ${await resp.text()}`);
@@ -251,7 +256,7 @@ async function callLovableGemini(prompt: string, maxTokens: number): Promise<str
 
 const SUPPORTED_MODELS = ['gemini', 'gemini-flash', 'gemini-pro', 'mistral', 'claude-sonnet', 'claude', 'openai', 'gpt5', 'gpt5-mini', 'groq', 'lovable-gemini', 'vertex-flash', 'vertex-pro', 'nova-pro', 'nova-premier'];
 
-async function callAI(aiModel: string, prompt: string, maxTokens: number): Promise<{ raw: string; finishReason: string; actualProvider: string; actualModelId: string; usage?: { inputTokens?: number; outputTokens?: number } }> {
+async function callAI(aiModel: string, prompt: string, maxTokens: number, options?: { systemPrompt?: string }): Promise<{ raw: string; finishReason: string; actualProvider: string; actualModelId: string; usage?: { inputTokens?: number; outputTokens?: number } }> {
   const model = aiModel || 'gemini';
   console.log(`[improve-blog-content] dispatcher model_requested="${model}" maxTokens=${maxTokens}`);
 
@@ -274,7 +279,7 @@ async function callAI(aiModel: string, prompt: string, maxTokens: number): Promi
       actualProvider = 'vertex-ai'; actualModelId = 'gemini-2.5-pro'; break;
     }
     case 'mistral':
-      resultJson = await callMistral(prompt, maxTokens);
+      resultJson = await callMistral(prompt, maxTokens, options?.systemPrompt);
       actualProvider = 'aws-bedrock'; actualModelId = 'mistral.mistral-large-2407-v1:0';
       try { usage = JSON.parse(resultJson).__usage; } catch { /* ignore */ }
       break;
@@ -563,11 +568,20 @@ No markdown code blocks.`;
       return new Response(JSON.stringify({ error: 'Invalid action. Use "structure", "rewrite-section", "generate-intro", "generate-conclusion", or "enrich-article"' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    // ── Call AI via unified dispatcher ──
-    const { raw, finishReason, actualProvider, actualModelId, usage: aiUsage } = await callAI(effectiveModel, prompt, maxTokens);
+    // ── Call AI via unified dispatcher (with timing) ──
+    const t0_total = Date.now();
+    const t0_firstPass = Date.now();
+
+    // For Mistral enrichment, add a system prompt to reinforce word count compliance
+    const mistralSystemPrompt = (effectiveModel === 'mistral' && action === 'enrich-article')
+      ? `You are a professional content writer. You MUST write approximately ${effectiveTarget} words. Do NOT stop early. Keep generating content until you reach the target word count. Output ONLY HTML content — no JSON, no markdown, no code blocks.`
+      : undefined;
+
+    const { raw, finishReason, actualProvider, actualModelId, usage: aiUsage } = await callAI(effectiveModel, prompt, maxTokens, { systemPrompt: mistralSystemPrompt });
+    const t1_firstPass = Date.now();
     const wasTruncated = finishReason === 'MAX_TOKENS' || finishReason === 'LENGTH' || finishReason === 'max_tokens' || finishReason === 'length';
 
-    console.log(`[improve-blog-content] AI response received provider=${actualProvider} model=${actualModelId} finishReason=${finishReason} rawLength=${raw.length} wasTruncated=${wasTruncated} usage=${JSON.stringify(aiUsage || null)}`);
+    console.log(`[improve-blog-content] AI response received provider=${actualProvider} model=${actualModelId} finishReason=${finishReason} rawLength=${raw.length} wasTruncated=${wasTruncated} usage=${JSON.stringify(aiUsage || null)} firstPassMs=${t1_firstPass - t0_firstPass}`);
 
     if (action === 'rewrite-section') {
       const cleaned = raw.replace(/```html\n?/g, '').replace(/```\n?/g, '').trim();
@@ -673,54 +687,75 @@ No markdown code blocks.`;
         correctionSkipReason = 'result too short (<100 chars)';
       }
 
+      let t0_correction = 0;
+      let t1_correction = 0;
+
       if (wcValidation.status === 'fail' && !skipCorrection && resultHtml.length > 100) {
-        correctionAttempted = true;
-        const direction = wordCountComputed < validationTarget ? 'expand' : 'trim';
-        const correctionPrompt = buildCorr(resultHtml, validationTarget, wordCountComputed, direction);
-        console.log(`[improve-blog-content] Word count ${wcValidation.status}: ${wordCountComputed}/${validationTarget} (${wcValidation.deviation}%). Attempting ${direction} correction.`);
+        // For Mistral: if first pass stopped with end_turn (not token exhaustion) and produced <50% of target,
+        // skip correction — the model is ignoring length instructions and a second call won't help.
+        const mistralObedienceIssue = effectiveModel === 'mistral' && finishReason === 'end_turn' && wordCountComputed < validationTarget * 0.6;
+        if (mistralObedienceIssue) {
+          correctionSkipped = true;
+          correctionSkipReason = `mistral end_turn at ${wordCountComputed}/${validationTarget} (<60% target) — model obedience issue, correction unlikely to help`;
+          console.log(`[improve-blog-content] Skipping correction: ${correctionSkipReason}`);
+        } else {
+          correctionAttempted = true;
+          t0_correction = Date.now();
+          const direction = wordCountComputed < validationTarget ? 'expand' : 'trim';
+          const correctionPrompt = buildCorr(resultHtml, validationTarget, wordCountComputed, direction);
+          console.log(`[improve-blog-content] Word count ${wcValidation.status}: ${wordCountComputed}/${validationTarget} (${wcValidation.deviation}%). Attempting ${direction} correction.`);
 
-        try {
-          const { computeMaxTokens: computeMT3 } = await import('../_shared/word-count-enforcement.ts');
-          const corrMaxTokens = computeMT3(validationTarget, effectiveModel);
-          const { raw: corrRaw } = await callAI(effectiveModel, correctionPrompt, corrMaxTokens);
-          let corrCleaned = corrRaw.trim();
-          if (corrCleaned.startsWith('```')) corrCleaned = corrCleaned.replace(/^```(?:json|html)?\s*\n/, '');
-          if (corrCleaned.endsWith('```')) corrCleaned = corrCleaned.replace(/\n?```\s*$/, '');
-          corrCleaned = corrCleaned.trim();
-
-          let corrHtml = '';
           try {
-            const parsedCorr = JSON.parse(corrCleaned);
-            corrHtml = typeof parsedCorr?.result === 'string' ? parsedCorr.result : corrCleaned;
-          } catch {
-            const recoveredCorr = extractResultFromPseudoJson(corrCleaned.replace(/^json\s*/i, '').trim());
-            corrHtml = recoveredCorr || corrCleaned;
+            const { computeMaxTokens: computeMT3 } = await import('../_shared/word-count-enforcement.ts');
+            const corrMaxTokens = computeMT3(validationTarget, effectiveModel);
+            const { raw: corrRaw } = await callAI(effectiveModel, correctionPrompt, corrMaxTokens);
+            t1_correction = Date.now();
+            let corrCleaned = corrRaw.trim();
+            if (corrCleaned.startsWith('```')) corrCleaned = corrCleaned.replace(/^```(?:json|html)?\s*\n/, '');
+            if (corrCleaned.endsWith('```')) corrCleaned = corrCleaned.replace(/\n?```\s*$/, '');
+            corrCleaned = corrCleaned.trim();
+
+            let corrHtml = '';
+            try {
+              const parsedCorr = JSON.parse(corrCleaned);
+              corrHtml = typeof parsedCorr?.result === 'string' ? parsedCorr.result : corrCleaned;
+            } catch {
+              const recoveredCorr = extractResultFromPseudoJson(corrCleaned.replace(/^json\s*/i, '').trim());
+              corrHtml = recoveredCorr || corrCleaned;
+            }
+
+            if (corrHtml.startsWith('```')) corrHtml = corrHtml.replace(/^```(?:json|html)?\s*\n/, '');
+            if (corrHtml.endsWith('```')) corrHtml = corrHtml.replace(/\n?```\s*$/, '');
+            corrHtml = corrHtml.trim();
+
+            const corrWordCount = countWordsFromHtml(corrHtml);
+            const corrValidation = validateWordCount(corrHtml, validationTarget, corrMaxTokens);
+
+            const origDist = Math.abs(wordCountComputed - validationTarget);
+            const corrDist = Math.abs(corrWordCount - validationTarget);
+            if (corrDist < origDist && corrHtml.length > 100) {
+              finalResultHtml = corrHtml;
+              finalWordCount = corrWordCount;
+              finalValidation = corrValidation;
+              console.log(`[improve-blog-content] Correction improved: ${wordCountComputed} → ${corrWordCount} words (correctionMs=${t1_correction - t0_correction})`);
+            } else {
+              console.log(`[improve-blog-content] Correction did not improve: original=${wordCountComputed}, corrected=${corrWordCount}. Keeping original. (correctionMs=${t1_correction - t0_correction})`);
+            }
+          } catch (corrErr: any) {
+            t1_correction = Date.now();
+            console.warn(`[improve-blog-content] Correction retry failed: ${corrErr.message}. Keeping original. (correctionMs=${t1_correction - t0_correction})`);
           }
-
-          if (corrHtml.startsWith('```')) corrHtml = corrHtml.replace(/^```(?:json|html)?\s*\n/, '');
-          if (corrHtml.endsWith('```')) corrHtml = corrHtml.replace(/\n?```\s*$/, '');
-          corrHtml = corrHtml.trim();
-
-          const corrWordCount = countWordsFromHtml(corrHtml);
-          const corrValidation = validateWordCount(corrHtml, validationTarget, corrMaxTokens);
-
-          // Use whichever version is closer to target
-          const origDist = Math.abs(wordCountComputed - validationTarget);
-          const corrDist = Math.abs(corrWordCount - validationTarget);
-          if (corrDist < origDist && corrHtml.length > 100) {
-            finalResultHtml = corrHtml;
-            finalWordCount = corrWordCount;
-            finalValidation = corrValidation;
-            console.log(`[improve-blog-content] Correction improved: ${wordCountComputed} → ${corrWordCount} words`);
-          } else {
-            console.log(`[improve-blog-content] Correction did not improve: original=${wordCountComputed}, corrected=${corrWordCount}. Keeping original.`);
-          }
-        } catch (corrErr: any) {
-          console.warn(`[improve-blog-content] Correction retry failed: ${corrErr.message}. Keeping original.`);
         }
       }
 
-      // ── Structured Diagnostic Summary ──
+      const t1_total = Date.now();
+
+      // ── Structured Diagnostic Summary (with timing) ──
+      const timingMs = {
+        firstPass: t1_firstPass - t0_firstPass,
+        correction: correctionAttempted ? (t1_correction - t0_correction) : 0,
+        total: t1_total - t0_total,
+      };
       const diagnostics = {
         tag: 'ENRICHMENT_DIAGNOSTIC',
         articleTitle: title?.substring(0, 80),
@@ -738,6 +773,7 @@ No markdown code blocks.`;
         finalWordCount,
         finalValidationStatus: finalValidation.status,
         finalDeviation: finalValidation.deviation,
+        timingMs,
       };
       console.log(`[ENRICHMENT_DIAGNOSTIC] ${JSON.stringify(diagnostics)}`);
 

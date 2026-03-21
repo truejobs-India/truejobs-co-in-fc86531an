@@ -712,8 +712,8 @@ export function UnresolvedSeoResolver() {
 
     if (action === 'append_content' && fix.value) {
       const sanitized = fix.value
-        .replace(/<script\\b[^<]*(?:(?!<\\/script>)<[^<]*)*<\\/script>/gi, '')
-        .replace(/\\son\\w+\\s*=\\s*[\"'][^\"']*[\"']/gi, '')
+        .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+        .replace(/\son\w+\s*=\s*["'][^"']*["']/gi, '')
         .replace(/javascript:/gi, '');
 
       // Fetch current content and check dedup

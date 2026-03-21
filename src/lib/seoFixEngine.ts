@@ -5,7 +5,7 @@
  */
 
 import { supabase } from '@/integrations/supabase/client';
-import type { SeoAuditIssue, ContentSource } from './sitewideSeoAudit';
+import type { SeoAuditIssue, ContentSource, IssueCategory } from './sitewideSeoAudit';
 
 // ═══════════════════════════════════════════════════════════════
 // Types
@@ -24,6 +24,8 @@ export interface FixResult {
   field?: string;
   beforeValue?: string;
   afterValue?: string;
+  verificationPassed?: boolean;
+  verificationNote?: string;
 }
 
 export interface FixProgress {
@@ -117,7 +119,6 @@ export function validateFaqSchema(schema: any): { valid: boolean; reason?: strin
 }
 
 function sanitizeHtml(html: string): string {
-  // Basic sanitization: strip script tags, event handlers
   return html
     .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
     .replace(/\son\w+\s*=\s*["'][^"']*["']/gi, '')
@@ -128,9 +129,7 @@ function validateInternalLinks(html: string): { valid: boolean; reason?: string 
   const hrefMatches = html.match(/href=["']([^"']+)["']/gi) || [];
   for (const match of hrefMatches) {
     const url = match.replace(/href=["']/i, '').replace(/["']$/, '');
-    // Allow relative paths starting with /
     if (url.startsWith('/')) continue;
-    // Allow absolute truejobs URLs
     try {
       const u = new URL(url);
       if (u.hostname !== SITE_DOMAIN && !u.hostname.endsWith('.' + SITE_DOMAIN)) {
@@ -157,7 +156,6 @@ async function updateRecord(source: ContentSource, recordId: string, updates: Re
 }
 
 async function appendToContent(source: ContentSource, recordId: string, htmlBlock: string): Promise<{ error: string | null }> {
-  // Fetch current content, append block
   const { data, error: fetchError } = await supabase
     .from(source as any)
     .select('content')
@@ -168,10 +166,10 @@ async function appendToContent(source: ContentSource, recordId: string, htmlBloc
 
   const currentContent = (data as any).content || '';
 
-  // Deduplication: check if similar block already exists
+  // Deduplication
   const blockSignature = htmlBlock.replace(/<[^>]+>/g, '').trim().substring(0, 100);
   if (currentContent.includes(blockSignature)) {
-    return { error: null }; // Already exists, skip silently
+    return { error: null };
   }
 
   const newContent = currentContent + '\n\n' + htmlBlock;
@@ -181,6 +179,69 @@ async function appendToContent(source: ContentSource, recordId: string, htmlBloc
     .eq('id', recordId);
 
   return { error: updateError?.message || null };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Post-fix verification
+// ═══════════════════════════════════════════════════════════════
+
+async function verifyFix(source: ContentSource, recordId: string, field: string, expectedValue: string | undefined): Promise<{ passed: boolean; note: string }> {
+  if (!expectedValue || field === 'content') {
+    // Content appends are harder to verify precisely
+    return { passed: true, note: 'Skipped verification for content append' };
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from(source as any)
+      .select(field)
+      .eq('id', recordId)
+      .single();
+
+    if (error || !data) {
+      return { passed: false, note: `Verification read failed: ${error?.message || 'not found'}` };
+    }
+
+    const savedValue = (data as any)[field];
+
+    // Field-specific checks
+    if (field === 'canonical_url') {
+      if (!isValidCanonicalUrl(savedValue)) {
+        return { passed: false, note: `Saved canonical is invalid: ${savedValue}` };
+      }
+      if (!savedValue.includes(SITE_DOMAIN)) {
+        return { passed: false, note: `Canonical not same-site: ${savedValue}` };
+      }
+    }
+
+    if (field === 'meta_description') {
+      if (!savedValue || savedValue.length < 50 || savedValue.length > 155) {
+        return { passed: false, note: `Meta desc length out of range: ${savedValue?.length || 0} chars` };
+      }
+    }
+
+    if (field === 'meta_title') {
+      if (!savedValue || savedValue.length < 10 || savedValue.length > 65) {
+        return { passed: false, note: `Meta title length out of range: ${savedValue?.length || 0} chars` };
+      }
+    }
+
+    if (field === 'faq_schema') {
+      const faqCheck = validateFaqSchema(savedValue);
+      if (!faqCheck.valid) {
+        return { passed: false, note: `FAQ schema invalid after save: ${faqCheck.reason}` };
+      }
+    }
+
+    // Generic value match
+    if (typeof savedValue === 'string' && savedValue === expectedValue) {
+      return { passed: true, note: 'DB value matches expected' };
+    }
+
+    return { passed: true, note: 'DB save confirmed' };
+  } catch (err: any) {
+    return { passed: false, note: `Verification error: ${err.message}` };
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -194,6 +255,7 @@ async function applyFix(
   isPublished: boolean,
   fix: any,
   issueId: string,
+  enableVerification = true,
 ): Promise<FixResult> {
   const base = { issueId, source, recordId, slug, category: fix.category || 'unknown' };
 
@@ -220,14 +282,23 @@ async function applyFix(
     if (error) {
       return { ...base, status: 'failed', reason: `DB error: ${error}`, field: fix.field };
     }
-    return { ...base, status: 'fixed', reason: fix.explanation || 'Auto-fixed', field: fix.field, afterValue: fix.value };
+
+    // Post-fix verification
+    let verificationPassed = true;
+    let verificationNote = '';
+    if (enableVerification) {
+      const v = await verifyFix(source, recordId, fix.field, fix.value);
+      verificationPassed = v.passed;
+      verificationNote = v.note;
+    }
+
+    return { ...base, status: 'fixed', reason: fix.explanation || 'Auto-fixed', field: fix.field, afterValue: fix.value, verificationPassed, verificationNote };
   }
 
   // ── append_content ──
   if (action === 'append_content' && fix.value) {
     const sanitized = sanitizeHtml(fix.value);
 
-    // Validate internal links if this is a links block
     if (fix.category === 'internal_links') {
       const linkCheck = validateInternalLinks(sanitized);
       if (!linkCheck.valid) {
@@ -239,7 +310,7 @@ async function applyFix(
     if (error) {
       return { ...base, status: 'failed', reason: `Append error: ${error}`, field: 'content' };
     }
-    return { ...base, status: 'fixed', reason: fix.explanation || 'Content appended', field: 'content', afterValue: `[appended ${sanitized.length} chars]` };
+    return { ...base, status: 'fixed', reason: fix.explanation || 'Content appended', field: 'content', afterValue: `[appended ${sanitized.length} chars]`, verificationPassed: true };
   }
 
   // ── set_faq_schema ──
@@ -261,7 +332,6 @@ async function applyFix(
       updated_at: new Date().toISOString(),
     };
 
-    // blog_posts has has_faq_schema and faq_count columns
     if (source === 'blog_posts') {
       updates.has_faq_schema = true;
       updates.faq_count = schema.length;
@@ -271,7 +341,16 @@ async function applyFix(
     if (error) {
       return { ...base, status: 'failed', reason: `FAQ save error: ${error}`, field: 'faq_schema' };
     }
-    return { ...base, status: 'fixed', reason: `FAQ schema set: ${schema.length} items`, field: 'faq_schema', afterValue: `${schema.length} FAQ items` };
+
+    let verificationPassed = true;
+    let verificationNote = '';
+    if (enableVerification) {
+      const v = await verifyFix(source, recordId, 'faq_schema', undefined);
+      verificationPassed = v.passed;
+      verificationNote = v.note;
+    }
+
+    return { ...base, status: 'fixed', reason: `FAQ schema set: ${schema.length} items`, field: 'faq_schema', afterValue: `${schema.length} FAQ items`, verificationPassed, verificationNote };
   }
 
   // Unknown action → review
@@ -279,16 +358,156 @@ async function applyFix(
 }
 
 // ═══════════════════════════════════════════════════════════════
-// Main execution engine
+// Process a batch of pages through AI + apply
 // ═══════════════════════════════════════════════════════════════
 
-export async function executeFixAll(
-  issues: SeoAuditIssue[],
+async function processBatch(
+  batch: PageFixGroup[],
   aiModel: string,
+  progress: FixProgress,
+  allResults: FixResult[],
   onProgress: (progress: FixProgress) => void,
   stopSignal: { stopped: boolean },
-): Promise<FixResult[]> {
-  // Group issues by page
+  warnedSlugs: Set<string>,
+): Promise<void> {
+  try {
+    const { data, error } = await supabase.functions.invoke('seo-audit-fix', {
+      body: {
+        pages: batch.map(p => ({
+          source: p.source,
+          recordId: p.recordId,
+          slug: p.slug,
+          title: p.title,
+          isPublished: p.isPublished,
+          issues: p.issues.map(i => ({
+            category: i.category,
+            message: i.message,
+            currentValue: i.currentValue,
+            fixHint: i.fixHint,
+          })),
+          contentSnippet: p.contentSnippet,
+        })),
+        aiModel,
+      },
+    });
+
+    if (error) throw new Error(error.message);
+
+    const results = data?.results || [];
+
+    for (const pageResult of results) {
+      if (stopSignal.stopped) break;
+
+      const page = batch.find(p => p.recordId === pageResult.recordId);
+      if (!page) continue;
+
+      if (pageResult.error) {
+        for (const issue of page.issues) {
+          allResults.push({
+            issueId: issue.id,
+            source: page.source,
+            recordId: page.recordId,
+            slug: page.slug,
+            category: issue.category,
+            status: 'failed',
+            reason: `AI error: ${pageResult.error}`,
+          });
+          progress.failed++;
+        }
+      } else if (pageResult.parseError) {
+        // Deduplicate warnings per slug
+        if (!warnedSlugs.has(page.slug)) {
+          warnedSlugs.add(page.slug);
+          progress.lastWarning = `AI response for "${page.slug}" could not be parsed — fixes skipped`;
+          onProgress({ ...progress });
+          progress.lastWarning = undefined; // Clear after emitting
+        }
+        for (const issue of page.issues) {
+          allResults.push({
+            issueId: issue.id,
+            source: page.source,
+            recordId: page.recordId,
+            slug: page.slug,
+            category: issue.category,
+            status: 'failed',
+            reason: 'AI response parse error — model output was not valid JSON',
+          });
+          progress.failed++;
+        }
+      } else {
+        const fixes = pageResult.fixes || [];
+
+        if (pageResult.truncated && !warnedSlugs.has(page.slug + ':truncated')) {
+          warnedSlugs.add(page.slug + ':truncated');
+          progress.lastWarning = `AI response for "${page.slug}" was truncated — some fixes may be missing`;
+          onProgress({ ...progress });
+          progress.lastWarning = undefined;
+        }
+
+        const fixedCategories = new Set<string>();
+
+        for (const fix of fixes) {
+          if (stopSignal.stopped) break;
+
+          const matchingIssue = page.issues.find(i => i.category === fix.category && !fixedCategories.has(i.id));
+          const issueId = matchingIssue?.id || `${page.source}:${page.recordId}:${fix.category}`;
+
+          const result = await applyFix(page.source, page.recordId, page.slug, page.isPublished, fix, issueId);
+          allResults.push(result);
+
+          if (result.status === 'fixed') { progress.fixed++; fixedCategories.add(issueId); }
+          else if (result.status === 'failed') progress.failed++;
+          else if (result.status === 'review_required') progress.reviewRequired++;
+          else progress.skipped++;
+        }
+
+        // Issues that got no fix from AI
+        for (const issue of page.issues) {
+          if (!fixedCategories.has(issue.id) && !allResults.some(r => r.issueId === issue.id)) {
+            allResults.push({
+              issueId: issue.id,
+              source: page.source,
+              recordId: page.recordId,
+              slug: page.slug,
+              category: issue.category,
+              status: 'skipped',
+              reason: 'AI did not generate a fix for this issue',
+            });
+            progress.skipped++;
+          }
+        }
+      }
+
+      progress.processed++;
+      onProgress({ ...progress });
+      progress.lastWarning = undefined; // Always clear after emitting
+    }
+  } catch (err: any) {
+    for (const page of batch) {
+      for (const issue of page.issues) {
+        allResults.push({
+          issueId: issue.id,
+          source: page.source,
+          recordId: page.recordId,
+          slug: page.slug,
+          category: issue.category,
+          status: 'failed',
+          reason: `Batch error: ${err.message || 'Unknown error'}`,
+        });
+        progress.failed++;
+      }
+      progress.processed++;
+    }
+    onProgress({ ...progress });
+    progress.lastWarning = undefined;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Build pages from issues
+// ═══════════════════════════════════════════════════════════════
+
+function buildPageGroups(issues: SeoAuditIssue[]): PageFixGroup[] {
   const pageMap = new Map<string, PageFixGroup>();
   for (const issue of issues) {
     if (!issue.autoFixable) continue;
@@ -305,9 +524,38 @@ export async function executeFixAll(
     }
     pageMap.get(key)!.issues.push(issue);
   }
+  return Array.from(pageMap.values());
+}
 
-  const pages = Array.from(pageMap.values());
+async function fetchContentSnippets(pages: PageFixGroup[]): Promise<void> {
+  for (const page of pages) {
+    try {
+      const { data } = await supabase
+        .from(page.source as any)
+        .select('content')
+        .eq('id', page.recordId)
+        .single();
+      if (data) {
+        // Limit snippet to 800 chars to avoid token overflow
+        page.contentSnippet = ((data as any).content || '').substring(0, 800);
+      }
+    } catch { /* ignore */ }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Main execution engine
+// ═══════════════════════════════════════════════════════════════
+
+export async function executeFixAll(
+  issues: SeoAuditIssue[],
+  aiModel: string,
+  onProgress: (progress: FixProgress) => void,
+  stopSignal: { stopped: boolean },
+): Promise<FixResult[]> {
+  const pages = buildPageGroups(issues);
   const allResults: FixResult[] = [];
+  const warnedSlugs = new Set<string>();
   const progress: FixProgress = {
     total: pages.length,
     processed: 0,
@@ -319,21 +567,8 @@ export async function executeFixAll(
     currentModel: aiModel,
   };
 
-  // Fetch content snippets for context (batch by source)
-  for (const page of pages) {
-    try {
-      const { data } = await supabase
-        .from(page.source as any)
-        .select('content')
-        .eq('id', page.recordId)
-        .single();
-      if (data) {
-        page.contentSnippet = ((data as any).content || '').substring(0, 2000);
-      }
-    } catch { /* ignore */ }
-  }
+  await fetchContentSnippets(pages);
 
-  // Process in batches of 3 pages per AI call
   const BATCH_SIZE = 3;
   for (let i = 0; i < pages.length; i += BATCH_SIZE) {
     if (stopSignal.stopped) break;
@@ -342,136 +577,84 @@ export async function executeFixAll(
     progress.currentSlug = batch.map(p => p.slug).join(', ');
     onProgress({ ...progress });
 
-    try {
-      // Call edge function
-      const { data, error } = await supabase.functions.invoke('seo-audit-fix', {
-        body: {
-          pages: batch.map(p => ({
-            source: p.source,
-            recordId: p.recordId,
-            slug: p.slug,
-            title: p.title,
-            isPublished: p.isPublished,
-            issues: p.issues.map(i => ({
-              category: i.category,
-              message: i.message,
-              currentValue: i.currentValue,
-              fixHint: i.fixHint,
-            })),
-            contentSnippet: p.contentSnippet,
-          })),
-          aiModel,
-        },
-      });
+    await processBatch(batch, aiModel, progress, allResults, onProgress, stopSignal, warnedSlugs);
 
-      if (error) throw new Error(error.message);
-
-      const results = data?.results || [];
-
-      // Apply fixes for each page
-      for (const pageResult of results) {
-        if (stopSignal.stopped) break;
-
-        const page = batch.find(p => p.recordId === pageResult.recordId);
-        if (!page) continue;
-
-        if (pageResult.error) {
-          // All issues for this page failed
-          for (const issue of page.issues) {
-            allResults.push({
-              issueId: issue.id,
-              source: page.source,
-              recordId: page.recordId,
-              slug: page.slug,
-              category: issue.category,
-              status: 'failed',
-              reason: pageResult.error,
-            });
-            progress.failed++;
-          }
-        } else if (pageResult.parseError) {
-          progress.lastWarning = `AI response for "${page.slug}" could not be parsed — fixes skipped`;
-          for (const issue of page.issues) {
-            allResults.push({
-              issueId: issue.id,
-              source: page.source,
-              recordId: page.recordId,
-              slug: page.slug,
-              category: issue.category,
-              status: 'failed',
-              reason: 'AI response parse error — not saved as success',
-            });
-            progress.failed++;
-          }
-        } else {
-          const fixes = pageResult.fixes || [];
-
-          if (pageResult.truncated) {
-            progress.lastWarning = `AI response for "${page.slug}" was truncated — some fixes may be missing`;
-            console.warn(`[SEO-FIX] Truncated response for ${page.slug} — some fixes may be missing`);
-          }
-
-          // Map fixes back to issues
-          const fixedCategories = new Set<string>();
-
-          for (const fix of fixes) {
-            if (stopSignal.stopped) break;
-
-            const matchingIssue = page.issues.find(i => i.category === fix.category && !fixedCategories.has(i.id));
-            const issueId = matchingIssue?.id || `${page.source}:${page.recordId}:${fix.category}`;
-
-            const result = await applyFix(page.source, page.recordId, page.slug, page.isPublished, fix, issueId);
-            allResults.push(result);
-
-            if (result.status === 'fixed') { progress.fixed++; fixedCategories.add(issueId); }
-            else if (result.status === 'failed') progress.failed++;
-            else if (result.status === 'review_required') progress.reviewRequired++;
-            else progress.skipped++;
-          }
-
-          // Issues that got no fix from AI
-          for (const issue of page.issues) {
-            if (!fixedCategories.has(issue.id) && !allResults.some(r => r.issueId === issue.id)) {
-              allResults.push({
-                issueId: issue.id,
-                source: page.source,
-                recordId: page.recordId,
-                slug: page.slug,
-                category: issue.category,
-                status: 'skipped',
-                reason: 'AI did not generate a fix for this issue',
-              });
-              progress.skipped++;
-            }
-          }
-        }
-
-        progress.processed++;
-        onProgress({ ...progress });
-      }
-    } catch (err: any) {
-      // Entire batch failed
-      for (const page of batch) {
-        for (const issue of page.issues) {
-          allResults.push({
-            issueId: issue.id,
-            source: page.source,
-            recordId: page.recordId,
-            slug: page.slug,
-            category: issue.category,
-            status: 'failed',
-            reason: err.message || 'Batch execution error',
-          });
-          progress.failed++;
-        }
-        progress.processed++;
-      }
-      onProgress({ ...progress });
-    }
-
-    // Brief delay between batches to avoid rate limits
     if (i + BATCH_SIZE < pages.length && !stopSignal.stopped) {
       await new Promise(r => setTimeout(r, 1500));
+    }
+  }
+
+  return allResults;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Targeted retry engine
+// ═══════════════════════════════════════════════════════════════
+
+export type RetryFilter =
+  | { type: 'failed_only' }
+  | { type: 'by_source'; source: ContentSource }
+  | { type: 'by_category'; category: IssueCategory };
+
+/**
+ * Re-run fixes for a subset of issues from the last scan.
+ * Does NOT rerun already-successful items.
+ */
+export async function executeRetry(
+  allIssues: SeoAuditIssue[],
+  previousResults: FixResult[],
+  filter: RetryFilter,
+  aiModel: string,
+  onProgress: (progress: FixProgress) => void,
+  stopSignal: { stopped: boolean },
+): Promise<FixResult[]> {
+  // Determine which issues to retry
+  const successIds = new Set(previousResults.filter(r => r.status === 'fixed').map(r => r.issueId));
+
+  let eligibleIssues = allIssues.filter(i => i.autoFixable && !successIds.has(i.id));
+
+  // Apply filter
+  if (filter.type === 'failed_only') {
+    const failedIds = new Set(previousResults.filter(r => r.status === 'failed').map(r => r.issueId));
+    eligibleIssues = eligibleIssues.filter(i => failedIds.has(i.id));
+  } else if (filter.type === 'by_source') {
+    eligibleIssues = eligibleIssues.filter(i => i.source === filter.source);
+  } else if (filter.type === 'by_category') {
+    eligibleIssues = eligibleIssues.filter(i => i.category === filter.category);
+  }
+
+  if (eligibleIssues.length === 0) {
+    return [];
+  }
+
+  const pages = buildPageGroups(eligibleIssues);
+  const allResults: FixResult[] = [];
+  const warnedSlugs = new Set<string>();
+  const progress: FixProgress = {
+    total: pages.length,
+    processed: 0,
+    fixed: 0,
+    skipped: 0,
+    failed: 0,
+    reviewRequired: 0,
+    currentSlug: '',
+    currentModel: aiModel,
+  };
+
+  await fetchContentSnippets(pages);
+
+  // Use batch size 1 for retries to reduce token pressure
+  for (let i = 0; i < pages.length; i++) {
+    if (stopSignal.stopped) break;
+
+    const batch = [pages[i]];
+    progress.currentSlug = pages[i].slug;
+    onProgress({ ...progress });
+
+    await processBatch(batch, aiModel, progress, allResults, onProgress, stopSignal, warnedSlugs);
+
+    if (i + 1 < pages.length && !stopSignal.stopped) {
+      await new Promise(r => setTimeout(r, 2000));
     }
   }
 

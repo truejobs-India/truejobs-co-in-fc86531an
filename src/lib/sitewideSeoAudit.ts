@@ -272,7 +272,7 @@ export async function runSitewideSeoAudit(
 
   // ── Custom pages ──
   onProgress?.('Scanning custom pages…');
-  const pages = await fetchAll<any>('custom_pages', 'id,slug,title,is_published,meta_title,meta_description,canonical_url,excerpt,featured_image_alt,content,word_count,faq_schema');
+  const pages = await fetchAll<any>('custom_pages', 'id,slug,title,is_published,meta_title,meta_description,canonical_url,excerpt,featured_image_alt,content,word_count,faq_schema,page_type');
   totalScanned.custom_pages = pages.length;
   for (const p of pages) {
     const urlPrefix = p.page_type === 'result-landing' ? 'results' : 'pages';

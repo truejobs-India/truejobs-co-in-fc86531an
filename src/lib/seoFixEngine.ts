@@ -35,6 +35,7 @@ export interface FixProgress {
   reviewRequired: number;
   currentSlug: string;
   currentModel: string;
+  lastWarning?: string;
 }
 
 export interface PageFixGroup {
@@ -78,8 +79,7 @@ export function validateFixValue(field: string, value: string): { valid: boolean
 
     case 'meta_description':
       if (value.length < 50) return { valid: false, reason: `Meta description too short: ${value.length} chars` };
-      if (value.length > 160) return { valid: false, reason: `Meta description too long: ${value.length} chars` };
-      // Target is 130-155, warn but still valid if 100-160
+      if (value.length > 155) return { valid: false, reason: `Meta description exceeds 155 chars (${value.length})` };
       return { valid: true };
 
     case 'canonical_url':
@@ -390,6 +390,7 @@ export async function executeFixAll(
             progress.failed++;
           }
         } else if (pageResult.parseError) {
+          progress.lastWarning = `AI response for "${page.slug}" could not be parsed — fixes skipped`;
           for (const issue of page.issues) {
             allResults.push({
               issueId: issue.id,
@@ -398,12 +399,17 @@ export async function executeFixAll(
               slug: page.slug,
               category: issue.category,
               status: 'failed',
-              reason: 'AI response parse error',
+              reason: 'AI response parse error — not saved as success',
             });
             progress.failed++;
           }
         } else {
           const fixes = pageResult.fixes || [];
+
+          if (pageResult.truncated) {
+            progress.lastWarning = `AI response for "${page.slug}" was truncated — some fixes may be missing`;
+            console.warn(`[SEO-FIX] Truncated response for ${page.slug} — some fixes may be missing`);
+          }
 
           // Map fixes back to issues
           const fixedCategories = new Set<string>();
@@ -437,10 +443,6 @@ export async function executeFixAll(
               });
               progress.skipped++;
             }
-          }
-
-          if (pageResult.truncated) {
-            console.warn(`[SEO-FIX] Truncated response for ${page.slug} — some fixes may be missing`);
           }
         }
 

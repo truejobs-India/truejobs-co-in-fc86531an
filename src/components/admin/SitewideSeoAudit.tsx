@@ -127,7 +127,13 @@ export function SitewideSeoAudit() {
       const results = await executeFixAll(
         autoFixableIssues,
         aiModel,
-        (p) => setFixProgress({ ...p }),
+        (p) => {
+          if (p.lastWarning) {
+            toast({ title: 'AI Response Warning', description: p.lastWarning, variant: 'destructive' });
+            p.lastWarning = undefined; // Clear so it doesn't fire repeatedly
+          }
+          setFixProgress({ ...p });
+        },
         stopSignal.current,
       );
       setFixResults(results);

@@ -564,7 +564,7 @@ function RetryControls({
   report: SeoAuditReport;
   fixResults: FixResult[];
   onRetry: (filter: RetryFilter, label: string) => void;
-  disabled: boolean;
+  disabled?: boolean;
 }) {
   const failedCount = fixResults.filter(r => r.status === 'failed').length;
   const failedSources = new Set(fixResults.filter(r => r.status === 'failed').map(r => r.source));

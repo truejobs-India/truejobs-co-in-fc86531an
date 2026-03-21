@@ -14,17 +14,27 @@ import {
   getModelDef,
   checkModelSuitability,
   getRecommendedModelsForTarget,
+  normalizeAiModelValue,
 } from '@/lib/aiModels';
 
 /** Get the last-used model for a capability, or return the fallback */
-export function getLastUsedModel(capability: AiModelCapability, fallback: string): string {
+export function getLastUsedModel(
+  capability: AiModelCapability,
+  fallback: string,
+  allowedValues?: readonly string[],
+): string {
+  const normalizedFallback = normalizeAiModelValue(fallback, fallback);
+
   try {
-    const stored = localStorage.getItem(`ai_model_last_${capability}`);
-    if (stored && AI_MODELS.some(m => m.value === stored && m.capabilities.includes(capability))) {
+    const stored = normalizeAiModelValue(localStorage.getItem(`ai_model_last_${capability}`), normalizedFallback);
+    const isAllowed = !allowedValues || allowedValues.includes(stored);
+    const isCapable = AI_MODELS.some(m => m.value === stored && m.capabilities.includes(capability));
+    if (stored && isAllowed && isCapable) {
       return stored;
     }
   } catch {}
-  return fallback;
+
+  return normalizedFallback;
 }
 
 interface AiModelSelectorProps {
@@ -38,6 +48,8 @@ interface AiModelSelectorProps {
   triggerClassName?: string;
   /** Size variant */
   size?: 'sm' | 'default';
+  /** Optional allow-list for flows that support only a subset of models */
+  allowedValues?: readonly string[];
 }
 
 export function AiModelSelector({
@@ -47,29 +59,33 @@ export function AiModelSelector({
   wordTarget,
   triggerClassName,
   size = 'sm',
+  allowedValues,
 }: AiModelSelectorProps) {
   const storageKey = `ai_model_last_${capability}`;
-  const models = AI_MODELS.filter(m => m.capabilities.includes(capability));
+  const models = AI_MODELS.filter(
+    m => m.capabilities.includes(capability) && (!allowedValues || allowedValues.includes(m.value)),
+  );
+  const normalizedValue = models.some(m => m.value === value)
+    ? value
+    : getLastUsedModel(capability, models[0]?.value ?? 'gemini-flash', allowedValues);
 
   const handleChange = (v: string) => {
     try { localStorage.setItem(storageKey, v); } catch {}
     onValueChange(v);
   };
 
-  // Group: built-in first, then external
   const builtIn = models.filter(m => m.source === 'built-in');
   const external = models.filter(m => m.source === 'external-api');
 
   const h = size === 'sm' ? 'h-8' : 'h-10';
   const textSize = size === 'sm' ? 'text-xs' : 'text-sm';
 
-  // Suitability check for current selection
-  const suitability = wordTarget ? checkModelSuitability(value, wordTarget) : 'ok';
-  const selectedModel = getModelDef(value);
+  const suitability = wordTarget ? checkModelSuitability(normalizedValue, wordTarget) : 'ok';
+  const selectedModel = getModelDef(normalizedValue);
 
   return (
     <div className="space-y-1.5">
-      <Select value={value} onValueChange={handleChange}>
+      <Select value={normalizedValue} onValueChange={handleChange}>
         <SelectTrigger className={triggerClassName ?? `w-[220px] ${h} ${textSize}`}>
           <SelectValue />
         </SelectTrigger>
@@ -91,7 +107,6 @@ export function AiModelSelector({
         </SelectContent>
       </Select>
 
-      {/* Non-blocking suitability warnings */}
       {wordTarget && suitability === 'warn' && selectedModel && (
         <div className="flex items-start gap-1.5 text-[11px] text-amber-600 dark:text-amber-400">
           <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
@@ -107,7 +122,7 @@ export function AiModelSelector({
           <span>
             {selectedModel.label} is not recommended for {wordTarget}+ words (reliable up to ~{selectedModel.recommendedMaxWords}).
             {(() => {
-              const better = getRecommendedModelsForTarget(wordTarget, capability);
+              const better = getRecommendedModelsForTarget(wordTarget, capability).filter(m => !allowedValues || allowedValues.includes(m.value));
               if (better.length > 0) {
                 return ` Try ${better.slice(0, 2).map(m => m.label).join(' or ')}.`;
               }

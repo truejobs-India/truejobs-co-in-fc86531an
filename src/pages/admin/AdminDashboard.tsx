@@ -28,6 +28,7 @@ import {
   Download,
   MessageSquare,
   Rss,
+  Search,
 } from 'lucide-react';
 import { RssIntakeManager } from '@/components/admin/rss-intake/RssIntakeManager';
 import { RestrictedDomainsManager } from '@/components/admin/RestrictedDomainsManager';
@@ -59,6 +60,7 @@ import { CustomPagesManager } from '@/components/admin/CustomPagesManager';
 import { PdfResourcesManager } from '@/components/admin/PdfResourcesManager';
 import { ChatbotSettingsManager } from '@/components/admin/ChatbotSettingsManager';
 import { ChatbotAnalytics } from '@/components/admin/ChatbotAnalytics';
+import { SitewideSeoAudit } from '@/components/admin/SitewideSeoAudit';
 import { useNavigate } from 'react-router-dom';
 
 type DrilldownView = 
@@ -347,6 +349,10 @@ function AdminDashboardInner() {
                   <Rss className="h-4 w-4" />
                   <span className="hidden sm:inline">RSS Intake</span>
                 </TabsTrigger>
+                <TabsTrigger value="seo-audit" className="flex items-center gap-2">
+                  <Search className="h-4 w-4" />
+                  <span className="hidden sm:inline">SEO Audit</span>
+                </TabsTrigger>
               </TabsList>
 
               <TabsContent value="users">
@@ -435,6 +441,10 @@ function AdminDashboardInner() {
 
               <TabsContent value="rss-intake">
                 <RssIntakeManager />
+              </TabsContent>
+
+              <TabsContent value="seo-audit">
+                <SitewideSeoAudit />
               </TabsContent>
             </Tabs>
           </>

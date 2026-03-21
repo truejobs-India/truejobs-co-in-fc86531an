@@ -341,6 +341,10 @@ export function SitewideSeoAudit() {
                 <History className="h-3.5 w-3.5 mr-1.5" />
                 Run History
               </TabsTrigger>
+              <TabsTrigger value="resolve">
+                <Wrench className="h-3.5 w-3.5 mr-1.5" />
+                Resolve Unfixed
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="audit" className="mt-0 space-y-3">

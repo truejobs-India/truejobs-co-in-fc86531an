@@ -312,19 +312,58 @@ export function getImageModels(): AiModelDef[] {
   return AI_MODELS.filter(m => m.capabilities.includes('image'));
 }
 
+/** SEO Fix All only supports these UI model keys safely. */
+export const SEO_FIX_MODEL_VALUES = [
+  'gemini-flash',
+  'gemini-pro',
+  'gpt5-mini',
+  'gpt5',
+  'lovable-gemini',
+] as const;
+
+const LEGACY_MODEL_ALIASES: Record<string, string> = {
+  'google/gemini-2.5-flash': 'gemini-flash',
+  'google/gemini-2.5-pro': 'gemini-pro',
+  'openai/gpt-5-mini': 'gpt5-mini',
+  'openai/gpt-5': 'gpt5',
+  'openai/gpt-5-nano': 'gpt5-mini',
+  'google/gemini-3-flash-preview': 'gemini-flash',
+  'google/gemini-3.1-pro-preview': 'gemini-pro',
+  'vertex-flash': 'gemini-flash',
+  'vertex-pro': 'gemini-pro',
+  'nova-pro': 'gemini-flash',
+  'nova-premier': 'gemini-pro',
+  'groq': 'gemini-flash',
+  'claude-sonnet': 'gemini-pro',
+  'mistral': 'gemini-flash',
+};
+
+/** Normalize saved/legacy model values to a current registry key. */
+export function normalizeAiModelValue(value: string | null | undefined, fallback = 'gemini-flash'): string {
+  if (!value) return fallback;
+  if (AI_MODELS.some(m => m.value === value)) return value;
+  return LEGACY_MODEL_ALIASES[value] || fallback;
+}
+
 /** Lookup a model by value key */
 export function getModelDef(value: string): AiModelDef | undefined {
   return AI_MODELS.find(m => m.value === value);
 }
 
+/** Human label for a model key, with safe fallback. */
+export function getModelLabel(value: string): string {
+  const normalized = normalizeAiModelValue(value, value);
+  return getModelDef(normalized)?.label || value;
+}
+
 /** Get speed for ETA calculations */
 export function getModelSpeed(value: string): number {
-  return getModelDef(value)?.speed ?? 30;
+  return getModelDef(normalizeAiModelValue(value, 'gemini-pro'))?.speed ?? 30;
 }
 
 /** Check if a model is from an external API */
 export function isExternalModel(value: string): boolean {
-  return getModelDef(value)?.source === 'external-api';
+  return getModelDef(normalizeAiModelValue(value, 'gemini-flash'))?.source === 'external-api';
 }
 
 /**

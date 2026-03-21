@@ -755,7 +755,7 @@ function FixProgressBar({ progress }: { progress: FixProgress }) {
     <div className="space-y-2">
       <div className="flex items-center justify-between text-xs">
         <span className="font-medium">Fixing SEO issues… {progress.processed}/{progress.total} pages</span>
-        <span className="text-muted-foreground">Model: {progress.currentModel.split('/').pop()}</span>
+        <span className="text-muted-foreground">Model: {getModelLabel(progress.currentModel)}</span>
       </div>
       <Progress value={pct} className="h-2" />
       <div className="flex flex-wrap gap-3 text-xs">

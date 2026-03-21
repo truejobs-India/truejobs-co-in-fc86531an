@@ -513,7 +513,7 @@ async function callSarvamChat(model: string, prompt: string, maxTokens: number):
   const apiKey = Deno.env.get('SARVAM_API_KEY');
   if (!apiKey) throw new Error('SARVAM_API_KEY not configured');
 
-  const sarvamModel = model === 'sarvam-105b' ? 'sarvam-m1' : 'sarvam-m1';
+  const sarvamModel = model === 'sarvam-105b' ? 'sarvam-105b' : 'sarvam-30b';
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 120_000);
 

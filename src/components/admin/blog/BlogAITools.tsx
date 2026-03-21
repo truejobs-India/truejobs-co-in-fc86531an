@@ -236,6 +236,85 @@ function buildCleanLinkBlock(links: { href: string; text: string }[]): string {
   return `<h3>Related Resources</h3><ul>${items}</ul>`;
 }
 
+// ── Strict canonical URL validator ──
+function isValidCanonicalUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'https:') return false;
+    if (parsed.hostname !== 'truejobs.co.in' && !parsed.hostname.endsWith('.truejobs.co.in')) return false;
+    if (parsed.pathname.includes('//')) return false;
+    return true;
+  } catch { return false; }
+}
+
+// ── Field value validators (pre-save) ──
+function validateFieldValue(field: string, value: string): { valid: boolean; reason?: string } {
+  if (!value || value.trim().length === 0) return { valid: false, reason: 'Empty value' };
+  switch (field) {
+    case 'meta_title':
+      if (value.length < 10) return { valid: false, reason: `Too short (${value.length} chars, min 10)` };
+      if (value.length > 60) return { valid: false, reason: `Too long (${value.length} chars, max 60)` };
+      return { valid: true };
+    case 'meta_description':
+      if (value.length < 50) return { valid: false, reason: `Too short (${value.length} chars, min 50)` };
+      if (value.length > 155) return { valid: false, reason: `Too long (${value.length} chars, max 155)` };
+      return { valid: true };
+    case 'excerpt':
+      if (value.length < 20) return { valid: false, reason: `Too short (${value.length} chars, min 20)` };
+      if (value.length > 320) return { valid: false, reason: `Too long (${value.length} chars, max 320)` };
+      return { valid: true };
+    case 'featured_image_alt':
+      if (value.length < 3) return { valid: false, reason: `Too short (${value.length} chars, min 3)` };
+      if (value.length > 200) return { valid: false, reason: `Too long (${value.length} chars, max 200)` };
+      return { valid: true };
+    case 'canonical_url':
+      if (!isValidCanonicalUrl(value)) return { valid: false, reason: 'Invalid canonical URL (must be https://truejobs.co.in/...)' };
+      return { valid: true };
+    case 'slug':
+      if (!/^[a-z0-9][a-z0-9-]*[a-z0-9]$/.test(value) && value.length > 1) return { valid: false, reason: 'Invalid slug format' };
+      if (value.includes('--')) return { valid: false, reason: 'Slug contains double hyphens' };
+      if (value.length > 80) return { valid: false, reason: `Slug too long (${value.length} chars, max 80)` };
+      return { valid: true };
+    default:
+      return { valid: value.length > 0 };
+  }
+}
+
+// ── Smart overwrite logic (replaces the old empty-or-<3-chars check) ──
+function shouldAutoOverwriteField(field: string, currentVal: string): boolean {
+  // Always overwrite empty or near-empty fields
+  if (!currentVal || currentVal.trim().length < 3) return true;
+  switch (field) {
+    case 'meta_title':
+      return currentVal.length > 60 || currentVal.length < 15;
+    case 'meta_description':
+      return currentVal.length > 155 || currentVal.length < 50;
+    case 'excerpt':
+      return currentVal.length < 20 || currentVal.length > 320;
+    case 'featured_image_alt':
+      return currentVal.length < 5;
+    case 'canonical_url':
+      return !isValidCanonicalUrl(currentVal);
+    case 'slug':
+      // Slug changes are review-only for safety (risk of breaking live URLs)
+      return false;
+    case 'author_name':
+      return false; // Don't auto-overwrite author names
+    default:
+      return false;
+  }
+}
+
+// ── FAQ schema validator ──
+function validateFaqSchema(schema: any): { question: string; answer: string }[] | null {
+  if (!Array.isArray(schema)) return null;
+  const valid = schema.filter(
+    (item: any) => typeof item?.question === 'string' && item.question.trim().length > 5
+      && typeof item?.answer === 'string' && item.answer.trim().length > 10
+  );
+  return valid.length > 0 ? valid : null;
+}
+
 // ── Status derivation ──
 function deriveSeoStatus(tool: ToolState, formData: BlogAIToolsProps['formData']): ToolStatus {
   if (tool.isLoading) return 'running';

@@ -81,6 +81,12 @@ function normalizeFix(raw: any): {
   // Whitelist enforcement — unknown values downgrade to advisory
   if (!VALID_FIX_TYPES.has(fixType)) fixType = 'advisory';
   if (!VALID_APPLY_MODES.has(applyMode)) applyMode = 'advisory';
+
+  // Safety net: internal_links must NEVER use destructive modes
+  if (fixType === 'internal_links' && (applyMode === 'replace_section' || applyMode === 'review_replacement')) {
+    applyMode = 'append_content';
+  }
+
   if (fixType === 'metadata' && field && !EDITABLE_FIELDS.has(field)) {
     // Non-editable field → suggestion only
     applyMode = 'advisory';

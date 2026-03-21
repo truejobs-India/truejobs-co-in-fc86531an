@@ -820,7 +820,7 @@ export function UnresolvedSeoResolver() {
         ) : (
           <Button
             size="lg"
-            disabled={selectedItems.length === 0 || phase === 'loading' || phase === 'fixing'}
+            disabled={selectedItems.length === 0 || phase === 'loading'}
             className="bg-gradient-to-r from-primary to-primary/80"
             onClick={handleFix}
           >

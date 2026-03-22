@@ -156,9 +156,6 @@ function AdminDashboardInner() {
 
   const statCards = [
     { title: 'Total Users', value: stats.totalUsers, icon: Users, color: 'text-blue-500', onClick: () => setCurrentView({ type: 'users' }) },
-    { title: 'Total Jobs', value: stats.totalJobs, icon: Briefcase, color: 'text-green-500', onClick: () => setCurrentView({ type: 'jobs' }) },
-    { title: 'Active Jobs', value: stats.activeJobs, icon: CheckCircle, color: 'text-emerald-500', onClick: () => setCurrentView({ type: 'jobs', filter: 'active' }) },
-    { title: 'Pending Approval', value: stats.pendingJobs, icon: Clock, color: 'text-yellow-500', onClick: () => setCurrentView({ type: 'jobs', filter: 'pending_approval' }) },
     { title: 'Companies', value: stats.totalCompanies, icon: Building2, color: 'text-indigo-500', onClick: () => setCurrentView({ type: 'companies' }) },
     { title: 'Pending Companies', value: stats.pendingCompanies, icon: Clock, color: 'text-orange-500', onClick: () => {} },
     { title: 'Applications', value: stats.totalApplications, icon: TrendingUp, color: 'text-pink-500', onClick: () => {} },

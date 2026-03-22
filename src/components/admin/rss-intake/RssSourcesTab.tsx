@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 import { Plus, Play, TestTube, Upload, Zap, ExternalLink, RefreshCw, Search, Pencil, Rss, ListPlus, Trash2 } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
@@ -65,6 +66,16 @@ export function RssSourcesTab() {
 
   const [deleteTarget, setDeleteTarget] = useState<RssSource | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  const [selectedSourceIds, setSelectedSourceIds] = useState<Set<string>>(new Set());
+
+  const toggleSourceSelect = (id: string) => {
+    setSelectedSourceIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
 
   const fetchSources = useCallback(async () => {
     setLoading(true);
@@ -160,9 +171,17 @@ export function RssSourcesTab() {
   const handleDeleteSource = async () => {
     if (!deleteTarget) return;
     setDeleting(true);
-    const { error } = await supabase.from('rss_sources' as any).delete().eq('id', deleteTarget.id);
-    if (error) toast({ title: 'Error', description: error.message, variant: 'destructive' });
-    else toast({ title: 'Deleted', description: `${deleteTarget.source_name} deleted` });
+    if ((deleteTarget as any).id === '__bulk__') {
+      const ids = Array.from(selectedSourceIds);
+      const { error } = await supabase.from('rss_sources' as any).delete().in('id', ids);
+      if (error) toast({ title: 'Error', description: error.message, variant: 'destructive' });
+      else toast({ title: 'Deleted', description: `${ids.length} source(s) deleted` });
+      setSelectedSourceIds(new Set());
+    } else {
+      const { error } = await supabase.from('rss_sources' as any).delete().eq('id', deleteTarget.id);
+      if (error) toast({ title: 'Error', description: error.message, variant: 'destructive' });
+      else toast({ title: 'Deleted', description: `${deleteTarget.source_name} deleted` });
+    }
     setDeleting(false);
     setDeleteTarget(null);
     fetchSources();
@@ -319,6 +338,19 @@ export function RssSourcesTab() {
           </Select>
         </div>
 
+        {/* Bulk Action Toolbar */}
+        {selectedSourceIds.size > 0 && (
+          <div className="flex items-center gap-2 mb-3 p-2 rounded-md bg-muted/50 border">
+            <Badge variant="secondary">{selectedSourceIds.size} selected</Badge>
+            <Button size="sm" variant="outline" className="text-destructive border-destructive/50 hover:bg-destructive/10" onClick={() => {
+              setDeleteTarget({ id: '__bulk__', source_name: `${selectedSourceIds.size} sources` } as any);
+            }}>
+              <Trash2 className="h-3.5 w-3.5 mr-1" /> Delete Selected
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setSelectedSourceIds(new Set())}>Clear</Button>
+          </div>
+        )}
+
         {loading ? (
           <p className="text-center py-8 text-muted-foreground">Loading sources...</p>
         ) : filteredSources.length === 0 ? (
@@ -328,6 +360,18 @@ export function RssSourcesTab() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-8">
+                    <Checkbox
+                      checked={filteredSources.length > 0 && filteredSources.every(s => selectedSourceIds.has(s.id))}
+                      onCheckedChange={() => {
+                        if (filteredSources.every(s => selectedSourceIds.has(s.id))) {
+                          setSelectedSourceIds(new Set());
+                        } else {
+                          setSelectedSourceIds(new Set(filteredSources.map(s => s.id)));
+                        }
+                      }}
+                    />
+                  </TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead>Priority</TableHead>
                   <TableHead>Status</TableHead>
@@ -341,6 +385,9 @@ export function RssSourcesTab() {
               <TableBody>
                 {filteredSources.map((src) => (
                   <TableRow key={src.id}>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <Checkbox checked={selectedSourceIds.has(src.id)} onCheckedChange={() => toggleSourceSelect(src.id)} />
+                    </TableCell>
                     <TableCell>
                       <div className="space-y-1">
                         <p className="font-medium text-sm">{src.source_name}</p>

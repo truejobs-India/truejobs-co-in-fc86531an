@@ -57,6 +57,10 @@ Deno.serve(async (req) => {
         return await handleDiscoverSource(body, adminClient);
       case 'source-stats':
         return await handleSourceStats(body, adminClient);
+      case 'extract-item':
+        return await handleExtractItem(body, adminClient);
+      case 'extract-batch':
+        return await handleExtractBatch(body, adminClient);
       default:
         return jsonResponse({ error: `Unknown action: ${action}` }, 400);
     }

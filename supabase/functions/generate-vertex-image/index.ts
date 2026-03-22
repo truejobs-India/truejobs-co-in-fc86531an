@@ -21,6 +21,13 @@ const corsHeaders = {
 const IMAGEN_MODEL = Deno.env.get('VERTEX_IMAGEN_MODEL') || 'imagen-4.0-generate-001';
 const GEMINI_IMAGE_MODEL = Deno.env.get('VERTEX_GEMINI_IMAGE_MODEL') || 'gemini-2.5-flash-image';
 const LOVABLE_GATEWAY_IMAGE_MODEL = 'google/gemini-3.1-flash-image-preview';
+
+// Map UI model keys → Lovable Gateway model IDs
+const GATEWAY_IMAGE_MODELS: Record<string, string> = {
+  'gemini-flash-image': 'google/gemini-2.5-flash-image',
+  'gemini-pro-image': 'google/gemini-3-pro-image-preview',
+  'gemini-flash-image-2': 'google/gemini-3.1-flash-image-preview',
+};
 const IMAGEN_TIMEOUT_MS = 45_000;
 const GATEWAY_TIMEOUT_MS = 55_000;
 const MAX_RETRIES = 3;

@@ -311,6 +311,7 @@ export function EmploymentNewsManager() {
           text: chunks[i],
           filename: file?.name || 'pasted-text.txt',
           issueDetails: issueDetails,
+          aiModel: extractAiModel,
         };
         if (batchId) payload.batchId = batchId;
 

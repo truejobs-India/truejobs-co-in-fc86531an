@@ -189,7 +189,7 @@ export async function callVertexGeminiWithMeta(
 
   const accessToken = await getVertexAccessToken();
 
-  const url = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${model}:generateContent`;
+  const url = getVertexEndpoint(model, projectId, location);
 
   const generationConfig: Record<string, unknown> = {
     temperature: options?.temperature ?? 0.6,

@@ -338,6 +338,10 @@ serve(async (req) => {
           filename: filename || "unknown.docx",
           issue_details: issueDetails || "",
           status: "processing",
+          total_chunks: totalChunks || 0,
+          completed_chunks: 0,
+          extraction_status: 'extracting',
+          ai_model_used: aiModel || null,
         })
         .select("id, uploaded_at")
         .single();

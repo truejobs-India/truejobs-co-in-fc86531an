@@ -188,33 +188,45 @@ async function callAI(route: ProviderRoute, system: string, user: string): Promi
 
 async function callLovableGateway(model: string, system: string, user: string): Promise<string> {
   const apiKey = Deno.env.get('LOVABLE_API_KEY')!;
-  const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: user },
-      ],
-      temperature: 0.3,
-      max_tokens: 6144, // Increased from 4096 to reduce truncation
-    }),
-  });
+  const maxRetries = 4;
 
-  if (!response.ok) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: user },
+        ],
+        temperature: 0.3,
+        max_tokens: 6144,
+      }),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      return data.choices?.[0]?.message?.content || '';
+    }
+
     const status = response.status;
-    if (status === 429) throw new Error('Rate limited — try again later');
+    if (status === 429 && attempt < maxRetries) {
+      const backoffMs = Math.min(2000 * Math.pow(2, attempt), 30000); // 2s, 4s, 8s, 16s (capped at 30s)
+      console.log(`[SEO-FIX] Rate limited (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${backoffMs}ms...`);
+      await new Promise(r => setTimeout(r, backoffMs));
+      continue;
+    }
+    if (status === 429) throw new Error('Rate limited after retries — try again later or use a different model');
     if (status === 402) throw new Error('Credits exhausted — add funds');
     const text = await response.text();
     throw new Error(`AI gateway error ${status}: ${text.substring(0, 200)}`);
   }
 
-  const data = await response.json();
-  return data.choices?.[0]?.message?.content || '';
+  throw new Error('Unexpected: exhausted retries without result');
 }
 
 async function callBedrockNovaForSeo(modelKey: string, system: string, user: string): Promise<string> {

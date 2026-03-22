@@ -1379,6 +1379,7 @@ export type Database = {
       }
       firecrawl_fetch_runs: {
         Row: {
+          bucket_counts: Json
           error_log: string | null
           finished_at: string | null
           firecrawl_source_id: string
@@ -1386,13 +1387,16 @@ export type Database = {
           items_found: number
           items_new: number
           items_skipped: number
+          pages_accepted: number
           pages_fetched: number
+          pages_rejected: number
           raw_response_sample: Json | null
           run_mode: string
           started_at: string
           status: string
         }
         Insert: {
+          bucket_counts?: Json
           error_log?: string | null
           finished_at?: string | null
           firecrawl_source_id: string
@@ -1400,13 +1404,16 @@ export type Database = {
           items_found?: number
           items_new?: number
           items_skipped?: number
+          pages_accepted?: number
           pages_fetched?: number
+          pages_rejected?: number
           raw_response_sample?: Json | null
           run_mode?: string
           started_at?: string
           status?: string
         }
         Update: {
+          bucket_counts?: Json
           error_log?: string | null
           finished_at?: string | null
           firecrawl_source_id?: string
@@ -1414,7 +1421,9 @@ export type Database = {
           items_found?: number
           items_new?: number
           items_skipped?: number
+          pages_accepted?: number
           pages_fetched?: number
+          pages_rejected?: number
           raw_response_sample?: Json | null
           run_mode?: string
           started_at?: string
@@ -1504,8 +1513,12 @@ export type Database = {
       }
       firecrawl_staged_items: {
         Row: {
+          bucket: string
+          classification_reason: string | null
+          classification_signals: string[]
           content_hash: string | null
           created_at: string
+          discovered_from_url: string | null
           extracted_links: string[] | null
           extracted_markdown: string | null
           fetch_run_id: string | null
@@ -1516,10 +1529,15 @@ export type Database = {
           page_url: string
           status: string
           updated_at: string
+          url_normalized: string | null
         }
         Insert: {
+          bucket?: string
+          classification_reason?: string | null
+          classification_signals?: string[]
           content_hash?: string | null
           created_at?: string
+          discovered_from_url?: string | null
           extracted_links?: string[] | null
           extracted_markdown?: string | null
           fetch_run_id?: string | null
@@ -1530,10 +1548,15 @@ export type Database = {
           page_url: string
           status?: string
           updated_at?: string
+          url_normalized?: string | null
         }
         Update: {
+          bucket?: string
+          classification_reason?: string | null
+          classification_signals?: string[]
           content_hash?: string | null
           created_at?: string
+          discovered_from_url?: string | null
           extracted_links?: string[] | null
           extracted_markdown?: string | null
           fetch_run_id?: string | null
@@ -1544,6 +1567,7 @@ export type Database = {
           page_url?: string
           status?: string
           updated_at?: string
+          url_normalized?: string | null
         }
         Relationships: [
           {

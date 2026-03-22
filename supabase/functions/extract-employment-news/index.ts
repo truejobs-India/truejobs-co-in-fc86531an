@@ -142,11 +142,12 @@ async function callAI(
       });
       if (finishReason === 'length' || finishReason === 'MAX_TOKENS') {
         console.warn(`[${requestId}] Vertex response truncated (finishReason=${finishReason}, len=${rawText.length}), attempting JSON repair`);
-        const repaired = repairTruncatedJson(rawText);
-        console.log(`[${requestId}] JSON repair succeeded, recovered ${repaired.jobs?.length || 0} jobs`);
-        return repaired;
+        return repairTruncatedJson(rawText, requestId);
       }
-      return JSON.parse(rawText);
+      try { return JSON.parse(rawText); } catch {
+        console.warn(`[${requestId}] Vertex JSON parse failed, attempting repair`);
+        return repairTruncatedJson(rawText, requestId);
+      }
     } catch (err: any) {
       if (err.name === 'AbortError' || err.message?.includes('signal has been aborted') || err.message?.includes('aborted')) {
         console.error(`[${requestId}] Vertex AI timeout for model=${resolved.modelId} after ${resolved.timeout}ms`);

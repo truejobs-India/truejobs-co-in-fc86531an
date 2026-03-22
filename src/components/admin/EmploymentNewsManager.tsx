@@ -72,6 +72,12 @@ type UploadBatch = {
   uploaded_at: string;
   total_extracted: number;
   status: string;
+  total_chunks: number;
+  completed_chunks: number;
+  extraction_status: string;
+  ai_model_used: string | null;
+  new_count: number;
+  updated_count: number;
 };
 
 const CHUNK_SIZE = 7500;

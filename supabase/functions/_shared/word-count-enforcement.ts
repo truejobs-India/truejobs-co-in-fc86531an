@@ -104,6 +104,9 @@ export function computeMaxTokens(targetWordCount: number, modelId: string): numb
     case 'gemini-pro':
     case 'vertex-flash':
     case 'vertex-pro':
+    case 'vertex-3.1-pro':
+    case 'vertex-3-flash':
+    case 'vertex-3.1-flash-lite':
       // Gemini models: use 3x budget to handle non-Latin scripts (Hindi, etc.) where tokens/word is higher
       return Math.min(target * 3, 16384);
 

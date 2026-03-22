@@ -180,6 +180,7 @@ export function EmploymentNewsManager() {
   }, []);
 
   // Load data
+  const fetchStats = useCallback(async () => {
     const [total, pending, enriched, published, rejected, failed] = await Promise.all([
       supabase.from('employment_news_jobs').select('id', { count: 'exact', head: true }),
       supabase.from('employment_news_jobs').select('id', { count: 'exact', head: true }).eq('status', 'pending'),

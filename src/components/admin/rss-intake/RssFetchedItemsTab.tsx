@@ -494,6 +494,26 @@ export function RssFetchedItemsTab() {
         itemIds={aiModalItemIds}
         onComplete={handleAiComplete}
       />
+
+      {/* Delete Confirmation */}
+      <AlertDialog open={deleteConfirmOpen} onOpenChange={(open) => !open && setDeleteConfirmOpen(false)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {deleteMode === 'bulk' ? `${selectedIds.size} Items` : 'Item'}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteMode === 'bulk'
+                ? `Are you sure you want to delete ${selectedIds.size} selected item(s)? This action cannot be undone.`
+                : 'Are you sure you want to delete this item? This action cannot be undone.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingItems}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteConfirmed} disabled={deletingItems} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {deletingItems ? 'Deleting...' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 }

@@ -120,6 +120,16 @@ export function RssReviewQueueTab() {
     fetchEntries();
   };
 
+  const handleDeleteEntry = async () => {
+    if (!deleteTarget) return;
+    setDeletingEntry(true);
+    const { error } = await supabase.from('monitoring_review_queue' as any).delete().eq('id', deleteTarget.id);
+    if (error) toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    else toast({ title: 'Deleted', description: 'Review queue entry deleted' });
+    setDeletingEntry(false);
+    setDeleteTarget(null);
+    fetchEntries();
+  };
   const openDetail = (entry: ReviewQueueEntry) => {
     setDetailEntry(entry);
     setQaNotes(entry.qa_notes || '');

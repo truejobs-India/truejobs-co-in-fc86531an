@@ -161,6 +161,9 @@ export function EmploymentNewsManager() {
     failed: EmpNewsJob[];
   } | null>(null);
   const [editErrors, setEditErrors] = useState<Record<string, string>>({});
+  // Delete edition state
+  const [deletingBatchId, setDeletingBatchId] = useState<string | null>(null);
+  const [isDeletingEdition, setIsDeletingEdition] = useState(false);
   // AI Model selection for enrichment (persisted in localStorage)
   const [enrichAiModel, setEnrichAiModel] = useState<string>(() => {
     try { return localStorage.getItem('empnews_enrich_ai_model') || 'gemini'; } catch { return 'gemini'; }

@@ -46,6 +46,9 @@ export function RssReviewQueueTab() {
   const [aiData, setAiData] = useState<RssAiProcessing | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
 
+  const [deleteTarget, setDeleteTarget] = useState<ReviewQueueEntry | null>(null);
+  const [deletingEntry, setDeletingEntry] = useState(false);
+
   const fetchEntries = useCallback(async () => {
     setLoading(true);
     let query = supabase.from('monitoring_review_queue' as any).select('*').order('created_at', { ascending: false }).limit(200);

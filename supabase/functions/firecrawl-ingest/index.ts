@@ -769,6 +769,71 @@ async function handleExtractItemInternal(
   }
 }
 
+// ============ dedup-drafts (Phase 5) ============
+
+async function handleDedupDrafts(
+  body: Record<string, unknown>,
+  client: ReturnType<typeof createClient>
+) {
+  console.log('[firecrawl-ingest] dedup-drafts: running');
+
+  // Fetch all draft-status records for comparison
+  const { data: allDrafts, error } = await client
+    .from('firecrawl_draft_jobs')
+    .select('id, normalized_title, organization_name, official_notification_url, official_apply_url, last_date_of_application, total_vacancies, dedup_status')
+    .in('status', ['draft', 'reviewed'])
+    .order('created_at', { ascending: true });
+
+  if (error) return jsonResponse({ error: error.message }, 500);
+  if (!allDrafts || allDrafts.length === 0) {
+    return jsonResponse({ success: true, checked: 0, duplicatesFound: 0 });
+  }
+
+  const candidates: DedupCandidate[] = allDrafts.map((d: any) => ({
+    id: d.id,
+    normalized_title: d.normalized_title,
+    organization_name: d.organization_name,
+    official_notification_url: d.official_notification_url,
+    official_apply_url: d.official_apply_url,
+    last_date_of_application: d.last_date_of_application,
+    total_vacancies: d.total_vacancies,
+  }));
+
+  let duplicatesFound = 0;
+  let checked = 0;
+
+  // Only check items that haven't been deduped yet
+  const unchecked = allDrafts.filter((d: any) => d.dedup_status === 'unchecked');
+
+  for (const draft of unchecked) {
+    const target: DedupCandidate = {
+      id: draft.id,
+      normalized_title: draft.normalized_title,
+      organization_name: draft.organization_name,
+      official_notification_url: draft.official_notification_url,
+      official_apply_url: draft.official_apply_url,
+      last_date_of_application: draft.last_date_of_application,
+      total_vacancies: draft.total_vacancies,
+    };
+
+    const result = checkDuplicate(target, candidates);
+    checked++;
+
+    const update: Record<string, unknown> = {
+      dedup_status: result.isDuplicate ? 'duplicate' : 'clean',
+      dedup_reason: result.reason,
+      dedup_match_ids: result.matchedIds,
+      dedup_checked_at: new Date().toISOString(),
+    };
+
+    await client.from('firecrawl_draft_jobs').update(update).eq('id', draft.id);
+
+    if (result.isDuplicate) duplicatesFound++;
+  }
+
+  return jsonResponse({ success: true, checked, duplicatesFound, totalDrafts: allDrafts.length });
+}
+
 // ============ Helpers ============
 
 async function finalizeRun(

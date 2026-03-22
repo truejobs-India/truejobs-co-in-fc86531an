@@ -1600,6 +1600,22 @@ function UploadView({
           </div>
         )}
 
+        {/* Show last known progress from DB after page refresh */}
+        {!isExtracting && extractProgress.total > 0 && extractProgress.current < extractProgress.total && (
+          <div className="space-y-2 rounded-md border border-orange-300 bg-orange-50 dark:bg-orange-950/20 p-3">
+            <div className="flex justify-between text-sm">
+              <span className="font-medium text-orange-700 dark:text-orange-400">
+                ⚠ Extraction was interrupted at chunk {extractProgress.current}/{extractProgress.total}
+              </span>
+              <span>{extractProgress.newCount} new, {extractProgress.updatedCount} updated so far</span>
+            </div>
+            <Progress value={(extractProgress.current / extractProgress.total) * 100} className="bg-orange-100" />
+            <p className="text-xs text-muted-foreground">
+              Re-upload the same file to continue — already-extracted jobs will be de-duplicated automatically.
+            </p>
+          </div>
+        )}
+
         <Button
           onClick={onExtract}
           disabled={isExtracting || (!file && !pastedText.trim())}

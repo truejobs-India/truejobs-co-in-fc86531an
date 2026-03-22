@@ -327,10 +327,6 @@ function AdminDashboardInner() {
                 <UsersListView />
               </TabsContent>
 
-              <TabsContent value="jobs" className="space-y-6">
-                <JobApprovalList onStatsChange={fetchStats} />
-                <RestrictedDomainsManager onSettingsChange={fetchStats} />
-              </TabsContent>
 
               <TabsContent value="companies" className="space-y-6">
                 <CompanyApprovalList onStatsChange={fetchStats} />

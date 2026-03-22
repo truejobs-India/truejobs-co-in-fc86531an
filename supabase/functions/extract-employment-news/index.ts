@@ -271,9 +271,11 @@ async function callAI(
     });
     if (finishReason === 'length' || finishReason === 'MAX_TOKENS') {
       console.warn(`[${requestId}] Bedrock fallback truncated, attempting JSON repair`);
-      return repairTruncatedJson(rawText);
+      return repairTruncatedJson(rawText, requestId);
     }
-    return JSON.parse(rawText);
+    try { return JSON.parse(rawText); } catch {
+      return repairTruncatedJson(rawText, requestId);
+    }
   }
 
   throw new Error(`Unsupported provider: ${resolved.provider}`);

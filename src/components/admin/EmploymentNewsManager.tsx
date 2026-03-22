@@ -299,6 +299,8 @@ export function EmploymentNewsManager() {
       let batchId: string | null = null;
       let totalNew = 0;
       let totalUpdated = 0;
+      let completedChunks = 0;
+      let stoppedEarly = false;
 
       for (let i = 0; i < chunks.length; i++) {
         setExtractProgress(p => ({ ...p, current: i + 1 }));
@@ -314,19 +316,42 @@ export function EmploymentNewsManager() {
           body: payload,
         });
 
-        if (error) throw error;
-        if (data?.error) throw new Error(data.error);
+        // Handle 429 / rate limit gracefully with partial success
+        if (error || data?.error || data?.code === 'VERTEX_RATE_LIMITED') {
+          const isRateLimit = data?.code === 'VERTEX_RATE_LIMITED' || /429|rate.?limit/i.test(data?.error || error?.message || '');
+          if (isRateLimit && completedChunks > 0) {
+            stoppedEarly = true;
+            console.warn(`[extract] Rate limited after ${completedChunks}/${chunks.length} chunks`);
+            break;
+          }
+          // If first chunk fails or non-rate-limit error, throw
+          const errMsg = data?.error || (error instanceof Error ? error.message : 'Unknown error');
+          throw new Error(errMsg);
+        }
 
         if (!batchId && data?.batchId) batchId = data.batchId;
         totalNew += data?.newCount || 0;
         totalUpdated += data?.updatedCount || 0;
+        completedChunks++;
         setExtractProgress(p => ({ ...p, newCount: totalNew, updatedCount: totalUpdated }));
+
+        // Throttle: wait between chunks to avoid Vertex rate limits
+        if (i < chunks.length - 1) {
+          await new Promise(r => setTimeout(r, INTER_CHUNK_DELAY_MS));
+        }
       }
 
-      toast({
-        title: 'Extraction Complete',
-        description: `${totalNew} new jobs extracted, ${totalUpdated} updated across ${chunks.length} chunk(s).`,
-      });
+      if (stoppedEarly) {
+        toast({
+          title: 'Partial Extraction',
+          description: `Extracted ${totalNew} new, ${totalUpdated} updated from ${completedChunks}/${chunks.length} chunks. AI was rate-limited — remaining chunks can be retried.`,
+        });
+      } else {
+        toast({
+          title: 'Extraction Complete',
+          description: `${totalNew} new jobs extracted, ${totalUpdated} updated across ${chunks.length} chunk(s).`,
+        });
+      }
 
       // Reset and go to pipeline
       setFile(null);

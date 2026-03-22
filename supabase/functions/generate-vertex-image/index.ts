@@ -734,6 +734,14 @@ serve(async (req) => {
 
     console.log(`[generate-vertex-image] Routing: purpose=${purpose || 'none'}, model=${body.model || 'none'}, slug=${slug}`);
 
+    // ── Helper: check if model should use Lovable Gateway ──
+    const isGatewayModel = (model: string) => model in GATEWAY_IMAGE_MODELS;
+
+    const generateViaGatewayModel = (model: string, bodyOverride: any, imagePrompt: string) => {
+      const gatewayModelId = GATEWAY_IMAGE_MODELS[model] || LOVABLE_GATEWAY_IMAGE_MODEL;
+      return generateViaLovableGatewayImageWithModel(bodyOverride, slug, imagePrompt, adminClient, startMs, `direct-${model}`, gatewayModelId);
+    };
+
     // ── Purpose-based routing (respects model from request body) ──
     if (purpose === 'cover') {
       const selectedCoverModel = body.model || 'gemini-flash-image';
@@ -743,15 +751,23 @@ serve(async (req) => {
         const aspectRatio = ASPECT_RATIOS[body.aspectRatio || '16:9'] || '16:9';
         return await generateViaImagen(body, slug, imagePrompt, 1, aspectRatio, adminClient, startMs);
       }
+      if (isGatewayModel(selectedCoverModel) && selectedCoverModel !== 'gemini-flash-image') {
+        return await generateViaGatewayModel(selectedCoverModel, body, imagePrompt);
+      }
       return await generateViaGeminiFlashImage(body, slug, imagePrompt, adminClient, startMs);
     }
 
     if (purpose === 'inline') {
-      // Inline images: use model from request body, default to Imagen
       const selectedInlineModel = body.model || 'vertex-imagen';
       const imagePrompt = buildInlineImagePrompt(body);
-      const aspectRatio = '4:3'; // Enforced for inline
+      const aspectRatio = '4:3';
       console.log(`[generate-vertex-image] ENFORCED: purpose=inline → ${selectedInlineModel}, slot=${body.slotNumber}`);
+      if (selectedInlineModel === 'vertex-imagen') {
+        return await generateViaImagen(body, slug, imagePrompt, 1, aspectRatio, adminClient, startMs);
+      }
+      if (isGatewayModel(selectedInlineModel) && selectedInlineModel !== 'gemini-flash-image') {
+        return await generateViaGatewayModel(selectedInlineModel, { ...body, purpose: 'inline' }, imagePrompt);
+      }
       if (selectedInlineModel === 'gemini-flash-image') {
         return await generateViaGeminiFlashImage({ ...body, purpose: 'inline' }, slug, imagePrompt, adminClient, startMs);
       }
@@ -764,6 +780,12 @@ serve(async (req) => {
     const aspectRatio = ASPECT_RATIOS[body.aspectRatio || '16:9'] || '16:9';
     const imagePrompt = buildCoverImagePrompt(body);
 
+    if (selectedModel === 'vertex-imagen') {
+      return await generateViaImagen(body, slug, imagePrompt, imageCount, aspectRatio, adminClient, startMs);
+    }
+    if (isGatewayModel(selectedModel) && selectedModel !== 'gemini-flash-image') {
+      return await generateViaGatewayModel(selectedModel, body, imagePrompt);
+    }
     if (selectedModel === 'gemini-flash-image') {
       return await generateViaGeminiFlashImage(body, slug, imagePrompt, adminClient, startMs);
     } else {

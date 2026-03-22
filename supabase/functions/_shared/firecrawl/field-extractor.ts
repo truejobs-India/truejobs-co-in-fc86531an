@@ -1,0 +1,440 @@
+/**
+ * Source 3: Field extractor for single_recruitment pages.
+ * Extracts structured job fields from cleaned markdown using regex patterns.
+ * Purely rule-based — no AI, no guessing. Returns null for unknown fields.
+ */
+
+export interface ExtractedJobFields {
+  title: string | null;
+  normalized_title: string | null;
+  organization_name: string | null;
+  post_name: string | null;
+  job_role: string | null;
+  category: string | null;
+  department: string | null;
+  location: string | null;
+  city: string | null;
+  state: string | null;
+  total_vacancies: number | null;
+  application_mode: string | null;
+  qualification: string | null;
+  age_limit: string | null;
+  application_fee: string | null;
+  salary: string | null;
+  pay_scale: string | null;
+  opening_date: string | null;
+  closing_date: string | null;
+  last_date_of_application: string | null;
+  exam_date: string | null;
+  selection_process: string | null;
+  official_notification_url: string | null;
+  official_apply_url: string | null;
+  official_website_url: string | null;
+  canonical_url: string | null;
+  description_summary: string | null;
+}
+
+export interface ExtractionResult {
+  fields: ExtractedJobFields;
+  raw_fields: Record<string, string>;
+  confidence: 'high' | 'medium' | 'low' | 'none';
+  fields_extracted: number;
+  fields_missing: string[];
+  warnings: string[];
+}
+
+// ============ Indian states for location extraction ============
+
+const INDIAN_STATES = [
+  'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh',
+  'Goa', 'Gujarat', 'Haryana', 'Himachal Pradesh', 'Jharkhand',
+  'Karnataka', 'Kerala', 'Madhya Pradesh', 'Maharashtra', 'Manipur',
+  'Meghalaya', 'Mizoram', 'Nagaland', 'Odisha', 'Punjab',
+  'Rajasthan', 'Sikkim', 'Tamil Nadu', 'Telangana', 'Tripura',
+  'Uttar Pradesh', 'Uttarakhand', 'West Bengal',
+  'Delhi', 'Chandigarh', 'Jammu and Kashmir', 'Ladakh',
+  'Puducherry', 'Lakshadweep', 'Andaman and Nicobar',
+];
+
+const INDIAN_CITIES = [
+  'New Delhi', 'Mumbai', 'Kolkata', 'Chennai', 'Bengaluru', 'Bangalore',
+  'Hyderabad', 'Ahmedabad', 'Pune', 'Jaipur', 'Lucknow', 'Kanpur',
+  'Nagpur', 'Indore', 'Thane', 'Bhopal', 'Patna', 'Vadodara',
+  'Ghaziabad', 'Ludhiana', 'Agra', 'Nashik', 'Ranchi', 'Faridabad',
+  'Meerut', 'Rajkot', 'Varanasi', 'Srinagar', 'Chandigarh',
+  'Thiruvananthapuram', 'Coimbatore', 'Visakhapatnam', 'Bhubaneswar',
+  'Dehradun', 'Shimla', 'Raipur', 'Guwahati', 'Noida', 'Gurugram',
+];
+
+// ============ Field extraction patterns ============
+
+/**
+ * Extract a field value using multiple label patterns.
+ * Looks for "Label: Value" or "Label – Value" patterns on a single line.
+ */
+function extractLabeled(text: string, labels: string[]): string | null {
+  for (const label of labels) {
+    // Pattern: "Label" followed by : or – or - then value (rest of line)
+    const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`(?:^|\\n)\\s*\\**${escaped}\\**\\s*[:–\\-|\\]\\s*(.+?)\\s*$`, 'im');
+    const match = text.match(re);
+    if (match && match[1]) {
+      const val = match[1].replace(/\*+/g, '').trim();
+      if (val && val.length > 1 && val.length < 500) return val;
+    }
+  }
+  return null;
+}
+
+/**
+ * Extract a number (total vacancies, posts) from labeled field
+ */
+function extractNumber(text: string, labels: string[]): number | null {
+  const raw = extractLabeled(text, labels);
+  if (!raw) return null;
+  // Find first number in the value
+  const numMatch = raw.match(/(\d[\d,]*)/);
+  if (numMatch) {
+    const num = parseInt(numMatch[1].replace(/,/g, ''), 10);
+    if (!isNaN(num) && num > 0 && num < 1_000_000) return num;
+  }
+  return null;
+}
+
+/**
+ * Extract a date string from labeled field
+ */
+function extractDate(text: string, labels: string[]): string | null {
+  const raw = extractLabeled(text, labels);
+  if (!raw) return null;
+  // Return as-is (don't try to parse, keep human-readable format)
+  // But validate it looks date-like
+  if (/\d{1,4}/.test(raw) && raw.length < 100) return raw;
+  return null;
+}
+
+// ============ Title extraction ============
+
+function extractTitle(text: string, pageTitle?: string | null): string | null {
+  // Try first heading in markdown
+  const h1Match = text.match(/^#\s+(.+?)$/m);
+  if (h1Match) {
+    const title = h1Match[1].replace(/\*+/g, '').trim();
+    if (title.length > 10 && title.length < 300) return title;
+  }
+
+  // Try h2
+  const h2Match = text.match(/^##\s+(.+?)$/m);
+  if (h2Match) {
+    const title = h2Match[1].replace(/\*+/g, '').trim();
+    if (title.length > 10 && title.length < 300) return title;
+  }
+
+  // Fall back to page title
+  if (pageTitle && pageTitle.length > 5) {
+    // Remove common suffixes like " - SiteName"
+    return pageTitle.replace(/\s*[-|–]\s*[^-|–]+$/, '').trim() || pageTitle;
+  }
+
+  return null;
+}
+
+function normalizeTitle(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/\b(recruitment|notification|advt|advertisement|bharti)\b/g, '')
+    .replace(/\b\d{4}\b/g, '') // remove years
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// ============ Organization extraction ============
+
+function extractOrganization(text: string): string | null {
+  const labels = [
+    'Organization', 'Organisation', 'Org Name', 'Department',
+    'Ministry', 'Board', 'Commission', 'Corporation',
+    'Recruitment Board', 'Employer', 'Company',
+    'Name of Organization', 'Name of Organisation',
+    'Name of the Organization', 'Name of the Organisation',
+    'Recruiting Organization', 'Recruiting Body',
+  ];
+  return extractLabeled(text, labels);
+}
+
+// ============ Location extraction ============
+
+function extractState(text: string): string | null {
+  // Try labeled extraction first
+  const labeled = extractLabeled(text, ['State', 'State/UT', 'Location State']);
+  if (labeled) {
+    const found = INDIAN_STATES.find(s => labeled.toLowerCase().includes(s.toLowerCase()));
+    if (found) return found;
+    return labeled;
+  }
+
+  // Scan text for state names
+  for (const state of INDIAN_STATES) {
+    if (text.includes(state)) return state;
+  }
+  return null;
+}
+
+function extractCity(text: string): string | null {
+  const labeled = extractLabeled(text, ['City', 'Location', 'Place', 'Job Location', 'Posting Place']);
+  if (labeled) {
+    const found = INDIAN_CITIES.find(c => labeled.toLowerCase().includes(c.toLowerCase()));
+    if (found) return found;
+    if (labeled.length < 50) return labeled;
+  }
+
+  // Scan text for city names
+  for (const city of INDIAN_CITIES) {
+    if (text.includes(city)) return city;
+  }
+  return null;
+}
+
+// ============ URL extraction from links ============
+
+interface LinkInfo { text: string; url: string; context: string }
+
+function findOfficialUrl(links: LinkInfo[], keywords: string[]): string | null {
+  for (const link of links) {
+    const lower = link.url.toLowerCase();
+    const textLower = link.text.toLowerCase();
+
+    // Must be an official-looking domain
+    const isOfficial = lower.includes('.gov.') || lower.includes('.nic.') ||
+      lower.includes('.org.in') || lower.includes('.ac.in');
+    if (!isOfficial) continue;
+
+    if (keywords.some(k => lower.includes(k) || textLower.includes(k))) {
+      return link.url;
+    }
+  }
+  return null;
+}
+
+// ============ Description summary reconstruction ============
+
+function buildDescriptionSummary(fields: Partial<ExtractedJobFields>): string | null {
+  const parts: string[] = [];
+
+  if (fields.organization_name) {
+    parts.push(`${fields.organization_name} has released a recruitment notification`);
+    if (fields.post_name) parts[parts.length - 1] += ` for the post of ${fields.post_name}`;
+    parts[parts.length - 1] += '.';
+  } else if (fields.post_name) {
+    parts.push(`Recruitment notification for ${fields.post_name}.`);
+  } else if (fields.title) {
+    parts.push(`${fields.title}.`);
+  } else {
+    return null;
+  }
+
+  if (fields.total_vacancies) {
+    parts.push(`Total vacancies: ${fields.total_vacancies}.`);
+  }
+
+  if (fields.qualification) {
+    parts.push(`Qualification: ${fields.qualification}.`);
+  }
+
+  if (fields.last_date_of_application || fields.closing_date) {
+    parts.push(`Last date to apply: ${fields.last_date_of_application || fields.closing_date}.`);
+  }
+
+  if (fields.application_mode) {
+    parts.push(`Application mode: ${fields.application_mode}.`);
+  }
+
+  return parts.join(' ');
+}
+
+// ============ Main extraction function ============
+
+const IMPORTANT_FIELDS: (keyof ExtractedJobFields)[] = [
+  'title', 'organization_name', 'post_name', 'total_vacancies',
+  'qualification', 'last_date_of_application', 'application_mode',
+];
+
+/**
+ * Extract structured fields from cleaned markdown text.
+ * Returns extracted fields, confidence score, and missing fields list.
+ */
+export function extractFields(
+  cleanedText: string,
+  links: LinkInfo[],
+  pageTitle?: string | null,
+  sourceUrl?: string | null
+): ExtractionResult {
+  const warnings: string[] = [];
+  const raw_fields: Record<string, string> = {};
+
+  // Extract each field
+  const title = extractTitle(cleanedText, pageTitle);
+  if (title) raw_fields['title'] = title;
+
+  const organization_name = extractOrganization(cleanedText);
+  if (organization_name) raw_fields['organization_name'] = organization_name;
+
+  const post_name = extractLabeled(cleanedText, [
+    'Post Name', 'Post', 'Name of Post', 'Name of the Post',
+    'Designation', 'Job Title', 'Job Role', 'Position',
+  ]);
+  if (post_name) raw_fields['post_name'] = post_name;
+
+  const job_role = extractLabeled(cleanedText, ['Job Role', 'Role', 'Position']);
+  if (job_role) raw_fields['job_role'] = job_role;
+
+  const category = extractLabeled(cleanedText, [
+    'Category', 'Job Category', 'Job Type', 'Type',
+  ]);
+
+  const department = extractLabeled(cleanedText, [
+    'Department', 'Dept', 'Ministry', 'Division',
+  ]);
+  if (department) raw_fields['department'] = department;
+
+  const state = extractState(cleanedText);
+  const city = extractCity(cleanedText);
+  const location = extractLabeled(cleanedText, [
+    'Location', 'Job Location', 'Place of Posting', 'Place',
+  ]) || (city && state ? `${city}, ${state}` : city || state);
+
+  const total_vacancies = extractNumber(cleanedText, [
+    'Total Vacancies', 'Total Posts', 'Total Post', 'No. of Posts',
+    'No. of Vacancies', 'Number of Vacancies', 'Number of Posts',
+    'Vacancies', 'Posts', 'Total Seats', 'No of Vacancy',
+  ]);
+  if (total_vacancies) raw_fields['total_vacancies'] = String(total_vacancies);
+
+  const application_mode = extractLabeled(cleanedText, [
+    'Application Mode', 'Mode of Application', 'How to Apply',
+    'Apply Mode', 'Apply Through',
+  ]);
+
+  const qualification = extractLabeled(cleanedText, [
+    'Qualification', 'Educational Qualification', 'Education',
+    'Eligibility', 'Required Qualification', 'Minimum Qualification',
+    'Academic Qualification', 'Qualification Required',
+  ]);
+  if (qualification) raw_fields['qualification'] = qualification;
+
+  const age_limit = extractLabeled(cleanedText, [
+    'Age Limit', 'Age', 'Maximum Age', 'Min Age', 'Age Criteria',
+    'Age Requirement', 'Upper Age Limit',
+  ]);
+
+  const application_fee = extractLabeled(cleanedText, [
+    'Application Fee', 'Fee', 'Exam Fee', 'Registration Fee',
+    'Application Fees', 'Fee Details',
+  ]);
+
+  const salary = extractLabeled(cleanedText, [
+    'Salary', 'Pay', 'Remuneration', 'Stipend', 'CTC',
+    'Monthly Salary', 'Salary Range',
+  ]);
+
+  const pay_scale = extractLabeled(cleanedText, [
+    'Pay Scale', 'Pay Band', 'Pay Level', 'Pay Matrix',
+    'Grade Pay', 'Level',
+  ]);
+
+  const opening_date = extractDate(cleanedText, [
+    'Starting Date', 'Start Date', 'Opening Date',
+    'Application Start Date', 'Registration Start',
+    'Apply Start Date',
+  ]);
+
+  const closing_date = extractDate(cleanedText, [
+    'Closing Date', 'End Date', 'Application End Date',
+    'Registration End', 'Apply End Date',
+  ]);
+
+  const last_date = extractDate(cleanedText, [
+    'Last Date', 'Last Date to Apply', 'Last Date of Application',
+    'Last Date for Apply', 'Last Date of Apply',
+    'Last Date of Submission', 'Deadline',
+  ]);
+
+  const exam_date = extractDate(cleanedText, [
+    'Exam Date', 'Date of Exam', 'Examination Date',
+    'Written Exam Date', 'Test Date',
+  ]);
+
+  const selection_process = extractLabeled(cleanedText, [
+    'Selection Process', 'Selection Procedure', 'Selection Criteria',
+    'Selection Method', 'Mode of Selection',
+  ]);
+
+  // URL extraction from links
+  const official_notification_url = findOfficialUrl(links, ['notification', 'advt', 'advertisement', 'pdf']);
+  const official_apply_url = findOfficialUrl(links, ['apply', 'registration', 'application', 'recruit']);
+  const official_website_url = findOfficialUrl(links, ['official', 'website', 'home']);
+
+  const fields: ExtractedJobFields = {
+    title,
+    normalized_title: title ? normalizeTitle(title) : null,
+    organization_name,
+    post_name,
+    job_role: job_role || post_name, // fallback
+    category,
+    department,
+    location,
+    city,
+    state,
+    total_vacancies,
+    application_mode,
+    qualification,
+    age_limit,
+    application_fee,
+    salary,
+    pay_scale,
+    opening_date,
+    closing_date,
+    last_date_of_application: last_date || closing_date,
+    exam_date,
+    selection_process,
+    official_notification_url,
+    official_apply_url,
+    official_website_url,
+    canonical_url: sourceUrl || null,
+    description_summary: null, // set below
+  };
+
+  // Build summary from fields (field-first, not from prose)
+  fields.description_summary = buildDescriptionSummary(fields);
+
+  // Calculate extraction quality
+  const allFieldKeys = Object.keys(fields) as (keyof ExtractedJobFields)[];
+  const extracted = allFieldKeys.filter(k => fields[k] !== null && fields[k] !== undefined);
+  const missing = allFieldKeys.filter(k => fields[k] === null || fields[k] === undefined);
+
+  const importantExtracted = IMPORTANT_FIELDS.filter(k => fields[k] !== null && fields[k] !== undefined);
+  const importantMissing = IMPORTANT_FIELDS.filter(k => fields[k] === null || fields[k] === undefined);
+
+  let confidence: ExtractionResult['confidence'];
+  if (importantExtracted.length >= 5) confidence = 'high';
+  else if (importantExtracted.length >= 3) confidence = 'medium';
+  else if (importantExtracted.length >= 1) confidence = 'low';
+  else confidence = 'none';
+
+  if (importantMissing.length > 0) {
+    warnings.push(`Missing important fields: ${importantMissing.join(', ')}`);
+  }
+
+  if (!title) warnings.push('Could not extract page title');
+  if (!organization_name && !department) warnings.push('No organization or department identified');
+
+  return {
+    fields,
+    raw_fields,
+    confidence,
+    fields_extracted: extracted.length,
+    fields_missing: missing,
+    warnings,
+  };
+}

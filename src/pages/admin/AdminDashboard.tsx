@@ -126,17 +126,11 @@ function AdminDashboardInner() {
     try {
       const [
         usersResult,
-        jobsResult,
-        activeJobsResult,
-        pendingJobsResult,
         uniqueCompanyNames,
         pendingCompaniesResult,
         applicationsResult,
       ] = await Promise.all([
         supabase.from('profiles').select('id', { count: 'exact', head: true }),
-        supabase.from('jobs').select('id', { count: 'exact', head: true }),
-        supabase.from('jobs').select('id', { count: 'exact', head: true }).eq('status', 'active'),
-        supabase.from('jobs').select('id', { count: 'exact', head: true }).in('status', ['pending_approval', 'draft']),
         fetchAllCompanyNames(),
         supabase.from('companies').select('id', { count: 'exact', head: true }).eq('is_approved', false),
         supabase.from('applications').select('id', { count: 'exact', head: true }),
@@ -144,9 +138,6 @@ function AdminDashboardInner() {
 
       setStats({
         totalUsers: usersResult.count || 0,
-        totalJobs: jobsResult.count || 0,
-        activeJobs: activeJobsResult.count || 0,
-        pendingJobs: pendingJobsResult.count || 0,
         totalCompanies: uniqueCompanyNames.size,
         pendingCompanies: pendingCompaniesResult.count || 0,
         totalApplications: applicationsResult.count || 0,

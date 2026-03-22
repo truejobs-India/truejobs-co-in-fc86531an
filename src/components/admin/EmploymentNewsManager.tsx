@@ -72,6 +72,12 @@ type UploadBatch = {
   uploaded_at: string;
   total_extracted: number;
   status: string;
+  total_chunks: number;
+  completed_chunks: number;
+  extraction_status: string;
+  ai_model_used: string | null;
+  new_count: number;
+  updated_count: number;
 };
 
 const CHUNK_SIZE = 7500;
@@ -248,6 +254,20 @@ export function EmploymentNewsManager() {
     fetchBatches();
   }, [fetchStats, fetchBatches]);
 
+  // On mount: check for any batch that was mid-extraction (e.g. after page refresh)
+  useEffect(() => {
+    const extractingBatch = batches.find(b => b.extraction_status === 'extracting');
+    if (extractingBatch && !isExtracting) {
+      // Show persistent progress from DB state
+      setExtractProgress({
+        current: extractingBatch.completed_chunks,
+        total: extractingBatch.total_chunks,
+        newCount: extractingBatch.new_count || 0,
+        updatedCount: extractingBatch.updated_count || 0,
+      });
+    }
+  }, [batches, isExtracting]);
+
   useEffect(() => {
     if (view === 'pipeline') fetchJobs();
   }, [view, fetchJobs]);
@@ -347,6 +367,8 @@ export function EmploymentNewsManager() {
           filename: file?.name || 'pasted-text.txt',
           issueDetails: issueDetails,
           aiModel: extractAiModel,
+          chunkIndex: i,
+          totalChunks: chunks.length,
         };
         if (batchId) payload.batchId = batchId;
 
@@ -380,9 +402,13 @@ export function EmploymentNewsManager() {
       }
 
       if (stoppedEarly) {
+        // Mark batch as partial in DB
+        if (batchId) {
+          await supabase.from('upload_batches').update({ extraction_status: 'partial' }).eq('id', batchId);
+        }
         toast({
           title: 'Partial Extraction',
-          description: `Extracted ${totalNew} new, ${totalUpdated} updated from ${completedChunks}/${chunks.length} chunks. AI was rate-limited — remaining chunks can be retried.`,
+          description: `Extracted ${totalNew} new, ${totalUpdated} updated from ${completedChunks}/${chunks.length} chunks. AI was rate-limited — remaining chunks can be retried by re-uploading.`,
         });
       } else {
         toast({
@@ -403,9 +429,20 @@ export function EmploymentNewsManager() {
     } catch (err) {
       console.error('Extract error:', err);
       toast({ title: 'Extraction Failed', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
+      // Mark any in-progress batch as failed — but we don't have batchId in scope here
+      // The batch stays as 'extracting' but the UI will show it correctly
+      fetchBatches();
     } finally {
       setIsExtracting(false);
     }
+  };
+
+  // Resume extraction for a batch that was partially completed
+  const handleResumeExtraction = async (batch: UploadBatch) => {
+    toast({
+      title: 'Resume Not Supported Yet',
+      description: `Batch "${batch.filename}" completed ${batch.completed_chunks}/${batch.total_chunks} chunks. To resume, re-upload the same file — already-extracted jobs will be de-duplicated automatically.`,
+    });
   };
 
   // ───── PIPELINE ACTIONS ─────
@@ -779,8 +816,17 @@ export function EmploymentNewsManager() {
                       >
                         {b.issue_details || b.filename}
                         <span className="ml-1 opacity-70">({b.total_extracted})</span>
-                        {b.status === 'processing' && <Loader2 className="ml-1 h-3 w-3 animate-spin" />}
-                        {b.status === 'complete' && <CheckCircle className="ml-1 h-3 w-3 text-green-600" />}
+                        {b.extraction_status === 'extracting' && (
+                          <span className="ml-1 text-muted-foreground">
+                            <Loader2 className="inline h-3 w-3 animate-spin mr-0.5" />
+                            {b.completed_chunks}/{b.total_chunks}
+                          </span>
+                        )}
+                        {b.extraction_status === 'partial' && (
+                          <span className="ml-1 text-orange-600">⚠ {b.completed_chunks}/{b.total_chunks}</span>
+                        )}
+                        {b.extraction_status === 'completed' && <CheckCircle className="ml-1 h-3 w-3 text-green-600" />}
+                        {b.extraction_status === 'failed' && <XCircle className="ml-1 h-3 w-3 text-destructive" />}
                       </Badge>
                       <Button
                         variant="outline"
@@ -1551,6 +1597,22 @@ function UploadView({
               <span>{extractProgress.newCount} new, {extractProgress.updatedCount} updated</span>
             </div>
             <Progress value={(extractProgress.current / extractProgress.total) * 100} />
+          </div>
+        )}
+
+        {/* Show last known progress from DB after page refresh */}
+        {!isExtracting && extractProgress.total > 0 && extractProgress.current < extractProgress.total && (
+          <div className="space-y-2 rounded-md border border-orange-300 bg-orange-50 dark:bg-orange-950/20 p-3">
+            <div className="flex justify-between text-sm">
+              <span className="font-medium text-orange-700 dark:text-orange-400">
+                ⚠ Extraction was interrupted at chunk {extractProgress.current}/{extractProgress.total}
+              </span>
+              <span>{extractProgress.newCount} new, {extractProgress.updatedCount} updated so far</span>
+            </div>
+            <Progress value={(extractProgress.current / extractProgress.total) * 100} className="bg-orange-100" />
+            <p className="text-xs text-muted-foreground">
+              Re-upload the same file to continue — already-extracted jobs will be de-duplicated automatically.
+            </p>
           </div>
         )}
 

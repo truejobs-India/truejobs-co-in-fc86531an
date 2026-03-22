@@ -1,140 +1,94 @@
 
 
-# Phase 1: Backend Reliability Fixes
+## Plan: Add Gemini 3.x Models to Vertex AI Integration
 
-## Files to Change
+### Summary
+Extend the existing centralized Vertex AI integration to support 3 new text models and 1 new image model, all routed directly through the same GCP service account path used by Gemini 2.5 Pro. Add "(From API)" labels consistently. No new integration paths, no flow redesigns.
 
-1. `supabase/functions/generate-blog-faq/index.ts`
-2. `supabase/functions/analyze-blog-compliance-fixes/index.ts`
+### New Model Keys and Vertex IDs
 
-No frontend changes in this phase.
+| UI Key | Label | Vertex Model ID | Type | Timeout |
+|---|---|---|---|---|
+| `vertex-3.1-pro` | Gemini 3.1 Pro (Preview) (From API) | `gemini-3.1-pro-preview` | text, text-premium | 120s |
+| `vertex-3-flash` | Gemini 3 Flash (From API) | `gemini-3-flash-preview` | text | 90s |
+| `vertex-3.1-flash-lite` | Gemini 3.1 Flash-Lite (From API) | `gemini-3.1-flash-lite-preview` | text | 60s |
+| `vertex-3-pro-image` | Gemini 3 Pro Image (Preview) (From API) | `gemini-3-pro-image-preview` | image | 45s |
 
----
+Existing labels also updated:
+- `vertex-flash` → "Gemini 2.5 Flash (From API)" (already correct)
+- `vertex-pro` → "Gemini 2.5 Pro (From API)" (already correct)
 
-## Change 1: Fix `generate-blog-faq` syntax error
+### Files to Change
 
-**File**: `generate-blog-faq/index.ts`, line 164
+**A. Model Registry — `src/lib/aiModels.ts`**
+- Add 4 new entries to `AI_MODELS` array with correct capabilities, source `external-api`, provider `Google Vertex AI`
+- Add `vertex-3.1-pro` and `vertex-3-flash` to `SEO_FIX_MODEL_VALUES`
+- Add legacy aliases for gateway model IDs mapping to these new keys
+- Keep existing entries unchanged
 
-**Problem**: `function callAI` uses `await` inside (line 168) but is not declared `async`. This crashes on deploy.
+**B. Client-side throttling — `src/lib/seoFixRuntimeConfig.ts`**
+- Add policies for:
+  - `vertex-3.1-pro`: concurrency 1, 7s throttle (same as gemini-pro — preview, be conservative)
+  - `vertex-3-flash`: concurrency 2, 2.5s throttle (same as gemini-flash)
+  - `vertex-3.1-flash-lite`: concurrency 3, 1.5s throttle (fastest model)
 
-**Fix**: Change `function callAI` → `async function callAI`
+**C. Backend throttling — `supabase/functions/_shared/seo-fix-runtime.ts`**
+- Add model policies for 3 new text model keys
 
----
+**D. Backend word-count — `supabase/functions/_shared/word-count-enforcement.ts`**
+- Add the 3 new text model keys to the Gemini case block (same token multiplier as existing Gemini models)
 
-## Change 2: `analyze-blog-compliance-fixes` — increase token budget
+**E. Edge Function Routing — 10 files need new `case` statements**
 
-**File**: line 184
+Each file's switch/dispatcher gets 3-4 new cases following the exact same pattern as `vertex-pro`/`vertex-flash`:
 
-Change `maxOutputTokens: 4000` → `maxOutputTokens: 8192`
+1. **`seo-audit-fix/index.ts`** — `resolveProvider()`: add 3 text model cases → `{ provider: 'vertex-ai', vertexModel: '...' }`
+2. **`improve-blog-content/index.ts`** — `callAI()` switch + `SUPPORTED_MODELS` array: add 3 text model cases
+3. **`generate-blog-article/index.ts`** — `resolveProviderInfo()` + `callAI()`: add 3 text model cases
+4. **`enrich-authority-pages/index.ts`** — `resolveProviderInfo()` + `callAI()`: add 3 text model cases
+5. **`enrich-employment-news/index.ts`** — `resolveProviderInfo()` + `callAI()`: add 3 text model cases
+6. **`rss-ai-process/index.ts`** — `resolveProviderInfo()`: add 3 text model cases
+7. **`classify-blog-articles/index.ts`** — `callAI()` switch: add 3 text model cases
+8. **`generate-blog-faq/index.ts`** — `callAI()` switch: add 3 text model cases
+9. **`generate-custom-page/index.ts`** — `callAI()` switch: add 3 text model cases
+10. **`generate-resource-content/index.ts`** — `callAI()` switch: add 3 text model cases
 
----
+11. **`generate-vertex-image/index.ts`** — Add `vertex-3-pro-image` routing:
+    - Add new case in purpose-based routing that calls `generateViaGeminiFlashImage`-style function but using `gemini-3-pro-image-preview` model ID directly through Vertex AI (same auth, same endpoint pattern)
+    - This routes through Vertex AI, NOT the gateway
 
-## Change 3: Compact and improve the prompt
+**F. Deploy all updated edge functions**
 
-**File**: lines 138-180 — rewrite the prompt to be shorter and add new instructions.
+**G. Verification** — Test each model with a lightweight prompt via `supabase--curl_edge_functions`
 
-Key prompt changes:
-- Shorten the fix-object field descriptions into a compact list instead of verbose bullets
-- Change meta_description target from "140-155" to "130-155 characters strictly, never above 155"
-- Add canonical_url instruction: "value must be exactly `https://truejobs.co.in/blog/{slug}`"
-- Add FAQ schema eligibility instruction: "For FAQ fixes, include `faqSchemaEligible` (boolean). If true, include `faqSchema` as a JSON array of `{question, answer}` objects. If not eligible, set false and explain why in `explanation`."
-- Tell AI to keep `explanation` ≤ 15 words to reduce output size
-- Keep all existing internal_links, intro, conclusion instructions (already good)
+### Implementation Pattern (identical for all edge functions)
 
----
-
-## Change 4: Expand `VALID_FIX_TYPES`
-
-**File**: lines 33-38
-
-Add `'h1'`, `'heading_structure'`, `'excerpt'` to the set.
-
----
-
-## Change 5: Expand `normalizeFix` to pass through FAQ schema fields
-
-**File**: lines 60-95
-
-Add to return type and extraction:
-- `faqSchemaEligible?: boolean` — pass through if present
-- `faqSchema?: Array<{question: string, answer: string}>` — pass through if valid array
-
-Also add slug safety: if `field === 'slug'` and `confidence !== 'high'`, downgrade `applyMode` to `'advisory'`.
-
----
-
-## Change 6: Truncation detection + parse-failure handling
-
-**File**: lines 187-200 — replace the current silent parse logic.
-
-New logic after receiving `raw`:
-
-```text
-1. Strip markdown code fences (existing)
-2. Check if raw ends with ']' — if not, log "[COMPLIANCE] Truncation detected"
-3. Attempt bounded recovery:
-   - Find last complete object via lastIndexOf('},')
-   - If found, trim and close array: raw.substring(0, pos+1) + ']'
-   - Log "[COMPLIANCE] Recovery attempted — salvaged N chars"
-   - Set truncated=true, recoveryAttempted=true
-   - If not found, set parseError=true
-4. JSON.parse — if fails, set parseError=true, fixes=[]
-5. Log: "[COMPLIANCE] Result: N fixes, truncated=X, parseError=X"
-6. Return: { fixes, truncated, parseError, recoveryAttempted }
-```
-
-**Before**: Parse failure → silent `[]` → frontend thinks "no issues found"
-**After**: Parse failure → `{ fixes: [], parseError: true }` → frontend can show warning
-
----
-
-## Sample response shape after changes
-
-```json
-{
-  "fixes": [
-    {
-      "issueKey": "missing-meta-desc",
-      "issueLabel": "Meta description missing",
-      "priority": "high",
-      "fixType": "metadata",
-      "field": "meta_description",
-      "suggestedValue": "Check latest government job updates...",
-      "explanation": "Empty meta description hurts SEO",
-      "applyMode": "apply_field",
-      "confidence": "high"
-    },
-    {
-      "issueKey": "missing-faq",
-      "issueLabel": "No FAQ section",
-      "priority": "medium",
-      "fixType": "faq",
-      "field": "",
-      "suggestedValue": "<h2>FAQ</h2><h3>Q1?</h3><p>A1</p>...",
-      "explanation": "FAQ improves rich snippets",
-      "applyMode": "append_content",
-      "confidence": "high",
-      "faqSchemaEligible": true,
-      "faqSchema": [
-        {"question": "Q1?", "answer": "A1"},
-        {"question": "Q2?", "answer": "A2"}
-      ]
-    }
-  ],
-  "truncated": false,
-  "parseError": false,
-  "recoveryAttempted": false
+For text models, each new case follows this exact pattern:
+```typescript
+case 'vertex-3.1-pro': {
+  const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+  return callVertexGemini('gemini-3.1-pro-preview', prompt, 120_000, { maxOutputTokens: mt });
+}
+case 'vertex-3-flash': {
+  const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+  return callVertexGemini('gemini-3-flash-preview', prompt, 90_000, { maxOutputTokens: mt });
+}
+case 'vertex-3.1-flash-lite': {
+  const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+  return callVertexGemini('gemini-3.1-flash-lite-preview', prompt, 60_000, { maxOutputTokens: mt });
 }
 ```
 
----
+### What is NOT changing
+- No changes to `_shared/vertex-ai.ts` (the helper is model-agnostic — it takes model ID as a parameter)
+- No changes to GCP auth or credentials
+- No new edge functions
+- No Lovable AI Gateway routing for these models
+- No image flow redesign
+- No changes to `supabase/client.ts` or `types.ts`
 
-## Remaining for Phase 2 (frontend)
-
-- Expanded `shouldAutoOverwriteField` logic in `BlogAITools.tsx`
-- `validateFieldValue` pre-save checks
-- Strict canonical URL validator (`isValidCanonicalUrl`)
-- FAQ schema DB write on auto-apply
-- Truncation/parseError toast feedback in UI
-- `h1` and `heading_structure` in frontend allowlists
+### Preview-Model Cautions
+- All three text models and the image model contain "preview" in their IDs — Google may change behavior or deprecate them
+- Labels clearly marked "(Preview)" and "(From API)" to set admin expectations
+- Conservative throttling applied for preview models
 

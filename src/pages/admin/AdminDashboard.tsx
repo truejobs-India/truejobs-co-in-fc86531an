@@ -27,6 +27,7 @@ import {
   MessageSquare,
   Rss,
   Search,
+  Bug,
 } from 'lucide-react';
 import { RssIntakeManager } from '@/components/admin/rss-intake/RssIntakeManager';
 import { EmploymentNewsManager } from '@/components/admin/EmploymentNewsManager';

@@ -199,7 +199,7 @@ export function UnresolvedSeoResolver() {
             id: key,
             slug: d.slug || 'unknown',
             source: (d.source || 'blog_posts') as ContentSource,
-            category: d.category || 'unknown',
+            category: cleanCategory(d.category) || 'unknown',
             field: d.field || null,
             status,
             reason: d.reason || 'No reason recorded',

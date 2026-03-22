@@ -74,7 +74,7 @@ type UploadBatch = {
   status: string;
 };
 
-const CHUNK_SIZE = 15000;
+const CHUNK_SIZE = 7500;
 const CHUNK_OVERLAP = 300;
 const INTER_CHUNK_DELAY_MS = 2000;
 

@@ -3600,6 +3600,10 @@ export type Database = {
     }
     Functions: {
       cleanup_expired_otp_sessions: { Args: never; Returns: undefined }
+      delete_employment_news_edition: {
+        Args: { p_batch_id: string }
+        Returns: Json
+      }
       get_applicant_applications: {
         Args: { applicant_uuid: string }
         Returns: {

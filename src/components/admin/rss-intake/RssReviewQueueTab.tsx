@@ -209,6 +209,19 @@ export function RssReviewQueueTab() {
           </Select>
         </div>
 
+        {/* Bulk Action Toolbar */}
+        {selectedQueueIds.size > 0 && (
+          <div className="flex items-center gap-2 mb-3 p-2 rounded-md bg-muted/50 border">
+            <Badge variant="secondary">{selectedQueueIds.size} selected</Badge>
+            <Button size="sm" variant="outline" className="text-destructive border-destructive/50 hover:bg-destructive/10" onClick={() => {
+              setDeleteTarget({ id: '__bulk__', title: `${selectedQueueIds.size} entries` } as any);
+            }}>
+              <Trash2 className="h-3.5 w-3.5 mr-1" /> Delete Selected
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setSelectedQueueIds(new Set())}>Clear</Button>
+          </div>
+        )}
+
         {loading ? (
           <p className="text-center py-8 text-muted-foreground">Loading...</p>
         ) : filtered.length === 0 ? (
@@ -218,6 +231,18 @@ export function RssReviewQueueTab() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-8">
+                    <Checkbox
+                      checked={filtered.length > 0 && filtered.every(e => selectedQueueIds.has(e.id))}
+                      onCheckedChange={() => {
+                        if (filtered.every(e => selectedQueueIds.has(e.id))) {
+                          setSelectedQueueIds(new Set());
+                        } else {
+                          setSelectedQueueIds(new Set(filtered.map(e => e.id)));
+                        }
+                      }}
+                    />
+                  </TableHead>
                   <TableHead>Channel</TableHead>
                   <TableHead>Title</TableHead>
                   <TableHead>Domain</TableHead>
@@ -231,7 +256,9 @@ export function RssReviewQueueTab() {
               <TableBody>
                 {filtered.map((entry) => (
                   <TableRow key={entry.id} className="cursor-pointer" onClick={() => openDetail(entry)}>
-                    <TableCell><Badge variant="outline">{entry.channel}</Badge></TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <Checkbox checked={selectedQueueIds.has(entry.id)} onCheckedChange={() => toggleQueueSelect(entry.id)} />
+                    </TableCell>
                     <TableCell className="max-w-[220px]"><p className="text-sm font-medium truncate">{entry.title}</p></TableCell>
                     <TableCell>
                       {entry.primary_domain ? (

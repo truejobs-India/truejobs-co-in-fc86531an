@@ -221,9 +221,11 @@ async function callAI(
     const finish = json.choices?.[0]?.finish_reason;
     if (finish === 'length') {
       console.warn(`[${requestId}] Groq response truncated, attempting JSON repair`);
-      return repairTruncatedJson(content);
+      return repairTruncatedJson(content, requestId);
     }
-    return JSON.parse(content);
+    try { return JSON.parse(content); } catch {
+      return repairTruncatedJson(content, requestId);
+    }
   }
 
   if (resolved.provider === 'anthropic') {

@@ -1375,15 +1375,7 @@ export function BlogPostEditor() {
         </Button>
         {/* Cover Image: model selector + generate button */}
         <div className="flex items-center gap-1">
-          <Select value={coverImageModel} onValueChange={handleCoverImageModelChange}>
-            <SelectTrigger className="h-8 w-[140px] text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="gemini-flash-image">Gemini Flash</SelectItem>
-              <SelectItem value="vertex-imagen">Vertex Imagen</SelectItem>
-            </SelectContent>
-          </Select>
+          <AiModelSelector value={coverImageModel} onValueChange={handleCoverImageModelChange} capability="image" size="sm" triggerClassName="h-8 w-[160px] text-xs" />
           <Button variant="outline" size="sm" onClick={handleBulkGenerateCoverImages} disabled={isBulkCoverRunning}>
             {isBulkCoverRunning ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <ImageIcon className="h-4 w-4 mr-1" />}
             {isBulkCoverRunning
@@ -1398,15 +1390,7 @@ export function BlogPostEditor() {
         </div>
         {/* Inline Image: model selector + generate button */}
         <div className="flex items-center gap-1">
-          <Select value={inlineImageModel} onValueChange={handleInlineImageModelChange}>
-            <SelectTrigger className="h-8 w-[140px] text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="vertex-imagen">Vertex Imagen</SelectItem>
-              <SelectItem value="gemini-flash-image">Gemini Flash</SelectItem>
-            </SelectContent>
-          </Select>
+          <AiModelSelector value={inlineImageModel} onValueChange={handleInlineImageModelChange} capability="image" size="sm" triggerClassName="h-8 w-[160px] text-xs" />
           <Button variant="outline" size="sm" onClick={handleBulkGenerateInlineImages} disabled={isBulkInlineRunning}>
             {isBulkInlineRunning ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <ImageIcon className="h-4 w-4 mr-1" />}
             {isBulkInlineRunning

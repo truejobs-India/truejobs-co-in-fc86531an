@@ -21,6 +21,13 @@ const corsHeaders = {
 const IMAGEN_MODEL = Deno.env.get('VERTEX_IMAGEN_MODEL') || 'imagen-4.0-generate-001';
 const GEMINI_IMAGE_MODEL = Deno.env.get('VERTEX_GEMINI_IMAGE_MODEL') || 'gemini-2.5-flash-image';
 const LOVABLE_GATEWAY_IMAGE_MODEL = 'google/gemini-3.1-flash-image-preview';
+
+// Map UI model keys → Lovable Gateway model IDs
+const GATEWAY_IMAGE_MODELS: Record<string, string> = {
+  'gemini-flash-image': 'google/gemini-2.5-flash-image',
+  'gemini-pro-image': 'google/gemini-3-pro-image-preview',
+  'gemini-flash-image-2': 'google/gemini-3.1-flash-image-preview',
+};
 const IMAGEN_TIMEOUT_MS = 45_000;
 const GATEWAY_TIMEOUT_MS = 55_000;
 const MAX_RETRIES = 3;
@@ -533,6 +540,134 @@ async function generateViaLovableGatewayImage(
 }
 
 
+/** Variant that lets the caller choose which Lovable Gateway model to use */
+async function generateViaLovableGatewayImageWithModel(
+  body: any,
+  slug: string,
+  imagePrompt: string,
+  adminClient: any,
+  startMs: number,
+  fallbackReason: string,
+  gatewayModelId: string,
+): Promise<Response> {
+  const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
+  if (!lovableApiKey) {
+    return new Response(JSON.stringify({
+      success: false,
+      error: `LOVABLE_API_KEY not configured — cannot use ${gatewayModelId}.`,
+      model: gatewayModelId,
+    }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  }
+
+  console.log(`[lovable-gateway-image] model=${gatewayModelId} reason=${fallbackReason} slug=${slug}`);
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), GATEWAY_TIMEOUT_MS);
+  let resp: Response;
+  try {
+    resp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${lovableApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: gatewayModelId,
+        messages: [{ role: 'user', content: imagePrompt }],
+        modalities: ['image', 'text'],
+      }),
+    });
+  } catch (fetchErr: any) {
+    clearTimeout(timer);
+    const isTimeout = fetchErr?.name === 'AbortError';
+    return new Response(JSON.stringify({
+      success: false,
+      error: isTimeout ? 'Image generation timed out.' : `Image generation failed: ${fetchErr.message}`,
+      model: gatewayModelId,
+    }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  } finally {
+    clearTimeout(timer);
+  }
+
+  if (!resp.ok) {
+    const errText = await resp.text();
+    console.error(`[lovable-gateway-image] error [${resp.status}]: ${errText.substring(0, 300)}`);
+    return new Response(JSON.stringify({
+      success: false,
+      error: `Gateway error (${resp.status}): ${errText.substring(0, 200)}`,
+      model: gatewayModelId,
+    }), { status: resp.status === 429 ? 429 : resp.status === 402 ? 402 : 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  }
+
+  const data = await resp.json();
+  const choice = data.choices?.[0]?.message;
+  let imageBase64 = '';
+  let mimeType = 'image/png';
+  let altText = body.title || body.topic || `Blog image for ${slug}`;
+
+  if (choice?.images?.length > 0) {
+    for (const img of choice.images) {
+      const imgUrl = img?.image_url?.url || img?.url || '';
+      if (imgUrl.startsWith('data:')) {
+        const match = imgUrl.match(/^data:(image\/\w+);base64,(.+)$/s);
+        if (match) { mimeType = match[1]; imageBase64 = match[2]; break; }
+      } else if (imgUrl.startsWith('http')) {
+        const imgResp = await fetch(imgUrl);
+        if (imgResp.ok) {
+          const arrBuf = await imgResp.arrayBuffer();
+          const bytes = new Uint8Array(arrBuf);
+          let binary = '';
+          for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+          imageBase64 = btoa(binary);
+          mimeType = imgResp.headers.get('content-type') || 'image/png';
+          break;
+        }
+      }
+    }
+  }
+
+  if (choice?.content) {
+    const text = typeof choice.content === 'string' ? choice.content.trim() : '';
+    if (text.length > 10 && text.length < 200) altText = text;
+  }
+
+  if (!imageBase64) {
+    return new Response(JSON.stringify({
+      success: false,
+      error: 'No usable image data returned from gateway.',
+      model: gatewayModelId,
+    }), { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  }
+
+  const isInline = body.purpose === 'inline';
+  const ext = mimeType.includes('jpeg') ? 'jpg' : 'png';
+  const pathPrefix = isInline ? 'inline' : 'covers';
+  const modelTag = gatewayModelId.replace(/[^a-z0-9]/gi, '-').substring(0, 20);
+  const slotSuffix = isInline && body.slotNumber ? `-slot${body.slotNumber}` : '';
+  const filePath = `${pathPrefix}/${slug}-${modelTag}${slotSuffix}.${ext}`;
+
+  const uploadResult = await uploadGeneratedImage({ adminClient, imageBase64, mimeType, filePath });
+  if (uploadResult instanceof Response) return uploadResult;
+
+  const elapsed = Date.now() - startMs;
+  console.log(`[lovable-gateway-image] completed in ${elapsed}ms model=${gatewayModelId}`);
+
+  return new Response(JSON.stringify({
+    success: true,
+    data: {
+      images: [{ url: uploadResult.publicUrl, path: filePath, altText, mimeType, width: 1024, height: 1024 }],
+      promptUsed: imagePrompt,
+    },
+    model: gatewayModelId,
+    action: 'generate-image',
+    purpose: body.purpose || 'cover',
+    elapsedMs: elapsed,
+    fallbackReason,
+  }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+}
+
+
 // ═══════════════════════════════════════════════════════════════
 // IMAGEN — via Vertex AI
 // ═══════════════════════════════════════════════════════════════
@@ -727,6 +862,14 @@ serve(async (req) => {
 
     console.log(`[generate-vertex-image] Routing: purpose=${purpose || 'none'}, model=${body.model || 'none'}, slug=${slug}`);
 
+    // ── Helper: check if model should use Lovable Gateway ──
+    const isGatewayModel = (model: string) => model in GATEWAY_IMAGE_MODELS;
+
+    const generateViaGatewayModel = (model: string, bodyOverride: any, imagePrompt: string) => {
+      const gatewayModelId = GATEWAY_IMAGE_MODELS[model] || LOVABLE_GATEWAY_IMAGE_MODEL;
+      return generateViaLovableGatewayImageWithModel(bodyOverride, slug, imagePrompt, adminClient, startMs, `direct-${model}`, gatewayModelId);
+    };
+
     // ── Purpose-based routing (respects model from request body) ──
     if (purpose === 'cover') {
       const selectedCoverModel = body.model || 'gemini-flash-image';
@@ -736,15 +879,23 @@ serve(async (req) => {
         const aspectRatio = ASPECT_RATIOS[body.aspectRatio || '16:9'] || '16:9';
         return await generateViaImagen(body, slug, imagePrompt, 1, aspectRatio, adminClient, startMs);
       }
+      if (isGatewayModel(selectedCoverModel) && selectedCoverModel !== 'gemini-flash-image') {
+        return await generateViaGatewayModel(selectedCoverModel, body, imagePrompt);
+      }
       return await generateViaGeminiFlashImage(body, slug, imagePrompt, adminClient, startMs);
     }
 
     if (purpose === 'inline') {
-      // Inline images: use model from request body, default to Imagen
       const selectedInlineModel = body.model || 'vertex-imagen';
       const imagePrompt = buildInlineImagePrompt(body);
-      const aspectRatio = '4:3'; // Enforced for inline
+      const aspectRatio = '4:3';
       console.log(`[generate-vertex-image] ENFORCED: purpose=inline → ${selectedInlineModel}, slot=${body.slotNumber}`);
+      if (selectedInlineModel === 'vertex-imagen') {
+        return await generateViaImagen(body, slug, imagePrompt, 1, aspectRatio, adminClient, startMs);
+      }
+      if (isGatewayModel(selectedInlineModel) && selectedInlineModel !== 'gemini-flash-image') {
+        return await generateViaGatewayModel(selectedInlineModel, { ...body, purpose: 'inline' }, imagePrompt);
+      }
       if (selectedInlineModel === 'gemini-flash-image') {
         return await generateViaGeminiFlashImage({ ...body, purpose: 'inline' }, slug, imagePrompt, adminClient, startMs);
       }
@@ -757,6 +908,12 @@ serve(async (req) => {
     const aspectRatio = ASPECT_RATIOS[body.aspectRatio || '16:9'] || '16:9';
     const imagePrompt = buildCoverImagePrompt(body);
 
+    if (selectedModel === 'vertex-imagen') {
+      return await generateViaImagen(body, slug, imagePrompt, imageCount, aspectRatio, adminClient, startMs);
+    }
+    if (isGatewayModel(selectedModel) && selectedModel !== 'gemini-flash-image') {
+      return await generateViaGatewayModel(selectedModel, body, imagePrompt);
+    }
     if (selectedModel === 'gemini-flash-image') {
       return await generateViaGeminiFlashImage(body, slug, imagePrompt, adminClient, startMs);
     } else {

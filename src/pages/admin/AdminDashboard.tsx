@@ -9,9 +9,7 @@ import { AdminMessageLog } from '@/components/admin/AdminMessageLog';
 import { supabase } from '@/integrations/supabase/client';
 import { 
   Users, 
-  Briefcase, 
   Building2, 
-  CheckCircle, 
   Clock,
   TrendingUp,
   RefreshCw,

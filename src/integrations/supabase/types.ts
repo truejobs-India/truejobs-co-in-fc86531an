@@ -3542,31 +3542,43 @@ export type Database = {
       }
       upload_batches: {
         Row: {
+          ai_model_used: string | null
+          completed_chunks: number | null
+          extraction_status: string | null
           filename: string
           id: string
           issue_details: string | null
           new_count: number | null
           status: string
+          total_chunks: number | null
           total_extracted: number
           updated_count: number | null
           uploaded_at: string
         }
         Insert: {
+          ai_model_used?: string | null
+          completed_chunks?: number | null
+          extraction_status?: string | null
           filename: string
           id?: string
           issue_details?: string | null
           new_count?: number | null
           status?: string
+          total_chunks?: number | null
           total_extracted?: number
           updated_count?: number | null
           uploaded_at?: string
         }
         Update: {
+          ai_model_used?: string | null
+          completed_chunks?: number | null
+          extraction_status?: string | null
           filename?: string
           id?: string
           issue_details?: string | null
           new_count?: number | null
           status?: string
+          total_chunks?: number | null
           total_extracted?: number
           updated_count?: number | null
           uploaded_at?: string

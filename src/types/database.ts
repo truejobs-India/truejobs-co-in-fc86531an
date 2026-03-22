@@ -189,6 +189,13 @@ export interface UserRole {
   created_at: string;
 }
 
+export type JobLevel = 'intern' | 'fresher' | 'junior' | 'mid' | 'senior' | 'lead' | 'manager' | 'director' | 'executive';
+
+export type LocationType = 'onsite' | 'hybrid' | 'remote' | 'work_from_home';
+
+export type EmploymentType = 'full_time' | 'part_time' | 'contract' | 'freelancing' | 'internship' | 'temporary';
+
+export type SalaryPeriod = 'hourly' | 'daily' | 'weekly' | 'monthly' | 'yearly';
 
 export interface RestrictedDomain {
   id: string;

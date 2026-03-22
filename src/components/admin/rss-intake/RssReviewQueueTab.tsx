@@ -259,6 +259,7 @@ export function RssReviewQueueTab() {
                     <TableCell onClick={(e) => e.stopPropagation()}>
                       <Checkbox checked={selectedQueueIds.has(entry.id)} onCheckedChange={() => toggleQueueSelect(entry.id)} />
                     </TableCell>
+                    <TableCell><Badge variant="outline">{entry.channel}</Badge></TableCell>
                     <TableCell className="max-w-[220px]"><p className="text-sm font-medium truncate">{entry.title}</p></TableCell>
                     <TableCell>
                       {entry.primary_domain ? (

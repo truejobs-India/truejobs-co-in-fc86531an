@@ -771,22 +771,54 @@ export function EmploymentNewsManager() {
               <CardContent className="px-4 pb-3">
                 <div className="flex flex-wrap gap-2">
                   {batches.map(b => (
-                    <Badge
-                      key={b.id}
-                      variant="outline"
-                      className={`cursor-pointer text-xs py-1 px-2 ${batchFilter === b.id ? 'border-primary bg-primary/10 text-primary' : ''}`}
-                      onClick={() => { setBatchFilter(batchFilter === b.id ? 'all' : b.id); setCurrentPage(1); }}
-                    >
-                      {b.issue_details || b.filename}
-                      <span className="ml-1 opacity-70">({b.total_extracted})</span>
-                      {b.status === 'processing' && <Loader2 className="ml-1 h-3 w-3 animate-spin" />}
-                      {b.status === 'complete' && <CheckCircle className="ml-1 h-3 w-3 text-green-600" />}
-                    </Badge>
+                    <div key={b.id} className="flex items-center gap-0.5">
+                      <Badge
+                        variant="outline"
+                        className={`cursor-pointer text-xs py-1 px-2 rounded-r-none ${batchFilter === b.id ? 'border-primary bg-primary/10 text-primary' : ''}`}
+                        onClick={() => { setBatchFilter(batchFilter === b.id ? 'all' : b.id); setCurrentPage(1); }}
+                      >
+                        {b.issue_details || b.filename}
+                        <span className="ml-1 opacity-70">({b.total_extracted})</span>
+                        {b.status === 'processing' && <Loader2 className="ml-1 h-3 w-3 animate-spin" />}
+                        {b.status === 'complete' && <CheckCircle className="ml-1 h-3 w-3 text-green-600" />}
+                      </Badge>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-6 w-6 rounded-l-none border-l-0 text-destructive hover:bg-destructive/10"
+                        onClick={(e) => { e.stopPropagation(); setDeletingBatchId(b.id); }}
+                        title="Delete this edition and all its jobs"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
                   ))}
                 </div>
               </CardContent>
             </Card>
           )}
+
+          {/* Delete Edition Confirmation */}
+          <AlertDialog open={!!deletingBatchId} onOpenChange={v => !v && setDeletingBatchId(null)}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertTitle>Delete Edition</AlertTitle>
+                <AlertDialogDescription>
+                  This will permanently delete this newspaper edition and <strong>all</strong> jobs extracted from it (published or unpublished). This action cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={isDeletingEdition}>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleDeleteEdition}
+                  disabled={isDeletingEdition}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  {isDeletingEdition ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Deleting…</> : 'Delete Edition'}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
 
           {/* Filters */}
           <div className="flex flex-wrap gap-2 items-center">

@@ -189,8 +189,6 @@ export interface UserRole {
   created_at: string;
 }
 
-export type ScrapingSourceStatus = 'not_scraped' | 'scraped' | 'failed' | 'disabled' | 'blocked';
-
 export type JobLevel = 'intern' | 'fresher' | 'junior' | 'mid' | 'senior' | 'lead' | 'manager' | 'director' | 'executive';
 
 export type LocationType = 'onsite' | 'hybrid' | 'remote' | 'work_from_home';
@@ -198,23 +196,6 @@ export type LocationType = 'onsite' | 'hybrid' | 'remote' | 'work_from_home';
 export type EmploymentType = 'full_time' | 'part_time' | 'contract' | 'freelancing' | 'internship' | 'temporary';
 
 export type SalaryPeriod = 'hourly' | 'daily' | 'weekly' | 'monthly' | 'yearly';
-
-export interface ScrapingSource {
-  id: string;
-  url: string;
-  name: string;
-  description: string | null;
-  is_active: boolean;
-  status: ScrapingSourceStatus;
-  scrape_count: number;
-  last_scraped_at: string | null;
-  jobs_scraped_count: number;
-  consecutive_failures: number;
-  blocked_reason: string | null;
-  created_by: string | null;
-  created_at: string;
-  updated_at: string;
-}
 
 export interface RestrictedDomain {
   id: string;

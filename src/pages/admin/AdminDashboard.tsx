@@ -9,9 +9,7 @@ import { AdminMessageLog } from '@/components/admin/AdminMessageLog';
 import { supabase } from '@/integrations/supabase/client';
 import { 
   Users, 
-  Briefcase, 
   Building2, 
-  CheckCircle, 
   Clock,
   TrendingUp,
   RefreshCw,
@@ -31,16 +29,14 @@ import {
   Search,
 } from 'lucide-react';
 import { RssIntakeManager } from '@/components/admin/rss-intake/RssIntakeManager';
-import { RestrictedDomainsManager } from '@/components/admin/RestrictedDomainsManager';
 import { EmploymentNewsManager } from '@/components/admin/EmploymentNewsManager';
-import { JobApprovalList } from '@/components/admin/JobApprovalList';
 import { CompanyApprovalList } from '@/components/admin/CompanyApprovalList';
 import { BlogPostEditor } from '@/components/admin/BlogPostEditor';
 import { CronJobManager } from '@/components/admin/CronJobManager';
 import { DrilldownBreadcrumb, BreadcrumbItem } from '@/components/admin/DrilldownBreadcrumb';
 import { CompaniesListView } from '@/components/admin/CompaniesListView';
 import { CompanyJobsView } from '@/components/admin/CompanyJobsView';
-import { JobsListView } from '@/components/admin/JobsListView';
+
 import { UsersListView } from '@/components/admin/UsersListView';
 import { PollsManager } from '@/components/admin/PollsManager';
 import { ContestsManager } from '@/components/admin/ContestsManager';
@@ -66,15 +62,11 @@ import { useNavigate } from 'react-router-dom';
 type DrilldownView = 
   | { type: 'dashboard' }
   | { type: 'users' }
-  | { type: 'jobs'; filter?: string }
   | { type: 'companies' }
   | { type: 'company-jobs'; companyName: string };
 
 interface DashboardStats {
   totalUsers: number;
-  totalJobs: number;
-  activeJobs: number;
-  pendingJobs: number;
   totalCompanies: number;
   pendingCompanies: number;
   totalApplications: number;
@@ -86,9 +78,6 @@ function AdminDashboardInner() {
   const navigate = useNavigate();
   const [stats, setStats] = useState<DashboardStats>({
     totalUsers: 0,
-    totalJobs: 0,
-    activeJobs: 0,
-    pendingJobs: 0,
     totalCompanies: 0,
     pendingCompanies: 0,
     totalApplications: 0,
@@ -135,17 +124,11 @@ function AdminDashboardInner() {
     try {
       const [
         usersResult,
-        jobsResult,
-        activeJobsResult,
-        pendingJobsResult,
         uniqueCompanyNames,
         pendingCompaniesResult,
         applicationsResult,
       ] = await Promise.all([
         supabase.from('profiles').select('id', { count: 'exact', head: true }),
-        supabase.from('jobs').select('id', { count: 'exact', head: true }),
-        supabase.from('jobs').select('id', { count: 'exact', head: true }).eq('status', 'active'),
-        supabase.from('jobs').select('id', { count: 'exact', head: true }).in('status', ['pending_approval', 'draft']),
         fetchAllCompanyNames(),
         supabase.from('companies').select('id', { count: 'exact', head: true }).eq('is_approved', false),
         supabase.from('applications').select('id', { count: 'exact', head: true }),
@@ -153,9 +136,6 @@ function AdminDashboardInner() {
 
       setStats({
         totalUsers: usersResult.count || 0,
-        totalJobs: jobsResult.count || 0,
-        activeJobs: activeJobsResult.count || 0,
-        pendingJobs: pendingJobsResult.count || 0,
         totalCompanies: uniqueCompanyNames.size,
         pendingCompanies: pendingCompaniesResult.count || 0,
         totalApplications: applicationsResult.count || 0,
@@ -174,9 +154,6 @@ function AdminDashboardInner() {
 
   const statCards = [
     { title: 'Total Users', value: stats.totalUsers, icon: Users, color: 'text-blue-500', onClick: () => setCurrentView({ type: 'users' }) },
-    { title: 'Total Jobs', value: stats.totalJobs, icon: Briefcase, color: 'text-green-500', onClick: () => setCurrentView({ type: 'jobs' }) },
-    { title: 'Active Jobs', value: stats.activeJobs, icon: CheckCircle, color: 'text-emerald-500', onClick: () => setCurrentView({ type: 'jobs', filter: 'active' }) },
-    { title: 'Pending Approval', value: stats.pendingJobs, icon: Clock, color: 'text-yellow-500', onClick: () => setCurrentView({ type: 'jobs', filter: 'pending_approval' }) },
     { title: 'Companies', value: stats.totalCompanies, icon: Building2, color: 'text-indigo-500', onClick: () => setCurrentView({ type: 'companies' }) },
     { title: 'Pending Companies', value: stats.pendingCompanies, icon: Clock, color: 'text-orange-500', onClick: () => {} },
     { title: 'Applications', value: stats.totalApplications, icon: TrendingUp, color: 'text-pink-500', onClick: () => {} },
@@ -187,8 +164,6 @@ function AdminDashboardInner() {
     switch (currentView.type) {
       case 'users':
         return [{ label: 'Users' }];
-      case 'jobs':
-        return [{ label: currentView.filter ? `Jobs (${currentView.filter})` : 'Jobs' }];
       case 'companies':
         return [{ label: 'Companies' }];
       case 'company-jobs':
@@ -266,15 +241,6 @@ function AdminDashboardInner() {
                 <TabsTrigger value="users" className="flex items-center gap-2">
                   <Users className="h-4 w-4" />
                   <span className="hidden sm:inline">Users</span>
-                </TabsTrigger>
-                <TabsTrigger value="jobs" className="flex items-center gap-2">
-                  <Briefcase className="h-4 w-4" />
-                  <span className="hidden sm:inline">Jobs</span>
-                  {stats.pendingJobs > 0 && (
-                    <Badge variant="destructive" className="ml-1">
-                      {stats.pendingJobs}
-                    </Badge>
-                  )}
                 </TabsTrigger>
                 <TabsTrigger value="companies" className="flex items-center gap-2">
                   <Building2 className="h-4 w-4" />
@@ -359,10 +325,6 @@ function AdminDashboardInner() {
                 <UsersListView />
               </TabsContent>
 
-              <TabsContent value="jobs" className="space-y-6">
-                <JobApprovalList onStatsChange={fetchStats} />
-                <RestrictedDomainsManager onSettingsChange={fetchStats} />
-              </TabsContent>
 
               <TabsContent value="companies" className="space-y-6">
                 <CompanyApprovalList onStatsChange={fetchStats} />
@@ -450,11 +412,6 @@ function AdminDashboardInner() {
           </>
         ) : currentView.type === 'users' ? (
           <UsersListView />
-        ) : currentView.type === 'jobs' ? (
-          <JobsListView 
-            filterStatus={currentView.filter} 
-            onCompanyClick={(name) => setCurrentView({ type: 'company-jobs', companyName: name })}
-          />
         ) : currentView.type === 'companies' ? (
           <CompaniesListView 
             onCompanyClick={(name) => setCurrentView({ type: 'company-jobs', companyName: name })}

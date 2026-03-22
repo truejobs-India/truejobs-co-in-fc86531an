@@ -310,7 +310,7 @@ serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
 
-    const { text, filename, issueDetails, batchId, aiModel } = await req.json();
+    const { text, filename, issueDetails, batchId, aiModel, chunkIndex, totalChunks } = await req.json();
     if (!text || text.trim().length < 50)
       return new Response(
         JSON.stringify({ error: "Text too short to extract jobs from" }),

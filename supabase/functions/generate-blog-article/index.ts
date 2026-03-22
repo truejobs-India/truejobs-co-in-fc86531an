@@ -585,6 +585,18 @@ async function callAI(model: string, prompt: string, wordLimit = 1500): Promise<
       const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
       return callVertexGemini('gemini-2.5-pro', prompt, 120_000, { maxOutputTokens: mt });
     }
+    case 'vertex-3.1-pro': {
+      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      return callVertexGemini('gemini-3.1-pro-preview', GEMINI_SYSTEM_PROMPT + '\n\n' + prompt, 120_000, { maxOutputTokens: mt, temperature: 0.5 });
+    }
+    case 'vertex-3-flash': {
+      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      return callVertexGemini('gemini-3-flash-preview', GEMINI_SYSTEM_PROMPT + '\n\n' + prompt, 90_000, { maxOutputTokens: mt, temperature: 0.65 });
+    }
+    case 'vertex-3.1-flash-lite': {
+      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      return callVertexGemini('gemini-3.1-flash-lite-preview', GEMINI_SYSTEM_PROMPT + '\n\n' + prompt, 60_000, { maxOutputTokens: mt, temperature: 0.65 });
+    }
     case 'nova-pro': case 'nova-premier': {
       const { callBedrockNova } = await import('../_shared/bedrock-nova.ts');
       return callBedrockNova(model, prompt, { maxTokens: mt, temperature: 0.5 });

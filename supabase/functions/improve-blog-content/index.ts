@@ -309,6 +309,27 @@ async function callAI(aiModel: string, prompt: string, maxTokens: number, option
       actualProvider = 'vertex-ai'; actualModelId = 'gemini-2.5-pro';
       break;
     }
+    case 'vertex-3.1-pro': {
+      const { callVertexGeminiWithMeta } = await import('../_shared/vertex-ai.ts');
+      const result = await callVertexGeminiWithMeta('gemini-3.1-pro-preview', prompt, 120_000, { maxOutputTokens: maxTokens });
+      resultJson = JSON.stringify({ __raw: result.text, __finishReason: result.finishReason });
+      actualProvider = 'vertex-ai'; actualModelId = 'gemini-3.1-pro-preview';
+      break;
+    }
+    case 'vertex-3-flash': {
+      const { callVertexGeminiWithMeta } = await import('../_shared/vertex-ai.ts');
+      const result = await callVertexGeminiWithMeta('gemini-3-flash-preview', prompt, 90_000, { maxOutputTokens: maxTokens });
+      resultJson = JSON.stringify({ __raw: result.text, __finishReason: result.finishReason });
+      actualProvider = 'vertex-ai'; actualModelId = 'gemini-3-flash-preview';
+      break;
+    }
+    case 'vertex-3.1-flash-lite': {
+      const { callVertexGeminiWithMeta } = await import('../_shared/vertex-ai.ts');
+      const result = await callVertexGeminiWithMeta('gemini-3.1-flash-lite-preview', prompt, 60_000, { maxOutputTokens: maxTokens });
+      resultJson = JSON.stringify({ __raw: result.text, __finishReason: result.finishReason });
+      actualProvider = 'vertex-ai'; actualModelId = 'gemini-3.1-flash-lite-preview';
+      break;
+    }
     case 'nova-pro': case 'nova-premier': {
       const { callBedrockNovaWithMeta } = await import('../_shared/bedrock-nova.ts');
       // Pass maxTokens directly — already computed model-aware by computeMaxTokens at caller

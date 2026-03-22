@@ -554,6 +554,21 @@ async function callAI(model: string, prompt: string, maxTokensParam?: number): P
       rawText = await callVertexGemini('gemini-2.5-pro', prompt, 120_000, { maxOutputTokens: maxTokensParam || 16384 });
       break;
     }
+    case 'vertex-3.1-pro': {
+      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      rawText = await callVertexGemini('gemini-3.1-pro-preview', prompt, 120_000, { maxOutputTokens: maxTokensParam || 16384 });
+      break;
+    }
+    case 'vertex-3-flash': {
+      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      rawText = await callVertexGemini('gemini-3-flash-preview', prompt, 90_000, { maxOutputTokens: maxTokensParam || 16384 });
+      break;
+    }
+    case 'vertex-3.1-flash-lite': {
+      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      rawText = await callVertexGemini('gemini-3.1-flash-lite-preview', prompt, 60_000, { maxOutputTokens: maxTokensParam || 16384 });
+      break;
+    }
     case 'nova-pro':
     case 'nova-premier': {
       const { callBedrockNova } = await import('../_shared/bedrock-nova.ts');

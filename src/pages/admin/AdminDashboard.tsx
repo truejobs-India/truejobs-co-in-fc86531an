@@ -27,6 +27,7 @@ import {
   MessageSquare,
   Rss,
   Search,
+  Bug,
 } from 'lucide-react';
 import { RssIntakeManager } from '@/components/admin/rss-intake/RssIntakeManager';
 import { EmploymentNewsManager } from '@/components/admin/EmploymentNewsManager';
@@ -57,6 +58,7 @@ import { PdfResourcesManager } from '@/components/admin/PdfResourcesManager';
 import { ChatbotSettingsManager } from '@/components/admin/ChatbotSettingsManager';
 import { ChatbotAnalytics } from '@/components/admin/ChatbotAnalytics';
 import { SitewideSeoAudit } from '@/components/admin/SitewideSeoAudit';
+import { FirecrawlDraftsManager } from '@/components/admin/firecrawl/FirecrawlDraftsManager';
 import { useNavigate } from 'react-router-dom';
 
 type DrilldownView = 
@@ -319,6 +321,10 @@ function AdminDashboardInner() {
                   <Search className="h-4 w-4" />
                   <span className="hidden sm:inline">SEO Audit</span>
                 </TabsTrigger>
+                <TabsTrigger value="firecrawl" className="flex items-center gap-2">
+                  <Bug className="h-4 w-4" />
+                  <span className="hidden sm:inline">Firecrawl</span>
+                </TabsTrigger>
               </TabsList>
 
               <TabsContent value="users">
@@ -407,6 +413,10 @@ function AdminDashboardInner() {
 
               <TabsContent value="seo-audit">
                 <SitewideSeoAudit />
+              </TabsContent>
+
+              <TabsContent value="firecrawl">
+                <FirecrawlDraftsManager />
               </TabsContent>
             </Tabs>
           </>

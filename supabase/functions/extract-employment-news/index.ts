@@ -499,17 +499,25 @@ Return null for fields not found. Preserve relative date phrases as-is. Ignore a
       .eq("id", currentBatchId)
       .single();
 
+    const currentChunkIndex = typeof chunkIndex === 'number' ? chunkIndex : 0;
+    const currentTotalChunks = typeof totalChunks === 'number' ? totalChunks : 1;
+    const newCompletedChunks = (currentBatch?.completed_chunks || 0) + 1;
+    const isLastChunk = newCompletedChunks >= currentTotalChunks;
+
     await serviceClient
       .from("upload_batches")
       .update({
         total_extracted: (currentBatch?.total_extracted || 0) + newCount + updatedCount,
         new_count: (currentBatch?.new_count || 0) + newCount,
         updated_count: (currentBatch?.updated_count || 0) + updatedCount,
-        status: "completed",
+        completed_chunks: newCompletedChunks,
+        total_chunks: currentTotalChunks,
+        extraction_status: isLastChunk ? 'completed' : 'extracting',
+        status: isLastChunk ? "completed" : "processing",
       })
       .eq("id", currentBatchId);
 
-    console.log(`[${requestId}] Done | new=${newCount} updated=${updatedCount}`);
+    console.log(`[${requestId}] Done | chunk=${currentChunkIndex + 1}/${currentTotalChunks} | new=${newCount} updated=${updatedCount}`);
 
     return new Response(
       JSON.stringify({

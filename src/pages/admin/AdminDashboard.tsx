@@ -166,8 +166,6 @@ function AdminDashboardInner() {
     switch (currentView.type) {
       case 'users':
         return [{ label: 'Users' }];
-      case 'jobs':
-        return [{ label: currentView.filter ? `Jobs (${currentView.filter})` : 'Jobs' }];
       case 'companies':
         return [{ label: 'Companies' }];
       case 'company-jobs':

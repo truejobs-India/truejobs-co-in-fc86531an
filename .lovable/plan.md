@@ -1,71 +1,64 @@
 
 
-## Plan: Fix Root Causes of Vertex 429 in Employment News Extraction
+## Plan: Fix Vertex AI Endpoint for Gemini 3.x Models
 
-### Root Cause Analysis
+### Root Cause
 
-**Finding 1 — No text cleaning.** Raw DOCX text (extracted via mammoth) is sent directly to the edge function without removing whitespace noise, empty lines, repeated spaces, or OCR artifacts. A 60-page Employment News issue could produce 80K+ chars of raw text, but 15-25% is typically whitespace noise. No cleaning = more chunks = more Vertex calls.
+The shared Vertex AI helper (`supabase/functions/_shared/vertex-ai.ts`) constructs endpoints using region-specific URLs:
+```
+https://us-central1-aiplatform.googleapis.com/v1/projects/.../locations/us-central1/publishers/google/models/gemini-3.1-pro-preview:generateContent
+```
 
-**Finding 2 — No inter-chunk delay.** The frontend (`EmploymentNewsManager.tsx`) sends chunks sequentially via a `for` loop, but fires the next request immediately after the previous one completes. For a document with 8+ chunks, this creates sustained burst load against the same Vertex AI quota.
+Gemini 3.x preview models are not served from `us-central1`. They require the **global endpoint**:
+```
+https://global-aiplatform.googleapis.com/v1/projects/.../locations/global/publishers/google/models/gemini-3.1-pro-preview:generateContent
+```
 
-**Finding 3 — No partial-success handling.** If chunk 1-4 succeed and chunk 5 hits a 429, the frontend throws an error and discards all progress. The batch was already partially saved to the database, but the user sees "Extraction Failed" with no record of partial success.
-
-**Finding 4 — Default maxOutputTokens (8192) is unnecessarily high.** Each chunk is ~10K chars which typically yields 3-8 job listings. The JSON output for 8 jobs is ~3K tokens. Setting maxOutputTokens lower reduces Vertex resource consumption per request.
-
-**Finding 5 — No server-side observability.** The function logs nothing about text size, chunk context, or processing stage, making future diagnosis impossible.
+This is the real fix — not rerouting to gateway.
 
 ### Changes
 
-#### File 1: `supabase/functions/extract-employment-news/index.ts`
+#### File 1: `supabase/functions/_shared/vertex-ai.ts`
 
-**A. Add text sanitization function** (before AI call)
-- Collapse runs of whitespace/tabs to single space
-- Remove blank lines (3+ newlines → 2)
-- Strip common OCR noise patterns (e.g., runs of underscores, pipe characters used as column separators)
-- Trim each line
-- Log original vs cleaned text length
+Both `callVertexGemini` and `callVertexGeminiWithMeta` need the same fix:
 
-**B. Add structured logging** with requestId
-- Generate a `requestId` (crypto.randomUUID)
-- Log at entry: requestId, filename, raw text length, cleaned text length
-- Log before AI call: prompt length
-- Log after AI call: jobs extracted count
-- Log on error: error category (parsing/ai/db), requestId
+- Detect Gemini 3.x model IDs (those starting with `gemini-3`)
+- Use `global-aiplatform.googleapis.com` with `locations/global` for those models
+- Use the existing region-based endpoint for Gemini 2.x models
+- Log the exact endpoint used
 
-**C. Reduce maxOutputTokens to 4096**
-- Sufficient for the structured JSON output from a 10K char chunk
-- Reduces Vertex resource pressure per call
+Implementation: Add a helper function:
+```typescript
+function getVertexEndpoint(model: string, projectId: string, location: string): string {
+  const isGlobal = model.startsWith('gemini-3');
+  const host = isGlobal ? 'global-aiplatform.googleapis.com' : `${location}-aiplatform.googleapis.com`;
+  const loc = isGlobal ? 'global' : location;
+  return `https://${host}/v1/projects/${projectId}/locations/${loc}/publishers/google/models/${model}:generateContent`;
+}
+```
 
-**D. Keep model as `gemini-2.5-flash`**
-- Already the lightest suitable model for structured extraction
-- Flash-lite would risk quality degradation on OCR text
+Apply this in both functions (replacing the current `url` construction on lines 93 and 184).
 
-**E. Keep existing 429 error handling** (already correct from previous fix)
+#### File 2: `supabase/functions/extract-employment-news/index.ts`
 
-#### File 2: `src/components/admin/EmploymentNewsManager.tsx`
+Restore true Vertex routing for the 3 incorrectly rerouted models (lines 39-45):
+- `vertex-3.1-pro` → `{ provider: 'vertex-ai', modelId: 'gemini-3.1-pro-preview', timeout: 120_000 }`
+- `vertex-3-flash` → `{ provider: 'vertex-ai', modelId: 'gemini-3-flash-preview', timeout: 90_000 }`
+- `vertex-3.1-flash-lite` → `{ provider: 'vertex-ai', modelId: 'gemini-3.1-flash-lite-preview', timeout: 60_000 }`
 
-**A. Add inter-chunk throttle delay**
-- After each successful chunk response, wait 2 seconds before sending the next
-- Prevents burst patterns against Vertex quota
+Remove the comment about "not available on this GCP project."
 
-**B. Handle partial success on 429**
-- If a chunk returns a 429 or error, stop processing remaining chunks
-- Show a toast with partial results: "Extracted X jobs from Y/Z chunks. Remaining chunks can be retried."
-- Don't throw away the batchId — the user can re-upload and it will continue accumulating
+#### Deployment & Verification
 
-**C. Increase CHUNK_SIZE from 10,000 to 15,000 chars**
-- After text cleaning removes ~20% noise, effective content per chunk stays similar
-- Fewer total chunks = fewer Vertex calls = less 429 risk
-- 15K chars + 1.5K system prompt ≈ 4K tokens input — well within Flash limits
-
-### Files Changed
-1. `supabase/functions/extract-employment-news/index.ts` — text cleaning, logging, reduced maxOutputTokens
-2. `src/components/admin/EmploymentNewsManager.tsx` — throttle delay, partial success handling, chunk size increase
+Deploy `extract-employment-news` and test each model via the edge function to confirm Vertex routing works with global endpoint.
 
 ### What is NOT changing
-- No changes to `_shared/vertex-ai.ts` (retry logic there is already correct)
-- No new edge functions
-- No architecture changes
-- No model switch
-- No changes to database schema
+- No changes to any other edge function (they already route correctly to Vertex — the shared helper fix covers them all)
+- No model registry changes
+- No frontend changes
+- No selector changes
+
+### Files Changed
+1. `supabase/functions/_shared/vertex-ai.ts` — global endpoint for Gemini 3.x
+2. `supabase/functions/extract-employment-news/index.ts` — restore Vertex routing (remove gateway fallback)
 

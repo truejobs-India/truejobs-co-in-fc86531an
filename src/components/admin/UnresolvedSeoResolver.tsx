@@ -188,7 +188,8 @@ export function UnresolvedSeoResolver() {
           const status = normalizeStatus(d.status);
           if (!status) continue; // Already resolved (fixed)
 
-          const key = `${d.source}:${d.slug}:${d.category}`;
+          const cleanedCat = cleanCategory(d.category);
+          const key = `${d.source}:${d.slug}:${cleanedCat}`;
           // Keep latest run's version
           if (seen.has(key)) {
             const existing = seen.get(key)!;
@@ -199,7 +200,7 @@ export function UnresolvedSeoResolver() {
             id: key,
             slug: d.slug || 'unknown',
             source: (d.source || 'blog_posts') as ContentSource,
-            category: d.category || 'unknown',
+            category: cleanCategory(d.category) || 'unknown',
             field: d.field || null,
             status,
             reason: d.reason || 'No reason recorded',
@@ -244,6 +245,23 @@ export function UnresolvedSeoResolver() {
       setPhase('idle');
     }
   }, [toast]);
+
+  /** Clean malformed category strings — AI sometimes stores full messages as categories */
+  function cleanCategory(raw: string): string {
+    if (!raw) return 'unknown';
+    // Strip leading brackets like "[h1] Previously failed: ..."
+    const bracketMatch = raw.match(/^\[([^\]]+)\]/);
+    if (bracketMatch) return bracketMatch[1].trim().toLowerCase();
+    // If it contains spaces and is long, it's probably a message not a category
+    if (raw.length > 30 && raw.includes(' ')) {
+      // Try to extract a known category keyword
+      const knownCats = ['meta_title', 'meta_description', 'canonical_url', 'excerpt', 'featured_image_alt', 'h1', 'heading_structure', 'internal_links', 'faq_opportunity', 'faq_schema', 'content_thin', 'intro_missing', 'compliance', 'slug'];
+      for (const cat of knownCats) {
+        if (raw.toLowerCase().includes(cat)) return cat;
+      }
+    }
+    return raw;
+  }
 
   // ── Normalize status string to UnresolvedStatus or null (if resolved) ──
   function normalizeStatus(raw: string): UnresolvedStatus | null {

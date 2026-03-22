@@ -540,6 +540,134 @@ async function generateViaLovableGatewayImage(
 }
 
 
+/** Variant that lets the caller choose which Lovable Gateway model to use */
+async function generateViaLovableGatewayImageWithModel(
+  body: any,
+  slug: string,
+  imagePrompt: string,
+  adminClient: any,
+  startMs: number,
+  fallbackReason: string,
+  gatewayModelId: string,
+): Promise<Response> {
+  const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
+  if (!lovableApiKey) {
+    return new Response(JSON.stringify({
+      success: false,
+      error: `LOVABLE_API_KEY not configured — cannot use ${gatewayModelId}.`,
+      model: gatewayModelId,
+    }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  }
+
+  console.log(`[lovable-gateway-image] model=${gatewayModelId} reason=${fallbackReason} slug=${slug}`);
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), GATEWAY_TIMEOUT_MS);
+  let resp: Response;
+  try {
+    resp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${lovableApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: gatewayModelId,
+        messages: [{ role: 'user', content: imagePrompt }],
+        modalities: ['image', 'text'],
+      }),
+    });
+  } catch (fetchErr: any) {
+    clearTimeout(timer);
+    const isTimeout = fetchErr?.name === 'AbortError';
+    return new Response(JSON.stringify({
+      success: false,
+      error: isTimeout ? 'Image generation timed out.' : `Image generation failed: ${fetchErr.message}`,
+      model: gatewayModelId,
+    }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  } finally {
+    clearTimeout(timer);
+  }
+
+  if (!resp.ok) {
+    const errText = await resp.text();
+    console.error(`[lovable-gateway-image] error [${resp.status}]: ${errText.substring(0, 300)}`);
+    return new Response(JSON.stringify({
+      success: false,
+      error: `Gateway error (${resp.status}): ${errText.substring(0, 200)}`,
+      model: gatewayModelId,
+    }), { status: resp.status === 429 ? 429 : resp.status === 402 ? 402 : 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  }
+
+  const data = await resp.json();
+  const choice = data.choices?.[0]?.message;
+  let imageBase64 = '';
+  let mimeType = 'image/png';
+  let altText = body.title || body.topic || `Blog image for ${slug}`;
+
+  if (choice?.images?.length > 0) {
+    for (const img of choice.images) {
+      const imgUrl = img?.image_url?.url || img?.url || '';
+      if (imgUrl.startsWith('data:')) {
+        const match = imgUrl.match(/^data:(image\/\w+);base64,(.+)$/s);
+        if (match) { mimeType = match[1]; imageBase64 = match[2]; break; }
+      } else if (imgUrl.startsWith('http')) {
+        const imgResp = await fetch(imgUrl);
+        if (imgResp.ok) {
+          const arrBuf = await imgResp.arrayBuffer();
+          const bytes = new Uint8Array(arrBuf);
+          let binary = '';
+          for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+          imageBase64 = btoa(binary);
+          mimeType = imgResp.headers.get('content-type') || 'image/png';
+          break;
+        }
+      }
+    }
+  }
+
+  if (choice?.content) {
+    const text = typeof choice.content === 'string' ? choice.content.trim() : '';
+    if (text.length > 10 && text.length < 200) altText = text;
+  }
+
+  if (!imageBase64) {
+    return new Response(JSON.stringify({
+      success: false,
+      error: 'No usable image data returned from gateway.',
+      model: gatewayModelId,
+    }), { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  }
+
+  const isInline = body.purpose === 'inline';
+  const ext = mimeType.includes('jpeg') ? 'jpg' : 'png';
+  const pathPrefix = isInline ? 'inline' : 'covers';
+  const modelTag = gatewayModelId.replace(/[^a-z0-9]/gi, '-').substring(0, 20);
+  const slotSuffix = isInline && body.slotNumber ? `-slot${body.slotNumber}` : '';
+  const filePath = `${pathPrefix}/${slug}-${modelTag}${slotSuffix}.${ext}`;
+
+  const uploadResult = await uploadGeneratedImage({ adminClient, imageBase64, mimeType, filePath });
+  if (uploadResult instanceof Response) return uploadResult;
+
+  const elapsed = Date.now() - startMs;
+  console.log(`[lovable-gateway-image] completed in ${elapsed}ms model=${gatewayModelId}`);
+
+  return new Response(JSON.stringify({
+    success: true,
+    data: {
+      images: [{ url: uploadResult.publicUrl, path: filePath, altText, mimeType, width: 1024, height: 1024 }],
+      promptUsed: imagePrompt,
+    },
+    model: gatewayModelId,
+    action: 'generate-image',
+    purpose: body.purpose || 'cover',
+    elapsedMs: elapsed,
+    fallbackReason,
+  }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+}
+
+
 // ═══════════════════════════════════════════════════════════════
 // IMAGEN — via Vertex AI
 // ═══════════════════════════════════════════════════════════════

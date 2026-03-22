@@ -619,9 +619,9 @@ export function UnresolvedSeoResolver() {
       progress.processed++;
       setFixProgress({ ...progress });
 
-      // Throttle between pages
+      // Throttle between pages — generous delay to avoid rate limits
       if (i + 1 < pages.length && !stopSignal.current.stopped) {
-        await new Promise(r => setTimeout(r, 2000));
+        await new Promise(r => setTimeout(r, 5000));
       }
     }
 

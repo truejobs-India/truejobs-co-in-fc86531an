@@ -2324,6 +2324,7 @@ export type Database = {
           ai_generated_at: string | null
           ai_model_used: string | null
           author_id: string
+          canonical_url: string | null
           category: string | null
           content: string
           content_hash: string | null
@@ -2369,6 +2370,7 @@ export type Database = {
           ai_generated_at?: string | null
           ai_model_used?: string | null
           author_id: string
+          canonical_url?: string | null
           category?: string | null
           content?: string
           content_hash?: string | null
@@ -2414,6 +2416,7 @@ export type Database = {
           ai_generated_at?: string | null
           ai_model_used?: string | null
           author_id?: string
+          canonical_url?: string | null
           category?: string | null
           content?: string
           content_hash?: string | null

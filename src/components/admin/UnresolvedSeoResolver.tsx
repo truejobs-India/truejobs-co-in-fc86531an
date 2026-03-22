@@ -671,6 +671,13 @@ export function UnresolvedSeoResolver() {
     }
   }
 
+  // ── Known writable fields per source (guards against schema-cache errors) ──
+  const WRITABLE_FIELDS: Record<ContentSource, Set<string>> = {
+    blog_posts: new Set(['meta_title', 'meta_description', 'canonical_url', 'excerpt', 'featured_image_alt', 'content', 'faq_schema', 'has_faq_schema', 'faq_count', 'slug']),
+    pdf_resources: new Set(['meta_title', 'meta_description', 'canonical_url', 'excerpt', 'featured_image_alt', 'content', 'faq_schema', 'slug']),
+    custom_pages: new Set(['meta_title', 'meta_description', 'canonical_url', 'excerpt', 'featured_image_alt', 'content', 'faq_schema', 'slug']),
+  };
+
   // ── Apply a single fix with strict validation ──
   async function applyResolverFix(
     source: ContentSource, recordId: string, slug: string,
@@ -686,6 +693,12 @@ export function UnresolvedSeoResolver() {
     // Slug changes → always review
     if (fix.field === 'slug') {
       return { ...base, status: 'review_required', reason: 'Slug changes require manual review', field: 'slug' };
+    }
+
+    // Guard: check if the target field actually exists on this source table
+    const targetField = fix.field || (fix.action === 'append_content' ? 'content' : fix.action === 'set_faq_schema' ? 'faq_schema' : null);
+    if (targetField && !WRITABLE_FIELDS[source]?.has(targetField)) {
+      return { ...base, status: 'skipped', reason: `Field '${targetField}' does not exist on ${source}`, field: targetField };
     }
 
     const action = fix.action || 'set_field';

@@ -36,12 +36,13 @@ function resolveModel(aiModel: string | undefined): ResolvedModel {
       return { provider: 'vertex-ai', modelId: 'gemini-2.5-flash', timeout: 90_000 };
     case 'vertex-pro':
       return { provider: 'vertex-ai', modelId: 'gemini-2.5-pro', timeout: 120_000 };
+    // Gemini 3.x preview models — routed via Lovable Gateway (not available on this GCP project via Vertex)
     case 'vertex-3.1-pro':
-      return { provider: 'vertex-ai', modelId: 'gemini-3.1-pro-preview', timeout: 120_000 };
+      return { provider: 'lovable-gateway', modelId: 'google/gemini-3.1-pro-preview', timeout: 120_000 };
     case 'vertex-3-flash':
-      return { provider: 'vertex-ai', modelId: 'gemini-3-flash-preview', timeout: 90_000 };
+      return { provider: 'lovable-gateway', modelId: 'google/gemini-3-flash-preview', timeout: 90_000 };
     case 'vertex-3.1-flash-lite':
-      return { provider: 'vertex-ai', modelId: 'gemini-3.1-flash-lite-preview', timeout: 60_000 };
+      return { provider: 'lovable-gateway', modelId: 'google/gemini-2.5-flash-lite', timeout: 60_000 };
 
     // Lovable AI Gateway models
     case 'gemini-flash':
@@ -90,12 +91,19 @@ async function callAI(
 
   if (resolved.provider === 'vertex-ai') {
     const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-    const rawText = await callVertexGemini(resolved.modelId, fullPrompt, resolved.timeout, {
-      responseMimeType: 'application/json',
-      temperature: 0.1,
-      maxOutputTokens: 4096,
-    });
-    return JSON.parse(rawText);
+    try {
+      const rawText = await callVertexGemini(resolved.modelId, fullPrompt, resolved.timeout, {
+        responseMimeType: 'application/json',
+        temperature: 0.1,
+        maxOutputTokens: 4096,
+      });
+      return JSON.parse(rawText);
+    } catch (err: any) {
+      if (err.message?.includes('404') || err.message?.includes('NOT_FOUND')) {
+        throw new Error(`Model "${resolved.modelId}" is not available in your GCP project. Try a different model.`);
+      }
+      throw err;
+    }
   }
 
   if (resolved.provider === 'lovable-gateway') {

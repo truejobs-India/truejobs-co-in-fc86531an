@@ -1377,6 +1377,191 @@ export type Database = {
           },
         ]
       }
+      firecrawl_fetch_runs: {
+        Row: {
+          error_log: string | null
+          finished_at: string | null
+          firecrawl_source_id: string
+          id: string
+          items_found: number
+          items_new: number
+          items_skipped: number
+          pages_fetched: number
+          raw_response_sample: Json | null
+          run_mode: string
+          started_at: string
+          status: string
+        }
+        Insert: {
+          error_log?: string | null
+          finished_at?: string | null
+          firecrawl_source_id: string
+          id?: string
+          items_found?: number
+          items_new?: number
+          items_skipped?: number
+          pages_fetched?: number
+          raw_response_sample?: Json | null
+          run_mode?: string
+          started_at?: string
+          status?: string
+        }
+        Update: {
+          error_log?: string | null
+          finished_at?: string | null
+          firecrawl_source_id?: string
+          id?: string
+          items_found?: number
+          items_new?: number
+          items_skipped?: number
+          pages_fetched?: number
+          raw_response_sample?: Json | null
+          run_mode?: string
+          started_at?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "firecrawl_fetch_runs_firecrawl_source_id_fkey"
+            columns: ["firecrawl_source_id"]
+            isOneToOne: false
+            referencedRelation: "firecrawl_sources"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      firecrawl_sources: {
+        Row: {
+          allowed_domains: string[]
+          allowed_url_patterns: string[]
+          blocked_url_patterns: string[]
+          check_interval_hours: number
+          crawl_mode: string
+          created_at: string
+          default_bucket: string
+          extraction_mode: string
+          id: string
+          is_enabled: boolean
+          last_error: string | null
+          last_fetched_at: string | null
+          last_success_at: string | null
+          max_pages_per_run: number
+          notes: string | null
+          priority: string
+          seed_url: string
+          source_name: string
+          source_type: string
+          total_items_found: number
+          updated_at: string
+        }
+        Insert: {
+          allowed_domains?: string[]
+          allowed_url_patterns?: string[]
+          blocked_url_patterns?: string[]
+          check_interval_hours?: number
+          crawl_mode?: string
+          created_at?: string
+          default_bucket?: string
+          extraction_mode?: string
+          id?: string
+          is_enabled?: boolean
+          last_error?: string | null
+          last_fetched_at?: string | null
+          last_success_at?: string | null
+          max_pages_per_run?: number
+          notes?: string | null
+          priority?: string
+          seed_url: string
+          source_name: string
+          source_type?: string
+          total_items_found?: number
+          updated_at?: string
+        }
+        Update: {
+          allowed_domains?: string[]
+          allowed_url_patterns?: string[]
+          blocked_url_patterns?: string[]
+          check_interval_hours?: number
+          crawl_mode?: string
+          created_at?: string
+          default_bucket?: string
+          extraction_mode?: string
+          id?: string
+          is_enabled?: boolean
+          last_error?: string | null
+          last_fetched_at?: string | null
+          last_success_at?: string | null
+          max_pages_per_run?: number
+          notes?: string | null
+          priority?: string
+          seed_url?: string
+          source_name?: string
+          source_type?: string
+          total_items_found?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      firecrawl_staged_items: {
+        Row: {
+          content_hash: string | null
+          created_at: string
+          extracted_links: string[] | null
+          extracted_markdown: string | null
+          fetch_run_id: string | null
+          firecrawl_source_id: string
+          id: string
+          metadata: Json | null
+          page_title: string | null
+          page_url: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          content_hash?: string | null
+          created_at?: string
+          extracted_links?: string[] | null
+          extracted_markdown?: string | null
+          fetch_run_id?: string | null
+          firecrawl_source_id: string
+          id?: string
+          metadata?: Json | null
+          page_title?: string | null
+          page_url: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          content_hash?: string | null
+          created_at?: string
+          extracted_links?: string[] | null
+          extracted_markdown?: string | null
+          fetch_run_id?: string | null
+          firecrawl_source_id?: string
+          id?: string
+          metadata?: Json | null
+          page_title?: string | null
+          page_url?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "firecrawl_staged_items_fetch_run_id_fkey"
+            columns: ["fetch_run_id"]
+            isOneToOne: false
+            referencedRelation: "firecrawl_fetch_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "firecrawl_staged_items_firecrawl_source_id_fkey"
+            columns: ["firecrawl_source_id"]
+            isOneToOne: false
+            referencedRelation: "firecrawl_sources"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       govt_admit_cards: {
         Row: {
           created_at: string

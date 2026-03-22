@@ -80,9 +80,6 @@ function AdminDashboardInner() {
   const navigate = useNavigate();
   const [stats, setStats] = useState<DashboardStats>({
     totalUsers: 0,
-    totalJobs: 0,
-    activeJobs: 0,
-    pendingJobs: 0,
     totalCompanies: 0,
     pendingCompanies: 0,
     totalApplications: 0,

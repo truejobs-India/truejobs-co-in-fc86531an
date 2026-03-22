@@ -695,6 +695,8 @@ export function EmploymentNewsManager() {
           issueDetails={issueDetails}
           isExtracting={isExtracting}
           extractProgress={extractProgress}
+          aiModel={extractAiModel}
+          onAiModelChange={setExtractAiModel}
           onFileChange={handleFileChange}
           onDrop={handleDrop}
           onPastedTextChange={setPastedText}

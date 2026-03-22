@@ -380,6 +380,9 @@ export function RssFetchedItemsTab() {
                           <Button size="sm" variant="ghost" onClick={() => handleIgnore(item)} title="Ignore" disabled={item.current_status === 'ignored'}>
                             <EyeOff className="h-3.5 w-3.5" />
                           </Button>
+                          <Button size="sm" variant="ghost" onClick={() => confirmDeleteSingle(item.id)} title="Delete" className="text-destructive hover:text-destructive">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
                           {item.item_link && (
                             <a href={item.item_link} target="_blank" rel="noopener noreferrer">
                               <Button size="sm" variant="ghost"><ExternalLink className="h-3.5 w-3.5" /></Button>

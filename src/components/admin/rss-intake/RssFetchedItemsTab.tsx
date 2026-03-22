@@ -197,6 +197,29 @@ export function RssFetchedItemsTab() {
     fetchItems();
   };
 
+  const confirmDeleteSingle = (id: string) => {
+    setDeleteMode('single');
+    setDeleteSingleId(id);
+    setDeleteConfirmOpen(true);
+  };
+
+  const confirmDeleteBulk = () => {
+    setDeleteMode('bulk');
+    setDeleteConfirmOpen(true);
+  };
+
+  const handleDeleteConfirmed = async () => {
+    setDeletingItems(true);
+    const ids = deleteMode === 'single' && deleteSingleId ? [deleteSingleId] : Array.from(selectedIds);
+    const { error } = await supabase.from('rss_items' as any).delete().in('id', ids);
+    if (error) toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    else toast({ title: 'Deleted', description: `${ids.length} item(s) deleted` });
+    setDeletingItems(false);
+    setDeleteConfirmOpen(false);
+    setDeleteSingleId(null);
+    setSelectedIds(new Set());
+    fetchItems();
+  };
   const displayDate = (item: RssItem) => {
     const d = item.published_at || item.first_seen_at;
     return d ? new Date(d).toLocaleDateString() : '—';

@@ -1398,6 +1398,10 @@ export type Database = {
           cover_image_prompt: string | null
           cover_image_url: string | null
           created_at: string
+          dedup_checked_at: string | null
+          dedup_match_ids: string[]
+          dedup_reason: string | null
+          dedup_status: string
           department: string | null
           description_summary: string | null
           exam_date: string | null
@@ -1465,6 +1469,10 @@ export type Database = {
           cover_image_prompt?: string | null
           cover_image_url?: string | null
           created_at?: string
+          dedup_checked_at?: string | null
+          dedup_match_ids?: string[]
+          dedup_reason?: string | null
+          dedup_status?: string
           department?: string | null
           description_summary?: string | null
           exam_date?: string | null
@@ -1532,6 +1540,10 @@ export type Database = {
           cover_image_prompt?: string | null
           cover_image_url?: string | null
           created_at?: string
+          dedup_checked_at?: string | null
+          dedup_match_ids?: string[]
+          dedup_reason?: string | null
+          dedup_status?: string
           department?: string | null
           description_summary?: string | null
           exam_date?: string | null

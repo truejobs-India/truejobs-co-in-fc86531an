@@ -379,6 +379,9 @@ export function RssSourcesTab() {
                         <Button size="sm" variant="ghost" onClick={() => handleRun(src)} disabled={running === src.id} title="Run Now">
                           <Play className="h-3.5 w-3.5" />
                         </Button>
+                        <Button size="sm" variant="ghost" onClick={() => setDeleteTarget(src)} title="Delete" className="text-destructive hover:text-destructive">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
                       </div>
                     </TableCell>
                   </TableRow>

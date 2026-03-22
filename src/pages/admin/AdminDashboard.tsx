@@ -64,7 +64,6 @@ import { useNavigate } from 'react-router-dom';
 type DrilldownView = 
   | { type: 'dashboard' }
   | { type: 'users' }
-  | { type: 'jobs'; filter?: string }
   | { type: 'companies' }
   | { type: 'company-jobs'; companyName: string };
 

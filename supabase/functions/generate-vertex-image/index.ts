@@ -864,7 +864,8 @@ serve(async (req) => {
     console.log(`[generate-vertex-image] Routing: purpose=${purpose || 'none'}, model=${body.model || 'none'}, slug=${slug}`);
 
     // ── Helper: check if model should use Lovable Gateway ──
-    const isGatewayModel = (model: string) => model in GATEWAY_IMAGE_MODELS;
+    const isGatewayModel = (model: string) => model in GATEWAY_IMAGE_MODELS && GATEWAY_IMAGE_MODELS[model] !== '__vertex_direct__';
+    const isVertexDirectImageModel = (model: string) => model === 'vertex-3-pro-image';
 
     const generateViaGatewayModel = (model: string, bodyOverride: any, imagePrompt: string) => {
       const gatewayModelId = GATEWAY_IMAGE_MODELS[model] || LOVABLE_GATEWAY_IMAGE_MODEL;

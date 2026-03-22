@@ -114,7 +114,7 @@ export async function callVertexGemini(
     generationConfig.topP = options.topP;
   }
 
-  console.log(`[vertex-ai] model=${model} timeout=${timeoutMs}ms maxTokens=${generationConfig.maxOutputTokens} mimeType=${generationConfig.responseMimeType || 'text/plain'} promptLen=${prompt.length}`);
+  console.log(`[vertex-ai] model=${model} url=${url} timeout=${timeoutMs}ms maxTokens=${generationConfig.maxOutputTokens} mimeType=${generationConfig.responseMimeType || 'text/plain'} promptLen=${prompt.length}`);
 
   const maxRetries = 3;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {

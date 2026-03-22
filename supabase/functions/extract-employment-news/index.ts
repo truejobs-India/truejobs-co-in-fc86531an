@@ -80,13 +80,14 @@ function resolveModel(aiModel: string | undefined): ResolvedModel {
 }
 
 // ── Truncated JSON repair ──
-function repairTruncatedJson(raw: string): any {
-  try { return JSON.parse(raw); } catch {}
+function repairTruncatedJson(raw: string, requestId: string): { jobs: any[]; repaired: boolean } {
+  try { return { jobs: JSON.parse(raw).jobs || [], repaired: false }; } catch {}
 
   const text = raw.trim();
   const jobsMatch = text.match(/"jobs"\s*:\s*\[/);
   if (!jobsMatch) {
-    throw new Error('Cannot parse AI response: no jobs array found in truncated output');
+    console.warn(`[${requestId}] JSON repair: no jobs array found, returning empty`);
+    return { jobs: [], repaired: true };
   }
 
   const arrayStart = text.indexOf('[', jobsMatch.index!);
@@ -110,11 +111,14 @@ function repairTruncatedJson(raw: string): any {
   }
 
   if (completeObjects.length === 0) {
-    throw new Error('Cannot parse AI response: no complete job objects found in truncated output');
+    console.warn(`[${requestId}] JSON repair: no complete job objects recovered, returning empty`);
+    return { jobs: [], repaired: true };
   }
 
   const repaired = `{"jobs":[${completeObjects.join(',')}]}`;
-  return JSON.parse(repaired);
+  const parsed = JSON.parse(repaired);
+  console.log(`[${requestId}] JSON repair succeeded, recovered ${parsed.jobs.length} jobs`);
+  return { jobs: parsed.jobs, repaired: true };
 }
 
 // ── AI call dispatcher ──
@@ -138,11 +142,12 @@ async function callAI(
       });
       if (finishReason === 'length' || finishReason === 'MAX_TOKENS') {
         console.warn(`[${requestId}] Vertex response truncated (finishReason=${finishReason}, len=${rawText.length}), attempting JSON repair`);
-        const repaired = repairTruncatedJson(rawText);
-        console.log(`[${requestId}] JSON repair succeeded, recovered ${repaired.jobs?.length || 0} jobs`);
-        return repaired;
+        return repairTruncatedJson(rawText, requestId);
       }
-      return JSON.parse(rawText);
+      try { return JSON.parse(rawText); } catch {
+        console.warn(`[${requestId}] Vertex JSON parse failed, attempting repair`);
+        return repairTruncatedJson(rawText, requestId);
+      }
     } catch (err: any) {
       if (err.name === 'AbortError' || err.message?.includes('signal has been aborted') || err.message?.includes('aborted')) {
         console.error(`[${requestId}] Vertex AI timeout for model=${resolved.modelId} after ${resolved.timeout}ms`);
@@ -183,9 +188,11 @@ async function callAI(
     if (!content) throw new Error('No content in gateway response');
     if (finish === 'length') {
       console.warn(`[${requestId}] Gateway response truncated, attempting JSON repair`);
-      return repairTruncatedJson(content);
+      return repairTruncatedJson(content, requestId);
     }
-    return JSON.parse(content);
+    try { return JSON.parse(content); } catch {
+      return repairTruncatedJson(content, requestId);
+    }
   }
 
   if (resolved.provider === 'groq') {
@@ -214,9 +221,11 @@ async function callAI(
     const finish = json.choices?.[0]?.finish_reason;
     if (finish === 'length') {
       console.warn(`[${requestId}] Groq response truncated, attempting JSON repair`);
-      return repairTruncatedJson(content);
+      return repairTruncatedJson(content, requestId);
     }
-    return JSON.parse(content);
+    try { return JSON.parse(content); } catch {
+      return repairTruncatedJson(content, requestId);
+    }
   }
 
   if (resolved.provider === 'anthropic') {
@@ -245,9 +254,11 @@ async function callAI(
     const text = json.content?.[0]?.text || '{"jobs":[]}';
     if (json.stop_reason === 'max_tokens') {
       console.warn(`[${requestId}] Anthropic response truncated, attempting JSON repair`);
-      return repairTruncatedJson(text);
+      return repairTruncatedJson(text, requestId);
     }
-    return JSON.parse(text);
+    try { return JSON.parse(text); } catch {
+      return repairTruncatedJson(text, requestId);
+    }
   }
 
   if (resolved.provider === 'bedrock') {
@@ -260,9 +271,11 @@ async function callAI(
     });
     if (finishReason === 'length' || finishReason === 'MAX_TOKENS') {
       console.warn(`[${requestId}] Bedrock fallback truncated, attempting JSON repair`);
-      return repairTruncatedJson(rawText);
+      return repairTruncatedJson(rawText, requestId);
     }
-    return JSON.parse(rawText);
+    try { return JSON.parse(rawText); } catch {
+      return repairTruncatedJson(rawText, requestId);
+    }
   }
 
   throw new Error(`Unsupported provider: ${resolved.provider}`);

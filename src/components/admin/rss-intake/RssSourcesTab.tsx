@@ -568,11 +568,16 @@ export function RssSourcesTab() {
                       check_interval_hours: 6,
                     };
                   });
-                  const { error, data } = await supabase.from('rss_sources' as any).insert(payloads).select('id');
+                  const { error, data } = await supabase.from('rss_sources' as any).upsert(payloads, { onConflict: 'feed_url', ignoreDuplicates: true }).select('id');
+                  const addedCount = (data as any[])?.length ?? 0;
+                  const skippedCount = valid.length - addedCount;
                   if (error) {
                     toast({ title: 'Error', description: error.message, variant: 'destructive' });
                   } else {
-                    toast({ title: 'Bulk Add Complete', description: `${(data as any[])?.length || valid.length} sources added successfully` });
+                    const desc = skippedCount > 0
+                      ? `${addedCount} source(s) added, ${skippedCount} duplicate(s) skipped`
+                      : `${addedCount} source(s) added successfully`;
+                    toast({ title: 'Bulk Add Complete', description: desc });
                     setShowBulkUrls(false);
                     setBulkUrlText('');
                     fetchSources();

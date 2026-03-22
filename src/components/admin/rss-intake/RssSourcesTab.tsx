@@ -63,6 +63,9 @@ export function RssSourcesTab() {
   const [bulkPriority, setBulkPriority] = useState('Medium');
   const [bulkStatus, setBulkStatus] = useState('Testing');
 
+  const [deleteTarget, setDeleteTarget] = useState<RssSource | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
   const fetchSources = useCallback(async () => {
     setLoading(true);
     let query = supabase.from('rss_sources' as any).select('*').order('created_at', { ascending: false });

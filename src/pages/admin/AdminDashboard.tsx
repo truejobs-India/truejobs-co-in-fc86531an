@@ -321,6 +321,10 @@ function AdminDashboardInner() {
                   <Search className="h-4 w-4" />
                   <span className="hidden sm:inline">SEO Audit</span>
                 </TabsTrigger>
+                <TabsTrigger value="firecrawl" className="flex items-center gap-2">
+                  <Bug className="h-4 w-4" />
+                  <span className="hidden sm:inline">Firecrawl</span>
+                </TabsTrigger>
               </TabsList>
 
               <TabsContent value="users">

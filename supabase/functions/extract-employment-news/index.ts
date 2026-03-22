@@ -495,7 +495,7 @@ Return null for fields not found. Preserve relative date phrases as-is. Ignore a
     // Accumulate batch counts
     const { data: currentBatch } = await serviceClient
       .from("upload_batches")
-      .select("total_extracted, new_count, updated_count")
+      .select("total_extracted, new_count, updated_count, completed_chunks")
       .eq("id", currentBatchId)
       .single();
 

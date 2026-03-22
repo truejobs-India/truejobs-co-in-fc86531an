@@ -308,10 +308,10 @@ export function UnresolvedSeoResolver() {
                 }
               } else if (item.category === 'h1') {
                 const content = record.content || '';
-                const h1Count = (content.match(/<h1[\\s>]/gi) || []).length;
-                if (h1Count === 1) {
+                const h1Count = (content.match(/<h1[\s>]/gi) || []).length;
+                if (h1Count >= 1) {
                   item.stillUnfixed = false;
-                  item.verificationNote = 'H1 is now present';
+                  item.verificationNote = `H1 present (count: ${h1Count})`;
                 } else {
                   item.verificationNote = `H1 count: ${h1Count}`;
                 }

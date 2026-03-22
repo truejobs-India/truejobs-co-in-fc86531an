@@ -7,14 +7,33 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+// ── Text sanitization ──
+function sanitizeText(raw: string): string {
+  return raw
+    // Collapse runs of spaces/tabs to single space
+    .replace(/[ \t]+/g, ' ')
+    // Remove runs of underscores, dashes, equals used as separators
+    .replace(/[_]{4,}/g, '')
+    .replace(/[-]{4,}/g, '')
+    .replace(/[=]{4,}/g, '')
+    // Collapse 3+ newlines to 2
+    .replace(/\n{3,}/g, '\n\n')
+    // Trim each line
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line.length > 0)
+    .join('\n')
+    .trim();
+}
 
-async function callGemini(systemPrompt: string, userContent: string) {
+async function callGemini(systemPrompt: string, userContent: string, requestId: string) {
   const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
   const fullPrompt = `${systemPrompt}\n\n${userContent}`;
+  console.log(`[${requestId}] Calling Vertex AI | prompt_length=${fullPrompt.length}`);
   const rawText = await callVertexGemini('gemini-2.5-flash', fullPrompt, 90_000, {
     responseMimeType: 'application/json',
     temperature: 0.1,
+    maxOutputTokens: 4096,
   });
   return JSON.parse(rawText);
 }
@@ -22,6 +41,8 @@ async function callGemini(systemPrompt: string, userContent: string) {
 serve(async (req) => {
   if (req.method === "OPTIONS")
     return new Response(null, { headers: corsHeaders });
+
+  const requestId = crypto.randomUUID().slice(0, 8);
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -66,6 +87,12 @@ serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
 
+    // Sanitize text before processing
+    const rawLen = text.length;
+    const cleaned = sanitizeText(text);
+    const cleanedLen = cleaned.length;
+    console.log(`[${requestId}] Received chunk | filename=${filename || 'unknown'} | raw_len=${rawLen} | cleaned_len=${cleanedLen} | reduction=${Math.round((1 - cleanedLen / rawLen) * 100)}%`);
+
     // Create or reuse batch
     let currentBatchId = batchId;
     let batchUploadedAt: string;
@@ -92,8 +119,6 @@ serve(async (req) => {
       batchUploadedAt = existingBatch?.uploaded_at || new Date().toISOString();
     }
 
-    // Vertex AI via shared helper (no GEMINI_API_KEY needed)
-
     const systemPrompt = `You are an expert at extracting government job notifications from Indian Employment News newspaper issues.
 
 Extract ALL job notifications from the following text. For each unique job advertisement, return a JSON object with these exact fields:
@@ -111,32 +136,24 @@ Extract ALL job notifications from the following text. For each unique job adver
   "application_mode": "online" | "offline" | "email" | "deputation",
   "apply_link": string or null,
   "application_start_date": string or null,
-  "last_date": string or null (include relative dates like 'within 21 days from publication'),
-  "last_date_raw": string or null (exact text from the advertisement about last date),
+  "last_date": string or null,
+  "last_date_raw": string or null,
   "notification_reference_number": string or null,
   "advertisement_number": string or null,
   "source": "Employment News",
-  "description": string (2-3 sentence summary of the job),
-  "job_category": string (one of: "Central Government", "State Government", "Defence", "Railway", "Banking", "SSC", "PSU", "University/Research", "Teaching", "Police", "Medical/Health", "Engineering", "Other"),
-  "state": string or null (Indian state where job is located, e.g. "Delhi", "Karnataka", "Maharashtra")
+  "description": string (2-3 sentence summary),
+  "job_category": "Central Government" | "State Government" | "Defence" | "Railway" | "Banking" | "SSC" | "PSU" | "University/Research" | "Teaching" | "Police" | "Medical/Health" | "Engineering" | "Other",
+  "state": string or null
 }
 
 Return a JSON object with key "jobs" containing an array of all job objects.
+Return null for fields not found. Preserve relative date phrases as-is. Ignore articles, editorials, and non-job content. Clean OCR artifacts.`;
 
-Rules:
-1. Each advertisement = separate job record
-2. Return null for fields not found
-3. Preserve relative date phrases like "within 60 days from publication" as-is in last_date and last_date_raw
-4. Ignore articles, editorials, career guidance, and non-job content
-5. Extract org_name from headers: Government of India, Ministry, Institute, University, School, PSU, etc.
-6. Extract apply_link from any URL present in the advertisement
-7. Clean OCR artifacts and broken lines
-8. Detect the state from location, address, or organization name
-9. Classify each job into the most appropriate job_category`;
-
-    const parsed = await callGemini(systemPrompt, text);
+    const parsed = await callGemini(systemPrompt, cleaned, requestId);
 
     const jobs = parsed.jobs || [];
+    console.log(`[${requestId}] AI returned ${jobs.length} jobs`);
+
     if (jobs.length === 0) {
       return new Response(
         JSON.stringify({
@@ -233,14 +250,14 @@ Rules:
             .eq("org_name", row.org_name);
           if (!updateErr) updatedCount++;
         } else {
-          console.error("Insert error for job:", insertErr);
+          console.error(`[${requestId}] Insert error:`, insertErr);
         }
       } else {
         newCount++;
       }
     }
 
-    // Accumulate batch counts (read current, then add)
+    // Accumulate batch counts
     const { data: currentBatch } = await serviceClient
       .from("upload_batches")
       .select("total_extracted, new_count, updated_count")
@@ -257,6 +274,8 @@ Rules:
       })
       .eq("id", currentBatchId);
 
+    console.log(`[${requestId}] Done | new=${newCount} updated=${updatedCount}`);
+
     return new Response(
       JSON.stringify({
         batchId: currentBatchId,
@@ -271,7 +290,7 @@ Rules:
     const is429 = /429|RESOURCE_EXHAUSTED|rate.?limit/i.test(errMsg);
 
     if (is429) {
-      console.warn("extract-employment-news: Vertex AI rate limited (429), returning handled error");
+      console.warn(`[${requestId}] Vertex AI rate limited (429)`);
       return new Response(
         JSON.stringify({
           error: "AI service is temporarily overloaded. Please wait a minute and try again.",
@@ -284,7 +303,7 @@ Rules:
       );
     }
 
-    console.error("extract-employment-news error:", error);
+    console.error(`[${requestId}] Unhandled error:`, error);
     return new Response(
       JSON.stringify({ error: errMsg }),
       {

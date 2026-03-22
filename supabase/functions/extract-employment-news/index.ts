@@ -38,7 +38,7 @@ function resolveModel(aiModel: string | undefined): ResolvedModel {
       return { provider: 'vertex-ai', modelId: 'gemini-2.5-pro', timeout: 120_000 };
     // Gemini 3.x preview models — direct Vertex AI (global endpoint)
     case 'vertex-3.1-pro':
-      return { provider: 'vertex-ai', modelId: 'gemini-3.1-pro-preview', timeout: 120_000 };
+      return { provider: 'vertex-ai', modelId: 'gemini-3.1-pro-preview', timeout: 90_000 };
     case 'vertex-3-flash':
       return { provider: 'vertex-ai', modelId: 'gemini-3-flash-preview', timeout: 90_000 };
     case 'vertex-3.1-flash-lite':

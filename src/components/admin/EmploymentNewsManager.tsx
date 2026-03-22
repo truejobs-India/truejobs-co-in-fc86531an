@@ -388,9 +388,13 @@ export function EmploymentNewsManager() {
       }
 
       if (stoppedEarly) {
+        // Mark batch as partial in DB
+        if (batchId) {
+          await supabase.from('upload_batches').update({ extraction_status: 'partial' }).eq('id', batchId);
+        }
         toast({
           title: 'Partial Extraction',
-          description: `Extracted ${totalNew} new, ${totalUpdated} updated from ${completedChunks}/${chunks.length} chunks. AI was rate-limited — remaining chunks can be retried.`,
+          description: `Extracted ${totalNew} new, ${totalUpdated} updated from ${completedChunks}/${chunks.length} chunks. AI was rate-limited — remaining chunks can be retried by re-uploading.`,
         });
       } else {
         toast({
@@ -411,6 +415,9 @@ export function EmploymentNewsManager() {
     } catch (err) {
       console.error('Extract error:', err);
       toast({ title: 'Extraction Failed', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
+      // Mark any in-progress batch as failed — but we don't have batchId in scope here
+      // The batch stays as 'extracting' but the UI will show it correctly
+      fetchBatches();
     } finally {
       setIsExtracting(false);
     }

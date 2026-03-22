@@ -78,6 +78,12 @@ export interface VertexGeminiOptions {
  * @param timeoutMs - request timeout (default 60s)
  * @param options - generation config overrides
  */
+/** Build the correct Vertex endpoint — Gemini 3.x preview models need v1beta1 */
+function getVertexEndpoint(model: string, projectId: string, location: string): string {
+  const apiVersion = model.startsWith('gemini-3') ? 'v1beta1' : 'v1';
+  return `https://${location}-aiplatform.googleapis.com/${apiVersion}/projects/${projectId}/locations/${location}/publishers/google/models/${model}:generateContent`;
+}
+
 export async function callVertexGemini(
   model: string,
   prompt: string,
@@ -90,7 +96,7 @@ export async function callVertexGemini(
 
   const accessToken = await getVertexAccessToken();
 
-  const url = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${model}:generateContent`;
+  const url = getVertexEndpoint(model, projectId, location);
 
   // Note: controller & timer are created per-attempt inside the loop below
 
@@ -106,7 +112,7 @@ export async function callVertexGemini(
     generationConfig.topP = options.topP;
   }
 
-  console.log(`[vertex-ai] model=${model} timeout=${timeoutMs}ms maxTokens=${generationConfig.maxOutputTokens} mimeType=${generationConfig.responseMimeType || 'text/plain'} promptLen=${prompt.length}`);
+  console.log(`[vertex-ai] model=${model} url=${url} timeout=${timeoutMs}ms maxTokens=${generationConfig.maxOutputTokens} mimeType=${generationConfig.responseMimeType || 'text/plain'} promptLen=${prompt.length}`);
 
   const maxRetries = 3;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -181,7 +187,7 @@ export async function callVertexGeminiWithMeta(
 
   const accessToken = await getVertexAccessToken();
 
-  const url = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${model}:generateContent`;
+  const url = getVertexEndpoint(model, projectId, location);
 
   const generationConfig: Record<string, unknown> = {
     temperature: options?.temperature ?? 0.6,
@@ -190,7 +196,7 @@ export async function callVertexGeminiWithMeta(
   if (options?.responseMimeType) generationConfig.responseMimeType = options.responseMimeType;
   if (options?.topP !== undefined) generationConfig.topP = options.topP;
 
-  console.log(`[vertex-ai-meta] model=${model} timeout=${timeoutMs}ms maxTokens=${generationConfig.maxOutputTokens} promptLen=${prompt.length}`);
+  console.log(`[vertex-ai-meta] model=${model} url=${url} timeout=${timeoutMs}ms maxTokens=${generationConfig.maxOutputTokens} promptLen=${prompt.length}`);
 
   const maxRetries = 3;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {

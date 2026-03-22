@@ -36,13 +36,13 @@ function resolveModel(aiModel: string | undefined): ResolvedModel {
       return { provider: 'vertex-ai', modelId: 'gemini-2.5-flash', timeout: 90_000 };
     case 'vertex-pro':
       return { provider: 'vertex-ai', modelId: 'gemini-2.5-pro', timeout: 120_000 };
-    // Gemini 3.x preview models — routed via Lovable Gateway (not available on this GCP project via Vertex)
+    // Gemini 3.x preview models — direct Vertex AI (global endpoint)
     case 'vertex-3.1-pro':
-      return { provider: 'lovable-gateway', modelId: 'google/gemini-3.1-pro-preview', timeout: 120_000 };
+      return { provider: 'vertex-ai', modelId: 'gemini-3.1-pro-preview', timeout: 120_000 };
     case 'vertex-3-flash':
-      return { provider: 'lovable-gateway', modelId: 'google/gemini-3-flash-preview', timeout: 90_000 };
+      return { provider: 'vertex-ai', modelId: 'gemini-3-flash-preview', timeout: 90_000 };
     case 'vertex-3.1-flash-lite':
-      return { provider: 'lovable-gateway', modelId: 'google/gemini-2.5-flash-lite', timeout: 60_000 };
+      return { provider: 'vertex-ai', modelId: 'gemini-3.1-flash-lite-preview', timeout: 60_000 };
 
     // Lovable AI Gateway models
     case 'gemini-flash':
@@ -145,7 +145,8 @@ async function callAI(
       return JSON.parse(rawText);
     } catch (err: any) {
       if (err.message?.includes('404') || err.message?.includes('NOT_FOUND')) {
-        throw new Error(`Model "${resolved.modelId}" is not available in your GCP project. Try a different model.`);
+        console.error(`[${requestId}] Vertex 404 for model=${resolved.modelId}: ${err.message?.substring(0, 300)}`);
+        throw new Error(`Model "${resolved.modelId}" returned 404 from Vertex AI. Ensure the model is enabled in your GCP project's Model Garden and the service account has Vertex AI User role.`);
       }
       throw err;
     }

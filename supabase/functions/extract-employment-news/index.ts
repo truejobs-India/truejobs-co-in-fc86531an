@@ -125,7 +125,7 @@ async function callAI(
   requestId: string,
 ): Promise<{ jobs: any[] }> {
   const fullPrompt = `${systemPrompt}\n\n${userContent}`;
-  const maxTokens = 8192;
+  const maxTokens = 4096;
   console.log(`[${requestId}] AI call | provider=${resolved.provider} | model=${resolved.modelId} | prompt_len=${fullPrompt.length} | maxTokens=${maxTokens}`);
 
   if (resolved.provider === 'vertex-ai') {

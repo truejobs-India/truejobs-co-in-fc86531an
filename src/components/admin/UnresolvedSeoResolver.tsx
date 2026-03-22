@@ -245,6 +245,23 @@ export function UnresolvedSeoResolver() {
     }
   }, [toast]);
 
+  /** Clean malformed category strings — AI sometimes stores full messages as categories */
+  function cleanCategory(raw: string): string {
+    if (!raw) return 'unknown';
+    // Strip leading brackets like "[h1] Previously failed: ..."
+    const bracketMatch = raw.match(/^\[([^\]]+)\]/);
+    if (bracketMatch) return bracketMatch[1].trim().toLowerCase();
+    // If it contains spaces and is long, it's probably a message not a category
+    if (raw.length > 30 && raw.includes(' ')) {
+      // Try to extract a known category keyword
+      const knownCats = ['meta_title', 'meta_description', 'canonical_url', 'excerpt', 'featured_image_alt', 'h1', 'heading_structure', 'internal_links', 'faq_opportunity', 'faq_schema', 'content_thin', 'intro_missing', 'compliance', 'slug'];
+      for (const cat of knownCats) {
+        if (raw.toLowerCase().includes(cat)) return cat;
+      }
+    }
+    return raw;
+  }
+
   // ── Normalize status string to UnresolvedStatus or null (if resolved) ──
   function normalizeStatus(raw: string): UnresolvedStatus | null {
     if (!raw) return 'pending';

@@ -660,6 +660,43 @@ export function UnresolvedSeoResolver() {
 
   const handleStop = () => { stopSignal.current.stopped = true; };
 
+  /** Flexible category matching — AI often returns related but not identical category names */
+  function matchesCategory(itemCat: string, fixCat: string, fixField?: string, fixAction?: string): boolean {
+    if (!fixCat && !fixField) return false;
+    // Exact match
+    if (itemCat === fixCat) return true;
+    // Normalize both
+    const ic = itemCat.toLowerCase().replace(/[_\s-]+/g, '');
+    const fc = (fixCat || '').toLowerCase().replace(/[_\s-]+/g, '');
+    if (ic === fc) return true;
+    // Common equivalences
+    const equivalences: Record<string, string[]> = {
+      faqopportunity: ['faqschema', 'faq', 'setfaqschema'],
+      faqschema: ['faqopportunity', 'faq'],
+      h1: ['headingstructure', 'heading', 'missingh1'],
+      headingstructure: ['h1', 'heading'],
+      internallinks: ['internallink', 'links'],
+      metadescription: ['description', 'metadesc'],
+      metatitle: ['title', 'pagetitle'],
+      featuredimagealt: ['imagealt', 'alttext', 'coverimagealt'],
+      intromissing: ['excerpt', 'intro', 'summary'],
+      contentthin: ['thincontent', 'wordcount'],
+    };
+    const alts = equivalences[ic];
+    if (alts && alts.includes(fc)) return true;
+    // Match by field name if field maps to category
+    if (fixField) {
+      const fieldNorm = fixField.toLowerCase().replace(/[_\s-]+/g, '');
+      if (fieldNorm === ic) return true;
+      const fieldAlts = equivalences[ic];
+      if (fieldAlts && fieldAlts.includes(fieldNorm)) return true;
+    }
+    // Match by action for FAQ
+    if (fixAction === 'set_faq_schema' && (ic === 'faqopportunity' || ic === 'faqschema')) return true;
+    if (fixAction === 'append_content' && (ic === 'h1' || ic === 'internallinks' || ic === 'intromissing')) return true;
+    return false;
+  }
+
   function getFixHint(item: UnresolvedItem): string {
     switch (item.status) {
       case 'parseError':

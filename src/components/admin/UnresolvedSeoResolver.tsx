@@ -350,6 +350,24 @@ export function UnresolvedSeoResolver() {
                 } else {
                   item.verificationNote = 'No FAQ schema';
                 }
+              } else if (item.category === 'intro_missing') {
+                // Intro is considered present if excerpt exists OR content is substantial
+                const excerpt = record.excerpt || '';
+                const contentLen = (record.content || '').length;
+                if (excerpt.length >= 20 || contentLen >= 500) {
+                  item.stillUnfixed = false;
+                  item.verificationNote = `Intro present (excerpt: ${excerpt.length} chars, content: ${contentLen} chars)`;
+                } else {
+                  item.verificationNote = `No intro (excerpt: ${excerpt.length} chars)`;
+                }
+              } else if (item.category === 'content_thin') {
+                const contentLen = (record.content || '').length;
+                if (contentLen >= 1000) {
+                  item.stillUnfixed = false;
+                  item.verificationNote = `Content sufficient (${contentLen} chars)`;
+                } else {
+                  item.verificationNote = `Thin content (${contentLen} chars)`;
+                }
               }
             }
           }

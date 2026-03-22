@@ -50,6 +50,16 @@ export function RssReviewQueueTab() {
   const [deleteTarget, setDeleteTarget] = useState<ReviewQueueEntry | null>(null);
   const [deletingEntry, setDeletingEntry] = useState(false);
 
+  const [selectedQueueIds, setSelectedQueueIds] = useState<Set<string>>(new Set());
+
+  const toggleQueueSelect = (id: string) => {
+    setSelectedQueueIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
   const fetchEntries = useCallback(async () => {
     setLoading(true);
     let query = supabase.from('monitoring_review_queue' as any).select('*').order('created_at', { ascending: false }).limit(200);

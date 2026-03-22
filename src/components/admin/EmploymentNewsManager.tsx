@@ -15,6 +15,7 @@ import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
 import { supabase } from '@/integrations/supabase/client';
 import mammoth from 'mammoth';
 import { getRecommendedModelsForTarget } from '@/lib/aiModels';
+import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSelector';
 import {
   Upload, FileText, Sparkles, CheckCircle, XCircle, Eye, Pencil, Trash2,
   Search, ChevronLeft, ChevronRight, Loader2, AlertCircle, Info

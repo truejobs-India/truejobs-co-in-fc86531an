@@ -512,6 +512,9 @@ function resolveProviderInfo(model: string): { provider: string; apiModel: strin
     case 'gemini-pro': return { provider: 'vertex-ai', apiModel: 'gemini-2.5-pro' };
     case 'vertex-flash': return { provider: 'vertex-ai', apiModel: 'gemini-2.5-flash' };
     case 'vertex-pro': return { provider: 'vertex-ai', apiModel: 'gemini-2.5-pro' };
+    case 'vertex-3.1-pro': return { provider: 'vertex-ai', apiModel: 'gemini-3.1-pro-preview' };
+    case 'vertex-3-flash': return { provider: 'vertex-ai', apiModel: 'gemini-3-flash-preview' };
+    case 'vertex-3.1-flash-lite': return { provider: 'vertex-ai', apiModel: 'gemini-3.1-flash-lite-preview' };
     case 'claude-sonnet': case 'claude': return { provider: 'anthropic', apiModel: 'claude-sonnet-4-6' };
     case 'groq': return { provider: 'groq', apiModel: 'llama-3.3-70b-versatile' };
     case 'mistral': return { provider: 'bedrock', apiModel: 'mistral.mistral-large-2407-v1:0' };
@@ -549,6 +552,21 @@ async function callAI(model: string, prompt: string, maxTokensParam?: number): P
     case 'vertex-pro': {
       const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
       rawText = await callVertexGemini('gemini-2.5-pro', prompt, 120_000, { maxOutputTokens: maxTokensParam || 16384 });
+      break;
+    }
+    case 'vertex-3.1-pro': {
+      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      rawText = await callVertexGemini('gemini-3.1-pro-preview', prompt, 120_000, { maxOutputTokens: maxTokensParam || 16384 });
+      break;
+    }
+    case 'vertex-3-flash': {
+      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      rawText = await callVertexGemini('gemini-3-flash-preview', prompt, 90_000, { maxOutputTokens: maxTokensParam || 16384 });
+      break;
+    }
+    case 'vertex-3.1-flash-lite': {
+      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      rawText = await callVertexGemini('gemini-3.1-flash-lite-preview', prompt, 60_000, { maxOutputTokens: maxTokensParam || 16384 });
       break;
     }
     case 'nova-pro':

@@ -254,7 +254,7 @@ async function callLovableGemini(prompt: string, maxTokens: number): Promise<str
 // Unified dispatcher — NO silent fallback
 // ═══════════════════════════════════════════════════════════════
 
-const SUPPORTED_MODELS = ['gemini', 'gemini-flash', 'gemini-pro', 'mistral', 'claude-sonnet', 'claude', 'openai', 'gpt5', 'gpt5-mini', 'groq', 'lovable-gemini', 'vertex-flash', 'vertex-pro', 'nova-pro', 'nova-premier'];
+const SUPPORTED_MODELS = ['gemini', 'gemini-flash', 'gemini-pro', 'mistral', 'claude-sonnet', 'claude', 'openai', 'gpt5', 'gpt5-mini', 'groq', 'lovable-gemini', 'vertex-flash', 'vertex-pro', 'vertex-3.1-pro', 'vertex-3-flash', 'vertex-3.1-flash-lite', 'nova-pro', 'nova-premier'];
 
 async function callAI(aiModel: string, prompt: string, maxTokens: number, options?: { systemPrompt?: string }): Promise<{ raw: string; finishReason: string; actualProvider: string; actualModelId: string; usage?: { inputTokens?: number; outputTokens?: number } }> {
   const model = aiModel || 'gemini';
@@ -307,6 +307,27 @@ async function callAI(aiModel: string, prompt: string, maxTokens: number, option
       const result = await callVertexGeminiWithMeta('gemini-2.5-pro', prompt, 120_000, { maxOutputTokens: maxTokens });
       resultJson = JSON.stringify({ __raw: result.text, __finishReason: result.finishReason });
       actualProvider = 'vertex-ai'; actualModelId = 'gemini-2.5-pro';
+      break;
+    }
+    case 'vertex-3.1-pro': {
+      const { callVertexGeminiWithMeta } = await import('../_shared/vertex-ai.ts');
+      const result = await callVertexGeminiWithMeta('gemini-3.1-pro-preview', prompt, 120_000, { maxOutputTokens: maxTokens });
+      resultJson = JSON.stringify({ __raw: result.text, __finishReason: result.finishReason });
+      actualProvider = 'vertex-ai'; actualModelId = 'gemini-3.1-pro-preview';
+      break;
+    }
+    case 'vertex-3-flash': {
+      const { callVertexGeminiWithMeta } = await import('../_shared/vertex-ai.ts');
+      const result = await callVertexGeminiWithMeta('gemini-3-flash-preview', prompt, 90_000, { maxOutputTokens: maxTokens });
+      resultJson = JSON.stringify({ __raw: result.text, __finishReason: result.finishReason });
+      actualProvider = 'vertex-ai'; actualModelId = 'gemini-3-flash-preview';
+      break;
+    }
+    case 'vertex-3.1-flash-lite': {
+      const { callVertexGeminiWithMeta } = await import('../_shared/vertex-ai.ts');
+      const result = await callVertexGeminiWithMeta('gemini-3.1-flash-lite-preview', prompt, 60_000, { maxOutputTokens: maxTokens });
+      resultJson = JSON.stringify({ __raw: result.text, __finishReason: result.finishReason });
+      actualProvider = 'vertex-ai'; actualModelId = 'gemini-3.1-flash-lite-preview';
       break;
     }
     case 'nova-pro': case 'nova-premier': {

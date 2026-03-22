@@ -27,6 +27,7 @@ const GATEWAY_IMAGE_MODELS: Record<string, string> = {
   'gemini-flash-image': 'google/gemini-2.5-flash-image',
   'gemini-pro-image': 'google/gemini-3-pro-image-preview',
   'gemini-flash-image-2': 'google/gemini-3.1-flash-image-preview',
+  'vertex-3-pro-image': '__vertex_direct__',
 };
 const IMAGEN_TIMEOUT_MS = 45_000;
 const GATEWAY_TIMEOUT_MS = 55_000;
@@ -353,8 +354,114 @@ async function generateViaGeminiFlashImage(
 }
 
 // ═══════════════════════════════════════════════════════════════
-// LOVABLE GATEWAY IMAGE FALLBACK
+// VERTEX DIRECT IMAGE — gemini-3-pro-image-preview via Vertex AI
 // ═══════════════════════════════════════════════════════════════
+
+async function generateViaVertexDirectImage(
+  body: any,
+  slug: string,
+  imagePrompt: string,
+  adminClient: any,
+  startMs: number,
+  vertexModelId: string,
+): Promise<Response> {
+  const projectId = Deno.env.get('GCP_PROJECT_ID');
+  const location = Deno.env.get('GCP_LOCATION') || 'us-central1';
+  if (!projectId) {
+    return new Response(JSON.stringify({ success: false, error: 'GCP_PROJECT_ID not configured', model: vertexModelId }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  }
+
+  console.log(`[vertex-direct-image] slug=${slug} model=${vertexModelId} via=vertex-ai-direct`);
+
+  let accessToken: string;
+  try {
+    accessToken = await getVertexAccessToken();
+  } catch (e: any) {
+    return new Response(JSON.stringify({ success: false, error: `Auth failed: ${e.message}`, model: vertexModelId }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  }
+
+  const url = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${vertexModelId}:generateContent`;
+
+  let resp: Response | null = null;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    if (attempt > 0) {
+      const delay = getRetryDelayFromResponse(resp!, attempt);
+      console.log(`[vertex-direct-image] 429 retry ${attempt}/${MAX_RETRIES} after ${delay}ms`);
+      await new Promise(r => setTimeout(r, delay));
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), IMAGEN_TIMEOUT_MS);
+    try {
+      resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: imagePrompt }] }],
+          generationConfig: { responseModalities: ['TEXT', 'IMAGE'], temperature: 1.0, maxOutputTokens: 8192 },
+        }),
+      });
+    } catch (fetchErr: any) {
+      clearTimeout(timer);
+      console.error(`[vertex-direct-image] fetch error: ${fetchErr.message}`);
+      return new Response(JSON.stringify({ success: false, error: `Vertex fetch error: ${fetchErr.message}`, model: vertexModelId }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    } finally {
+      clearTimeout(timer);
+    }
+    if (resp.status !== 429) break;
+    if (attempt === MAX_RETRIES) {
+      return new Response(JSON.stringify({ success: false, error: 'Rate limited after retries', model: vertexModelId }),
+        { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+  }
+
+  if (!resp!.ok) {
+    const errText = await resp!.text();
+    return new Response(JSON.stringify({ success: false, error: `Vertex AI error (${resp!.status}): ${errText.substring(0, 200)}`, model: vertexModelId }),
+      { status: resp!.status >= 400 && resp!.status < 500 ? resp!.status : 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  }
+
+  const data = await resp!.json();
+  const parts = data?.candidates?.[0]?.content?.parts || [];
+  let imageBase64 = '';
+  let mimeType = 'image/png';
+  let altText = body.title || body.topic || `Blog image for ${slug}`;
+
+  for (const part of parts) {
+    if (part.inlineData?.data) { imageBase64 = part.inlineData.data; mimeType = part.inlineData.mimeType || 'image/png'; }
+    else if (part.text && part.text.trim().length > 10 && part.text.trim().length < 200) { altText = part.text.trim(); }
+  }
+
+  if (!imageBase64) {
+    return new Response(JSON.stringify({ success: false, error: 'No image data returned. Prompt may have been filtered.', model: vertexModelId }),
+      { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  }
+
+  const isInline = body.purpose === 'inline';
+  const ext = mimeType.includes('jpeg') ? 'jpg' : 'png';
+  const pathPrefix = isInline ? 'inline' : 'covers';
+  const slotSuffix = isInline && body.slotNumber ? `-slot${body.slotNumber}` : '';
+  const filePath = `${pathPrefix}/${slug}-vertex3pro${slotSuffix}.${ext}`;
+
+  const uploadResult = await uploadGeneratedImage({ adminClient, imageBase64, mimeType, filePath });
+  if (uploadResult instanceof Response) return uploadResult;
+
+  const elapsed = Date.now() - startMs;
+  console.log(`[vertex-direct-image] completed in ${elapsed}ms model=${vertexModelId}`);
+
+  return new Response(JSON.stringify({
+    success: true,
+    data: { images: [{ url: uploadResult.publicUrl, path: filePath, altText, mimeType, width: 1024, height: 1024 }], promptUsed: imagePrompt },
+    model: vertexModelId,
+    action: 'generate-image',
+    purpose: body.purpose || 'cover',
+    elapsedMs: elapsed,
+  }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+}
+
 
 async function generateViaLovableGatewayImage(
   body: any,
@@ -863,7 +970,8 @@ serve(async (req) => {
     console.log(`[generate-vertex-image] Routing: purpose=${purpose || 'none'}, model=${body.model || 'none'}, slug=${slug}`);
 
     // ── Helper: check if model should use Lovable Gateway ──
-    const isGatewayModel = (model: string) => model in GATEWAY_IMAGE_MODELS;
+    const isGatewayModel = (model: string) => model in GATEWAY_IMAGE_MODELS && GATEWAY_IMAGE_MODELS[model] !== '__vertex_direct__';
+    const isVertexDirectImageModel = (model: string) => model === 'vertex-3-pro-image';
 
     const generateViaGatewayModel = (model: string, bodyOverride: any, imagePrompt: string) => {
       const gatewayModelId = GATEWAY_IMAGE_MODELS[model] || LOVABLE_GATEWAY_IMAGE_MODEL;
@@ -879,6 +987,9 @@ serve(async (req) => {
         const aspectRatio = ASPECT_RATIOS[body.aspectRatio || '16:9'] || '16:9';
         return await generateViaImagen(body, slug, imagePrompt, 1, aspectRatio, adminClient, startMs);
       }
+      if (isVertexDirectImageModel(selectedCoverModel)) {
+        return await generateViaVertexDirectImage(body, slug, imagePrompt, adminClient, startMs, 'gemini-3-pro-image-preview');
+      }
       if (isGatewayModel(selectedCoverModel) && selectedCoverModel !== 'gemini-flash-image') {
         return await generateViaGatewayModel(selectedCoverModel, body, imagePrompt);
       }
@@ -892,6 +1003,9 @@ serve(async (req) => {
       console.log(`[generate-vertex-image] ENFORCED: purpose=inline → ${selectedInlineModel}, slot=${body.slotNumber}`);
       if (selectedInlineModel === 'vertex-imagen') {
         return await generateViaImagen(body, slug, imagePrompt, 1, aspectRatio, adminClient, startMs);
+      }
+      if (isVertexDirectImageModel(selectedInlineModel)) {
+        return await generateViaVertexDirectImage({ ...body, purpose: 'inline' }, slug, imagePrompt, adminClient, startMs, 'gemini-3-pro-image-preview');
       }
       if (isGatewayModel(selectedInlineModel) && selectedInlineModel !== 'gemini-flash-image') {
         return await generateViaGatewayModel(selectedInlineModel, { ...body, purpose: 'inline' }, imagePrompt);
@@ -910,6 +1024,9 @@ serve(async (req) => {
 
     if (selectedModel === 'vertex-imagen') {
       return await generateViaImagen(body, slug, imagePrompt, imageCount, aspectRatio, adminClient, startMs);
+    }
+    if (isVertexDirectImageModel(selectedModel)) {
+      return await generateViaVertexDirectImage(body, slug, imagePrompt, adminClient, startMs, 'gemini-3-pro-image-preview');
     }
     if (isGatewayModel(selectedModel) && selectedModel !== 'gemini-flash-image') {
       return await generateViaGatewayModel(selectedModel, body, imagePrompt);

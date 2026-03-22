@@ -279,7 +279,7 @@ async function callLovableGeminiClassifier(systemPrompt: string, userPrompt: str
 // Unified Classifier Dispatcher — NO silent fallback
 // ═══════════════════════════════════════════════════════════════
 
-const SUPPORTED_MODELS = ['gemini', 'gemini-flash', 'gemini-pro', 'mistral', 'claude-sonnet', 'claude', 'openai', 'gpt5', 'gpt5-mini', 'groq', 'lovable-gemini', 'vertex-flash', 'vertex-pro'];
+const SUPPORTED_MODELS = ['gemini', 'gemini-flash', 'gemini-pro', 'mistral', 'claude-sonnet', 'claude', 'openai', 'gpt5', 'gpt5-mini', 'groq', 'lovable-gemini', 'vertex-flash', 'vertex-pro', 'vertex-3.1-pro', 'vertex-3-flash', 'vertex-3.1-flash-lite'];
 
 async function callClassifierAI(
   aiModel: string,
@@ -333,6 +333,24 @@ async function callClassifierAI(
       const fullPrompt = systemPrompt + '\n\n' + userPrompt;
       rawText = await callVertexGemini('gemini-2.5-pro', fullPrompt, 120_000, { temperature: 0.1, maxOutputTokens: maxTokens, responseMimeType: 'application/json' });
       actualProvider = 'vertex-ai'; actualModelId = 'gemini-2.5-pro'; break;
+    }
+    case 'vertex-3.1-pro': {
+      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      const fullPrompt = systemPrompt + '\n\n' + userPrompt;
+      rawText = await callVertexGemini('gemini-3.1-pro-preview', fullPrompt, 120_000, { temperature: 0.1, maxOutputTokens: maxTokens, responseMimeType: 'application/json' });
+      actualProvider = 'vertex-ai'; actualModelId = 'gemini-3.1-pro-preview'; break;
+    }
+    case 'vertex-3-flash': {
+      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      const fullPrompt = systemPrompt + '\n\n' + userPrompt;
+      rawText = await callVertexGemini('gemini-3-flash-preview', fullPrompt, 90_000, { temperature: 0.1, maxOutputTokens: maxTokens, responseMimeType: 'application/json' });
+      actualProvider = 'vertex-ai'; actualModelId = 'gemini-3-flash-preview'; break;
+    }
+    case 'vertex-3.1-flash-lite': {
+      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      const fullPrompt = systemPrompt + '\n\n' + userPrompt;
+      rawText = await callVertexGemini('gemini-3.1-flash-lite-preview', fullPrompt, 60_000, { temperature: 0.1, maxOutputTokens: maxTokens, responseMimeType: 'application/json' });
+      actualProvider = 'vertex-ai'; actualModelId = 'gemini-3.1-flash-lite-preview'; break;
     }
     default:
       throw new Error(`Unsupported AI model: "${model}". Supported: ${SUPPORTED_MODELS.join(', ')}`);

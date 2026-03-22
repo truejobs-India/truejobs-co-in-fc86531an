@@ -56,6 +56,12 @@ function resolveProvider(uiModelKey: string): ProviderRoute {
       return { provider: 'bedrock-mistral' };
     case 'gemini-pro':
       return { provider: 'vertex-ai', vertexModel: 'gemini-2.5-pro' };
+    case 'vertex-3.1-pro':
+      return { provider: 'vertex-ai', vertexModel: 'gemini-3.1-pro-preview' };
+    case 'vertex-3-flash':
+      return { provider: 'vertex-ai', vertexModel: 'gemini-3-flash-preview' };
+    case 'vertex-3.1-flash-lite':
+      return { provider: 'vertex-ai', vertexModel: 'gemini-3.1-flash-lite-preview' };
     case 'gpt5':
       return { provider: 'lovable-gateway', gatewayModel: 'openai/gpt-5' };
     case 'gpt5-mini':

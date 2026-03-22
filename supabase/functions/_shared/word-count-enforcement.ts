@@ -104,6 +104,9 @@ export function computeMaxTokens(targetWordCount: number, modelId: string): numb
     case 'gemini-pro':
     case 'vertex-flash':
     case 'vertex-pro':
+    case 'vertex-3.1-pro':
+    case 'vertex-3-flash':
+    case 'vertex-3.1-flash-lite':
       // Gemini models: use 3x budget to handle non-Latin scripts (Hindi, etc.) where tokens/word is higher
       return Math.min(target * 3, 16384);
 
@@ -139,7 +142,8 @@ export function buildWordCountInstruction(target: number, modelId?: string): str
 
   // Gemini-specific — tends to over-generate
   if (modelId === 'gemini' || modelId === 'gemini-flash' || modelId === 'gemini-pro' ||
-      modelId === 'vertex-flash' || modelId === 'vertex-pro' || modelId === 'lovable-gemini') {
+      modelId === 'vertex-flash' || modelId === 'vertex-pro' || modelId === 'lovable-gemini' ||
+      modelId === 'vertex-3.1-pro' || modelId === 'vertex-3-flash' || modelId === 'vertex-3.1-flash-lite') {
     instruction += `\nDo NOT over-generate. Stop writing at approximately ${target} words. If you have written ${max115} words, STOP immediately.`;
   }
 
@@ -194,6 +198,7 @@ export function validateWordCount(html: string, target: number, maxTokensRequest
 /** Models where a continuation pass can realistically recover content */
 const CONTINUATION_ELIGIBLE_MODELS = new Set([
   'gemini-flash', 'gemini-pro', 'vertex-flash', 'vertex-pro',
+  'vertex-3.1-pro', 'vertex-3-flash',
   'claude-sonnet', 'claude', 'gpt5', 'gpt5-mini', 'lovable-gemini', 'mistral',
   'nova-pro', 'nova-premier',
 ]);

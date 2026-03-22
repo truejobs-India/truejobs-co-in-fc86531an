@@ -301,6 +301,9 @@ export function RssFetchedItemsTab() {
             <Button size="sm" variant="outline" onClick={() => openAiAction('seo-check', selectedArray)}>
               <ShieldCheck className="h-3.5 w-3.5 mr-1" /> SEO
             </Button>
+            <Button size="sm" variant="outline" className="text-destructive border-destructive/50 hover:bg-destructive/10" onClick={confirmDeleteBulk}>
+              <Trash2 className="h-3.5 w-3.5 mr-1" /> Delete
+            </Button>
             <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>Clear</Button>
           </div>
         )}

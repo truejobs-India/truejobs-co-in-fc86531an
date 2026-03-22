@@ -198,6 +198,7 @@ export function validateWordCount(html: string, target: number, maxTokensRequest
 /** Models where a continuation pass can realistically recover content */
 const CONTINUATION_ELIGIBLE_MODELS = new Set([
   'gemini-flash', 'gemini-pro', 'vertex-flash', 'vertex-pro',
+  'vertex-3.1-pro', 'vertex-3-flash',
   'claude-sonnet', 'claude', 'gpt5', 'gpt5-mini', 'lovable-gemini', 'mistral',
   'nova-pro', 'nova-premier',
 ]);

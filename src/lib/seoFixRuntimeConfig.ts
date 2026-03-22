@@ -49,6 +49,24 @@ const MODEL_CONFIGS: Partial<Record<string, SeoFixRuntimeConfig>> = {
     baseRetryDelayMs: 2500,
     throttleMs: 3000,
   },
+  'vertex-3.1-pro': {
+    maxConcurrency: 1,
+    retryCount: 2,
+    baseRetryDelayMs: 4000,
+    throttleMs: 7000,
+  },
+  'vertex-3-flash': {
+    maxConcurrency: 2,
+    retryCount: 1,
+    baseRetryDelayMs: 2000,
+    throttleMs: 2500,
+  },
+  'vertex-3.1-flash-lite': {
+    maxConcurrency: 3,
+    retryCount: 1,
+    baseRetryDelayMs: 1500,
+    throttleMs: 1500,
+  },
 };
 
 export function getSeoFixRuntimeConfig(aiModel: string): SeoFixRuntimeConfig {

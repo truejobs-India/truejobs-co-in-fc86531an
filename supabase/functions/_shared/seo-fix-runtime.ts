@@ -55,6 +55,24 @@ const MODEL_POLICIES: Partial<Record<string, SeoFixModelPolicy>> = {
     throttleMs: 750,
     maxOutputTokens: 4096,
   },
+  'vertex-3.1-pro': {
+    retryCount: 5,
+    baseRetryDelayMs: 3000,
+    throttleMs: 3500,
+    maxOutputTokens: 8192,
+  },
+  'vertex-3-flash': {
+    retryCount: 4,
+    baseRetryDelayMs: 1500,
+    throttleMs: 1000,
+    maxOutputTokens: 8192,
+  },
+  'vertex-3.1-flash-lite': {
+    retryCount: 3,
+    baseRetryDelayMs: 1500,
+    throttleMs: 750,
+    maxOutputTokens: 4096,
+  },
 };
 
 export function getSeoFixModelPolicy(aiModel: string): SeoFixModelPolicy {

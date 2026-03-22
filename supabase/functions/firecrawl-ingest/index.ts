@@ -18,6 +18,7 @@ import { normalizeUrl, filterAndClassifyUrls, type UrlFilterConfig } from '../_s
 import { classifyPage, type PageBucket } from '../_shared/firecrawl/page-classifier.ts';
 import { cleanScrapedContent } from '../_shared/firecrawl/content-cleaner.ts';
 import { extractFields } from '../_shared/firecrawl/field-extractor.ts';
+import { checkDuplicate, type DedupCandidate } from '../_shared/firecrawl/dedup.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',

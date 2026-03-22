@@ -144,6 +144,10 @@ async function callAI(
       }
       return JSON.parse(rawText);
     } catch (err: any) {
+      if (err.name === 'AbortError' || err.message?.includes('signal has been aborted') || err.message?.includes('aborted')) {
+        console.error(`[${requestId}] Vertex AI timeout for model=${resolved.modelId} after ${resolved.timeout}ms`);
+        throw new Error(`AI model "${resolved.modelId}" timed out after ${Math.round(resolved.timeout / 1000)}s. Try a faster model (e.g. vertex-3-flash or vertex-flash) or reduce document size.`);
+      }
       if (err.message?.includes('404') || err.message?.includes('NOT_FOUND')) {
         console.error(`[${requestId}] Vertex 404 for model=${resolved.modelId}: ${err.message?.substring(0, 300)}`);
         throw new Error(`Model "${resolved.modelId}" returned 404 from Vertex AI. Ensure the model is enabled in your GCP project's Model Garden and the service account has Vertex AI User role.`);

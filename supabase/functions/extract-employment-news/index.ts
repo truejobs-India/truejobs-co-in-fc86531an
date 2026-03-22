@@ -188,9 +188,11 @@ async function callAI(
     if (!content) throw new Error('No content in gateway response');
     if (finish === 'length') {
       console.warn(`[${requestId}] Gateway response truncated, attempting JSON repair`);
-      return repairTruncatedJson(content);
+      return repairTruncatedJson(content, requestId);
     }
-    return JSON.parse(content);
+    try { return JSON.parse(content); } catch {
+      return repairTruncatedJson(content, requestId);
+    }
   }
 
   if (resolved.provider === 'groq') {

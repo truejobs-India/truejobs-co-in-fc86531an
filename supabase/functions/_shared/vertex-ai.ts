@@ -198,7 +198,7 @@ export async function callVertexGeminiWithMeta(
   if (options?.responseMimeType) generationConfig.responseMimeType = options.responseMimeType;
   if (options?.topP !== undefined) generationConfig.topP = options.topP;
 
-  console.log(`[vertex-ai-meta] model=${model} timeout=${timeoutMs}ms maxTokens=${generationConfig.maxOutputTokens} promptLen=${prompt.length}`);
+  console.log(`[vertex-ai-meta] model=${model} url=${url} timeout=${timeoutMs}ms maxTokens=${generationConfig.maxOutputTokens} promptLen=${prompt.length}`);
 
   const maxRetries = 3;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {

@@ -1377,6 +1377,174 @@ export type Database = {
           },
         ]
       }
+      firecrawl_draft_jobs: {
+        Row: {
+          age_limit: string | null
+          application_fee: string | null
+          application_mode: string | null
+          canonical_url: string | null
+          category: string | null
+          city: string | null
+          cleaning_log: string[]
+          closing_date: string | null
+          created_at: string
+          department: string | null
+          description_summary: string | null
+          exam_date: string | null
+          extracted_raw_fields: Json
+          extraction_confidence: string
+          extraction_warnings: string[]
+          fields_extracted: number
+          fields_missing: string[]
+          firecrawl_source_id: string
+          id: string
+          job_role: string | null
+          last_date_of_application: string | null
+          location: string | null
+          normalized_title: string | null
+          official_apply_url: string | null
+          official_notification_url: string | null
+          official_website_url: string | null
+          opening_date: string | null
+          organization_name: string | null
+          pay_scale: string | null
+          post_name: string | null
+          qualification: string | null
+          raw_links_found: string[] | null
+          raw_scraped_text: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          salary: string | null
+          selection_process: string | null
+          source_bucket: string | null
+          source_name: string | null
+          source_page_url: string | null
+          source_seed_url: string | null
+          source_url: string | null
+          staged_item_id: string
+          state: string | null
+          status: string
+          title: string | null
+          total_vacancies: number | null
+          updated_at: string
+        }
+        Insert: {
+          age_limit?: string | null
+          application_fee?: string | null
+          application_mode?: string | null
+          canonical_url?: string | null
+          category?: string | null
+          city?: string | null
+          cleaning_log?: string[]
+          closing_date?: string | null
+          created_at?: string
+          department?: string | null
+          description_summary?: string | null
+          exam_date?: string | null
+          extracted_raw_fields?: Json
+          extraction_confidence?: string
+          extraction_warnings?: string[]
+          fields_extracted?: number
+          fields_missing?: string[]
+          firecrawl_source_id: string
+          id?: string
+          job_role?: string | null
+          last_date_of_application?: string | null
+          location?: string | null
+          normalized_title?: string | null
+          official_apply_url?: string | null
+          official_notification_url?: string | null
+          official_website_url?: string | null
+          opening_date?: string | null
+          organization_name?: string | null
+          pay_scale?: string | null
+          post_name?: string | null
+          qualification?: string | null
+          raw_links_found?: string[] | null
+          raw_scraped_text?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          salary?: string | null
+          selection_process?: string | null
+          source_bucket?: string | null
+          source_name?: string | null
+          source_page_url?: string | null
+          source_seed_url?: string | null
+          source_url?: string | null
+          staged_item_id: string
+          state?: string | null
+          status?: string
+          title?: string | null
+          total_vacancies?: number | null
+          updated_at?: string
+        }
+        Update: {
+          age_limit?: string | null
+          application_fee?: string | null
+          application_mode?: string | null
+          canonical_url?: string | null
+          category?: string | null
+          city?: string | null
+          cleaning_log?: string[]
+          closing_date?: string | null
+          created_at?: string
+          department?: string | null
+          description_summary?: string | null
+          exam_date?: string | null
+          extracted_raw_fields?: Json
+          extraction_confidence?: string
+          extraction_warnings?: string[]
+          fields_extracted?: number
+          fields_missing?: string[]
+          firecrawl_source_id?: string
+          id?: string
+          job_role?: string | null
+          last_date_of_application?: string | null
+          location?: string | null
+          normalized_title?: string | null
+          official_apply_url?: string | null
+          official_notification_url?: string | null
+          official_website_url?: string | null
+          opening_date?: string | null
+          organization_name?: string | null
+          pay_scale?: string | null
+          post_name?: string | null
+          qualification?: string | null
+          raw_links_found?: string[] | null
+          raw_scraped_text?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          salary?: string | null
+          selection_process?: string | null
+          source_bucket?: string | null
+          source_name?: string | null
+          source_page_url?: string | null
+          source_seed_url?: string | null
+          source_url?: string | null
+          staged_item_id?: string
+          state?: string | null
+          status?: string
+          title?: string | null
+          total_vacancies?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "firecrawl_draft_jobs_firecrawl_source_id_fkey"
+            columns: ["firecrawl_source_id"]
+            isOneToOne: false
+            referencedRelation: "firecrawl_sources"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "firecrawl_draft_jobs_staged_item_id_fkey"
+            columns: ["staged_item_id"]
+            isOneToOne: true
+            referencedRelation: "firecrawl_staged_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       firecrawl_fetch_runs: {
         Row: {
           bucket_counts: Json
@@ -1521,6 +1689,7 @@ export type Database = {
           discovered_from_url: string | null
           extracted_links: string[] | null
           extracted_markdown: string | null
+          extraction_status: string
           fetch_run_id: string | null
           firecrawl_source_id: string
           id: string
@@ -1540,6 +1709,7 @@ export type Database = {
           discovered_from_url?: string | null
           extracted_links?: string[] | null
           extracted_markdown?: string | null
+          extraction_status?: string
           fetch_run_id?: string | null
           firecrawl_source_id: string
           id?: string
@@ -1559,6 +1729,7 @@ export type Database = {
           discovered_from_url?: string | null
           extracted_links?: string[] | null
           extracted_markdown?: string | null
+          extraction_status?: string
           fetch_run_id?: string | null
           firecrawl_source_id?: string
           id?: string

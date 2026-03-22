@@ -179,35 +179,7 @@ export function EmploymentNewsManager() {
     try { localStorage.setItem('empnews_enrich_ai_model', model); } catch {}
   }, []);
 
-  // Delete entire edition (batch + all its jobs)
-  const handleDeleteEdition = useCallback(async () => {
-    if (!deletingBatchId) return;
-    setIsDeletingEdition(true);
-    try {
-      const { data, error } = await supabase.rpc('delete_employment_news_edition', {
-        p_batch_id: deletingBatchId,
-      });
-      if (error) throw error;
-      const result = data as any;
-      if (!result?.success) throw new Error(result?.error || 'Delete failed');
-      toast({
-        title: 'Edition Deleted',
-        description: `Removed "${result.batch_filename}" and ${result.deleted_jobs} job(s).`,
-      });
-      // If we were filtering by this batch, reset
-      if (batchFilter === deletingBatchId) setBatchFilter('all');
-      setDeletingBatchId(null);
-      fetchBatches();
-      fetchStats();
-      fetchJobs();
-    } catch (err: any) {
-      toast({ title: 'Delete Failed', description: err.message || 'Unknown error', variant: 'destructive' });
-    } finally {
-      setIsDeletingEdition(false);
-    }
-  }, [deletingBatchId, batchFilter, toast, fetchBatches, fetchStats, fetchJobs]);
-
-  const fetchStats = useCallback(async () => {
+  // Load data
     const [total, pending, enriched, published, rejected, failed] = await Promise.all([
       supabase.from('employment_news_jobs').select('id', { count: 'exact', head: true }),
       supabase.from('employment_news_jobs').select('id', { count: 'exact', head: true }).eq('status', 'pending'),

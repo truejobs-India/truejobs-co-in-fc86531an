@@ -414,11 +414,6 @@ function AdminDashboardInner() {
           </>
         ) : currentView.type === 'users' ? (
           <UsersListView />
-        ) : currentView.type === 'jobs' ? (
-          <JobsListView 
-            filterStatus={currentView.filter} 
-            onCompanyClick={(name) => setCurrentView({ type: 'company-jobs', companyName: name })}
-          />
         ) : currentView.type === 'companies' ? (
           <CompaniesListView 
             onCompanyClick={(name) => setCurrentView({ type: 'company-jobs', companyName: name })}

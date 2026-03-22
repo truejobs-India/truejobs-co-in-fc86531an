@@ -262,7 +262,7 @@ function AdminDashboardInner() {
 
             {/* Management Tabs */}
             <Tabs defaultValue="jobs" className="space-y-4">
-              <TabsList className="flex flex-wrap !h-auto !w-full gap-1 p-1 overflow-visible min-h-0 items-start">
+              <TabsList className="flex flex-wrap !h-auto !w-full gap-2 p-3 overflow-visible min-h-0 items-start">
                 <TabsTrigger value="users" className="flex items-center gap-2">
                   <Users className="h-4 w-4" />
                   <span className="hidden sm:inline">Users</span>

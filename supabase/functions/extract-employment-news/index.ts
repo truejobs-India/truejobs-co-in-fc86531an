@@ -518,8 +518,20 @@ Return null for fields not found. Preserve relative date phrases as-is. Ignore a
     );
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : "Unknown error";
+    const isAbort = error?.name === 'AbortError' || /signal has been aborted|aborted|timed out/i.test(errMsg);
     const is429 = /429|RESOURCE_EXHAUSTED|rate.?limit/i.test(errMsg);
     const is402 = /402|Payment Required/i.test(errMsg);
+
+    if (isAbort) {
+      console.warn(`[${requestId}] AI timeout / abort`);
+      return new Response(
+        JSON.stringify({
+          error: errMsg || "AI model timed out. Try a faster model or smaller document.",
+          code: "VERTEX_TIMEOUT",
+        }),
+        { status: 504, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     if (is429) {
       console.warn(`[${requestId}] Rate limited (429)`);

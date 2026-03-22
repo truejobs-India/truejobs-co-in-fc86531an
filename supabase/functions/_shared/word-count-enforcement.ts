@@ -142,7 +142,8 @@ export function buildWordCountInstruction(target: number, modelId?: string): str
 
   // Gemini-specific — tends to over-generate
   if (modelId === 'gemini' || modelId === 'gemini-flash' || modelId === 'gemini-pro' ||
-      modelId === 'vertex-flash' || modelId === 'vertex-pro' || modelId === 'lovable-gemini') {
+      modelId === 'vertex-flash' || modelId === 'vertex-pro' || modelId === 'lovable-gemini' ||
+      modelId === 'vertex-3.1-pro' || modelId === 'vertex-3-flash' || modelId === 'vertex-3.1-flash-lite') {
     instruction += `\nDo NOT over-generate. Stop writing at approximately ${target} words. If you have written ${max115} words, STOP immediately.`;
   }
 

@@ -78,12 +78,13 @@ export interface VertexGeminiOptions {
  * @param timeoutMs - request timeout (default 60s)
  * @param options - generation config overrides
  */
-/** Build the correct Vertex endpoint — Gemini 3.x uses global, 2.x uses regional */
+/** Build the correct Vertex endpoint — Gemini 3.x uses global + v1beta1, 2.x uses regional + v1 */
 function getVertexEndpoint(model: string, projectId: string, location: string): string {
-  const isGlobal = model.startsWith('gemini-3');
-  const host = isGlobal ? 'global-aiplatform.googleapis.com' : `${location}-aiplatform.googleapis.com`;
-  const loc = isGlobal ? 'global' : location;
-  return `https://${host}/v1/projects/${projectId}/locations/${loc}/publishers/google/models/${model}:generateContent`;
+  const isGemini3 = model.startsWith('gemini-3');
+  const host = isGemini3 ? 'global-aiplatform.googleapis.com' : `${location}-aiplatform.googleapis.com`;
+  const loc = isGemini3 ? 'global' : location;
+  const apiVersion = isGemini3 ? 'v1beta1' : 'v1';
+  return `https://${host}/${apiVersion}/projects/${projectId}/locations/${loc}/publishers/google/models/${model}:generateContent`;
 }
 
 export async function callVertexGemini(

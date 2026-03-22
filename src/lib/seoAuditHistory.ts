@@ -75,6 +75,8 @@ export async function saveFixRun(
   const skipped = results.filter(r => r.status === 'skipped').length;
   const failed = results.filter(r => r.status === 'failed').length;
   const review = results.filter(r => r.status === 'review_required').length;
+  const recoveredAfterRetry = results.filter(r => r.recoveredAfterRetry).length;
+  const retryableFinalFailures = results.filter(r => r.status === 'failed' && r.retryable).length;
 
   // Deduplicate warnings
   const uniqueWarnings = Array.from(new Set(warnings));
@@ -91,6 +93,12 @@ export async function saveFixRun(
       afterValue: r.afterValue ? r.afterValue.substring(0, 200) : null,
       verificationPassed: r.verificationPassed ?? null,
       verificationNote: r.verificationNote || null,
+      retryable: r.retryable ?? null,
+      attempts: r.attempts ?? null,
+      recoveredAfterRetry: r.recoveredAfterRetry ?? null,
+      initialFailureReason: r.initialFailureReason || null,
+      finalFailureReason: r.finalFailureReason || null,
+      retryEvents: r.retryEvents?.slice(0, 6) || null,
     }));
 
   // Build truthful issue summary
@@ -108,6 +116,8 @@ export async function saveFixRun(
     fixesApplied: fixed,
     fixesFailed: failed,
     fixesSkipped: skipped,
+    retryRecovered: recoveredAfterRetry,
+    retryableFinalFailures,
   };
 
   const { data, error } = await supabase

@@ -6,6 +6,7 @@
 
 import { supabase } from '@/integrations/supabase/client';
 import type { SeoAuditIssue, ContentSource, IssueCategory } from './sitewideSeoAudit';
+import { getSeoFixRuntimeConfig, getSeoFixRetryDelayMs, isRetryableSeoFixReason } from './seoFixRuntimeConfig';
 
 // ═══════════════════════════════════════════════════════════════
 // Types
@@ -26,6 +27,12 @@ export interface FixResult {
   afterValue?: string;
   verificationPassed?: boolean;
   verificationNote?: string;
+  retryable?: boolean;
+  attempts?: number;
+  retryEvents?: string[];
+  recoveredAfterRetry?: boolean;
+  initialFailureReason?: string;
+  finalFailureReason?: string;
 }
 
 export interface FixProgress {
@@ -48,6 +55,27 @@ export interface PageFixGroup {
   isPublished: boolean;
   issues: SeoAuditIssue[];
   contentSnippet?: string;
+}
+
+interface SeoFixPageResult {
+  recordId: string;
+  source: ContentSource;
+  slug: string;
+  fixes?: any[];
+  error?: string;
+  parseError?: boolean;
+  truncated?: boolean;
+  failureReason?: string | null;
+  retryable?: boolean;
+  retryEvents?: string[];
+  attemptsMade?: number;
+  recoveredAfterRetry?: boolean;
+}
+
+interface PageRetryState {
+  retryCount: number;
+  retryEvents: string[];
+  initialFailureReason?: string;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -369,7 +397,9 @@ async function processBatch(
   onProgress: (progress: FixProgress) => void,
   stopSignal: { stopped: boolean },
   warnedSlugs: Set<string>,
+  retryStateByPage: Map<string, PageRetryState> = new Map(),
 ): Promise<void> {
+  const runtimeConfig = getSeoFixRuntimeConfig(aiModel);
   try {
     const { data, error } = await supabase.functions.invoke('seo-audit-fix', {
       body: {
@@ -393,7 +423,8 @@ async function processBatch(
 
     if (error) throw new Error(error.message);
 
-    const results = data?.results || [];
+    const results = (data?.results || []) as SeoFixPageResult[];
+    const retryQueue: PageFixGroup[] = [];
 
     for (const pageResult of results) {
       if (stopSignal.stopped) break;
@@ -401,17 +432,55 @@ async function processBatch(
       const page = batch.find(p => p.recordId === pageResult.recordId);
       if (!page) continue;
 
+      const pageKey = `${page.source}:${page.recordId}`;
+      const retryState = retryStateByPage.get(pageKey) || { retryCount: 0, retryEvents: [] };
+      const pageFailureReason = pageResult.failureReason || pageResult.error || 'Unknown AI error';
+      const isRetryableFailure = !!(pageResult.retryable || isRetryableSeoFixReason(pageFailureReason));
+
+      if ((pageResult.error || pageResult.parseError) && isRetryableFailure && retryState.retryCount < runtimeConfig.retryCount) {
+        retryState.retryCount += 1;
+        if (!retryState.initialFailureReason) retryState.initialFailureReason = pageFailureReason;
+        retryState.retryEvents.push(`client retry ${retryState.retryCount}: ${pageFailureReason}`);
+        retryStateByPage.set(pageKey, retryState);
+        retryQueue.push(page);
+        progress.lastWarning = `Retryable AI failure for "${page.slug}" — retrying (${retryState.retryCount}/${runtimeConfig.retryCount})`;
+        onProgress({ ...progress });
+        progress.lastWarning = undefined;
+        continue;
+      }
+
+      const combinedRetryEvents = [
+        ...retryState.retryEvents,
+        ...(pageResult.retryEvents || []),
+      ];
+      const attempts = retryState.retryCount + (pageResult.attemptsMade || 1);
+      const buildResult = (result: FixResult): FixResult => {
+        const recoveredAfterRetry = !pageResult.error && !pageResult.parseError && combinedRetryEvents.length > 0;
+        return {
+          ...result,
+          retryable: isRetryableFailure,
+          attempts,
+          retryEvents: combinedRetryEvents.length > 0 ? combinedRetryEvents : undefined,
+          recoveredAfterRetry,
+          initialFailureReason: retryState.initialFailureReason,
+          finalFailureReason: pageResult.error || pageResult.parseError ? pageFailureReason : undefined,
+          reason: recoveredAfterRetry
+            ? `${result.reason} (recovered after retry)`
+            : result.reason,
+        };
+      };
+
       if (pageResult.error) {
         for (const issue of page.issues) {
-          allResults.push({
+          allResults.push(buildResult({
             issueId: issue.id,
             source: page.source,
             recordId: page.recordId,
             slug: page.slug,
             category: issue.category,
             status: 'failed',
-            reason: `AI error: ${pageResult.error}`,
-          });
+            reason: `AI error after retries: ${pageFailureReason}`,
+          }));
           progress.failed++;
         }
       } else if (pageResult.parseError) {
@@ -423,15 +492,15 @@ async function processBatch(
           progress.lastWarning = undefined; // Clear after emitting
         }
         for (const issue of page.issues) {
-          allResults.push({
+          allResults.push(buildResult({
             issueId: issue.id,
             source: page.source,
             recordId: page.recordId,
             slug: page.slug,
             category: issue.category,
             status: 'failed',
-            reason: 'AI response parse error — model output was not valid JSON',
-          });
+            reason: `AI response parse error after retries: ${pageFailureReason}`,
+          }));
           progress.failed++;
         }
       } else {
@@ -452,7 +521,7 @@ async function processBatch(
           const matchingIssue = page.issues.find(i => i.category === fix.category && !fixedCategories.has(i.id));
           const issueId = matchingIssue?.id || `${page.source}:${page.recordId}:${fix.category}`;
 
-          const result = await applyFix(page.source, page.recordId, page.slug, page.isPublished, fix, issueId);
+          const result = buildResult(await applyFix(page.source, page.recordId, page.slug, page.isPublished, fix, issueId));
           allResults.push(result);
 
           if (result.status === 'fixed') { progress.fixed++; fixedCategories.add(issueId); }
@@ -464,7 +533,7 @@ async function processBatch(
         // Issues that got no fix from AI
         for (const issue of page.issues) {
           if (!fixedCategories.has(issue.id) && !allResults.some(r => r.issueId === issue.id)) {
-            allResults.push({
+            allResults.push(buildResult({
               issueId: issue.id,
               source: page.source,
               recordId: page.recordId,
@@ -472,7 +541,7 @@ async function processBatch(
               category: issue.category,
               status: 'skipped',
               reason: 'AI did not generate a fix for this issue',
-            });
+            }));
             progress.skipped++;
           }
         }
@@ -481,6 +550,15 @@ async function processBatch(
       progress.processed++;
       onProgress({ ...progress });
       progress.lastWarning = undefined; // Always clear after emitting
+    }
+
+    if (retryQueue.length > 0 && !stopSignal.stopped) {
+      const maxAttemptIndex = Math.max(
+        ...retryQueue.map(page => (retryStateByPage.get(`${page.source}:${page.recordId}`)?.retryCount || 1) - 1),
+      );
+      const delayMs = getSeoFixRetryDelayMs(runtimeConfig.baseRetryDelayMs, Math.max(0, maxAttemptIndex));
+      await new Promise(r => setTimeout(r, delayMs));
+      await processBatch(retryQueue, aiModel, progress, allResults, onProgress, stopSignal, warnedSlugs, retryStateByPage);
     }
   } catch (err: any) {
     for (const page of batch) {
@@ -556,6 +634,7 @@ export async function executeFixAll(
   const pages = buildPageGroups(issues);
   const allResults: FixResult[] = [];
   const warnedSlugs = new Set<string>();
+  const runtimeConfig = getSeoFixRuntimeConfig(aiModel);
   const progress: FixProgress = {
     total: pages.length,
     processed: 0,
@@ -569,7 +648,7 @@ export async function executeFixAll(
 
   await fetchContentSnippets(pages);
 
-  const BATCH_SIZE = 3;
+  const BATCH_SIZE = Math.max(1, runtimeConfig.maxConcurrency);
   for (let i = 0; i < pages.length; i += BATCH_SIZE) {
     if (stopSignal.stopped) break;
 
@@ -580,7 +659,7 @@ export async function executeFixAll(
     await processBatch(batch, aiModel, progress, allResults, onProgress, stopSignal, warnedSlugs);
 
     if (i + BATCH_SIZE < pages.length && !stopSignal.stopped) {
-      await new Promise(r => setTimeout(r, 1500));
+      await new Promise(r => setTimeout(r, runtimeConfig.throttleMs));
     }
   }
 
@@ -630,6 +709,7 @@ export async function executeRetry(
   const pages = buildPageGroups(eligibleIssues);
   const allResults: FixResult[] = [];
   const warnedSlugs = new Set<string>();
+  const runtimeConfig = getSeoFixRuntimeConfig(aiModel);
   const progress: FixProgress = {
     total: pages.length,
     processed: 0,
@@ -643,18 +723,18 @@ export async function executeRetry(
 
   await fetchContentSnippets(pages);
 
-  // Use batch size 1 for retries to reduce token pressure
-  for (let i = 0; i < pages.length; i++) {
+  const batchSize = Math.max(1, Math.min(runtimeConfig.maxConcurrency, 1));
+  for (let i = 0; i < pages.length; i += batchSize) {
     if (stopSignal.stopped) break;
 
-    const batch = [pages[i]];
-    progress.currentSlug = pages[i].slug;
+    const batch = pages.slice(i, i + batchSize);
+    progress.currentSlug = batch.map(page => page.slug).join(', ');
     onProgress({ ...progress });
 
     await processBatch(batch, aiModel, progress, allResults, onProgress, stopSignal, warnedSlugs);
 
-    if (i + 1 < pages.length && !stopSignal.stopped) {
-      await new Promise(r => setTimeout(r, 2000));
+    if (i + batchSize < pages.length && !stopSignal.stopped) {
+      await new Promise(r => setTimeout(r, runtimeConfig.throttleMs));
     }
   }
 

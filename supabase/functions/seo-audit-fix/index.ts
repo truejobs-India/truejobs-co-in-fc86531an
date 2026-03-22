@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { getSeoFixModelPolicy, getSeoFixRetryDelayMs, isRetryableSeoFixStatus, sleep } from '../_shared/seo-fix-runtime.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -31,10 +32,17 @@ interface FixRequest {
   aiModel?: string;
 }
 
+interface AiCallResult {
+  text: string;
+  attemptsMade: number;
+  retryEvents: string[];
+}
+
 // ── Provider routing ──
 
 type ProviderRoute =
   | { provider: 'lovable-gateway'; gatewayModel: string }
+  | { provider: 'vertex-ai'; vertexModel: string }
   | { provider: 'bedrock-nova'; modelKey: string }
   | { provider: 'bedrock-mistral' };
 
@@ -47,7 +55,7 @@ function resolveProvider(uiModelKey: string): ProviderRoute {
     case 'mistral':
       return { provider: 'bedrock-mistral' };
     case 'gemini-pro':
-      return { provider: 'lovable-gateway', gatewayModel: 'google/gemini-2.5-pro' };
+      return { provider: 'vertex-ai', vertexModel: 'gemini-2.5-pro' };
     case 'gpt5':
       return { provider: 'lovable-gateway', gatewayModel: 'openai/gpt-5' };
     case 'gpt5-mini':
@@ -55,7 +63,7 @@ function resolveProvider(uiModelKey: string): ProviderRoute {
     case 'gemini-flash':
     case 'lovable-gemini':
     default:
-      return { provider: 'lovable-gateway', gatewayModel: 'google/gemini-2.5-flash' };
+      return { provider: 'vertex-ai', vertexModel: 'gemini-2.5-flash' };
   }
 }
 
@@ -76,13 +84,24 @@ serve(async (req: Request) => {
 
     const rawModel = aiModel || 'gemini-flash';
     const route = resolveProvider(rawModel);
-    console.log(`[SEO-FIX] Model: "${rawModel}" → provider: ${route.provider}${route.provider === 'lovable-gateway' ? ` (${(route as any).gatewayModel})` : route.provider === 'bedrock-nova' ? ` (${(route as any).modelKey})` : ''}`);
+    const modelPolicy = getSeoFixModelPolicy(rawModel);
+    console.log(`[SEO-FIX] Model: "${rawModel}" → provider: ${route.provider}${route.provider === 'lovable-gateway' ? ` (${(route as any).gatewayModel})` : route.provider === 'vertex-ai' ? ` (${(route as any).vertexModel})` : route.provider === 'bedrock-nova' ? ` (${(route as any).modelKey})` : ''}`);
+    console.log(`[SEO-FIX] Policy for ${rawModel}: retries=${modelPolicy.retryCount}, baseDelay=${modelPolicy.baseRetryDelayMs}ms, throttle=${modelPolicy.throttleMs}ms, maxTokens=${modelPolicy.maxOutputTokens}`);
 
     // Validate provider-specific credentials upfront
     if (route.provider === 'lovable-gateway') {
       const key = Deno.env.get('LOVABLE_API_KEY');
       if (!key) {
         return new Response(JSON.stringify({ error: 'LOVABLE_API_KEY not configured' }), {
+          status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    } else if (route.provider === 'vertex-ai') {
+      const clientEmail = Deno.env.get('GCP_CLIENT_EMAIL');
+      const privateKey = Deno.env.get('GCP_PRIVATE_KEY');
+      const projectId = Deno.env.get('GCP_PROJECT_ID');
+      if (!clientEmail || !privateKey || !projectId) {
+        return new Response(JSON.stringify({ error: 'Vertex AI credentials not configured' }), {
           status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
@@ -98,9 +117,10 @@ serve(async (req: Request) => {
 
     const results: any[] = [];
 
-    for (const page of pages) {
+    for (let pageIndex = 0; pageIndex < pages.length; pageIndex++) {
+      const page = pages[pageIndex];
       try {
-        const fix = await generateFixesForPage(page, route);
+        const fix = await generateFixesForPage(page, route, rawModel, modelPolicy);
         results.push({ recordId: page.recordId, source: page.source, slug: page.slug, ...fix });
       } catch (err) {
         console.error(`[SEO-FIX] Error fixing ${page.slug}:`, err);
@@ -112,6 +132,10 @@ serve(async (req: Request) => {
           error: err instanceof Error ? err.message : 'Unknown error',
           failureReason: `Exception during AI call: ${err instanceof Error ? err.message : 'unknown'}`,
         });
+      }
+
+      if (pageIndex < pages.length - 1 && modelPolicy.throttleMs > 0) {
+        await sleep(modelPolicy.throttleMs);
       }
     }
 
@@ -176,21 +200,43 @@ Rules:
 
 // ── Call the AI based on resolved provider ──
 
-async function callAI(route: ProviderRoute, system: string, user: string): Promise<string> {
+async function callAI(route: ProviderRoute, system: string, user: string, rawModel: string, modelPolicy: ReturnType<typeof getSeoFixModelPolicy>): Promise<AiCallResult> {
   if (route.provider === 'lovable-gateway') {
-    return callLovableGateway(route.gatewayModel, system, user);
+    return callLovableGateway(route.gatewayModel, system, user, modelPolicy);
+  } else if (route.provider === 'vertex-ai') {
+    return callVertexForSeo(route.vertexModel, system, user, modelPolicy.maxOutputTokens);
   } else if (route.provider === 'bedrock-nova') {
-    return callBedrockNovaForSeo(route.modelKey, system, user);
+    return callBedrockNovaForSeo(route.modelKey, system, user, modelPolicy.maxOutputTokens);
   } else {
-    return callBedrockMistralForSeo(system, user);
+    return callBedrockMistralForSeo(system, user, modelPolicy.maxOutputTokens);
   }
 }
 
-async function callLovableGateway(model: string, system: string, user: string): Promise<string> {
-  const apiKey = Deno.env.get('LOVABLE_API_KEY')!;
-  const maxRetries = 4;
+async function callVertexForSeo(model: string, system: string, user: string, maxOutputTokens: number): Promise<AiCallResult> {
+  const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+  const text = await callVertexGemini(
+    model,
+    `${system}\n\n${user}`,
+    120_000,
+    {
+      maxOutputTokens,
+      temperature: 0.3,
+      responseMimeType: 'application/json',
+    },
+  );
 
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+  return {
+    text,
+    attemptsMade: 1,
+    retryEvents: [],
+  };
+}
+
+async function callLovableGateway(model: string, system: string, user: string, modelPolicy: ReturnType<typeof getSeoFixModelPolicy>): Promise<AiCallResult> {
+  const apiKey = Deno.env.get('LOVABLE_API_KEY')!;
+  const retryEvents: string[] = [];
+
+  for (let attempt = 0; attempt <= modelPolicy.retryCount; attempt++) {
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -204,42 +250,63 @@ async function callLovableGateway(model: string, system: string, user: string): 
           { role: 'user', content: user },
         ],
         temperature: 0.3,
-        max_tokens: 6144,
+        max_tokens: modelPolicy.maxOutputTokens,
       }),
     });
 
     if (response.ok) {
       const data = await response.json();
-      return data.choices?.[0]?.message?.content || '';
+      return {
+        text: data.choices?.[0]?.message?.content || '',
+        attemptsMade: attempt + 1,
+        retryEvents,
+      };
     }
 
     const status = response.status;
-    if (status === 429 && attempt < maxRetries) {
-      const backoffMs = Math.min(2000 * Math.pow(2, attempt), 30000); // 2s, 4s, 8s, 16s (capped at 30s)
-      console.log(`[SEO-FIX] Rate limited (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${backoffMs}ms...`);
-      await new Promise(r => setTimeout(r, backoffMs));
+    const text = await response.text().catch(() => '');
+
+    if (isRetryableSeoFixStatus(status) && attempt < modelPolicy.retryCount) {
+      const backoffMs = getSeoFixRetryDelayMs(modelPolicy.baseRetryDelayMs, attempt);
+      const retryEvent = `429 on attempt ${attempt + 1}/${modelPolicy.retryCount + 1}; delaying ${backoffMs}ms`;
+      retryEvents.push(retryEvent);
+      console.log(`[SEO-FIX] ${retryEvent}`);
+      await sleep(backoffMs);
       continue;
     }
-    if (status === 429) throw new Error('Rate limited after retries — try again later or use a different model');
+
+    if (status === 429) {
+      const error = new Error('Rate limited after retries — try again later') as Error & {
+        retryable?: boolean;
+        code?: string;
+        retryEvents?: string[];
+        attemptsMade?: number;
+      };
+      error.retryable = true;
+      error.code = 'GATEWAY_RATE_LIMITED';
+      error.retryEvents = retryEvents;
+      error.attemptsMade = attempt + 1;
+      throw error;
+    }
     if (status === 402) throw new Error('Credits exhausted — add funds');
-    const text = await response.text();
     throw new Error(`AI gateway error ${status}: ${text.substring(0, 200)}`);
   }
 
   throw new Error('Unexpected: exhausted retries without result');
 }
 
-async function callBedrockNovaForSeo(modelKey: string, system: string, user: string): Promise<string> {
+async function callBedrockNovaForSeo(modelKey: string, system: string, user: string, maxTokens: number): Promise<AiCallResult> {
   const { callBedrockNova } = await import('../_shared/bedrock-nova.ts');
-  return callBedrockNova(modelKey, user, {
-    maxTokens: 6144,
+  const text = await callBedrockNova(modelKey, user, {
+    maxTokens,
     temperature: 0.3,
     timeoutMs: 120_000,
     systemPrompt: system,
   });
+  return { text, attemptsMade: 1, retryEvents: [] };
 }
 
-async function callBedrockMistralForSeo(system: string, user: string): Promise<string> {
+async function callBedrockMistralForSeo(system: string, user: string, maxTokens: number): Promise<AiCallResult> {
   const { awsSigV4Fetch } = await import('../_shared/bedrock-nova.ts');
   const modelId = 'mistral.mistral-large-2407-v1:0';
   const region = 'us-west-2';
@@ -249,7 +316,7 @@ async function callBedrockMistralForSeo(system: string, user: string): Promise<s
     messages: [
       { role: 'user', content: [{ text: `${system}\n\n${user}` }] },
     ],
-    inferenceConfig: { maxTokens: 6144, temperature: 0.3 },
+    inferenceConfig: { maxTokens, temperature: 0.3 },
   });
 
   const resp = await Promise.race([
@@ -267,7 +334,11 @@ async function callBedrockMistralForSeo(system: string, user: string): Promise<s
   }
 
   const data = await resp.json();
-  return data?.output?.message?.content?.[0]?.text || '';
+  return {
+    text: data?.output?.message?.content?.[0]?.text || '',
+    attemptsMade: 1,
+    retryEvents: [],
+  };
 }
 
 // ── Generate fixes with robust response parsing ──
@@ -321,22 +392,34 @@ function extractJsonArray(raw: string): { parsed: any[] | null; truncated: boole
   return { parsed: null, truncated };
 }
 
-async function generateFixesForPage(page: FixRequest, route: ProviderRoute) {
+async function generateFixesForPage(page: FixRequest, route: ProviderRoute, rawModel: string, modelPolicy: ReturnType<typeof getSeoFixModelPolicy>) {
   const { system, user } = buildSeoPrompt(page);
 
-  let raw: string;
+  let aiResult: AiCallResult;
   try {
-    raw = await callAI(route, system, user);
+    aiResult = await callAI(route, system, user, rawModel, modelPolicy);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Unknown AI call error';
+    const typedErr = err as Error & {
+      retryable?: boolean;
+      code?: string;
+      retryEvents?: string[];
+      attemptsMade?: number;
+    };
+    const msg = typedErr instanceof Error ? typedErr.message : 'Unknown AI call error';
     console.error(`[SEO-FIX] AI call failed for ${page.slug}: ${msg}`);
     return {
       fixes: [],
       truncated: false,
       parseError: true,
       failureReason: `AI call failed: ${msg}`,
+      retryable: !!typedErr?.retryable,
+      errorCode: typedErr?.code || null,
+      retryEvents: typedErr?.retryEvents || [],
+      attemptsMade: typedErr?.attemptsMade || 1,
     };
   }
+
+  const raw = aiResult.text;
 
   if (!raw || raw.trim().length === 0) {
     console.error(`[SEO-FIX] Empty AI response for ${page.slug}`);
@@ -345,6 +428,10 @@ async function generateFixesForPage(page: FixRequest, route: ProviderRoute) {
       truncated: false,
       parseError: true,
       failureReason: 'AI returned empty response',
+      retryable: false,
+      errorCode: null,
+      retryEvents: aiResult.retryEvents,
+      attemptsMade: aiResult.attemptsMade,
     };
   }
 
@@ -357,15 +444,31 @@ async function generateFixesForPage(page: FixRequest, route: ProviderRoute) {
       truncated,
       parseError: true,
       failureReason: `Could not extract JSON array from AI response (${raw.length} chars). First 100: ${raw.substring(0, 100)}`,
+      retryable: false,
+      errorCode: null,
+      retryEvents: aiResult.retryEvents,
+      attemptsMade: aiResult.attemptsMade,
     };
   }
 
   const providerLabel = route.provider === 'lovable-gateway'
     ? (route as any).gatewayModel
+    : route.provider === 'vertex-ai'
+      ? (route as any).vertexModel
     : route.provider === 'bedrock-nova'
       ? (route as any).modelKey
       : 'mistral';
   console.log(`[SEO-FIX] ${page.slug}: ${parsed.length} fixes via ${providerLabel}, truncated=${truncated}`);
 
-  return { fixes: parsed, truncated, parseError: false, failureReason: null };
+  return {
+    fixes: parsed,
+    truncated,
+    parseError: false,
+    failureReason: null,
+    retryable: false,
+    errorCode: null,
+    retryEvents: aiResult.retryEvents,
+    attemptsMade: aiResult.attemptsMade,
+    recoveredAfterRetry: aiResult.retryEvents.length > 0,
+  };
 }

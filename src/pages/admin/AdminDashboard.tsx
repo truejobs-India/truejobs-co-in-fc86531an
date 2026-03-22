@@ -69,9 +69,6 @@ type DrilldownView =
 
 interface DashboardStats {
   totalUsers: number;
-  totalJobs: number;
-  activeJobs: number;
-  pendingJobs: number;
   totalCompanies: number;
   pendingCompanies: number;
   totalApplications: number;

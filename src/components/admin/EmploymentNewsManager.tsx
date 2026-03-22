@@ -252,7 +252,34 @@ export function EmploymentNewsManager() {
     if (view === 'pipeline') fetchJobs();
   }, [view, fetchJobs]);
 
-  // Unique values for filter dropdowns
+  // Delete entire edition (batch + all its jobs)
+  const handleDeleteEdition = useCallback(async () => {
+    if (!deletingBatchId) return;
+    setIsDeletingEdition(true);
+    try {
+      const { data, error } = await supabase.rpc('delete_employment_news_edition', {
+        p_batch_id: deletingBatchId,
+      });
+      if (error) throw error;
+      const result = data as any;
+      if (!result?.success) throw new Error(result?.error || 'Delete failed');
+      toast({
+        title: 'Edition Deleted',
+        description: `Removed "${result.batch_filename}" and ${result.deleted_jobs} job(s).`,
+      });
+      if (batchFilter === deletingBatchId) setBatchFilter('all');
+      setDeletingBatchId(null);
+      fetchBatches();
+      fetchStats();
+      fetchJobs();
+    } catch (err: any) {
+      toast({ title: 'Delete Failed', description: err.message || 'Unknown error', variant: 'destructive' });
+    } finally {
+      setIsDeletingEdition(false);
+    }
+  }, [deletingBatchId, batchFilter, toast, fetchBatches, fetchStats, fetchJobs]);
+
+
   const uniqueCategories = useMemo(() => {
     const cats = new Set(jobs.map(j => j.job_category).filter(Boolean));
     return Array.from(cats) as string[];

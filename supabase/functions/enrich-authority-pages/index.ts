@@ -719,6 +719,39 @@ async function callAI(
       });
       return { data: tryParseJSON(rawText) };
     }
+    case 'vertex-3.1-pro': {
+      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      console.log(`[enrich-vertex] slug=${slug} model=vertex-3.1-pro timeout=${timeout}ms`);
+      rawText = await callVertexGemini('gemini-3.1-pro-preview', prompt, timeout, {
+        maxOutputTokens: maxTokens || 16384,
+        responseMimeType: 'application/json',
+        temperature: 0.5,
+        topP: 0.8,
+      });
+      return { data: tryParseJSON(rawText) };
+    }
+    case 'vertex-3-flash': {
+      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      console.log(`[enrich-vertex] slug=${slug} model=vertex-3-flash timeout=${timeout}ms`);
+      rawText = await callVertexGemini('gemini-3-flash-preview', prompt, timeout, {
+        maxOutputTokens: maxTokens || 16384,
+        responseMimeType: 'application/json',
+        temperature: 0.5,
+        topP: 0.8,
+      });
+      return { data: tryParseJSON(rawText) };
+    }
+    case 'vertex-3.1-flash-lite': {
+      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      console.log(`[enrich-vertex] slug=${slug} model=vertex-3.1-flash-lite timeout=${timeout}ms`);
+      rawText = await callVertexGemini('gemini-3.1-flash-lite-preview', prompt, timeout, {
+        maxOutputTokens: maxTokens || 16384,
+        responseMimeType: 'application/json',
+        temperature: 0.5,
+        topP: 0.8,
+      });
+      return { data: tryParseJSON(rawText) };
+    }
 
     case 'claude-sonnet':
     case 'claude': {

@@ -154,6 +154,18 @@ async function callAI(model: string, prompt: string, maxTokens = 8192): Promise<
     case 'gpt5-mini': return callGpt5Mini(prompt, maxTokens);
     case 'vertex-flash': return callVertexFlash(prompt, maxTokens);
     case 'vertex-pro': return callVertexPro(prompt, maxTokens);
+    case 'vertex-3.1-pro': {
+      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      return callVertexGemini('gemini-3.1-pro-preview', prompt, 120_000, { maxOutputTokens: maxTokens, temperature: 0.6 });
+    }
+    case 'vertex-3-flash': {
+      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      return callVertexGemini('gemini-3-flash-preview', prompt, 90_000, { maxOutputTokens: maxTokens, temperature: 0.6 });
+    }
+    case 'vertex-3.1-flash-lite': {
+      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      return callVertexGemini('gemini-3.1-flash-lite-preview', prompt, 60_000, { maxOutputTokens: maxTokens, temperature: 0.6 });
+    }
     case 'nova-pro': case 'nova-premier': {
       const { callBedrockNova } = await import('../_shared/bedrock-nova.ts');
       const { computeMaxTokens } = await import('../_shared/word-count-enforcement.ts');

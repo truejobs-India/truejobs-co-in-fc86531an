@@ -91,6 +91,21 @@ async function callTextAI(model: string, prompt: string, maxTokens?: number): Pr
     return callVertexGemini(vertexModel, prompt, 90_000, { maxOutputTokens: maxTokens || 8192, temperature: 0.5 });
   }
 
+  if (model === 'vertex-3.1-pro') {
+    const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+    return callVertexGemini('gemini-3.1-pro-preview', prompt, 120_000, { maxOutputTokens: maxTokens || 8192, temperature: 0.5 });
+  }
+
+  if (model === 'vertex-3-flash') {
+    const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+    return callVertexGemini('gemini-3-flash-preview', prompt, 90_000, { maxOutputTokens: maxTokens || 8192, temperature: 0.5 });
+  }
+
+  if (model === 'vertex-3.1-flash-lite') {
+    const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+    return callVertexGemini('gemini-3.1-flash-lite-preview', prompt, 60_000, { maxOutputTokens: maxTokens || 8192, temperature: 0.5 });
+  }
+
   if (model === 'nova-pro' || model === 'nova-premier') {
     const { callBedrockNova } = await import('../_shared/bedrock-nova.ts');
     return callBedrockNova(model, prompt, { maxTokens: maxTokens || 8192, temperature: 0.5 });

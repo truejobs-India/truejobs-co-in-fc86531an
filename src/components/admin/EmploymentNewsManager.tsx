@@ -1386,6 +1386,7 @@ export function EmploymentNewsManager() {
 // ─── Upload View Sub-Component ───
 function UploadView({
   file, pastedText, issueDetails, isExtracting, extractProgress,
+  aiModel, onAiModelChange,
   onFileChange, onDrop, onPastedTextChange, onIssueDetailsChange, onExtract,
 }: {
   file: File | null;
@@ -1393,6 +1394,8 @@ function UploadView({
   issueDetails: string;
   isExtracting: boolean;
   extractProgress: { current: number; total: number; newCount: number; updatedCount: number };
+  aiModel: string;
+  onAiModelChange: (v: string) => void;
   onFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onDrop: (e: React.DragEvent) => void;
   onPastedTextChange: (v: string) => void;
@@ -1405,13 +1408,25 @@ function UploadView({
         <CardTitle>Upload Employment News Issue</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div>
-          <label className="text-sm font-medium">Issue Details</label>
-          <Input
-            placeholder='e.g. "Vol. L Issue 48, Feb 28 – Mar 6 2026"'
-            value={issueDetails}
-            onChange={e => onIssueDetailsChange(e.target.value)}
-          />
+        <div className="flex items-center gap-3">
+          <div className="flex-1">
+            <label className="text-sm font-medium">Issue Details</label>
+            <Input
+              placeholder='e.g. "Vol. L Issue 48, Feb 28 – Mar 6 2026"'
+              value={issueDetails}
+              onChange={e => onIssueDetailsChange(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="text-sm font-medium">AI Model</label>
+            <AiModelSelector
+              value={aiModel}
+              onValueChange={onAiModelChange}
+              capability="text"
+              triggerClassName="w-[220px]"
+              size="default"
+            />
+          </div>
         </div>
 
         {/* File drop zone */}

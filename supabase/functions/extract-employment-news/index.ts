@@ -10,15 +10,11 @@ const corsHeaders = {
 // ── Text sanitization ──
 function sanitizeText(raw: string): string {
   return raw
-    // Collapse runs of spaces/tabs to single space
     .replace(/[ \t]+/g, ' ')
-    // Remove runs of underscores, dashes, equals used as separators
     .replace(/[_]{4,}/g, '')
     .replace(/[-]{4,}/g, '')
     .replace(/[=]{4,}/g, '')
-    // Collapse 3+ newlines to 2
     .replace(/\n{3,}/g, '\n\n')
-    // Trim each line
     .split('\n')
     .map(line => line.trim())
     .filter(line => line.length > 0)
@@ -26,16 +22,174 @@ function sanitizeText(raw: string): string {
     .trim();
 }
 
-async function callGemini(systemPrompt: string, userContent: string, requestId: string) {
-  const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+// ── Model resolution: UI key → { provider, modelId, timeout } ──
+interface ResolvedModel {
+  provider: 'vertex-ai' | 'lovable-gateway' | 'groq' | 'anthropic' | 'bedrock';
+  modelId: string;
+  timeout: number;
+}
+
+function resolveModel(aiModel: string | undefined): ResolvedModel {
+  switch (aiModel) {
+    // Vertex AI direct models
+    case 'vertex-flash':
+      return { provider: 'vertex-ai', modelId: 'gemini-2.5-flash', timeout: 90_000 };
+    case 'vertex-pro':
+      return { provider: 'vertex-ai', modelId: 'gemini-2.5-pro', timeout: 120_000 };
+    case 'vertex-3.1-pro':
+      return { provider: 'vertex-ai', modelId: 'gemini-3.1-pro-preview', timeout: 120_000 };
+    case 'vertex-3-flash':
+      return { provider: 'vertex-ai', modelId: 'gemini-3-flash-preview', timeout: 90_000 };
+    case 'vertex-3.1-flash-lite':
+      return { provider: 'vertex-ai', modelId: 'gemini-3.1-flash-lite-preview', timeout: 60_000 };
+
+    // Lovable AI Gateway models
+    case 'gemini-flash':
+      return { provider: 'lovable-gateway', modelId: 'google/gemini-2.5-flash', timeout: 90_000 };
+    case 'gemini-pro':
+      return { provider: 'lovable-gateway', modelId: 'google/gemini-2.5-pro', timeout: 120_000 };
+    case 'lovable-gemini':
+      return { provider: 'lovable-gateway', modelId: 'google/gemini-3-flash-preview', timeout: 90_000 };
+    case 'gpt5':
+      return { provider: 'lovable-gateway', modelId: 'openai/gpt-5', timeout: 120_000 };
+    case 'gpt5-mini':
+      return { provider: 'lovable-gateway', modelId: 'openai/gpt-5-mini', timeout: 90_000 };
+
+    // Groq
+    case 'groq': {
+      return { provider: 'groq', modelId: 'llama-3.3-70b-versatile', timeout: 60_000 };
+    }
+
+    // Anthropic
+    case 'claude-sonnet':
+      return { provider: 'anthropic', modelId: 'claude-sonnet-4-20250514', timeout: 120_000 };
+
+    // Bedrock
+    case 'nova-pro':
+      return { provider: 'bedrock', modelId: 'us.amazon.nova-pro-v1:0', timeout: 90_000 };
+    case 'nova-premier':
+      return { provider: 'bedrock', modelId: 'us.amazon.nova-premier-v1:0', timeout: 120_000 };
+    case 'mistral':
+      return { provider: 'bedrock', modelId: 'eu.mistral.mistral-large-2411-v1:0', timeout: 90_000 };
+
+    // Default: Vertex Flash (safest for structured extraction)
+    default:
+      return { provider: 'vertex-ai', modelId: 'gemini-2.5-flash', timeout: 90_000 };
+  }
+}
+
+// ── AI call dispatcher ──
+async function callAI(
+  resolved: ResolvedModel,
+  systemPrompt: string,
+  userContent: string,
+  requestId: string,
+): Promise<{ jobs: any[] }> {
   const fullPrompt = `${systemPrompt}\n\n${userContent}`;
-  console.log(`[${requestId}] Calling Vertex AI | prompt_length=${fullPrompt.length}`);
-  const rawText = await callVertexGemini('gemini-2.5-flash', fullPrompt, 90_000, {
-    responseMimeType: 'application/json',
-    temperature: 0.1,
-    maxOutputTokens: 4096,
-  });
-  return JSON.parse(rawText);
+  console.log(`[${requestId}] AI call | provider=${resolved.provider} | model=${resolved.modelId} | prompt_len=${fullPrompt.length}`);
+
+  if (resolved.provider === 'vertex-ai') {
+    const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+    const rawText = await callVertexGemini(resolved.modelId, fullPrompt, resolved.timeout, {
+      responseMimeType: 'application/json',
+      temperature: 0.1,
+      maxOutputTokens: 4096,
+    });
+    return JSON.parse(rawText);
+  }
+
+  if (resolved.provider === 'lovable-gateway') {
+    const apiKey = Deno.env.get('LOVABLE_API_KEY');
+    if (!apiKey) throw new Error('LOVABLE_API_KEY not configured');
+    const resp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: resolved.modelId,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userContent },
+        ],
+        response_format: { type: 'json_object' },
+        max_tokens: 4096,
+        temperature: 0.1,
+      }),
+    });
+    if (!resp.ok) {
+      const errText = await resp.text();
+      throw new Error(`Gateway error (${resp.status}): ${errText}`);
+    }
+    const json = await resp.json();
+    const content = json.choices?.[0]?.message?.content;
+    if (!content) throw new Error('No content in gateway response');
+    return JSON.parse(content);
+  }
+
+  if (resolved.provider === 'groq') {
+    const apiKey = Deno.env.get('GROQ_API_KEY');
+    if (!apiKey) throw new Error('GROQ_API_KEY not configured');
+    const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: resolved.modelId,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userContent },
+        ],
+        response_format: { type: 'json_object' },
+        max_tokens: 4096,
+        temperature: 0.1,
+      }),
+    });
+    if (!resp.ok) {
+      const errText = await resp.text();
+      throw new Error(`Groq error (${resp.status}): ${errText}`);
+    }
+    const json = await resp.json();
+    return JSON.parse(json.choices?.[0]?.message?.content || '{"jobs":[]}');
+  }
+
+  if (resolved.provider === 'anthropic') {
+    const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
+    if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured');
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'Content-Type': 'application/json',
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: resolved.modelId,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userContent }],
+        max_tokens: 4096,
+        temperature: 0.1,
+      }),
+    });
+    if (!resp.ok) {
+      const errText = await resp.text();
+      throw new Error(`Anthropic error (${resp.status}): ${errText}`);
+    }
+    const json = await resp.json();
+    const text = json.content?.[0]?.text || '{"jobs":[]}';
+    return JSON.parse(text);
+  }
+
+  if (resolved.provider === 'bedrock') {
+    const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+    // For bedrock models, fall back to vertex flash rather than implementing full bedrock for extraction
+    console.warn(`[${requestId}] Bedrock not directly supported for extraction, falling back to vertex-flash`);
+    const rawText = await callVertexGemini('gemini-2.5-flash', `${systemPrompt}\n\n${userContent}`, 90_000, {
+      responseMimeType: 'application/json',
+      temperature: 0.1,
+      maxOutputTokens: 4096,
+    });
+    return JSON.parse(rawText);
+  }
+
+  throw new Error(`Unsupported provider: ${resolved.provider}`);
 }
 
 serve(async (req) => {
@@ -51,7 +205,7 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Auth: verify JWT via service client
+    // Auth
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer "))
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
@@ -67,7 +221,7 @@ serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
 
-    // Admin check via service client (bypasses RLS)
+    // Admin check
     const { data: roleData } = await serviceClient
       .from("user_roles")
       .select("role")
@@ -80,18 +234,22 @@ serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
 
-    const { text, filename, issueDetails, batchId } = await req.json();
+    const { text, filename, issueDetails, batchId, aiModel } = await req.json();
     if (!text || text.trim().length < 50)
       return new Response(
         JSON.stringify({ error: "Text too short to extract jobs from" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
 
-    // Sanitize text before processing
+    // Resolve model from UI key
+    const resolved = resolveModel(aiModel);
+    console.log(`[${requestId}] Model selection | ui_key=${aiModel || '(default)'} | provider=${resolved.provider} | final_model=${resolved.modelId}`);
+
+    // Sanitize text
     const rawLen = text.length;
     const cleaned = sanitizeText(text);
     const cleanedLen = cleaned.length;
-    console.log(`[${requestId}] Received chunk | filename=${filename || 'unknown'} | raw_len=${rawLen} | cleaned_len=${cleanedLen} | reduction=${Math.round((1 - cleanedLen / rawLen) * 100)}%`);
+    console.log(`[${requestId}] Text | filename=${filename || 'unknown'} | raw=${rawLen} | cleaned=${cleanedLen} | reduction=${Math.round((1 - cleanedLen / rawLen) * 100)}%`);
 
     // Create or reuse batch
     let currentBatchId = batchId;
@@ -149,7 +307,7 @@ Extract ALL job notifications from the following text. For each unique job adver
 Return a JSON object with key "jobs" containing an array of all job objects.
 Return null for fields not found. Preserve relative date phrases as-is. Ignore articles, editorials, and non-job content. Clean OCR artifacts.`;
 
-    const parsed = await callGemini(systemPrompt, cleaned, requestId);
+    const parsed = await callAI(resolved, systemPrompt, cleaned, requestId);
 
     const jobs = parsed.jobs || [];
     console.log(`[${requestId}] AI returned ${jobs.length} jobs`);
@@ -206,7 +364,7 @@ Return null for fields not found. Preserve relative date phrases as-is. Ignore a
 
     for (const job of jobs) {
       const lastDateText = job.last_date_raw || job.last_date || null;
-      const resolved = resolveDate(lastDateText);
+      const resolvedDt = resolveDate(lastDateText);
 
       const row = {
         org_name: job.org_name || null,
@@ -223,7 +381,7 @@ Return null for fields not found. Preserve relative date phrases as-is. Ignore a
         application_start_date: job.application_start_date || null,
         last_date: job.last_date || null,
         last_date_raw: lastDateText,
-        last_date_resolved: resolved,
+        last_date_resolved: resolvedDt,
         notification_reference_number: job.notification_reference_number || null,
         advertisement_number: job.advertisement_number || null,
         source: "Employment News",
@@ -242,10 +400,7 @@ Return null for fields not found. Preserve relative date phrases as-is. Ignore a
         if (insertErr.code === "23505") {
           const { error: updateErr } = await serviceClient
             .from("employment_news_jobs")
-            .update({
-              ...row,
-              status: "pending",
-            })
+            .update({ ...row, status: "pending" })
             .eq("advertisement_number", row.advertisement_number)
             .eq("org_name", row.org_name);
           if (!updateErr) updatedCount++;
@@ -288,28 +443,34 @@ Return null for fields not found. Preserve relative date phrases as-is. Ignore a
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : "Unknown error";
     const is429 = /429|RESOURCE_EXHAUSTED|rate.?limit/i.test(errMsg);
+    const is402 = /402|Payment Required/i.test(errMsg);
 
     if (is429) {
-      console.warn(`[${requestId}] Vertex AI rate limited (429)`);
+      console.warn(`[${requestId}] Rate limited (429)`);
       return new Response(
         JSON.stringify({
           error: "AI service is temporarily overloaded. Please wait a minute and try again.",
           code: "VERTEX_RATE_LIMITED",
         }),
-        {
-          status: 429,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
+        { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (is402) {
+      console.warn(`[${requestId}] Payment required (402)`);
+      return new Response(
+        JSON.stringify({
+          error: "AI credits exhausted. Please add funds and try again.",
+          code: "GATEWAY_PAYMENT_REQUIRED",
+        }),
+        { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     console.error(`[${requestId}] Unhandled error:`, error);
     return new Response(
       JSON.stringify({ error: errMsg }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });

@@ -82,7 +82,7 @@ type UploadBatch = {
 
 const CHUNK_SIZE = 7500;
 const CHUNK_OVERLAP = 300;
-const INTER_CHUNK_DELAY_MS = 2000;
+const INTER_CHUNK_DELAY_MS = 5000;
 
 const STATUS_COLORS: Record<string, string> = {
   pending: 'bg-muted text-muted-foreground',

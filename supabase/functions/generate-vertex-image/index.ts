@@ -898,6 +898,9 @@ serve(async (req) => {
       if (selectedInlineModel === 'vertex-imagen') {
         return await generateViaImagen(body, slug, imagePrompt, 1, aspectRatio, adminClient, startMs);
       }
+      if (isVertexDirectImageModel(selectedInlineModel)) {
+        return await generateViaVertexDirectImage({ ...body, purpose: 'inline' }, slug, imagePrompt, adminClient, startMs, 'gemini-3-pro-image-preview');
+      }
       if (isGatewayModel(selectedInlineModel) && selectedInlineModel !== 'gemini-flash-image') {
         return await generateViaGatewayModel(selectedInlineModel, { ...body, purpose: 'inline' }, imagePrompt);
       }

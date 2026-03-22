@@ -38,7 +38,7 @@ function resolveModel(aiModel: string | undefined): ResolvedModel {
       return { provider: 'vertex-ai', modelId: 'gemini-2.5-pro', timeout: 120_000 };
     // Gemini 3.x preview models — direct Vertex AI (global endpoint)
     case 'vertex-3.1-pro':
-      return { provider: 'vertex-ai', modelId: 'gemini-3.1-pro-preview', timeout: 120_000 };
+      return { provider: 'vertex-ai', modelId: 'gemini-3.1-pro-preview', timeout: 90_000 };
     case 'vertex-3-flash':
       return { provider: 'vertex-ai', modelId: 'gemini-3-flash-preview', timeout: 90_000 };
     case 'vertex-3.1-flash-lite':
@@ -144,6 +144,10 @@ async function callAI(
       }
       return JSON.parse(rawText);
     } catch (err: any) {
+      if (err.name === 'AbortError' || err.message?.includes('signal has been aborted') || err.message?.includes('aborted')) {
+        console.error(`[${requestId}] Vertex AI timeout for model=${resolved.modelId} after ${resolved.timeout}ms`);
+        throw new Error(`AI model "${resolved.modelId}" timed out after ${Math.round(resolved.timeout / 1000)}s. Try a faster model (e.g. vertex-3-flash or vertex-flash) or reduce document size.`);
+      }
       if (err.message?.includes('404') || err.message?.includes('NOT_FOUND')) {
         console.error(`[${requestId}] Vertex 404 for model=${resolved.modelId}: ${err.message?.substring(0, 300)}`);
         throw new Error(`Model "${resolved.modelId}" returned 404 from Vertex AI. Ensure the model is enabled in your GCP project's Model Garden and the service account has Vertex AI User role.`);
@@ -514,8 +518,20 @@ Return null for fields not found. Preserve relative date phrases as-is. Ignore a
     );
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : "Unknown error";
+    const isAbort = error?.name === 'AbortError' || /signal has been aborted|aborted|timed out/i.test(errMsg);
     const is429 = /429|RESOURCE_EXHAUSTED|rate.?limit/i.test(errMsg);
     const is402 = /402|Payment Required/i.test(errMsg);
+
+    if (isAbort) {
+      console.warn(`[${requestId}] AI timeout / abort`);
+      return new Response(
+        JSON.stringify({
+          error: errMsg || "AI model timed out. Try a faster model or smaller document.",
+          code: "VERTEX_TIMEOUT",
+        }),
+        { status: 504, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     if (is429) {
       console.warn(`[${requestId}] Rate limited (429)`);

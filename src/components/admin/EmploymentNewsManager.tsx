@@ -8,6 +8,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel,
+  AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
+  AlertDialogHeader, AlertDialogTitle as AlertTitle,
+} from '@/components/ui/alert-dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -156,6 +161,9 @@ export function EmploymentNewsManager() {
     failed: EmpNewsJob[];
   } | null>(null);
   const [editErrors, setEditErrors] = useState<Record<string, string>>({});
+  // Delete edition state
+  const [deletingBatchId, setDeletingBatchId] = useState<string | null>(null);
+  const [isDeletingEdition, setIsDeletingEdition] = useState(false);
   // AI Model selection for enrichment (persisted in localStorage)
   const [enrichAiModel, setEnrichAiModel] = useState<string>(() => {
     try { return localStorage.getItem('empnews_enrich_ai_model') || 'gemini'; } catch { return 'gemini'; }
@@ -244,7 +252,34 @@ export function EmploymentNewsManager() {
     if (view === 'pipeline') fetchJobs();
   }, [view, fetchJobs]);
 
-  // Unique values for filter dropdowns
+  // Delete entire edition (batch + all its jobs)
+  const handleDeleteEdition = useCallback(async () => {
+    if (!deletingBatchId) return;
+    setIsDeletingEdition(true);
+    try {
+      const { data, error } = await supabase.rpc('delete_employment_news_edition', {
+        p_batch_id: deletingBatchId,
+      });
+      if (error) throw error;
+      const result = data as any;
+      if (!result?.success) throw new Error(result?.error || 'Delete failed');
+      toast({
+        title: 'Edition Deleted',
+        description: `Removed "${result.batch_filename}" and ${result.deleted_jobs} job(s).`,
+      });
+      if (batchFilter === deletingBatchId) setBatchFilter('all');
+      setDeletingBatchId(null);
+      fetchBatches();
+      fetchStats();
+      fetchJobs();
+    } catch (err: any) {
+      toast({ title: 'Delete Failed', description: err.message || 'Unknown error', variant: 'destructive' });
+    } finally {
+      setIsDeletingEdition(false);
+    }
+  }, [deletingBatchId, batchFilter, toast, fetchBatches, fetchStats, fetchJobs]);
+
+
   const uniqueCategories = useMemo(() => {
     const cats = new Set(jobs.map(j => j.job_category).filter(Boolean));
     return Array.from(cats) as string[];
@@ -736,22 +771,54 @@ export function EmploymentNewsManager() {
               <CardContent className="px-4 pb-3">
                 <div className="flex flex-wrap gap-2">
                   {batches.map(b => (
-                    <Badge
-                      key={b.id}
-                      variant="outline"
-                      className={`cursor-pointer text-xs py-1 px-2 ${batchFilter === b.id ? 'border-primary bg-primary/10 text-primary' : ''}`}
-                      onClick={() => { setBatchFilter(batchFilter === b.id ? 'all' : b.id); setCurrentPage(1); }}
-                    >
-                      {b.issue_details || b.filename}
-                      <span className="ml-1 opacity-70">({b.total_extracted})</span>
-                      {b.status === 'processing' && <Loader2 className="ml-1 h-3 w-3 animate-spin" />}
-                      {b.status === 'complete' && <CheckCircle className="ml-1 h-3 w-3 text-green-600" />}
-                    </Badge>
+                    <div key={b.id} className="flex items-center gap-0.5">
+                      <Badge
+                        variant="outline"
+                        className={`cursor-pointer text-xs py-1 px-2 rounded-r-none ${batchFilter === b.id ? 'border-primary bg-primary/10 text-primary' : ''}`}
+                        onClick={() => { setBatchFilter(batchFilter === b.id ? 'all' : b.id); setCurrentPage(1); }}
+                      >
+                        {b.issue_details || b.filename}
+                        <span className="ml-1 opacity-70">({b.total_extracted})</span>
+                        {b.status === 'processing' && <Loader2 className="ml-1 h-3 w-3 animate-spin" />}
+                        {b.status === 'complete' && <CheckCircle className="ml-1 h-3 w-3 text-green-600" />}
+                      </Badge>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-6 w-6 rounded-l-none border-l-0 text-destructive hover:bg-destructive/10"
+                        onClick={(e) => { e.stopPropagation(); setDeletingBatchId(b.id); }}
+                        title="Delete this edition and all its jobs"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
                   ))}
                 </div>
               </CardContent>
             </Card>
           )}
+
+          {/* Delete Edition Confirmation */}
+          <AlertDialog open={!!deletingBatchId} onOpenChange={v => !v && setDeletingBatchId(null)}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertTitle>Delete Edition</AlertTitle>
+                <AlertDialogDescription>
+                  This will permanently delete this newspaper edition and <strong>all</strong> jobs extracted from it (published or unpublished). This action cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={isDeletingEdition}>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleDeleteEdition}
+                  disabled={isDeletingEdition}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  {isDeletingEdition ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Deleting…</> : 'Delete Edition'}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
 
           {/* Filters */}
           <div className="flex flex-wrap gap-2 items-center">

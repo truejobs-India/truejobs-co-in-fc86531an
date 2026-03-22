@@ -476,6 +476,119 @@ export function RssSourcesTab() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Bulk Add URLs Dialog */}
+      <Dialog open={showBulkUrls} onOpenChange={setShowBulkUrls}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>Bulk Add RSS Source URLs</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Paste up to 100 feed URLs, one per line. Source names will be auto-generated from the domain.
+            </p>
+            <Textarea
+              value={bulkUrlText}
+              onChange={(e) => setBulkUrlText(e.target.value)}
+              rows={12}
+              placeholder={"https://example.gov.in/rss/jobs.xml\nhttps://another-site.org/feed\nhttps://..."}
+            />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Default Priority</Label>
+                <Select value={bulkPriority} onValueChange={setBulkPriority}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {RSS_PRIORITIES.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">Default Status</Label>
+                <Select value={bulkStatus} onValueChange={setBulkStatus}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {RSS_STATUSES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            {bulkUrlText.trim() && (
+              <p className="text-xs text-muted-foreground">
+                {(() => {
+                  const count = bulkUrlText.trim().split('\n').filter(l => l.trim()).length;
+                  return count > 100
+                    ? <span className="text-destructive font-medium">⚠ {count} URLs detected — max 100 allowed</span>
+                    : `${count} URL${count !== 1 ? 's' : ''} detected`;
+                })()}
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowBulkUrls(false)}>Cancel</Button>
+            <Button
+              onClick={async () => {
+                const lines = bulkUrlText.trim().split('\n').map(l => l.trim()).filter(Boolean);
+                if (lines.length === 0) {
+                  toast({ title: 'No URLs', description: 'Paste at least one URL', variant: 'destructive' });
+                  return;
+                }
+                if (lines.length > 100) {
+                  toast({ title: 'Too many URLs', description: 'Maximum 100 URLs allowed per batch', variant: 'destructive' });
+                  return;
+                }
+                // Validate URLs
+                const invalid: string[] = [];
+                const valid: string[] = [];
+                for (const line of lines) {
+                  try {
+                    const u = new URL(line);
+                    if (!['http:', 'https:'].includes(u.protocol)) throw new Error();
+                    valid.push(line);
+                  } catch {
+                    invalid.push(line);
+                  }
+                }
+                if (invalid.length > 0) {
+                  toast({ title: 'Invalid URLs found', description: `${invalid.length} invalid URL(s): ${invalid.slice(0, 3).join(', ')}${invalid.length > 3 ? '...' : ''}`, variant: 'destructive' });
+                  return;
+                }
+                setBulkAdding(true);
+                try {
+                  const payloads = valid.map(url => {
+                    const hostname = new URL(url).hostname.replace(/^www\./, '');
+                    const nameParts = hostname.split('.').slice(0, -1);
+                    const sourceName = nameParts.join(' ').replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) || hostname;
+                    return {
+                      source_name: sourceName,
+                      feed_url: url,
+                      official_site: `https://${hostname}`,
+                      source_type: 'rss',
+                      priority: bulkPriority,
+                      status: bulkStatus,
+                      fetch_enabled: true,
+                      check_interval_hours: 6,
+                    };
+                  });
+                  const { error, data } = await supabase.from('rss_sources' as any).insert(payloads).select('id');
+                  if (error) {
+                    toast({ title: 'Error', description: error.message, variant: 'destructive' });
+                  } else {
+                    toast({ title: 'Bulk Add Complete', description: `${(data as any[])?.length || valid.length} sources added successfully` });
+                    setShowBulkUrls(false);
+                    setBulkUrlText('');
+                    fetchSources();
+                  }
+                } catch (e: any) {
+                  toast({ title: 'Error', description: e.message, variant: 'destructive' });
+                }
+                setBulkAdding(false);
+              }}
+              disabled={bulkAdding || !bulkUrlText.trim()}
+            >
+              {bulkAdding ? 'Adding...' : 'Add All'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

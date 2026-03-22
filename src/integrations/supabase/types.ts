@@ -1380,6 +1380,14 @@ export type Database = {
       firecrawl_draft_jobs: {
         Row: {
           age_limit: string | null
+          ai_clean_at: string | null
+          ai_cover_image_at: string | null
+          ai_cover_prompt_at: string | null
+          ai_enrich_at: string | null
+          ai_enrichment_log: Json | null
+          ai_fix_missing_at: string | null
+          ai_links_at: string | null
+          ai_seo_at: string | null
           application_fee: string | null
           application_mode: string | null
           canonical_url: string | null
@@ -1387,6 +1395,8 @@ export type Database = {
           city: string | null
           cleaning_log: string[]
           closing_date: string | null
+          cover_image_prompt: string | null
+          cover_image_url: string | null
           created_at: string
           department: string | null
           description_summary: string | null
@@ -1394,15 +1404,20 @@ export type Database = {
           extracted_raw_fields: Json
           extraction_confidence: string
           extraction_warnings: string[]
+          faq_suggestions: Json | null
           fields_extracted: number
           fields_missing: string[]
           firecrawl_source_id: string
           id: string
+          intro_text: string | null
           job_role: string | null
           last_date_of_application: string | null
           location: string | null
+          meta_description: string | null
           normalized_title: string | null
           official_apply_url: string | null
+          official_link_confidence: string | null
+          official_link_reason: string | null
           official_notification_url: string | null
           official_website_url: string | null
           opening_date: string | null
@@ -1416,6 +1431,8 @@ export type Database = {
           reviewed_by: string | null
           salary: string | null
           selection_process: string | null
+          seo_title: string | null
+          slug_suggestion: string | null
           source_bucket: string | null
           source_name: string | null
           source_page_url: string | null
@@ -1430,6 +1447,14 @@ export type Database = {
         }
         Insert: {
           age_limit?: string | null
+          ai_clean_at?: string | null
+          ai_cover_image_at?: string | null
+          ai_cover_prompt_at?: string | null
+          ai_enrich_at?: string | null
+          ai_enrichment_log?: Json | null
+          ai_fix_missing_at?: string | null
+          ai_links_at?: string | null
+          ai_seo_at?: string | null
           application_fee?: string | null
           application_mode?: string | null
           canonical_url?: string | null
@@ -1437,6 +1462,8 @@ export type Database = {
           city?: string | null
           cleaning_log?: string[]
           closing_date?: string | null
+          cover_image_prompt?: string | null
+          cover_image_url?: string | null
           created_at?: string
           department?: string | null
           description_summary?: string | null
@@ -1444,15 +1471,20 @@ export type Database = {
           extracted_raw_fields?: Json
           extraction_confidence?: string
           extraction_warnings?: string[]
+          faq_suggestions?: Json | null
           fields_extracted?: number
           fields_missing?: string[]
           firecrawl_source_id: string
           id?: string
+          intro_text?: string | null
           job_role?: string | null
           last_date_of_application?: string | null
           location?: string | null
+          meta_description?: string | null
           normalized_title?: string | null
           official_apply_url?: string | null
+          official_link_confidence?: string | null
+          official_link_reason?: string | null
           official_notification_url?: string | null
           official_website_url?: string | null
           opening_date?: string | null
@@ -1466,6 +1498,8 @@ export type Database = {
           reviewed_by?: string | null
           salary?: string | null
           selection_process?: string | null
+          seo_title?: string | null
+          slug_suggestion?: string | null
           source_bucket?: string | null
           source_name?: string | null
           source_page_url?: string | null
@@ -1480,6 +1514,14 @@ export type Database = {
         }
         Update: {
           age_limit?: string | null
+          ai_clean_at?: string | null
+          ai_cover_image_at?: string | null
+          ai_cover_prompt_at?: string | null
+          ai_enrich_at?: string | null
+          ai_enrichment_log?: Json | null
+          ai_fix_missing_at?: string | null
+          ai_links_at?: string | null
+          ai_seo_at?: string | null
           application_fee?: string | null
           application_mode?: string | null
           canonical_url?: string | null
@@ -1487,6 +1529,8 @@ export type Database = {
           city?: string | null
           cleaning_log?: string[]
           closing_date?: string | null
+          cover_image_prompt?: string | null
+          cover_image_url?: string | null
           created_at?: string
           department?: string | null
           description_summary?: string | null
@@ -1494,15 +1538,20 @@ export type Database = {
           extracted_raw_fields?: Json
           extraction_confidence?: string
           extraction_warnings?: string[]
+          faq_suggestions?: Json | null
           fields_extracted?: number
           fields_missing?: string[]
           firecrawl_source_id?: string
           id?: string
+          intro_text?: string | null
           job_role?: string | null
           last_date_of_application?: string | null
           location?: string | null
+          meta_description?: string | null
           normalized_title?: string | null
           official_apply_url?: string | null
+          official_link_confidence?: string | null
+          official_link_reason?: string | null
           official_notification_url?: string | null
           official_website_url?: string | null
           opening_date?: string | null
@@ -1516,6 +1565,8 @@ export type Database = {
           reviewed_by?: string | null
           salary?: string | null
           selection_process?: string | null
+          seo_title?: string | null
+          slug_suggestion?: string | null
           source_bucket?: string | null
           source_name?: string | null
           source_page_url?: string | null

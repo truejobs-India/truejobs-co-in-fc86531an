@@ -38,7 +38,7 @@ import { CronJobManager } from '@/components/admin/CronJobManager';
 import { DrilldownBreadcrumb, BreadcrumbItem } from '@/components/admin/DrilldownBreadcrumb';
 import { CompaniesListView } from '@/components/admin/CompaniesListView';
 import { CompanyJobsView } from '@/components/admin/CompanyJobsView';
-import { JobsListView } from '@/components/admin/JobsListView';
+
 import { UsersListView } from '@/components/admin/UsersListView';
 import { PollsManager } from '@/components/admin/PollsManager';
 import { ContestsManager } from '@/components/admin/ContestsManager';

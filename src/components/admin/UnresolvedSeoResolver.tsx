@@ -776,9 +776,20 @@ export function UnresolvedSeoResolver() {
       // Fetch current content and check dedup
       const { data: current } = await supabase.from(source as any).select('content').eq('id', recordId).single();
       const currentContent = (current as any)?.content || '';
-      const sig = sanitized.replace(/<[^>]+>/g, '').trim().substring(0, 100);
-      if (currentContent.includes(sig)) {
-        return { ...base, status: 'skipped', reason: 'Content already contains this block', field: 'content' };
+
+      // H1-specific dedup: check for existing <h1> tag, not plain text match
+      const isH1Append = /<h1[\s>]/i.test(sanitized);
+      if (isH1Append) {
+        const existingH1Count = (currentContent.match(/<h1[\s>]/gi) || []).length;
+        if (existingH1Count >= 1) {
+          return { ...base, status: 'skipped', reason: `H1 tag already exists (count: ${existingH1Count})`, field: 'content' };
+        }
+      } else {
+        // For non-H1 appends (links, etc.), use text-based dedup
+        const sig = sanitized.replace(/<[^>]+>/g, '').trim().substring(0, 100);
+        if (sig.length > 20 && currentContent.includes(sig)) {
+          return { ...base, status: 'skipped', reason: 'Content already contains this block', field: 'content' };
+        }
       }
 
       const { error } = await supabase

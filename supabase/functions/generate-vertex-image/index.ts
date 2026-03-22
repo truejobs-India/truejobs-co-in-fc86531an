@@ -27,6 +27,7 @@ const GATEWAY_IMAGE_MODELS: Record<string, string> = {
   'gemini-flash-image': 'google/gemini-2.5-flash-image',
   'gemini-pro-image': 'google/gemini-3-pro-image-preview',
   'gemini-flash-image-2': 'google/gemini-3.1-flash-image-preview',
+  'vertex-3-pro-image': '__vertex_direct__',
 };
 const IMAGEN_TIMEOUT_MS = 45_000;
 const GATEWAY_TIMEOUT_MS = 55_000;

@@ -919,6 +919,9 @@ serve(async (req) => {
     if (selectedModel === 'vertex-imagen') {
       return await generateViaImagen(body, slug, imagePrompt, imageCount, aspectRatio, adminClient, startMs);
     }
+    if (isVertexDirectImageModel(selectedModel)) {
+      return await generateViaVertexDirectImage(body, slug, imagePrompt, adminClient, startMs, 'gemini-3-pro-image-preview');
+    }
     if (isGatewayModel(selectedModel) && selectedModel !== 'gemini-flash-image') {
       return await generateViaGatewayModel(selectedModel, body, imagePrompt);
     }

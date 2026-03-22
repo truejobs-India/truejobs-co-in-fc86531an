@@ -94,6 +94,10 @@ export function RssFetchedItemsTab() {
   const [aiAction, setAiAction] = useState<AiAction>('analyse');
   const [aiModalItemIds, setAiModalItemIds] = useState<string[]>([]);
 
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteMode, setDeleteMode] = useState<'single' | 'bulk'>('single');
+  const [deleteSingleId, setDeleteSingleId] = useState<string | null>(null);
+  const [deletingItems, setDeletingItems] = useState(false);
   const fetchItems = useCallback(async () => {
     setLoading(true);
     let query = supabase.from('rss_items' as any).select('*').order('first_seen_at', { ascending: false }).limit(200);

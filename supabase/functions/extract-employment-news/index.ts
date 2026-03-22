@@ -79,6 +79,44 @@ function resolveModel(aiModel: string | undefined): ResolvedModel {
   }
 }
 
+// ── Truncated JSON repair ──
+function repairTruncatedJson(raw: string): any {
+  try { return JSON.parse(raw); } catch {}
+
+  const text = raw.trim();
+  const jobsMatch = text.match(/"jobs"\s*:\s*\[/);
+  if (!jobsMatch) {
+    throw new Error('Cannot parse AI response: no jobs array found in truncated output');
+  }
+
+  const arrayStart = text.indexOf('[', jobsMatch.index!);
+  const afterArray = text.slice(arrayStart + 1);
+  const completeObjects: string[] = [];
+  let depth = 0;
+  let objStart = -1;
+
+  for (let i = 0; i < afterArray.length; i++) {
+    const ch = afterArray[i];
+    if (ch === '{' && depth === 0) { objStart = i; depth = 1; }
+    else if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0 && objStart >= 0) {
+        const candidate = afterArray.slice(objStart, i + 1);
+        try { JSON.parse(candidate); completeObjects.push(candidate); } catch {}
+        objStart = -1;
+      }
+    }
+  }
+
+  if (completeObjects.length === 0) {
+    throw new Error('Cannot parse AI response: no complete job objects found in truncated output');
+  }
+
+  const repaired = `{"jobs":[${completeObjects.join(',')}]}`;
+  return JSON.parse(repaired);
+}
+
 // ── AI call dispatcher ──
 async function callAI(
   resolved: ResolvedModel,
@@ -87,16 +125,23 @@ async function callAI(
   requestId: string,
 ): Promise<{ jobs: any[] }> {
   const fullPrompt = `${systemPrompt}\n\n${userContent}`;
-  console.log(`[${requestId}] AI call | provider=${resolved.provider} | model=${resolved.modelId} | prompt_len=${fullPrompt.length}`);
+  const maxTokens = 8192;
+  console.log(`[${requestId}] AI call | provider=${resolved.provider} | model=${resolved.modelId} | prompt_len=${fullPrompt.length} | maxTokens=${maxTokens}`);
 
   if (resolved.provider === 'vertex-ai') {
-    const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+    const { callVertexGeminiWithMeta } = await import('../_shared/vertex-ai.ts');
     try {
-      const rawText = await callVertexGemini(resolved.modelId, fullPrompt, resolved.timeout, {
+      const { text: rawText, finishReason } = await callVertexGeminiWithMeta(resolved.modelId, fullPrompt, resolved.timeout, {
         responseMimeType: 'application/json',
         temperature: 0.1,
-        maxOutputTokens: 4096,
+        maxOutputTokens: maxTokens,
       });
+      if (finishReason === 'length' || finishReason === 'MAX_TOKENS') {
+        console.warn(`[${requestId}] Vertex response truncated (finishReason=${finishReason}, len=${rawText.length}), attempting JSON repair`);
+        const repaired = repairTruncatedJson(rawText);
+        console.log(`[${requestId}] JSON repair succeeded, recovered ${repaired.jobs?.length || 0} jobs`);
+        return repaired;
+      }
       return JSON.parse(rawText);
     } catch (err: any) {
       if (err.message?.includes('404') || err.message?.includes('NOT_FOUND')) {
@@ -119,7 +164,7 @@ async function callAI(
           { role: 'user', content: userContent },
         ],
         response_format: { type: 'json_object' },
-        max_tokens: 4096,
+        max_tokens: maxTokens,
         temperature: 0.1,
       }),
     });
@@ -129,7 +174,12 @@ async function callAI(
     }
     const json = await resp.json();
     const content = json.choices?.[0]?.message?.content;
+    const finish = json.choices?.[0]?.finish_reason;
     if (!content) throw new Error('No content in gateway response');
+    if (finish === 'length') {
+      console.warn(`[${requestId}] Gateway response truncated, attempting JSON repair`);
+      return repairTruncatedJson(content);
+    }
     return JSON.parse(content);
   }
 
@@ -146,7 +196,7 @@ async function callAI(
           { role: 'user', content: userContent },
         ],
         response_format: { type: 'json_object' },
-        max_tokens: 4096,
+        max_tokens: maxTokens,
         temperature: 0.1,
       }),
     });
@@ -155,7 +205,13 @@ async function callAI(
       throw new Error(`Groq error (${resp.status}): ${errText}`);
     }
     const json = await resp.json();
-    return JSON.parse(json.choices?.[0]?.message?.content || '{"jobs":[]}');
+    const content = json.choices?.[0]?.message?.content || '{"jobs":[]}';
+    const finish = json.choices?.[0]?.finish_reason;
+    if (finish === 'length') {
+      console.warn(`[${requestId}] Groq response truncated, attempting JSON repair`);
+      return repairTruncatedJson(content);
+    }
+    return JSON.parse(content);
   }
 
   if (resolved.provider === 'anthropic') {
@@ -172,7 +228,7 @@ async function callAI(
         model: resolved.modelId,
         system: systemPrompt,
         messages: [{ role: 'user', content: userContent }],
-        max_tokens: 4096,
+        max_tokens: maxTokens,
         temperature: 0.1,
       }),
     });
@@ -182,18 +238,25 @@ async function callAI(
     }
     const json = await resp.json();
     const text = json.content?.[0]?.text || '{"jobs":[]}';
+    if (json.stop_reason === 'max_tokens') {
+      console.warn(`[${requestId}] Anthropic response truncated, attempting JSON repair`);
+      return repairTruncatedJson(text);
+    }
     return JSON.parse(text);
   }
 
   if (resolved.provider === 'bedrock') {
-    const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-    // For bedrock models, fall back to vertex flash rather than implementing full bedrock for extraction
-    console.warn(`[${requestId}] Bedrock not directly supported for extraction, falling back to vertex-flash`);
-    const rawText = await callVertexGemini('gemini-2.5-flash', `${systemPrompt}\n\n${userContent}`, 90_000, {
+    const { callVertexGeminiWithMeta } = await import('../_shared/vertex-ai.ts');
+    console.warn(`[${requestId}] Bedrock not directly supported, falling back to vertex-flash`);
+    const { text: rawText, finishReason } = await callVertexGeminiWithMeta('gemini-2.5-flash', `${systemPrompt}\n\n${userContent}`, 90_000, {
       responseMimeType: 'application/json',
       temperature: 0.1,
-      maxOutputTokens: 4096,
+      maxOutputTokens: maxTokens,
     });
+    if (finishReason === 'length' || finishReason === 'MAX_TOKENS') {
+      console.warn(`[${requestId}] Bedrock fallback truncated, attempting JSON repair`);
+      return repairTruncatedJson(rawText);
+    }
     return JSON.parse(rawText);
   }
 

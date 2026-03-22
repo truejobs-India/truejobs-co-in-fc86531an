@@ -11,7 +11,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
-import { Plus, Play, TestTube, Upload, Zap, ExternalLink, RefreshCw, Search, Pencil, Rss, ListPlus } from 'lucide-react';
+import { Plus, Play, TestTube, Upload, Zap, ExternalLink, RefreshCw, Search, Pencil, Rss, ListPlus, Trash2 } from 'lucide-react';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import type { RssSource } from './rssTypes';
 import { RSS_PRIORITIES, RSS_STATUSES } from './rssTypes';
 
@@ -61,6 +62,9 @@ export function RssSourcesTab() {
   const [bulkAdding, setBulkAdding] = useState(false);
   const [bulkPriority, setBulkPriority] = useState('Medium');
   const [bulkStatus, setBulkStatus] = useState('Testing');
+
+  const [deleteTarget, setDeleteTarget] = useState<RssSource | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const fetchSources = useCallback(async () => {
     setLoading(true);
@@ -150,6 +154,17 @@ export function RssSourcesTab() {
 
   const toggleEnabled = async (src: RssSource) => {
     await supabase.from('rss_sources' as any).update({ fetch_enabled: !src.fetch_enabled }).eq('id', src.id);
+    fetchSources();
+  };
+
+  const handleDeleteSource = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    const { error } = await supabase.from('rss_sources' as any).delete().eq('id', deleteTarget.id);
+    if (error) toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    else toast({ title: 'Deleted', description: `${deleteTarget.source_name} deleted` });
+    setDeleting(false);
+    setDeleteTarget(null);
     fetchSources();
   };
 
@@ -363,6 +378,9 @@ export function RssSourcesTab() {
                         </Button>
                         <Button size="sm" variant="ghost" onClick={() => handleRun(src)} disabled={running === src.id} title="Run Now">
                           <Play className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => setDeleteTarget(src)} title="Delete" className="text-destructive hover:text-destructive">
+                          <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </div>
                     </TableCell>
@@ -594,6 +612,24 @@ export function RssSourcesTab() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Source</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete <strong>{deleteTarget?.source_name}</strong>? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteSource} disabled={deleting} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {deleting ? 'Deleting...' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 }

@@ -12,11 +12,12 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import {
   FileText, ExternalLink, Search, RefreshCw, ClipboardList, EyeOff,
   ChevronDown, ChevronUp, FileDown, Sparkles, Brain, Image, ShieldCheck, MoreHorizontal,
-  CheckCircle2, XCircle, Loader2, Clock,
+  CheckCircle2, XCircle, Loader2, Clock, Trash2,
 } from 'lucide-react';
 import type { RssItem, RssSource } from './rssTypes';
 import { ITEM_TYPES, RELEVANCE_LEVELS, ITEM_STATUSES, PRIMARY_DOMAINS, DOMAIN_LABELS } from './rssTypes';
 import { RssAiActionModal } from './RssAiActionModal';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 
 const domainBadgeColors: Record<string, string> = {
   jobs: 'bg-emerald-100 text-emerald-800',
@@ -93,6 +94,10 @@ export function RssFetchedItemsTab() {
   const [aiAction, setAiAction] = useState<AiAction>('analyse');
   const [aiModalItemIds, setAiModalItemIds] = useState<string[]>([]);
 
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteMode, setDeleteMode] = useState<'single' | 'bulk'>('single');
+  const [deleteSingleId, setDeleteSingleId] = useState<string | null>(null);
+  const [deletingItems, setDeletingItems] = useState(false);
   const fetchItems = useCallback(async () => {
     setLoading(true);
     let query = supabase.from('rss_items' as any).select('*').order('first_seen_at', { ascending: false }).limit(200);
@@ -192,6 +197,29 @@ export function RssFetchedItemsTab() {
     fetchItems();
   };
 
+  const confirmDeleteSingle = (id: string) => {
+    setDeleteMode('single');
+    setDeleteSingleId(id);
+    setDeleteConfirmOpen(true);
+  };
+
+  const confirmDeleteBulk = () => {
+    setDeleteMode('bulk');
+    setDeleteConfirmOpen(true);
+  };
+
+  const handleDeleteConfirmed = async () => {
+    setDeletingItems(true);
+    const ids = deleteMode === 'single' && deleteSingleId ? [deleteSingleId] : Array.from(selectedIds);
+    const { error } = await supabase.from('rss_items' as any).delete().in('id', ids);
+    if (error) toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    else toast({ title: 'Deleted', description: `${ids.length} item(s) deleted` });
+    setDeletingItems(false);
+    setDeleteConfirmOpen(false);
+    setDeleteSingleId(null);
+    setSelectedIds(new Set());
+    fetchItems();
+  };
   const displayDate = (item: RssItem) => {
     const d = item.published_at || item.first_seen_at;
     return d ? new Date(d).toLocaleDateString() : '—';
@@ -273,6 +301,9 @@ export function RssFetchedItemsTab() {
             <Button size="sm" variant="outline" onClick={() => openAiAction('seo-check', selectedArray)}>
               <ShieldCheck className="h-3.5 w-3.5 mr-1" /> SEO
             </Button>
+            <Button size="sm" variant="outline" className="text-destructive border-destructive/50 hover:bg-destructive/10" onClick={confirmDeleteBulk}>
+              <Trash2 className="h-3.5 w-3.5 mr-1" /> Delete
+            </Button>
             <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>Clear</Button>
           </div>
         )}
@@ -348,6 +379,9 @@ export function RssFetchedItemsTab() {
                           </Button>
                           <Button size="sm" variant="ghost" onClick={() => handleIgnore(item)} title="Ignore" disabled={item.current_status === 'ignored'}>
                             <EyeOff className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => confirmDeleteSingle(item.id)} title="Delete" className="text-destructive hover:text-destructive">
+                            <Trash2 className="h-3.5 w-3.5" />
                           </Button>
                           {item.item_link && (
                             <a href={item.item_link} target="_blank" rel="noopener noreferrer">
@@ -460,6 +494,26 @@ export function RssFetchedItemsTab() {
         itemIds={aiModalItemIds}
         onComplete={handleAiComplete}
       />
+
+      {/* Delete Confirmation */}
+      <AlertDialog open={deleteConfirmOpen} onOpenChange={(open) => !open && setDeleteConfirmOpen(false)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {deleteMode === 'bulk' ? `${selectedIds.size} Items` : 'Item'}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteMode === 'bulk'
+                ? `Are you sure you want to delete ${selectedIds.size} selected item(s)? This action cannot be undone.`
+                : 'Are you sure you want to delete this item? This action cannot be undone.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingItems}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteConfirmed} disabled={deletingItems} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {deletingItems ? 'Deleting...' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 }

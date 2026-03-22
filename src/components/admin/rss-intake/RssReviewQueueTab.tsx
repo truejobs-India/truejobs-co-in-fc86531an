@@ -9,7 +9,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
-import { ClipboardCheck, ExternalLink, Search, RefreshCw, Check, X, Copy, EyeOff, Pause, FileDown, CheckCircle2, XCircle, Clock, Loader2 } from 'lucide-react';
+import { ClipboardCheck, ExternalLink, Search, RefreshCw, Check, X, Copy, EyeOff, Pause, FileDown, CheckCircle2, XCircle, Clock, Loader2, Trash2 } from 'lucide-react';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import type { ReviewQueueEntry, RssAiProcessing, AnalysisOutput, EnrichmentOutput, SeoCheckOutput } from './rssTypes';
 import { REVIEW_STATUSES, PRIMARY_DOMAINS, DOMAIN_LABELS } from './rssTypes';
 
@@ -44,6 +45,9 @@ export function RssReviewQueueTab() {
   const [actioning, setActioning] = useState(false);
   const [aiData, setAiData] = useState<RssAiProcessing | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
+
+  const [deleteTarget, setDeleteTarget] = useState<ReviewQueueEntry | null>(null);
+  const [deletingEntry, setDeletingEntry] = useState(false);
 
   const fetchEntries = useCallback(async () => {
     setLoading(true);
@@ -116,6 +120,16 @@ export function RssReviewQueueTab() {
     fetchEntries();
   };
 
+  const handleDeleteEntry = async () => {
+    if (!deleteTarget) return;
+    setDeletingEntry(true);
+    const { error } = await supabase.from('monitoring_review_queue' as any).delete().eq('id', deleteTarget.id);
+    if (error) toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    else toast({ title: 'Deleted', description: 'Review queue entry deleted' });
+    setDeletingEntry(false);
+    setDeleteTarget(null);
+    fetchEntries();
+  };
   const openDetail = (entry: ReviewQueueEntry) => {
     setDetailEntry(entry);
     setQaNotes(entry.qa_notes || '');
@@ -230,6 +244,9 @@ export function RssReviewQueueTab() {
                             <Button size="sm" variant="ghost"><FileDown className="h-3.5 w-3.5" /></Button>
                           </a>
                         )}
+                        <Button size="sm" variant="ghost" onClick={() => setDeleteTarget(entry)} title="Delete" className="text-destructive hover:text-destructive">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -434,6 +451,24 @@ export function RssReviewQueueTab() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Review Entry</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete "<strong>{deleteTarget?.title?.substring(0, 80)}</strong>"? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingEntry}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteEntry} disabled={deletingEntry} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {deletingEntry ? 'Deleting...' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 }

@@ -1,11 +1,13 @@
 /**
  * Source 3: Firecrawl Ingest Edge Function
- * Phase 2 — Discovery + Bucketing. Supports:
+ * Phase 3 — Discovery + Bucketing + Field Extraction. Supports:
  *   - test-source: scrape a single source and return preview
  *   - list-sources: list all registered Firecrawl sources
  *   - run-source: scrape + stage seed page content
  *   - discover-source: scrape seed → extract links → filter → classify → stage candidates
  *   - source-stats: get discovery statistics for a source
+ *   - extract-item: clean + extract fields from a single staged recruitment item → draft job
+ *   - extract-batch: extract fields from multiple staged recruitment items for a source
  *
  * Completely isolated from Source 1 (rss-ingest) and Source 2 (Employment News).
  */
@@ -14,6 +16,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { scrapePage, mapUrl, generateContentHash } from '../_shared/firecrawl/client.ts';
 import { normalizeUrl, filterAndClassifyUrls, type UrlFilterConfig } from '../_shared/firecrawl/url-filter.ts';
 import { classifyPage, type PageBucket } from '../_shared/firecrawl/page-classifier.ts';
+import { cleanScrapedContent } from '../_shared/firecrawl/content-cleaner.ts';
+import { extractFields } from '../_shared/firecrawl/field-extractor.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -53,6 +57,10 @@ Deno.serve(async (req) => {
         return await handleDiscoverSource(body, adminClient);
       case 'source-stats':
         return await handleSourceStats(body, adminClient);
+      case 'extract-item':
+        return await handleExtractItem(body, adminClient);
+      case 'extract-batch':
+        return await handleExtractBatch(body, adminClient);
       default:
         return jsonResponse({ error: `Unknown action: ${action}` }, 400);
     }
@@ -531,6 +539,231 @@ async function handleSourceStats(
     statusCounts,
     recentRuns: recentRuns || [],
   });
+}
+
+// ============ extract-item (Phase 3: clean + extract → draft job) ============
+
+async function handleExtractItem(
+  body: Record<string, unknown>,
+  client: ReturnType<typeof createClient>
+) {
+  const stagedItemId = body.staged_item_id as string;
+  if (!stagedItemId) return jsonResponse({ error: 'staged_item_id required' }, 400);
+
+  const { data: item } = await client
+    .from('firecrawl_staged_items')
+    .select('*, firecrawl_sources(*)')
+    .eq('id', stagedItemId)
+    .single();
+
+  if (!item) return jsonResponse({ error: 'Staged item not found' }, 404);
+
+  if (item.bucket !== 'single_recruitment') {
+    return jsonResponse({ error: `Only single_recruitment items can be extracted. This item is bucket: ${item.bucket}` }, 400);
+  }
+
+  if (!item.extracted_markdown) {
+    return jsonResponse({ error: 'Staged item has no scraped content. Run discover-source first to scrape detail pages.' }, 400);
+  }
+
+  console.log(`[firecrawl-ingest] extract-item: ${item.page_url}`);
+
+  // Mark as extracting
+  await client.from('firecrawl_staged_items').update({ extraction_status: 'extracting' }).eq('id', stagedItemId);
+
+  try {
+    const source = item.firecrawl_sources as any;
+
+    // Step 1: Clean content
+    const cleanResult = cleanScrapedContent(item.extracted_markdown);
+
+    // Step 2: Extract fields
+    const linkInfos = cleanResult.extractedLinks.map(l => ({
+      text: l.text, url: l.url, context: l.context,
+    }));
+    const extraction = extractFields(
+      cleanResult.cleanedText,
+      linkInfos,
+      item.page_title,
+      item.page_url
+    );
+
+    // Step 3: Upsert draft job record
+    const draftData = {
+      staged_item_id: stagedItemId,
+      firecrawl_source_id: item.firecrawl_source_id,
+
+      // Source attribution (internal)
+      source_name: source?.source_name || null,
+      source_url: item.page_url,
+      source_seed_url: source?.seed_url || null,
+      source_page_url: item.discovered_from_url,
+      source_bucket: item.bucket,
+
+      // Extracted fields
+      ...extraction.fields,
+
+      // Extraction metadata
+      extraction_confidence: extraction.confidence,
+      fields_extracted: extraction.fields_extracted,
+      fields_missing: extraction.fields_missing,
+      extraction_warnings: extraction.warnings,
+
+      // Raw evidence (internal, never published)
+      raw_scraped_text: item.extracted_markdown.substring(0, 200_000),
+      raw_links_found: (item.extracted_links || []).slice(0, 500),
+      extracted_raw_fields: extraction.raw_fields,
+      cleaning_log: cleanResult.cleaningLog,
+
+      status: 'draft',
+    };
+
+    const { data: draft, error: draftError } = await client
+      .from('firecrawl_draft_jobs')
+      .upsert(draftData, { onConflict: 'staged_item_id' })
+      .select('id, extraction_confidence, fields_extracted')
+      .single();
+
+    if (draftError) {
+      await client.from('firecrawl_staged_items').update({ extraction_status: 'failed' }).eq('id', stagedItemId);
+      console.error('[firecrawl-ingest] Draft insert error:', draftError);
+      return jsonResponse({ success: false, error: draftError.message }, 500);
+    }
+
+    // Mark staged item as extracted
+    await client.from('firecrawl_staged_items').update({ extraction_status: 'extracted' }).eq('id', stagedItemId);
+
+    return jsonResponse({
+      success: true,
+      draft_id: draft.id,
+      extraction_confidence: extraction.confidence,
+      fields_extracted: extraction.fields_extracted,
+      fields_missing: extraction.fields_missing,
+      warnings: extraction.warnings,
+      cleaning_log: cleanResult.cleaningLog,
+      extracted_fields: extraction.fields,
+    });
+  } catch (e) {
+    await client.from('firecrawl_staged_items').update({ extraction_status: 'failed' }).eq('id', stagedItemId);
+    const errMsg = e instanceof Error ? e.message : String(e);
+    console.error('[firecrawl-ingest] extract-item error:', errMsg);
+    return jsonResponse({ success: false, error: errMsg }, 500);
+  }
+}
+
+// ============ extract-batch (Phase 3: batch extraction for a source) ============
+
+async function handleExtractBatch(
+  body: Record<string, unknown>,
+  client: ReturnType<typeof createClient>
+) {
+  const sourceId = body.source_id as string;
+  if (!sourceId) return jsonResponse({ error: 'source_id required' }, 400);
+
+  const maxItems = Math.min((body.max_items as number) || 10, 20); // hard cap at 20
+
+  // Get single_recruitment items that have content but haven't been extracted yet
+  const { data: items, error } = await client
+    .from('firecrawl_staged_items')
+    .select('id')
+    .eq('firecrawl_source_id', sourceId)
+    .eq('bucket', 'single_recruitment')
+    .eq('extraction_status', 'pending')
+    .not('extracted_markdown', 'is', null)
+    .order('created_at', { ascending: true })
+    .limit(maxItems);
+
+  if (error) return jsonResponse({ error: error.message }, 500);
+  if (!items || items.length === 0) {
+    return jsonResponse({ success: true, message: 'No extractable items found', extracted: 0 });
+  }
+
+  console.log(`[firecrawl-ingest] extract-batch: ${items.length} items for source ${sourceId}`);
+
+  const results: any[] = [];
+  let successCount = 0;
+  let failCount = 0;
+
+  for (const item of items) {
+    try {
+      // Reuse extract-item logic via direct call
+      const result = await handleExtractItemInternal(item.id, client);
+      results.push({ staged_item_id: item.id, ...result });
+      if (result.success) successCount++;
+      else failCount++;
+    } catch (e) {
+      failCount++;
+      results.push({ staged_item_id: item.id, success: false, error: String(e) });
+    }
+  }
+
+  return jsonResponse({
+    success: true,
+    total: items.length,
+    extracted: successCount,
+    failed: failCount,
+    results,
+  });
+}
+
+/** Internal extraction for a single item (shared by extract-item and extract-batch) */
+async function handleExtractItemInternal(
+  stagedItemId: string,
+  client: ReturnType<typeof createClient>
+): Promise<{ success: boolean; draft_id?: string; confidence?: string; fields_extracted?: number; error?: string }> {
+  const { data: item } = await client
+    .from('firecrawl_staged_items')
+    .select('*, firecrawl_sources(*)')
+    .eq('id', stagedItemId)
+    .single();
+
+  if (!item) return { success: false, error: 'Item not found' };
+  if (item.bucket !== 'single_recruitment') return { success: false, error: `Wrong bucket: ${item.bucket}` };
+  if (!item.extracted_markdown) return { success: false, error: 'No scraped content' };
+
+  await client.from('firecrawl_staged_items').update({ extraction_status: 'extracting' }).eq('id', stagedItemId);
+
+  try {
+    const source = item.firecrawl_sources as any;
+    const cleanResult = cleanScrapedContent(item.extracted_markdown);
+    const linkInfos = cleanResult.extractedLinks.map(l => ({ text: l.text, url: l.url, context: l.context }));
+    const extraction = extractFields(cleanResult.cleanedText, linkInfos, item.page_title, item.page_url);
+
+    const { data: draft, error: draftError } = await client
+      .from('firecrawl_draft_jobs')
+      .upsert({
+        staged_item_id: stagedItemId,
+        firecrawl_source_id: item.firecrawl_source_id,
+        source_name: source?.source_name || null,
+        source_url: item.page_url,
+        source_seed_url: source?.seed_url || null,
+        source_page_url: item.discovered_from_url,
+        source_bucket: item.bucket,
+        ...extraction.fields,
+        extraction_confidence: extraction.confidence,
+        fields_extracted: extraction.fields_extracted,
+        fields_missing: extraction.fields_missing,
+        extraction_warnings: extraction.warnings,
+        raw_scraped_text: item.extracted_markdown.substring(0, 200_000),
+        raw_links_found: (item.extracted_links || []).slice(0, 500),
+        extracted_raw_fields: extraction.raw_fields,
+        cleaning_log: cleanResult.cleaningLog,
+        status: 'draft',
+      }, { onConflict: 'staged_item_id' })
+      .select('id')
+      .single();
+
+    if (draftError) {
+      await client.from('firecrawl_staged_items').update({ extraction_status: 'failed' }).eq('id', stagedItemId);
+      return { success: false, error: draftError.message };
+    }
+
+    await client.from('firecrawl_staged_items').update({ extraction_status: 'extracted' }).eq('id', stagedItemId);
+    return { success: true, draft_id: draft.id, confidence: extraction.confidence, fields_extracted: extraction.fields_extracted };
+  } catch (e) {
+    await client.from('firecrawl_staged_items').update({ extraction_status: 'failed' }).eq('id', stagedItemId);
+    return { success: false, error: e instanceof Error ? e.message : String(e) };
+  }
 }
 
 // ============ Helpers ============

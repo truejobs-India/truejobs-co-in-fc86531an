@@ -56,6 +56,12 @@ export function RssSourcesTab() {
   const [importing, setImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [showBulkUrls, setShowBulkUrls] = useState(false);
+  const [bulkUrlText, setBulkUrlText] = useState('');
+  const [bulkAdding, setBulkAdding] = useState(false);
+  const [bulkPriority, setBulkPriority] = useState('Medium');
+  const [bulkStatus, setBulkStatus] = useState('Testing');
+
   const fetchSources = useCallback(async () => {
     setLoading(true);
     let query = supabase.from('rss_sources' as any).select('*').order('created_at', { ascending: false });

@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
-import { Plus, Play, TestTube, Upload, Zap, ExternalLink, RefreshCw, Search, Pencil, Rss } from 'lucide-react';
+import { Plus, Play, TestTube, Upload, Zap, ExternalLink, RefreshCw, Search, Pencil, Rss, ListPlus } from 'lucide-react';
 import type { RssSource } from './rssTypes';
 import { RSS_PRIORITIES, RSS_STATUSES } from './rssTypes';
 
@@ -55,6 +55,12 @@ export function RssSourcesTab() {
   const [importText, setImportText] = useState('');
   const [importing, setImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [showBulkUrls, setShowBulkUrls] = useState(false);
+  const [bulkUrlText, setBulkUrlText] = useState('');
+  const [bulkAdding, setBulkAdding] = useState(false);
+  const [bulkPriority, setBulkPriority] = useState('Medium');
+  const [bulkStatus, setBulkStatus] = useState('Testing');
 
   const fetchSources = useCallback(async () => {
     setLoading(true);
@@ -258,6 +264,7 @@ export function RssSourcesTab() {
           <CardTitle className="flex items-center gap-2"><Rss className="h-5 w-5" /> RSS Sources</CardTitle>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" onClick={openAdd}><Plus className="h-4 w-4 mr-1" /> Add Source</Button>
+            <Button size="sm" variant="outline" onClick={() => setShowBulkUrls(true)}><ListPlus className="h-4 w-4 mr-1" /> Bulk Add URLs</Button>
             <Button size="sm" variant="outline" onClick={() => setShowImport(true)}><Upload className="h-4 w-4 mr-1" /> Import CSV</Button>
             <Button size="sm" variant="outline" onClick={handleRunDue} disabled={runningDue}>
               <Zap className="h-4 w-4 mr-1" /> {runningDue ? 'Running...' : 'Run Due Sources'}
@@ -466,6 +473,119 @@ export function RssSourcesTab() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowImport(false)}>Cancel</Button>
             <Button onClick={handleImport} disabled={importing || !importText.trim()}>{importing ? 'Importing...' : 'Import'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Add URLs Dialog */}
+      <Dialog open={showBulkUrls} onOpenChange={setShowBulkUrls}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>Bulk Add RSS Source URLs</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Paste up to 100 feed URLs, one per line. Source names will be auto-generated from the domain.
+            </p>
+            <Textarea
+              value={bulkUrlText}
+              onChange={(e) => setBulkUrlText(e.target.value)}
+              rows={12}
+              placeholder={"https://example.gov.in/rss/jobs.xml\nhttps://another-site.org/feed\nhttps://..."}
+            />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Default Priority</Label>
+                <Select value={bulkPriority} onValueChange={setBulkPriority}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {RSS_PRIORITIES.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">Default Status</Label>
+                <Select value={bulkStatus} onValueChange={setBulkStatus}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {RSS_STATUSES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            {bulkUrlText.trim() && (
+              <p className="text-xs text-muted-foreground">
+                {(() => {
+                  const count = bulkUrlText.trim().split('\n').filter(l => l.trim()).length;
+                  return count > 100
+                    ? <span className="text-destructive font-medium">⚠ {count} URLs detected — max 100 allowed</span>
+                    : `${count} URL${count !== 1 ? 's' : ''} detected`;
+                })()}
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowBulkUrls(false)}>Cancel</Button>
+            <Button
+              onClick={async () => {
+                const lines = bulkUrlText.trim().split('\n').map(l => l.trim()).filter(Boolean);
+                if (lines.length === 0) {
+                  toast({ title: 'No URLs', description: 'Paste at least one URL', variant: 'destructive' });
+                  return;
+                }
+                if (lines.length > 100) {
+                  toast({ title: 'Too many URLs', description: 'Maximum 100 URLs allowed per batch', variant: 'destructive' });
+                  return;
+                }
+                // Validate URLs
+                const invalid: string[] = [];
+                const valid: string[] = [];
+                for (const line of lines) {
+                  try {
+                    const u = new URL(line);
+                    if (!['http:', 'https:'].includes(u.protocol)) throw new Error();
+                    valid.push(line);
+                  } catch {
+                    invalid.push(line);
+                  }
+                }
+                if (invalid.length > 0) {
+                  toast({ title: 'Invalid URLs found', description: `${invalid.length} invalid URL(s): ${invalid.slice(0, 3).join(', ')}${invalid.length > 3 ? '...' : ''}`, variant: 'destructive' });
+                  return;
+                }
+                setBulkAdding(true);
+                try {
+                  const payloads = valid.map(url => {
+                    const hostname = new URL(url).hostname.replace(/^www\./, '');
+                    const nameParts = hostname.split('.').slice(0, -1);
+                    const sourceName = nameParts.join(' ').replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) || hostname;
+                    return {
+                      source_name: sourceName,
+                      feed_url: url,
+                      official_site: `https://${hostname}`,
+                      source_type: 'rss',
+                      priority: bulkPriority,
+                      status: bulkStatus,
+                      fetch_enabled: true,
+                      check_interval_hours: 6,
+                    };
+                  });
+                  const { error, data } = await supabase.from('rss_sources' as any).insert(payloads).select('id');
+                  if (error) {
+                    toast({ title: 'Error', description: error.message, variant: 'destructive' });
+                  } else {
+                    toast({ title: 'Bulk Add Complete', description: `${(data as any[])?.length || valid.length} sources added successfully` });
+                    setShowBulkUrls(false);
+                    setBulkUrlText('');
+                    fetchSources();
+                  }
+                } catch (e: any) {
+                  toast({ title: 'Error', description: e.message, variant: 'destructive' });
+                }
+                setBulkAdding(false);
+              }}
+              disabled={bulkAdding || !bulkUrlText.trim()}
+            >
+              {bulkAdding ? 'Adding...' : 'Add All'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

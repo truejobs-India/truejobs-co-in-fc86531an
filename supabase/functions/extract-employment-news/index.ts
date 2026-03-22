@@ -91,12 +91,19 @@ async function callAI(
 
   if (resolved.provider === 'vertex-ai') {
     const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-    const rawText = await callVertexGemini(resolved.modelId, fullPrompt, resolved.timeout, {
-      responseMimeType: 'application/json',
-      temperature: 0.1,
-      maxOutputTokens: 4096,
-    });
-    return JSON.parse(rawText);
+    try {
+      const rawText = await callVertexGemini(resolved.modelId, fullPrompt, resolved.timeout, {
+        responseMimeType: 'application/json',
+        temperature: 0.1,
+        maxOutputTokens: 4096,
+      });
+      return JSON.parse(rawText);
+    } catch (err: any) {
+      if (err.message?.includes('404') || err.message?.includes('NOT_FOUND')) {
+        throw new Error(`Model "${resolved.modelId}" is not available in your GCP project. Try a different model.`);
+      }
+      throw err;
+    }
   }
 
   if (resolved.provider === 'lovable-gateway') {

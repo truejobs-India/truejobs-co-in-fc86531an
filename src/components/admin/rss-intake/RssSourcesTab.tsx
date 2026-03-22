@@ -157,6 +157,17 @@ export function RssSourcesTab() {
     fetchSources();
   };
 
+  const handleDeleteSource = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    const { error } = await supabase.from('rss_sources' as any).delete().eq('id', deleteTarget.id);
+    if (error) toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    else toast({ title: 'Deleted', description: `${deleteTarget.source_name} deleted` });
+    setDeleting(false);
+    setDeleteTarget(null);
+    fetchSources();
+  };
+
   const handleTest = async (src: RssSource) => {
     setTesting(src.id);
     try {

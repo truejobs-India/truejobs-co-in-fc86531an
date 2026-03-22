@@ -382,7 +382,12 @@ async function generateViaVertexDirectImage(
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 
-  const url = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${vertexModelId}:generateContent`;
+  const isGemini3 = vertexModelId.startsWith('gemini-3');
+  const apiVersion = isGemini3 ? 'v1beta1' : 'v1';
+  const loc = isGemini3 ? 'global' : location;
+  const host = isGemini3 ? 'aiplatform.googleapis.com' : `${location}-aiplatform.googleapis.com`;
+  const url = `https://${host}/${apiVersion}/projects/${projectId}/locations/${loc}/publishers/google/models/${vertexModelId}:generateContent`;
+  console.log(`[vertex-direct-image] endpoint: ${url}`);
 
   let resp: Response | null = null;
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {

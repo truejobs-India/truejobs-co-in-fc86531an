@@ -254,9 +254,11 @@ async function callAI(
     const text = json.content?.[0]?.text || '{"jobs":[]}';
     if (json.stop_reason === 'max_tokens') {
       console.warn(`[${requestId}] Anthropic response truncated, attempting JSON repair`);
-      return repairTruncatedJson(text);
+      return repairTruncatedJson(text, requestId);
     }
-    return JSON.parse(text);
+    try { return JSON.parse(text); } catch {
+      return repairTruncatedJson(text, requestId);
+    }
   }
 
   if (resolved.provider === 'bedrock') {

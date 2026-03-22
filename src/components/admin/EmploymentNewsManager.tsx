@@ -795,8 +795,17 @@ export function EmploymentNewsManager() {
                       >
                         {b.issue_details || b.filename}
                         <span className="ml-1 opacity-70">({b.total_extracted})</span>
-                        {b.status === 'processing' && <Loader2 className="ml-1 h-3 w-3 animate-spin" />}
-                        {b.status === 'complete' && <CheckCircle className="ml-1 h-3 w-3 text-green-600" />}
+                        {b.extraction_status === 'extracting' && (
+                          <span className="ml-1 text-muted-foreground">
+                            <Loader2 className="inline h-3 w-3 animate-spin mr-0.5" />
+                            {b.completed_chunks}/{b.total_chunks}
+                          </span>
+                        )}
+                        {b.extraction_status === 'partial' && (
+                          <span className="ml-1 text-orange-600">⚠ {b.completed_chunks}/{b.total_chunks}</span>
+                        )}
+                        {b.extraction_status === 'completed' && <CheckCircle className="ml-1 h-3 w-3 text-green-600" />}
+                        {b.extraction_status === 'failed' && <XCircle className="ml-1 h-3 w-3 text-destructive" />}
                       </Badge>
                       <Button
                         variant="outline"

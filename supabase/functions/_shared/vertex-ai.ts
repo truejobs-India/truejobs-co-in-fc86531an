@@ -78,6 +78,14 @@ export interface VertexGeminiOptions {
  * @param timeoutMs - request timeout (default 60s)
  * @param options - generation config overrides
  */
+/** Build the correct Vertex endpoint — Gemini 3.x uses global, 2.x uses regional */
+function getVertexEndpoint(model: string, projectId: string, location: string): string {
+  const isGlobal = model.startsWith('gemini-3');
+  const host = isGlobal ? 'global-aiplatform.googleapis.com' : `${location}-aiplatform.googleapis.com`;
+  const loc = isGlobal ? 'global' : location;
+  return `https://${host}/v1/projects/${projectId}/locations/${loc}/publishers/google/models/${model}:generateContent`;
+}
+
 export async function callVertexGemini(
   model: string,
   prompt: string,
@@ -90,7 +98,7 @@ export async function callVertexGemini(
 
   const accessToken = await getVertexAccessToken();
 
-  const url = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${model}:generateContent`;
+  const url = getVertexEndpoint(model, projectId, location);
 
   // Note: controller & timer are created per-attempt inside the loop below
 

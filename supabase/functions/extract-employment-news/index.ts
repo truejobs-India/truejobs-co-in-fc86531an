@@ -22,7 +22,7 @@ function sanitizeText(raw: string): string {
     .trim();
 }
 
-// ── Model resolution: UI key → { provider, modelId, timeout } ──
+// ── Model resolution ──
 interface ResolvedModel {
   provider: 'vertex-ai' | 'lovable-gateway' | 'groq' | 'anthropic' | 'bedrock';
   modelId: string;
@@ -31,20 +31,16 @@ interface ResolvedModel {
 
 function resolveModel(aiModel: string | undefined): ResolvedModel {
   switch (aiModel) {
-    // Vertex AI direct models
     case 'vertex-flash':
       return { provider: 'vertex-ai', modelId: 'gemini-2.5-flash', timeout: 90_000 };
     case 'vertex-pro':
       return { provider: 'vertex-ai', modelId: 'gemini-2.5-pro', timeout: 120_000 };
-    // Gemini 3.x preview models — direct Vertex AI (global endpoint)
     case 'vertex-3.1-pro':
       return { provider: 'vertex-ai', modelId: 'gemini-3.1-pro-preview', timeout: 90_000 };
     case 'vertex-3-flash':
       return { provider: 'vertex-ai', modelId: 'gemini-3-flash-preview', timeout: 90_000 };
     case 'vertex-3.1-flash-lite':
       return { provider: 'vertex-ai', modelId: 'gemini-3.1-flash-lite-preview', timeout: 60_000 };
-
-    // Lovable AI Gateway models
     case 'gemini-flash':
       return { provider: 'lovable-gateway', modelId: 'google/gemini-2.5-flash', timeout: 90_000 };
     case 'gemini-pro':
@@ -55,79 +51,293 @@ function resolveModel(aiModel: string | undefined): ResolvedModel {
       return { provider: 'lovable-gateway', modelId: 'openai/gpt-5', timeout: 120_000 };
     case 'gpt5-mini':
       return { provider: 'lovable-gateway', modelId: 'openai/gpt-5-mini', timeout: 90_000 };
-
-    // Groq
-    case 'groq': {
+    case 'groq':
       return { provider: 'groq', modelId: 'llama-3.3-70b-versatile', timeout: 60_000 };
-    }
-
-    // Anthropic
     case 'claude-sonnet':
       return { provider: 'anthropic', modelId: 'claude-sonnet-4-20250514', timeout: 120_000 };
-
-    // Bedrock
     case 'nova-pro':
       return { provider: 'bedrock', modelId: 'us.amazon.nova-pro-v1:0', timeout: 90_000 };
     case 'nova-premier':
       return { provider: 'bedrock', modelId: 'us.amazon.nova-premier-v1:0', timeout: 120_000 };
     case 'mistral':
       return { provider: 'bedrock', modelId: 'eu.mistral.mistral-large-2411-v1:0', timeout: 90_000 };
-
-    // Default: Vertex Flash (safest for structured extraction)
     default:
       return { provider: 'vertex-ai', modelId: 'gemini-2.5-flash', timeout: 90_000 };
   }
 }
 
-// ── Truncated JSON repair ──
-function repairTruncatedJson(raw: string, requestId: string): { jobs: any[]; repaired: boolean } {
-  try { return { jobs: JSON.parse(raw).jobs || [], repaired: false }; } catch {}
+// ══════════════════════════════════════════════════════════════
+// CENTRALIZED PARSER PIPELINE
+// ══════════════════════════════════════════════════════════════
 
+interface ParseMeta {
+  rawLength: number;
+  hadCodeFence: boolean;
+  hadProse: boolean;
+  strictParseOk: boolean;
+  repairAttempted: boolean;
+  repairSucceeded: boolean;
+  retryTriggered: boolean;
+  recoveredCount: number;
+  rejectedCount: number;
+  skipped: boolean;
+  reason?: string;
+  finishReason?: string;
+  provider?: string;
+  model?: string;
+  chunkIndex?: number;
+}
+
+interface ParseResult {
+  jobs: any[];
+  parseMeta: ParseMeta;
+}
+
+const PLACEHOLDER_VALUES = new Set([
+  'n/a', 'na', 'unknown', '-', '--', '---', 'nil', 'none',
+  'not available', 'tbd', '...', 'not specified', 'not mentioned',
+  'not applicable', 'to be announced', 'varies',
+]);
+
+function cleanStr(v: any): string | null {
+  if (typeof v !== 'string') return null;
+  const t = v.trim();
+  if (t.length === 0 || PLACEHOLDER_VALUES.has(t.toLowerCase())) return null;
+  return t;
+}
+
+function looksLikeUrl(v: any): boolean {
+  if (typeof v !== 'string') return false;
+  const t = v.trim();
+  return /^https?:\/\/.{4,}/.test(t);
+}
+
+function normalizeJobFields(obj: any): void {
+  if (typeof obj !== 'object' || obj === null) return;
+  if (!obj.post && obj.title) obj.post = obj.title;
+  if (!obj.org_name && obj.organization) obj.org_name = obj.organization;
+  if (!obj.org_name && obj.organisation) obj.org_name = obj.organisation;
+  if (!obj.apply_link && obj.source_url) obj.apply_link = obj.source_url;
+  if (!obj.apply_link && obj.url) obj.apply_link = obj.url;
+}
+
+function isValidJob(obj: any): boolean {
+  if (typeof obj !== 'object' || obj === null) return false;
+  normalizeJobFields(obj);
+  const post = cleanStr(obj.post);
+  if (!post) return false;
+  const org = cleanStr(obj.org_name);
+  if (org) return true;
+  // Accept if has a valid URL even without org_name
+  if (looksLikeUrl(obj.apply_link)) return true;
+  if (looksLikeUrl(obj.source)) return true;
+  return false;
+}
+
+// Step 1: Unwrap markdown code fences
+function stripCodeFences(raw: string): { text: string; found: boolean } {
+  const fenceRegex = /```(?:json|JSON)?\s*\n?([\s\S]*?)```/;
+  const match = raw.match(fenceRegex);
+  if (match) return { text: match[1].trim(), found: true };
+  return { text: raw, found: false };
+}
+
+// Step 2: Extract JSON block using prioritized strategies
+function extractJsonBlock(raw: string): { text: string; hadProse: boolean } {
+  const trimmed = raw.trim();
+
+  // Strategy A: Find {"jobs": [...]} pattern
+  const jobsPatternIdx = trimmed.search(/"jobs"\s*:\s*\[/);
+  if (jobsPatternIdx >= 0) {
+    // Walk backwards to find the opening {
+    let openBrace = trimmed.lastIndexOf('{', jobsPatternIdx);
+    if (openBrace >= 0) {
+      const candidate = extractBalancedBlock(trimmed, openBrace);
+      if (candidate) {
+        return { text: candidate, hadProse: openBrace > 0 || candidate.length < trimmed.length };
+      }
+    }
+  }
+
+  // Strategy B: Find largest balanced {} block
+  let largest = '';
+  for (let i = 0; i < trimmed.length; i++) {
+    if (trimmed[i] === '{') {
+      const block = extractBalancedBlock(trimmed, i);
+      if (block && block.length > largest.length) largest = block;
+    }
+  }
+  if (largest.length > 10) {
+    return { text: largest, hadProse: largest.length < trimmed.length };
+  }
+
+  // Strategy C: Fallback — first { to last }
+  const firstBrace = trimmed.indexOf('{');
+  const lastBrace = trimmed.lastIndexOf('}');
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    return {
+      text: trimmed.slice(firstBrace, lastBrace + 1),
+      hadProse: firstBrace > 0 || lastBrace < trimmed.length - 1,
+    };
+  }
+
+  return { text: trimmed, hadProse: false };
+}
+
+function extractBalancedBlock(text: string, start: number): string | null {
+  if (text[start] !== '{') return null;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (escaped) { escaped = false; continue; }
+    if (ch === '\\' && inString) { escaped = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
+  }
+  return null; // unbalanced
+}
+
+// Step 3: Repair truncated JSON — recover complete job objects
+function repairTruncatedJson(raw: string, requestId: string): { jobs: any[]; repaired: boolean } {
   const text = raw.trim();
   const jobsMatch = text.match(/"jobs"\s*:\s*\[/);
   if (!jobsMatch) {
-    console.warn(`[${requestId}] JSON repair: no jobs array found, returning empty`);
+    // Try to parse as a bare array
+    const arrayMatch = text.match(/^\s*\[/);
+    if (arrayMatch) {
+      const completeObjects = extractCompleteObjects(text.slice(1));
+      if (completeObjects.length > 0) {
+        console.log(`[${requestId}] Repair: recovered ${completeObjects.length} from bare array`);
+        return { jobs: completeObjects, repaired: true };
+      }
+    }
+    console.warn(`[${requestId}] Repair: no jobs array found`);
     return { jobs: [], repaired: true };
   }
 
   const arrayStart = text.indexOf('[', jobsMatch.index!);
   const afterArray = text.slice(arrayStart + 1);
-  const completeObjects: string[] = [];
+  const completeObjects = extractCompleteObjects(afterArray);
+
+  if (completeObjects.length === 0) {
+    console.warn(`[${requestId}] Repair: no complete objects recovered`);
+    return { jobs: [], repaired: true };
+  }
+
+  console.log(`[${requestId}] Repair: recovered ${completeObjects.length} complete objects`);
+  return { jobs: completeObjects, repaired: true };
+}
+
+function extractCompleteObjects(text: string): any[] {
+  const results: any[] = [];
   let depth = 0;
   let objStart = -1;
-
-  for (let i = 0; i < afterArray.length; i++) {
-    const ch = afterArray[i];
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
     if (ch === '{' && depth === 0) { objStart = i; depth = 1; }
     else if (ch === '{') depth++;
     else if (ch === '}') {
       depth--;
       if (depth === 0 && objStart >= 0) {
-        const candidate = afterArray.slice(objStart, i + 1);
-        try { JSON.parse(candidate); completeObjects.push(candidate); } catch {}
+        const candidate = text.slice(objStart, i + 1);
+        try { results.push(JSON.parse(candidate)); } catch { /* skip malformed */ }
         objStart = -1;
       }
     }
   }
-
-  if (completeObjects.length === 0) {
-    console.warn(`[${requestId}] JSON repair: no complete job objects recovered, returning empty`);
-    return { jobs: [], repaired: true };
-  }
-
-  const repaired = `{"jobs":[${completeObjects.join(',')}]}`;
-  const parsed = JSON.parse(repaired);
-  console.log(`[${requestId}] JSON repair succeeded, recovered ${parsed.jobs.length} jobs`);
-  return { jobs: parsed.jobs, repaired: true };
+  return results;
 }
 
-// ── AI call dispatcher ──
+// Main centralized parser — NEVER throws
+function parseAIResponse(rawText: string, requestId: string): ParseResult {
+  const meta: ParseMeta = {
+    rawLength: rawText?.length ?? 0,
+    hadCodeFence: false,
+    hadProse: false,
+    strictParseOk: false,
+    repairAttempted: false,
+    repairSucceeded: false,
+    retryTriggered: false,
+    recoveredCount: 0,
+    rejectedCount: 0,
+    skipped: false,
+  };
+
+  if (!rawText || rawText.trim().length === 0) {
+    meta.skipped = true;
+    meta.reason = 'Empty AI response';
+    return { jobs: [], parseMeta: meta };
+  }
+
+  // Step 1: Unwrap code fences
+  const { text: unfenced, found: hadFence } = stripCodeFences(rawText);
+  meta.hadCodeFence = hadFence;
+
+  // Step 2: Extract JSON block
+  const { text: jsonCandidate, hadProse } = extractJsonBlock(unfenced);
+  meta.hadProse = hadProse;
+
+  // Step 3: Strict parse
+  let allJobs: any[] = [];
+  try {
+    const parsed = JSON.parse(jsonCandidate);
+    meta.strictParseOk = true;
+    allJobs = Array.isArray(parsed?.jobs) ? parsed.jobs
+            : Array.isArray(parsed) ? parsed
+            : [];
+  } catch {
+    // Step 4: Repair
+    meta.repairAttempted = true;
+    const { jobs: repairedJobs, repaired } = repairTruncatedJson(unfenced, requestId);
+    meta.repairSucceeded = repaired && repairedJobs.length > 0;
+    allJobs = repairedJobs;
+  }
+
+  // Step 5: Validate each job
+  const validJobs: any[] = [];
+  let rejected = 0;
+  for (const job of allJobs) {
+    if (isValidJob(job)) {
+      validJobs.push(job);
+    } else {
+      rejected++;
+    }
+  }
+
+  meta.recoveredCount = validJobs.length;
+  meta.rejectedCount = rejected;
+
+  if (validJobs.length === 0 && allJobs.length > 0) {
+    meta.reason = `All ${allJobs.length} extracted objects failed validation`;
+  } else if (validJobs.length === 0) {
+    meta.reason = meta.strictParseOk ? 'Parsed successfully but no job objects found' : 'Could not parse AI response';
+  }
+
+  return { jobs: validJobs, parseMeta: meta };
+}
+
+// ══════════════════════════════════════════════════════════════
+// AI CALL — returns raw text only, never parses JSON
+// ══════════════════════════════════════════════════════════════
+
+interface AIRawResult {
+  rawText: string;
+  finishReason: string | null;
+}
+
 async function callAI(
   resolved: ResolvedModel,
   systemPrompt: string,
   userContent: string,
   requestId: string,
-): Promise<{ jobs: any[] }> {
+): Promise<AIRawResult> {
   const fullPrompt = `${systemPrompt}\n\n${userContent}`;
   const maxTokens = 8192;
   console.log(`[${requestId}] AI call | provider=${resolved.provider} | model=${resolved.modelId} | prompt_len=${fullPrompt.length} | maxTokens=${maxTokens}`);
@@ -140,22 +350,18 @@ async function callAI(
         temperature: 0.1,
         maxOutputTokens: maxTokens,
       });
-      if (finishReason === 'length' || finishReason === 'MAX_TOKENS') {
-        console.warn(`[${requestId}] Vertex response truncated (finishReason=${finishReason}, len=${rawText.length}), attempting JSON repair`);
-        return repairTruncatedJson(rawText, requestId);
-      }
-      try { return JSON.parse(rawText); } catch {
-        console.warn(`[${requestId}] Vertex JSON parse failed, attempting repair`);
-        return repairTruncatedJson(rawText, requestId);
-      }
+      return { rawText: rawText ?? '', finishReason: finishReason ?? null };
     } catch (err: any) {
       if (err.name === 'AbortError' || err.message?.includes('signal has been aborted') || err.message?.includes('aborted')) {
-        console.error(`[${requestId}] Vertex AI timeout for model=${resolved.modelId} after ${resolved.timeout}ms`);
-        throw new Error(`AI model "${resolved.modelId}" timed out after ${Math.round(resolved.timeout / 1000)}s. Try a faster model (e.g. vertex-3-flash or vertex-flash) or reduce document size.`);
+        throw new Error(`AI model "${resolved.modelId}" timed out after ${Math.round(resolved.timeout / 1000)}s. Try a faster model or reduce document size.`);
       }
       if (err.message?.includes('404') || err.message?.includes('NOT_FOUND')) {
-        console.error(`[${requestId}] Vertex 404 for model=${resolved.modelId}: ${err.message?.substring(0, 300)}`);
-        throw new Error(`Model "${resolved.modelId}" returned 404 from Vertex AI. Ensure the model is enabled in your GCP project's Model Garden and the service account has Vertex AI User role.`);
+        throw new Error(`Model "${resolved.modelId}" returned 404 from Vertex AI.`);
+      }
+      // Safety block or other non-infrastructure error → return empty
+      if (err.message?.includes('SAFETY') || err.message?.includes('blocked') || err.message?.includes('RECITATION')) {
+        console.warn(`[${requestId}] Vertex response blocked: ${err.message?.substring(0, 200)}`);
+        return { rawText: '', finishReason: 'blocked' };
       }
       throw err;
     }
@@ -179,20 +385,13 @@ async function callAI(
       }),
     });
     if (!resp.ok) {
-      const errText = await resp.text();
+      const errText = await resp.text().catch(() => 'unknown');
       throw new Error(`Gateway error (${resp.status}): ${errText}`);
     }
-    const json = await resp.json();
-    const content = json.choices?.[0]?.message?.content;
-    const finish = json.choices?.[0]?.finish_reason;
-    if (!content) throw new Error('No content in gateway response');
-    if (finish === 'length') {
-      console.warn(`[${requestId}] Gateway response truncated, attempting JSON repair`);
-      return repairTruncatedJson(content, requestId);
-    }
-    try { return JSON.parse(content); } catch {
-      return repairTruncatedJson(content, requestId);
-    }
+    const json = await resp.json().catch(() => null);
+    const content = json?.choices?.[0]?.message?.content ?? '';
+    const finish = json?.choices?.[0]?.finish_reason ?? null;
+    return { rawText: typeof content === 'string' ? content : '', finishReason: finish };
   }
 
   if (resolved.provider === 'groq') {
@@ -213,19 +412,13 @@ async function callAI(
       }),
     });
     if (!resp.ok) {
-      const errText = await resp.text();
+      const errText = await resp.text().catch(() => 'unknown');
       throw new Error(`Groq error (${resp.status}): ${errText}`);
     }
-    const json = await resp.json();
-    const content = json.choices?.[0]?.message?.content || '{"jobs":[]}';
-    const finish = json.choices?.[0]?.finish_reason;
-    if (finish === 'length') {
-      console.warn(`[${requestId}] Groq response truncated, attempting JSON repair`);
-      return repairTruncatedJson(content, requestId);
-    }
-    try { return JSON.parse(content); } catch {
-      return repairTruncatedJson(content, requestId);
-    }
+    const json = await resp.json().catch(() => null);
+    const content = json?.choices?.[0]?.message?.content ?? '';
+    const finish = json?.choices?.[0]?.finish_reason ?? null;
+    return { rawText: typeof content === 'string' ? content : '', finishReason: finish };
   }
 
   if (resolved.provider === 'anthropic') {
@@ -247,39 +440,32 @@ async function callAI(
       }),
     });
     if (!resp.ok) {
-      const errText = await resp.text();
+      const errText = await resp.text().catch(() => 'unknown');
       throw new Error(`Anthropic error (${resp.status}): ${errText}`);
     }
-    const json = await resp.json();
-    const text = json.content?.[0]?.text || '{"jobs":[]}';
-    if (json.stop_reason === 'max_tokens') {
-      console.warn(`[${requestId}] Anthropic response truncated, attempting JSON repair`);
-      return repairTruncatedJson(text, requestId);
-    }
-    try { return JSON.parse(text); } catch {
-      return repairTruncatedJson(text, requestId);
-    }
+    const json = await resp.json().catch(() => null);
+    const text = json?.content?.[0]?.text ?? '';
+    const finish = json?.stop_reason ?? null;
+    return { rawText: typeof text === 'string' ? text : '', finishReason: finish };
   }
 
   if (resolved.provider === 'bedrock') {
     const { callVertexGeminiWithMeta } = await import('../_shared/vertex-ai.ts');
     console.warn(`[${requestId}] Bedrock not directly supported, falling back to vertex-flash`);
-    const { text: rawText, finishReason } = await callVertexGeminiWithMeta('gemini-2.5-flash', `${systemPrompt}\n\n${userContent}`, 90_000, {
+    const { text: rawText, finishReason } = await callVertexGeminiWithMeta('gemini-2.5-flash', fullPrompt, 90_000, {
       responseMimeType: 'application/json',
       temperature: 0.1,
       maxOutputTokens: maxTokens,
     });
-    if (finishReason === 'length' || finishReason === 'MAX_TOKENS') {
-      console.warn(`[${requestId}] Bedrock fallback truncated, attempting JSON repair`);
-      return repairTruncatedJson(rawText, requestId);
-    }
-    try { return JSON.parse(rawText); } catch {
-      return repairTruncatedJson(rawText, requestId);
-    }
+    return { rawText: rawText ?? '', finishReason: finishReason ?? null };
   }
 
   throw new Error(`Unsupported provider: ${resolved.provider}`);
 }
+
+// ══════════════════════════════════════════════════════════════
+// MAIN HANDLER
+// ══════════════════════════════════════════════════════════════
 
 serve(async (req) => {
   if (req.method === "OPTIONS")
@@ -330,15 +516,15 @@ serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
 
-    // Resolve model from UI key
     const resolved = resolveModel(aiModel);
-    console.log(`[${requestId}] Model selection | ui_key=${aiModel || '(default)'} | provider=${resolved.provider} | final_model=${resolved.modelId}`);
+    const currentChunkIndex = typeof chunkIndex === 'number' ? chunkIndex : 0;
+    const currentTotalChunks = typeof totalChunks === 'number' ? totalChunks : 1;
+    console.log(`[${requestId}] Model: ${resolved.provider}/${resolved.modelId} | chunk=${currentChunkIndex + 1}/${currentTotalChunks}`);
 
     // Sanitize text
     const rawLen = text.length;
     const cleaned = sanitizeText(text);
-    const cleanedLen = cleaned.length;
-    console.log(`[${requestId}] Text | filename=${filename || 'unknown'} | raw=${rawLen} | cleaned=${cleanedLen} | reduction=${Math.round((1 - cleanedLen / rawLen) * 100)}%`);
+    console.log(`[${requestId}] Text | raw=${rawLen} | cleaned=${cleaned.length} | reduction=${Math.round((1 - cleaned.length / rawLen) * 100)}%`);
 
     // Create or reuse batch
     let currentBatchId = batchId;
@@ -370,6 +556,7 @@ serve(async (req) => {
       batchUploadedAt = existingBatch?.uploaded_at || new Date().toISOString();
     }
 
+    // ── System prompt ──
     const systemPrompt = `You are an expert at extracting government job notifications from Indian Employment News newspaper issues.
 
 Extract ALL job notifications from the following text. For each unique job advertisement, return a JSON object with these exact fields:
@@ -400,24 +587,80 @@ Extract ALL job notifications from the following text. For each unique job adver
 Return a JSON object with key "jobs" containing an array of all job objects.
 Return null for fields not found. Preserve relative date phrases as-is. Ignore articles, editorials, and non-job content. Clean OCR artifacts.`;
 
-    const parsed = await callAI(resolved, systemPrompt, cleaned, requestId);
+    // ── First AI call ──
+    const warnings: string[] = [];
+    const { rawText, finishReason } = await callAI(resolved, systemPrompt, cleaned, requestId);
 
-    const jobs = parsed.jobs || [];
-    console.log(`[${requestId}] AI returned ${jobs.length} jobs`);
+    if (finishReason === 'length' || finishReason === 'MAX_TOKENS') {
+      warnings.push('AI response was truncated (hit token limit)');
+    }
+
+    let parseResult = parseAIResponse(rawText, requestId);
+    parseResult.parseMeta.finishReason = finishReason ?? undefined;
+    parseResult.parseMeta.provider = resolved.provider;
+    parseResult.parseMeta.model = resolved.modelId;
+    parseResult.parseMeta.chunkIndex = currentChunkIndex;
+
+    // ── Single retry if zero valid jobs ──
+    if (parseResult.jobs.length === 0 && cleaned.length > 100) {
+      console.log(`[${requestId}] Zero valid jobs, retrying with strict prompt`);
+      parseResult.parseMeta.retryTriggered = true;
+      warnings.push('Initial parse yielded 0 valid jobs, retried with strict prompt');
+
+      const retryPrompt = `Return ONLY a valid JSON object with key "jobs" containing an array of job objects. No markdown fences. No explanation. No prose. Only pure JSON.
+
+Each job must have at minimum: "org_name" (string), "post" (string), "source": "Employment News".
+
+Extract all job notifications from this text:`;
+
+      try {
+        const { rawText: retryRaw } = await callAI(resolved, retryPrompt, cleaned, requestId);
+        const retryResult = parseAIResponse(retryRaw, requestId);
+        if (retryResult.jobs.length > 0) {
+          parseResult = retryResult;
+          parseResult.parseMeta.retryTriggered = true;
+          warnings.push(`Retry recovered ${retryResult.jobs.length} valid jobs`);
+        } else {
+          warnings.push('Retry also yielded 0 valid jobs');
+        }
+      } catch (retryErr: any) {
+        console.warn(`[${requestId}] Retry failed: ${retryErr.message?.substring(0, 200)}`);
+        warnings.push('Retry call failed');
+      }
+    }
+
+    if (parseResult.parseMeta.rejectedCount > 0) {
+      warnings.push(`${parseResult.parseMeta.rejectedCount} job(s) rejected during validation`);
+    }
+    if (parseResult.parseMeta.repairSucceeded) {
+      warnings.push(`JSON repair recovered ${parseResult.parseMeta.recoveredCount} job(s) from truncated output`);
+    }
+
+    // ── Structured chunk log ──
+    const pm = parseResult.parseMeta;
+    console.log(`[${requestId}] CHUNK_RESULT | provider=${pm.provider} | model=${pm.model} | chunk=${currentChunkIndex + 1}/${currentTotalChunks} | rawLen=${pm.rawLength} | finish=${pm.finishReason ?? 'unknown'} | fence=${pm.hadCodeFence} | prose=${pm.hadProse} | strictParse=${pm.strictParseOk} | repair=${pm.repairAttempted} | retry=${pm.retryTriggered} | valid=${pm.recoveredCount} | rejected=${pm.rejectedCount}`);
+
+    const jobs = parseResult.jobs;
+    const degraded = parseResult.parseMeta.retryTriggered || parseResult.parseMeta.repairAttempted || jobs.length === 0;
 
     if (jobs.length === 0) {
+      // No jobs but NOT a crash — return success with degraded flag
       return new Response(
         JSON.stringify({
+          ok: true,
+          degraded: true,
           batchId: currentBatchId,
           newCount: 0,
           updatedCount: 0,
-          message: "No jobs found in this chunk",
+          totalInChunk: 0,
+          warnings,
+          parseMeta: parseResult.parseMeta,
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Resolve relative dates
+    // ── Resolve relative dates ──
     const batchDate = new Date(batchUploadedAt);
     const resolveDate = (raw: string | null): string | null => {
       if (!raw) return null;
@@ -428,16 +671,16 @@ Return null for fields not found. Preserve relative date phrases as-is. Ignore a
       const daysMatch = raw.match(/within\s+(\d+)\s+days/i);
       if (daysMatch) {
         const days = parseInt(daysMatch[1]);
-        const resolved = new Date(batchDate);
-        resolved.setDate(resolved.getDate() + days);
-        return resolved.toISOString().split("T")[0];
+        const d = new Date(batchDate);
+        d.setDate(d.getDate() + days);
+        return d.toISOString().split("T")[0];
       }
       const weeksMatch = raw.match(/within\s+(\d+)\s+weeks/i);
       if (weeksMatch) {
         const weeks = parseInt(weeksMatch[1]);
-        const resolved = new Date(batchDate);
-        resolved.setDate(resolved.getDate() + weeks * 7);
-        return resolved.toISOString().split("T")[0];
+        const d = new Date(batchDate);
+        d.setDate(d.getDate() + weeks * 7);
+        return d.toISOString().split("T")[0];
       }
       const ddmmyyyy = raw.match(/(\d{1,2})[\/\.\-](\d{1,2})[\/\.\-](\d{4})/);
       if (ddmmyyyy) {
@@ -451,7 +694,7 @@ Return null for fields not found. Preserve relative date phrases as-is. Ignore a
       return null;
     };
 
-    // Upsert jobs
+    // ── Upsert jobs ──
     let newCount = 0;
     let updatedCount = 0;
 
@@ -505,15 +748,13 @@ Return null for fields not found. Preserve relative date phrases as-is. Ignore a
       }
     }
 
-    // Accumulate batch counts
+    // ── Update batch counters ──
     const { data: currentBatch } = await serviceClient
       .from("upload_batches")
       .select("total_extracted, new_count, updated_count, completed_chunks")
       .eq("id", currentBatchId)
       .single();
 
-    const currentChunkIndex = typeof chunkIndex === 'number' ? chunkIndex : 0;
-    const currentTotalChunks = typeof totalChunks === 'number' ? totalChunks : 1;
     const newCompletedChunks = (currentBatch?.completed_chunks || 0) + 1;
     const isLastChunk = newCompletedChunks >= currentTotalChunks;
 
@@ -534,10 +775,14 @@ Return null for fields not found. Preserve relative date phrases as-is. Ignore a
 
     return new Response(
       JSON.stringify({
+        ok: true,
+        degraded,
         batchId: currentBatchId,
         newCount,
         updatedCount,
         totalInChunk: jobs.length,
+        warnings,
+        parseMeta: parseResult.parseMeta,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

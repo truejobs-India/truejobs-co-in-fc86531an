@@ -358,6 +358,8 @@ export function EmploymentNewsManager() {
       let totalUpdated = 0;
       let completedChunks = 0;
       let stoppedEarly = false;
+      const chunkWarnings: string[] = [];
+      let degradedChunks = 0;
 
       for (let i = 0; i < chunks.length; i++) {
         setExtractProgress(p => ({ ...p, current: i + 1 }));
@@ -376,39 +378,61 @@ export function EmploymentNewsManager() {
           body: payload,
         });
 
-        // Handle 429 / rate limit gracefully with partial success
-        if (error || data?.error || data?.code === 'VERTEX_RATE_LIMITED') {
-          const isRateLimit = data?.code === 'VERTEX_RATE_LIMITED' || /429|rate.?limit/i.test(data?.error || error?.message || '');
+        // Infrastructure errors (network failure, no data at all)
+        if (error && !data) {
+          const errMsg = error instanceof Error ? error.message : 'Unknown error';
+          const isRateLimit = /429|rate.?limit/i.test(errMsg);
           if (isRateLimit && completedChunks > 0) {
             stoppedEarly = true;
             console.warn(`[extract] Rate limited after ${completedChunks}/${chunks.length} chunks`);
             break;
           }
-          // If first chunk fails or non-rate-limit error, throw
-          const errMsg = data?.error || (error instanceof Error ? error.message : 'Unknown error');
           throw new Error(errMsg);
         }
 
+        // Handled business error codes (rate limit, timeout)
+        if (data?.code === 'VERTEX_RATE_LIMITED' || data?.code === 'VERTEX_TIMEOUT') {
+          if (completedChunks > 0) {
+            stoppedEarly = true;
+            console.warn(`[extract] ${data.code} after ${completedChunks}/${chunks.length} chunks`);
+            break;
+          }
+          throw new Error(data?.error || `AI error: ${data?.code}`);
+        }
+
+        // Collect warnings from degraded extraction (not a crash)
+        if (Array.isArray(data?.warnings) && data.warnings.length > 0) {
+          chunkWarnings.push(...data.warnings.map((w: string) => `Chunk ${i + 1}: ${w}`));
+        }
+        if (data?.degraded) degradedChunks++;
+
+        // Accumulate counts safely
         if (!batchId && data?.batchId) batchId = data.batchId;
-        totalNew += data?.newCount || 0;
-        totalUpdated += data?.updatedCount || 0;
+        totalNew += data?.newCount ?? 0;
+        totalUpdated += data?.updatedCount ?? 0;
         completedChunks++;
         setExtractProgress(p => ({ ...p, newCount: totalNew, updatedCount: totalUpdated }));
 
-        // Throttle: wait between chunks to avoid Vertex rate limits
+        // Throttle between chunks
         if (i < chunks.length - 1) {
           await new Promise(r => setTimeout(r, INTER_CHUNK_DELAY_MS));
         }
       }
 
       if (stoppedEarly) {
-        // Mark batch as partial in DB
         if (batchId) {
           await supabase.from('upload_batches').update({ extraction_status: 'partial' }).eq('id', batchId);
         }
         toast({
           title: 'Partial Extraction',
           description: `Extracted ${totalNew} new, ${totalUpdated} updated from ${completedChunks}/${chunks.length} chunks. AI was rate-limited — remaining chunks can be retried by re-uploading.`,
+        });
+      } else if (chunkWarnings.length > 0) {
+        const warnSummary = chunkWarnings.slice(0, 3).join('; ');
+        const extra = chunkWarnings.length > 3 ? ` (+${chunkWarnings.length - 3} more)` : '';
+        toast({
+          title: 'Extraction Completed with Warnings',
+          description: `${totalNew} new, ${totalUpdated} updated. ${degradedChunks} chunk(s) degraded. ${warnSummary}${extra}`,
         });
       } else {
         toast({

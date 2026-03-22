@@ -1,11 +1,13 @@
 /**
  * Source 3: Firecrawl Ingest Edge Function
- * Phase 2 — Discovery + Bucketing. Supports:
+ * Phase 3 — Discovery + Bucketing + Field Extraction. Supports:
  *   - test-source: scrape a single source and return preview
  *   - list-sources: list all registered Firecrawl sources
  *   - run-source: scrape + stage seed page content
  *   - discover-source: scrape seed → extract links → filter → classify → stage candidates
  *   - source-stats: get discovery statistics for a source
+ *   - extract-item: clean + extract fields from a single staged recruitment item → draft job
+ *   - extract-batch: extract fields from multiple staged recruitment items for a source
  *
  * Completely isolated from Source 1 (rss-ingest) and Source 2 (Employment News).
  */
@@ -14,6 +16,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { scrapePage, mapUrl, generateContentHash } from '../_shared/firecrawl/client.ts';
 import { normalizeUrl, filterAndClassifyUrls, type UrlFilterConfig } from '../_shared/firecrawl/url-filter.ts';
 import { classifyPage, type PageBucket } from '../_shared/firecrawl/page-classifier.ts';
+import { cleanScrapedContent } from '../_shared/firecrawl/content-cleaner.ts';
+import { extractFields } from '../_shared/firecrawl/field-extractor.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',

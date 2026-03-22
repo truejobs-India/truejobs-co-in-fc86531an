@@ -188,7 +188,8 @@ export function UnresolvedSeoResolver() {
           const status = normalizeStatus(d.status);
           if (!status) continue; // Already resolved (fixed)
 
-          const key = `${d.source}:${d.slug}:${d.category}`;
+          const cleanedCat = cleanCategory(d.category);
+          const key = `${d.source}:${d.slug}:${cleanedCat}`;
           // Keep latest run's version
           if (seen.has(key)) {
             const existing = seen.get(key)!;

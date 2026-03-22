@@ -254,6 +254,20 @@ export function EmploymentNewsManager() {
     fetchBatches();
   }, [fetchStats, fetchBatches]);
 
+  // On mount: check for any batch that was mid-extraction (e.g. after page refresh)
+  useEffect(() => {
+    const extractingBatch = batches.find(b => b.extraction_status === 'extracting');
+    if (extractingBatch && !isExtracting) {
+      // Show persistent progress from DB state
+      setExtractProgress({
+        current: extractingBatch.completed_chunks,
+        total: extractingBatch.total_chunks,
+        newCount: extractingBatch.new_count || 0,
+        updatedCount: extractingBatch.updated_count || 0,
+      });
+    }
+  }, [batches, isExtracting]);
+
   useEffect(() => {
     if (view === 'pipeline') fetchJobs();
   }, [view, fetchJobs]);

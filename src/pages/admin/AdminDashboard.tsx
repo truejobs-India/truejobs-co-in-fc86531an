@@ -414,6 +414,10 @@ function AdminDashboardInner() {
               <TabsContent value="seo-audit">
                 <SitewideSeoAudit />
               </TabsContent>
+
+              <TabsContent value="firecrawl">
+                <FirecrawlDraftsManager />
+              </TabsContent>
             </Tabs>
           </>
         ) : currentView.type === 'users' ? (

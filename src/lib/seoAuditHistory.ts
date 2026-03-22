@@ -79,9 +79,8 @@ export async function saveFixRun(
   // Deduplicate warnings
   const uniqueWarnings = Array.from(new Set(warnings));
 
-  // Compact fix details — include all non-skipped for transparency
+  // Compact fix details — include ALL statuses (including skipped) so the resolver can retry them
   const compactDetails = results
-    .filter(r => r.status !== 'skipped')
     .map(r => ({
       slug: r.slug,
       source: r.source,

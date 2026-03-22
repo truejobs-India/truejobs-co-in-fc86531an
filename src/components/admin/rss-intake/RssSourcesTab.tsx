@@ -264,6 +264,7 @@ export function RssSourcesTab() {
           <CardTitle className="flex items-center gap-2"><Rss className="h-5 w-5" /> RSS Sources</CardTitle>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" onClick={openAdd}><Plus className="h-4 w-4 mr-1" /> Add Source</Button>
+            <Button size="sm" variant="outline" onClick={() => setShowBulkUrls(true)}><ListPlus className="h-4 w-4 mr-1" /> Bulk Add URLs</Button>
             <Button size="sm" variant="outline" onClick={() => setShowImport(true)}><Upload className="h-4 w-4 mr-1" /> Import CSV</Button>
             <Button size="sm" variant="outline" onClick={handleRunDue} disabled={runningDue}>
               <Zap className="h-4 w-4 mr-1" /> {runningDue ? 'Running...' : 'Run Due Sources'}

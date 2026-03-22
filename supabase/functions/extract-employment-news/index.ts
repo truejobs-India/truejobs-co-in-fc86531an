@@ -144,8 +144,9 @@ async function callAI(
       }
       return JSON.parse(rawText);
     } catch (err: any) {
+      console.error(`[${requestId}] RAW Vertex error: ${err.message}`);
       if (err.message?.includes('404') || err.message?.includes('NOT_FOUND')) {
-        throw new Error(`Model "${resolved.modelId}" is not available in your GCP project. Try a different model.`);
+        throw new Error(`Model "${resolved.modelId}" is not available in your GCP project. Raw: ${err.message?.substring(0, 500)}`);
       }
       throw err;
     }

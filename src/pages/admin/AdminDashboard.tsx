@@ -244,15 +244,6 @@ function AdminDashboardInner() {
                   <Users className="h-4 w-4" />
                   <span className="hidden sm:inline">Users</span>
                 </TabsTrigger>
-                <TabsTrigger value="jobs" className="flex items-center gap-2">
-                  <Briefcase className="h-4 w-4" />
-                  <span className="hidden sm:inline">Jobs</span>
-                  {stats.pendingJobs > 0 && (
-                    <Badge variant="destructive" className="ml-1">
-                      {stats.pendingJobs}
-                    </Badge>
-                  )}
-                </TabsTrigger>
                 <TabsTrigger value="companies" className="flex items-center gap-2">
                   <Building2 className="h-4 w-4" />
                   <span className="hidden sm:inline">Companies</span>

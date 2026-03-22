@@ -67,6 +67,16 @@ export function RssSourcesTab() {
   const [deleteTarget, setDeleteTarget] = useState<RssSource | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  const [selectedSourceIds, setSelectedSourceIds] = useState<Set<string>>(new Set());
+
+  const toggleSourceSelect = (id: string) => {
+    setSelectedSourceIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
   const fetchSources = useCallback(async () => {
     setLoading(true);
     let query = supabase.from('rss_sources' as any).select('*').order('created_at', { ascending: false });

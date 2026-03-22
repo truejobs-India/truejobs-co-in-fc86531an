@@ -881,6 +881,9 @@ serve(async (req) => {
         const aspectRatio = ASPECT_RATIOS[body.aspectRatio || '16:9'] || '16:9';
         return await generateViaImagen(body, slug, imagePrompt, 1, aspectRatio, adminClient, startMs);
       }
+      if (isVertexDirectImageModel(selectedCoverModel)) {
+        return await generateViaVertexDirectImage(body, slug, imagePrompt, adminClient, startMs, 'gemini-3-pro-image-preview');
+      }
       if (isGatewayModel(selectedCoverModel) && selectedCoverModel !== 'gemini-flash-image') {
         return await generateViaGatewayModel(selectedCoverModel, body, imagePrompt);
       }

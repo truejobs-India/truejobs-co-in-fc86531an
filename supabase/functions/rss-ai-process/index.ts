@@ -33,6 +33,9 @@ function resolveProviderInfo(model: string): { provider: string; apiModel: strin
     case 'gemini-pro': return { provider: 'vertex-ai', apiModel: 'gemini-2.5-pro' };
     case 'vertex-flash': return { provider: 'vertex-ai', apiModel: 'gemini-2.5-flash' };
     case 'vertex-pro': return { provider: 'vertex-ai', apiModel: 'gemini-2.5-pro' };
+    case 'vertex-3.1-pro': return { provider: 'vertex-ai', apiModel: 'gemini-3.1-pro-preview' };
+    case 'vertex-3-flash': return { provider: 'vertex-ai', apiModel: 'gemini-3-flash-preview' };
+    case 'vertex-3.1-flash-lite': return { provider: 'vertex-ai', apiModel: 'gemini-3.1-flash-lite-preview' };
     case 'claude-sonnet': case 'claude': return { provider: 'anthropic', apiModel: 'claude-sonnet-4-20250514' };
     case 'groq': return { provider: 'groq', apiModel: 'llama-3.3-70b-versatile' };
     case 'nova-pro': return { provider: 'bedrock', apiModel: 'us.amazon.nova-pro-v1:0' };

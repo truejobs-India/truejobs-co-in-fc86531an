@@ -42,6 +42,7 @@ interface AiCallResult {
 
 type ProviderRoute =
   | { provider: 'lovable-gateway'; gatewayModel: string }
+  | { provider: 'vertex-ai'; vertexModel: string }
   | { provider: 'bedrock-nova'; modelKey: string }
   | { provider: 'bedrock-mistral' };
 
@@ -54,7 +55,7 @@ function resolveProvider(uiModelKey: string): ProviderRoute {
     case 'mistral':
       return { provider: 'bedrock-mistral' };
     case 'gemini-pro':
-      return { provider: 'lovable-gateway', gatewayModel: 'google/gemini-2.5-pro' };
+      return { provider: 'vertex-ai', vertexModel: 'gemini-2.5-pro' };
     case 'gpt5':
       return { provider: 'lovable-gateway', gatewayModel: 'openai/gpt-5' };
     case 'gpt5-mini':
@@ -62,7 +63,7 @@ function resolveProvider(uiModelKey: string): ProviderRoute {
     case 'gemini-flash':
     case 'lovable-gemini':
     default:
-      return { provider: 'lovable-gateway', gatewayModel: 'google/gemini-2.5-flash' };
+      return { provider: 'vertex-ai', vertexModel: 'gemini-2.5-flash' };
   }
 }
 
@@ -84,7 +85,7 @@ serve(async (req: Request) => {
     const rawModel = aiModel || 'gemini-flash';
     const route = resolveProvider(rawModel);
     const modelPolicy = getSeoFixModelPolicy(rawModel);
-    console.log(`[SEO-FIX] Model: "${rawModel}" → provider: ${route.provider}${route.provider === 'lovable-gateway' ? ` (${(route as any).gatewayModel})` : route.provider === 'bedrock-nova' ? ` (${(route as any).modelKey})` : ''}`);
+    console.log(`[SEO-FIX] Model: "${rawModel}" → provider: ${route.provider}${route.provider === 'lovable-gateway' ? ` (${(route as any).gatewayModel})` : route.provider === 'vertex-ai' ? ` (${(route as any).vertexModel})` : route.provider === 'bedrock-nova' ? ` (${(route as any).modelKey})` : ''}`);
     console.log(`[SEO-FIX] Policy for ${rawModel}: retries=${modelPolicy.retryCount}, baseDelay=${modelPolicy.baseRetryDelayMs}ms, throttle=${modelPolicy.throttleMs}ms, maxTokens=${modelPolicy.maxOutputTokens}`);
 
     // Validate provider-specific credentials upfront
@@ -92,6 +93,15 @@ serve(async (req: Request) => {
       const key = Deno.env.get('LOVABLE_API_KEY');
       if (!key) {
         return new Response(JSON.stringify({ error: 'LOVABLE_API_KEY not configured' }), {
+          status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    } else if (route.provider === 'vertex-ai') {
+      const clientEmail = Deno.env.get('GCP_CLIENT_EMAIL');
+      const privateKey = Deno.env.get('GCP_PRIVATE_KEY');
+      const projectId = Deno.env.get('GCP_PROJECT_ID');
+      if (!clientEmail || !privateKey || !projectId) {
+        return new Response(JSON.stringify({ error: 'Vertex AI credentials not configured' }), {
           status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
@@ -193,11 +203,33 @@ Rules:
 async function callAI(route: ProviderRoute, system: string, user: string, rawModel: string, modelPolicy: ReturnType<typeof getSeoFixModelPolicy>): Promise<AiCallResult> {
   if (route.provider === 'lovable-gateway') {
     return callLovableGateway(route.gatewayModel, system, user, modelPolicy);
+  } else if (route.provider === 'vertex-ai') {
+    return callVertexForSeo(route.vertexModel, system, user, modelPolicy.maxOutputTokens);
   } else if (route.provider === 'bedrock-nova') {
     return callBedrockNovaForSeo(route.modelKey, system, user, modelPolicy.maxOutputTokens);
   } else {
     return callBedrockMistralForSeo(system, user, modelPolicy.maxOutputTokens);
   }
+}
+
+async function callVertexForSeo(model: string, system: string, user: string, maxOutputTokens: number): Promise<AiCallResult> {
+  const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+  const text = await callVertexGemini(
+    model,
+    `${system}\n\n${user}`,
+    120_000,
+    {
+      maxOutputTokens,
+      temperature: 0.3,
+      responseMimeType: 'application/json',
+    },
+  );
+
+  return {
+    text,
+    attemptsMade: 1,
+    retryEvents: [],
+  };
 }
 
 async function callLovableGateway(model: string, system: string, user: string, modelPolicy: ReturnType<typeof getSeoFixModelPolicy>): Promise<AiCallResult> {
@@ -421,6 +453,8 @@ async function generateFixesForPage(page: FixRequest, route: ProviderRoute, rawM
 
   const providerLabel = route.provider === 'lovable-gateway'
     ? (route as any).gatewayModel
+    : route.provider === 'vertex-ai'
+      ? (route as any).vertexModel
     : route.provider === 'bedrock-nova'
       ? (route as any).modelKey
       : 'mistral';

@@ -31,9 +31,7 @@ import {
   Search,
 } from 'lucide-react';
 import { RssIntakeManager } from '@/components/admin/rss-intake/RssIntakeManager';
-import { RestrictedDomainsManager } from '@/components/admin/RestrictedDomainsManager';
 import { EmploymentNewsManager } from '@/components/admin/EmploymentNewsManager';
-import { JobApprovalList } from '@/components/admin/JobApprovalList';
 import { CompanyApprovalList } from '@/components/admin/CompanyApprovalList';
 import { BlogPostEditor } from '@/components/admin/BlogPostEditor';
 import { CronJobManager } from '@/components/admin/CronJobManager';

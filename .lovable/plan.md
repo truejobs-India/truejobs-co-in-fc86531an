@@ -1,94 +1,71 @@
 
 
-## Plan: Add Gemini 3.x Models to Vertex AI Integration
+## Plan: Fix Root Causes of Vertex 429 in Employment News Extraction
 
-### Summary
-Extend the existing centralized Vertex AI integration to support 3 new text models and 1 new image model, all routed directly through the same GCP service account path used by Gemini 2.5 Pro. Add "(From API)" labels consistently. No new integration paths, no flow redesigns.
+### Root Cause Analysis
 
-### New Model Keys and Vertex IDs
+**Finding 1 — No text cleaning.** Raw DOCX text (extracted via mammoth) is sent directly to the edge function without removing whitespace noise, empty lines, repeated spaces, or OCR artifacts. A 60-page Employment News issue could produce 80K+ chars of raw text, but 15-25% is typically whitespace noise. No cleaning = more chunks = more Vertex calls.
 
-| UI Key | Label | Vertex Model ID | Type | Timeout |
-|---|---|---|---|---|
-| `vertex-3.1-pro` | Gemini 3.1 Pro (Preview) (From API) | `gemini-3.1-pro-preview` | text, text-premium | 120s |
-| `vertex-3-flash` | Gemini 3 Flash (From API) | `gemini-3-flash-preview` | text | 90s |
-| `vertex-3.1-flash-lite` | Gemini 3.1 Flash-Lite (From API) | `gemini-3.1-flash-lite-preview` | text | 60s |
-| `vertex-3-pro-image` | Gemini 3 Pro Image (Preview) (From API) | `gemini-3-pro-image-preview` | image | 45s |
+**Finding 2 — No inter-chunk delay.** The frontend (`EmploymentNewsManager.tsx`) sends chunks sequentially via a `for` loop, but fires the next request immediately after the previous one completes. For a document with 8+ chunks, this creates sustained burst load against the same Vertex AI quota.
 
-Existing labels also updated:
-- `vertex-flash` → "Gemini 2.5 Flash (From API)" (already correct)
-- `vertex-pro` → "Gemini 2.5 Pro (From API)" (already correct)
+**Finding 3 — No partial-success handling.** If chunk 1-4 succeed and chunk 5 hits a 429, the frontend throws an error and discards all progress. The batch was already partially saved to the database, but the user sees "Extraction Failed" with no record of partial success.
 
-### Files to Change
+**Finding 4 — Default maxOutputTokens (8192) is unnecessarily high.** Each chunk is ~10K chars which typically yields 3-8 job listings. The JSON output for 8 jobs is ~3K tokens. Setting maxOutputTokens lower reduces Vertex resource consumption per request.
 
-**A. Model Registry — `src/lib/aiModels.ts`**
-- Add 4 new entries to `AI_MODELS` array with correct capabilities, source `external-api`, provider `Google Vertex AI`
-- Add `vertex-3.1-pro` and `vertex-3-flash` to `SEO_FIX_MODEL_VALUES`
-- Add legacy aliases for gateway model IDs mapping to these new keys
-- Keep existing entries unchanged
+**Finding 5 — No server-side observability.** The function logs nothing about text size, chunk context, or processing stage, making future diagnosis impossible.
 
-**B. Client-side throttling — `src/lib/seoFixRuntimeConfig.ts`**
-- Add policies for:
-  - `vertex-3.1-pro`: concurrency 1, 7s throttle (same as gemini-pro — preview, be conservative)
-  - `vertex-3-flash`: concurrency 2, 2.5s throttle (same as gemini-flash)
-  - `vertex-3.1-flash-lite`: concurrency 3, 1.5s throttle (fastest model)
+### Changes
 
-**C. Backend throttling — `supabase/functions/_shared/seo-fix-runtime.ts`**
-- Add model policies for 3 new text model keys
+#### File 1: `supabase/functions/extract-employment-news/index.ts`
 
-**D. Backend word-count — `supabase/functions/_shared/word-count-enforcement.ts`**
-- Add the 3 new text model keys to the Gemini case block (same token multiplier as existing Gemini models)
+**A. Add text sanitization function** (before AI call)
+- Collapse runs of whitespace/tabs to single space
+- Remove blank lines (3+ newlines → 2)
+- Strip common OCR noise patterns (e.g., runs of underscores, pipe characters used as column separators)
+- Trim each line
+- Log original vs cleaned text length
 
-**E. Edge Function Routing — 10 files need new `case` statements**
+**B. Add structured logging** with requestId
+- Generate a `requestId` (crypto.randomUUID)
+- Log at entry: requestId, filename, raw text length, cleaned text length
+- Log before AI call: prompt length
+- Log after AI call: jobs extracted count
+- Log on error: error category (parsing/ai/db), requestId
 
-Each file's switch/dispatcher gets 3-4 new cases following the exact same pattern as `vertex-pro`/`vertex-flash`:
+**C. Reduce maxOutputTokens to 4096**
+- Sufficient for the structured JSON output from a 10K char chunk
+- Reduces Vertex resource pressure per call
 
-1. **`seo-audit-fix/index.ts`** — `resolveProvider()`: add 3 text model cases → `{ provider: 'vertex-ai', vertexModel: '...' }`
-2. **`improve-blog-content/index.ts`** — `callAI()` switch + `SUPPORTED_MODELS` array: add 3 text model cases
-3. **`generate-blog-article/index.ts`** — `resolveProviderInfo()` + `callAI()`: add 3 text model cases
-4. **`enrich-authority-pages/index.ts`** — `resolveProviderInfo()` + `callAI()`: add 3 text model cases
-5. **`enrich-employment-news/index.ts`** — `resolveProviderInfo()` + `callAI()`: add 3 text model cases
-6. **`rss-ai-process/index.ts`** — `resolveProviderInfo()`: add 3 text model cases
-7. **`classify-blog-articles/index.ts`** — `callAI()` switch: add 3 text model cases
-8. **`generate-blog-faq/index.ts`** — `callAI()` switch: add 3 text model cases
-9. **`generate-custom-page/index.ts`** — `callAI()` switch: add 3 text model cases
-10. **`generate-resource-content/index.ts`** — `callAI()` switch: add 3 text model cases
+**D. Keep model as `gemini-2.5-flash`**
+- Already the lightest suitable model for structured extraction
+- Flash-lite would risk quality degradation on OCR text
 
-11. **`generate-vertex-image/index.ts`** — Add `vertex-3-pro-image` routing:
-    - Add new case in purpose-based routing that calls `generateViaGeminiFlashImage`-style function but using `gemini-3-pro-image-preview` model ID directly through Vertex AI (same auth, same endpoint pattern)
-    - This routes through Vertex AI, NOT the gateway
+**E. Keep existing 429 error handling** (already correct from previous fix)
 
-**F. Deploy all updated edge functions**
+#### File 2: `src/components/admin/EmploymentNewsManager.tsx`
 
-**G. Verification** — Test each model with a lightweight prompt via `supabase--curl_edge_functions`
+**A. Add inter-chunk throttle delay**
+- After each successful chunk response, wait 2 seconds before sending the next
+- Prevents burst patterns against Vertex quota
 
-### Implementation Pattern (identical for all edge functions)
+**B. Handle partial success on 429**
+- If a chunk returns a 429 or error, stop processing remaining chunks
+- Show a toast with partial results: "Extracted X jobs from Y/Z chunks. Remaining chunks can be retried."
+- Don't throw away the batchId — the user can re-upload and it will continue accumulating
 
-For text models, each new case follows this exact pattern:
-```typescript
-case 'vertex-3.1-pro': {
-  const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-  return callVertexGemini('gemini-3.1-pro-preview', prompt, 120_000, { maxOutputTokens: mt });
-}
-case 'vertex-3-flash': {
-  const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-  return callVertexGemini('gemini-3-flash-preview', prompt, 90_000, { maxOutputTokens: mt });
-}
-case 'vertex-3.1-flash-lite': {
-  const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-  return callVertexGemini('gemini-3.1-flash-lite-preview', prompt, 60_000, { maxOutputTokens: mt });
-}
-```
+**C. Increase CHUNK_SIZE from 10,000 to 15,000 chars**
+- After text cleaning removes ~20% noise, effective content per chunk stays similar
+- Fewer total chunks = fewer Vertex calls = less 429 risk
+- 15K chars + 1.5K system prompt ≈ 4K tokens input — well within Flash limits
+
+### Files Changed
+1. `supabase/functions/extract-employment-news/index.ts` — text cleaning, logging, reduced maxOutputTokens
+2. `src/components/admin/EmploymentNewsManager.tsx` — throttle delay, partial success handling, chunk size increase
 
 ### What is NOT changing
-- No changes to `_shared/vertex-ai.ts` (the helper is model-agnostic — it takes model ID as a parameter)
-- No changes to GCP auth or credentials
+- No changes to `_shared/vertex-ai.ts` (retry logic there is already correct)
 - No new edge functions
-- No Lovable AI Gateway routing for these models
-- No image flow redesign
-- No changes to `supabase/client.ts` or `types.ts`
-
-### Preview-Model Cautions
-- All three text models and the image model contain "preview" in their IDs — Google may change behavior or deprecate them
-- Labels clearly marked "(Preview)" and "(From API)" to set admin expectations
-- Conservative throttling applied for preview models
+- No architecture changes
+- No model switch
+- No changes to database schema
 

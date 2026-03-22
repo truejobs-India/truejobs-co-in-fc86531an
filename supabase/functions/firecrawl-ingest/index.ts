@@ -18,6 +18,7 @@ import { normalizeUrl, filterAndClassifyUrls, type UrlFilterConfig } from '../_s
 import { classifyPage, type PageBucket } from '../_shared/firecrawl/page-classifier.ts';
 import { cleanScrapedContent } from '../_shared/firecrawl/content-cleaner.ts';
 import { extractFields } from '../_shared/firecrawl/field-extractor.ts';
+import { checkDuplicate, type DedupCandidate } from '../_shared/firecrawl/dedup.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -61,6 +62,8 @@ Deno.serve(async (req) => {
         return await handleExtractItem(body, adminClient);
       case 'extract-batch':
         return await handleExtractBatch(body, adminClient);
+      case 'dedup-drafts':
+        return await handleDedupDrafts(body, adminClient);
       default:
         return jsonResponse({ error: `Unknown action: ${action}` }, 400);
     }
@@ -764,6 +767,71 @@ async function handleExtractItemInternal(
     await client.from('firecrawl_staged_items').update({ extraction_status: 'failed' }).eq('id', stagedItemId);
     return { success: false, error: e instanceof Error ? e.message : String(e) };
   }
+}
+
+// ============ dedup-drafts (Phase 5) ============
+
+async function handleDedupDrafts(
+  body: Record<string, unknown>,
+  client: ReturnType<typeof createClient>
+) {
+  console.log('[firecrawl-ingest] dedup-drafts: running');
+
+  // Fetch all draft-status records for comparison
+  const { data: allDrafts, error } = await client
+    .from('firecrawl_draft_jobs')
+    .select('id, normalized_title, organization_name, official_notification_url, official_apply_url, last_date_of_application, total_vacancies, dedup_status')
+    .in('status', ['draft', 'reviewed'])
+    .order('created_at', { ascending: true });
+
+  if (error) return jsonResponse({ error: error.message }, 500);
+  if (!allDrafts || allDrafts.length === 0) {
+    return jsonResponse({ success: true, checked: 0, duplicatesFound: 0 });
+  }
+
+  const candidates: DedupCandidate[] = allDrafts.map((d: any) => ({
+    id: d.id,
+    normalized_title: d.normalized_title,
+    organization_name: d.organization_name,
+    official_notification_url: d.official_notification_url,
+    official_apply_url: d.official_apply_url,
+    last_date_of_application: d.last_date_of_application,
+    total_vacancies: d.total_vacancies,
+  }));
+
+  let duplicatesFound = 0;
+  let checked = 0;
+
+  // Only check items that haven't been deduped yet
+  const unchecked = allDrafts.filter((d: any) => d.dedup_status === 'unchecked');
+
+  for (const draft of unchecked) {
+    const target: DedupCandidate = {
+      id: draft.id,
+      normalized_title: draft.normalized_title,
+      organization_name: draft.organization_name,
+      official_notification_url: draft.official_notification_url,
+      official_apply_url: draft.official_apply_url,
+      last_date_of_application: draft.last_date_of_application,
+      total_vacancies: draft.total_vacancies,
+    };
+
+    const result = checkDuplicate(target, candidates);
+    checked++;
+
+    const update: Record<string, unknown> = {
+      dedup_status: result.isDuplicate ? 'duplicate' : 'clean',
+      dedup_reason: result.reason,
+      dedup_match_ids: result.matchedIds,
+      dedup_checked_at: new Date().toISOString(),
+    };
+
+    await client.from('firecrawl_draft_jobs').update(update).eq('id', draft.id);
+
+    if (result.isDuplicate) duplicatesFound++;
+  }
+
+  return jsonResponse({ success: true, checked, duplicatesFound, totalDrafts: allDrafts.length });
 }
 
 // ============ Helpers ============

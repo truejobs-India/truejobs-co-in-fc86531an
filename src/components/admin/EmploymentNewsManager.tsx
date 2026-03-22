@@ -353,6 +353,8 @@ export function EmploymentNewsManager() {
           filename: file?.name || 'pasted-text.txt',
           issueDetails: issueDetails,
           aiModel: extractAiModel,
+          chunkIndex: i,
+          totalChunks: chunks.length,
         };
         if (batchId) payload.batchId = batchId;
 
@@ -412,6 +414,14 @@ export function EmploymentNewsManager() {
     } finally {
       setIsExtracting(false);
     }
+  };
+
+  // Resume extraction for a batch that was partially completed
+  const handleResumeExtraction = async (batch: UploadBatch) => {
+    toast({
+      title: 'Resume Not Supported Yet',
+      description: `Batch "${batch.filename}" completed ${batch.completed_chunks}/${batch.total_chunks} chunks. To resume, re-upload the same file — already-extracted jobs will be de-duplicated automatically.`,
+    });
   };
 
   // ───── PIPELINE ACTIONS ─────

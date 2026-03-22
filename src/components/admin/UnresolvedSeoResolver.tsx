@@ -531,13 +531,19 @@ export function UnresolvedSeoResolver() {
           }
         } else {
           const fixes = pageResults.fixes || [];
-          const appliedCategories = new Set<string>();
+          const appliedItemIds = new Set<string>();
 
           for (const fix of fixes) {
             if (stopSignal.current.stopped) break;
 
-            const matchingItem = pageItems.find(i => i.category === fix.category && !appliedCategories.has(i.id));
-            if (!matchingItem) continue;
+            // Flexible category matching: AI may return related category names
+            const matchingItem = pageItems.find(i => 
+              !appliedItemIds.has(i.id) && matchesCategory(i.category, fix.category, fix.field, fix.action)
+            );
+            if (!matchingItem) {
+              console.log(`[Resolver] No matching item for AI fix category="${fix.category}" field="${fix.field}" action="${fix.action}" on ${rep.slug}`);
+              continue;
+            }
 
             // Look up actual record ID
             let recordId = '';
@@ -561,6 +567,7 @@ export function UnresolvedSeoResolver() {
                 reason: 'Could not find record by slug',
               });
               progress.failed++;
+              appliedItemIds.add(matchingItem.id);
               continue;
             }
 
@@ -570,7 +577,7 @@ export function UnresolvedSeoResolver() {
               fix, matchingItem.id,
             );
             results.push(result);
-            appliedCategories.add(matchingItem.id);
+            appliedItemIds.add(matchingItem.id);
 
             if (result.status === 'fixed') progress.fixed++;
             else if (result.status === 'failed') progress.failed++;
@@ -578,9 +585,9 @@ export function UnresolvedSeoResolver() {
             else progress.skipped++;
           }
 
-          // Items that got no fix
+          // Items that got no fix from AI
           for (const item of pageItems) {
-            if (!appliedCategories.has(item.id) && !results.some(r => r.issueId === item.id)) {
+            if (!appliedItemIds.has(item.id) && !results.some(r => r.issueId === item.id)) {
               results.push({
                 issueId: item.id,
                 source: item.source,
@@ -588,7 +595,7 @@ export function UnresolvedSeoResolver() {
                 slug: item.slug,
                 category: item.category,
                 status: 'skipped',
-                reason: 'AI did not generate a fix for this issue',
+                reason: `AI returned ${fixes.length} fixes but none matched category "${item.category}"`,
               });
               progress.skipped++;
             }
@@ -652,6 +659,43 @@ export function UnresolvedSeoResolver() {
   }, [selectedItems, aiModel, toast]);
 
   const handleStop = () => { stopSignal.current.stopped = true; };
+
+  /** Flexible category matching — AI often returns related but not identical category names */
+  function matchesCategory(itemCat: string, fixCat: string, fixField?: string, fixAction?: string): boolean {
+    if (!fixCat && !fixField) return false;
+    // Exact match
+    if (itemCat === fixCat) return true;
+    // Normalize both
+    const ic = itemCat.toLowerCase().replace(/[_\s-]+/g, '');
+    const fc = (fixCat || '').toLowerCase().replace(/[_\s-]+/g, '');
+    if (ic === fc) return true;
+    // Common equivalences
+    const equivalences: Record<string, string[]> = {
+      faqopportunity: ['faqschema', 'faq', 'setfaqschema'],
+      faqschema: ['faqopportunity', 'faq'],
+      h1: ['headingstructure', 'heading', 'missingh1'],
+      headingstructure: ['h1', 'heading'],
+      internallinks: ['internallink', 'links'],
+      metadescription: ['description', 'metadesc'],
+      metatitle: ['title', 'pagetitle'],
+      featuredimagealt: ['imagealt', 'alttext', 'coverimagealt'],
+      intromissing: ['excerpt', 'intro', 'summary'],
+      contentthin: ['thincontent', 'wordcount'],
+    };
+    const alts = equivalences[ic];
+    if (alts && alts.includes(fc)) return true;
+    // Match by field name if field maps to category
+    if (fixField) {
+      const fieldNorm = fixField.toLowerCase().replace(/[_\s-]+/g, '');
+      if (fieldNorm === ic) return true;
+      const fieldAlts = equivalences[ic];
+      if (fieldAlts && fieldAlts.includes(fieldNorm)) return true;
+    }
+    // Match by action for FAQ
+    if (fixAction === 'set_faq_schema' && (ic === 'faqopportunity' || ic === 'faqschema')) return true;
+    if (fixAction === 'append_content' && (ic === 'h1' || ic === 'internallinks' || ic === 'intromissing')) return true;
+    return false;
+  }
 
   function getFixHint(item: UnresolvedItem): string {
     switch (item.status) {

@@ -1,0 +1,1 @@
+ALTER TABLE public.pdf_resources ADD COLUMN IF NOT EXISTS canonical_url text;

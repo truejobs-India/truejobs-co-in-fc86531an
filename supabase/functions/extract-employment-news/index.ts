@@ -80,13 +80,14 @@ function resolveModel(aiModel: string | undefined): ResolvedModel {
 }
 
 // ── Truncated JSON repair ──
-function repairTruncatedJson(raw: string): any {
-  try { return JSON.parse(raw); } catch {}
+function repairTruncatedJson(raw: string, requestId: string): { jobs: any[]; repaired: boolean } {
+  try { return { jobs: JSON.parse(raw).jobs || [], repaired: false }; } catch {}
 
   const text = raw.trim();
   const jobsMatch = text.match(/"jobs"\s*:\s*\[/);
   if (!jobsMatch) {
-    throw new Error('Cannot parse AI response: no jobs array found in truncated output');
+    console.warn(`[${requestId}] JSON repair: no jobs array found, returning empty`);
+    return { jobs: [], repaired: true };
   }
 
   const arrayStart = text.indexOf('[', jobsMatch.index!);
@@ -110,11 +111,14 @@ function repairTruncatedJson(raw: string): any {
   }
 
   if (completeObjects.length === 0) {
-    throw new Error('Cannot parse AI response: no complete job objects found in truncated output');
+    console.warn(`[${requestId}] JSON repair: no complete job objects recovered, returning empty`);
+    return { jobs: [], repaired: true };
   }
 
   const repaired = `{"jobs":[${completeObjects.join(',')}]}`;
-  return JSON.parse(repaired);
+  const parsed = JSON.parse(repaired);
+  console.log(`[${requestId}] JSON repair succeeded, recovered ${parsed.jobs.length} jobs`);
+  return { jobs: parsed.jobs, repaired: true };
 }
 
 // ── AI call dispatcher ──

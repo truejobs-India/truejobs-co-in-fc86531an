@@ -1,41 +1,70 @@
 
 
-## Plan: Fix Vertex AI Global Endpoint for Gemini 3.x Models
+## Plan: Fix Gemini 3 Pro Image Vertex Endpoint
 
-### Root Cause
-Line 84 of `supabase/functions/_shared/vertex-ai.ts` uses the regional host (`${location}-aiplatform.googleapis.com`) and regional location path for all models, including Gemini 3.x. Per Google's official docs, Gemini 3.x preview models require:
-- Host: `aiplatform.googleapis.com` (not regional)
-- Location path: `global` (not `us-central1`)
-- API version: `v1beta1`
+### Diagnosis
 
-### Change
+**File**: `supabase/functions/generate-vertex-image/index.ts`
 
-**File: `supabase/functions/_shared/vertex-ai.ts`** (lines 82-85)
-
-Replace the `getVertexEndpoint` function with:
-
+**Line 385** constructs the URL incorrectly:
 ```typescript
-function getVertexEndpoint(model: string, projectId: string, location: string): string {
-  const isGemini3 = model.startsWith('gemini-3');
-  const apiVersion = isGemini3 ? 'v1beta1' : 'v1';
-  const loc = isGemini3 ? 'global' : location;
-  const host = isGemini3 ? 'aiplatform.googleapis.com' : `${location}-aiplatform.googleapis.com`;
-  return `https://${host}/${apiVersion}/projects/${projectId}/locations/${loc}/publishers/google/models/${model}:generateContent`;
-}
+const url = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${vertexModelId}:generateContent`;
 ```
 
-### Verification
-After deployment, run live tests via `extract-employment-news` for each Gemini 3.x model:
-- `gemini-3.1-pro-preview`
-- `gemini-3-flash-preview`
-- `gemini-3.1-flash-lite-preview`
-- `gemini-3-pro-image-preview`
+This produces (for `gemini-3-pro-image-preview`):
+```
+https://us-central1-aiplatform.googleapis.com/v1/projects/truejobs-485320/locations/us-central1/...
+```
 
-Report exact URL, HTTP status, and raw error for each.
+**Required** (per proven pattern for all Gemini 3.x models):
+```
+https://aiplatform.googleapis.com/v1beta1/projects/truejobs-485320/locations/global/...
+```
+
+This is the exact same bug that was fixed in `_shared/vertex-ai.ts` — but `generate-vertex-image/index.ts` has its own inline URL construction that was never updated.
+
+### Audit Summary
+
+| Item | Value |
+|------|-------|
+| Internal key | `vertex-3-pro-image` |
+| UI label | `Gemini 3 Pro Image (Preview) (From API)` |
+| Vertex model ID | `gemini-3-pro-image-preview` |
+| Edge function | `generate-vertex-image/index.ts` |
+| Handler function | `generateViaVertexDirectImage()` (line 360) |
+| Current URL (WRONG) | `https://us-central1-aiplatform.googleapis.com/v1/...` |
+| Required URL | `https://aiplatform.googleapis.com/v1beta1/.../locations/global/...` |
+| Payload shape | Correct (`contents/parts`, `responseModalities: ['TEXT', 'IMAGE']`) |
+| Gateway used? | No — this path goes direct to Vertex |
+| "(From API)" label | Truthful — routes to Vertex AI, not gateway |
+
+### Fix
+
+**File**: `supabase/functions/generate-vertex-image/index.ts`, line 385
+
+Replace the single URL construction line with the same global endpoint logic used in the shared helper:
+
+```typescript
+const isGemini3 = vertexModelId.startsWith('gemini-3');
+const apiVersion = isGemini3 ? 'v1beta1' : 'v1';
+const loc = isGemini3 ? 'global' : location;
+const host = isGemini3 ? 'aiplatform.googleapis.com' : `${location}-aiplatform.googleapis.com`;
+const url = `https://${host}/${apiVersion}/projects/${projectId}/locations/${loc}/publishers/google/models/${vertexModelId}:generateContent`;
+```
+
+Add a log line after:
+```typescript
+console.log(`[vertex-direct-image] endpoint: ${url}`);
+```
 
 ### What is NOT changing
-- `extract-employment-news/index.ts` — routing is already correct (`vertex-ai` provider)
 - No gateway rerouting
 - No model registry changes
-- No frontend changes
+- No frontend/label changes
+- No payload changes (shape is already correct for Gemini image models)
+- No changes to `_shared/vertex-ai.ts` (already fixed)
+- No changes to `extract-employment-news/index.ts`
+
+### Verification
+After deployment, invoke `generate-vertex-image` with `model: 'vertex-3-pro-image'` and a simple prompt to confirm 200 OK via direct Vertex AI with no gateway involvement.
 

@@ -374,6 +374,9 @@ export const SEO_FIX_MODEL_VALUES = [
   'nova-pro',
   'nova-premier',
   'mistral',
+  'vertex-3.1-pro',
+  'vertex-3-flash',
+  'vertex-3.1-flash-lite',
 ] as const;
 
 const LEGACY_MODEL_ALIASES: Record<string, string> = {

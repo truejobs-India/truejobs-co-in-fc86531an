@@ -244,6 +244,9 @@ export function RssReviewQueueTab() {
                             <Button size="sm" variant="ghost"><FileDown className="h-3.5 w-3.5" /></Button>
                           </a>
                         )}
+                        <Button size="sm" variant="ghost" onClick={() => setDeleteTarget(entry)} title="Delete" className="text-destructive hover:text-destructive">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
                       </div>
                     </TableCell>
                   </TableRow>

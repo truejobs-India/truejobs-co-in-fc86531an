@@ -267,11 +267,26 @@ Rules:
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
+    const errMsg = error instanceof Error ? error.message : "Unknown error";
+    const is429 = /429|RESOURCE_EXHAUSTED|rate.?limit/i.test(errMsg);
+
+    if (is429) {
+      console.warn("extract-employment-news: Vertex AI rate limited (429), returning handled error");
+      return new Response(
+        JSON.stringify({
+          error: "AI service is temporarily overloaded. Please wait a minute and try again.",
+          code: "VERTEX_RATE_LIMITED",
+        }),
+        {
+          status: 429,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
     console.error("extract-employment-news error:", error);
     return new Response(
-      JSON.stringify({
-        error: error instanceof Error ? error.message : "Unknown error",
-      }),
+      JSON.stringify({ error: errMsg }),
       {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

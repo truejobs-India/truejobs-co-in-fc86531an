@@ -1,0 +1,1 @@
+UPDATE firecrawl_sources SET is_enabled = true, updated_at = now() WHERE id IN ('cac91340-e3f1-42aa-a9a3-2634ea87fd89', '4de74ddd-c893-4e20-a3b9-ad04d5b6ac9f', 'b4f06627-5e8a-4f74-a9e5-2716abd9e606', 'd3075ae0-0c7a-4f37-9494-330e002ca887');

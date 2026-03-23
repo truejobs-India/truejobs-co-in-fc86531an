@@ -633,7 +633,7 @@ Rules:
 
 // ============ 6. AI Cover Prompt ============
 
-async function handleAiCoverPrompt(draftId: string, client: any, apiKey: string) {
+async function handleAiCoverPrompt(draftId: string, client: any, apiKey: string, aiModel?: string) {
   const draft = await fetchDraft(draftId, client);
   const context = getDraftContext(draft);
 

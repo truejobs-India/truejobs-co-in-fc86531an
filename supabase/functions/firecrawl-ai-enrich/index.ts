@@ -834,7 +834,7 @@ async function handleAiCoverImage(draftId: string, client: any, apiKey: string, 
 
 // ============ 8. AI Run All ============
 
-async function handleAiRunAll(draftId: string, client: any, apiKey: string, aiModel?: string) {
+async function handleAiRunAll(draftId: string, client: any, apiKey: string, aiModel?: string, imageModel?: string) {
   const steps = [
     'ai-clean', 'ai-enrich', 'ai-find-links', 'ai-fix-missing', 'ai-seo', 'ai-cover-prompt', 'ai-cover-image',
   ];
@@ -852,7 +852,9 @@ async function handleAiRunAll(draftId: string, client: any, apiKey: string, aiMo
 
   for (const step of steps) {
     try {
-      const resp = await handlers[step](draftId, client, apiKey, aiModel);
+      // Pass imageModel for image step, aiModel for all text steps
+      const modelArg = step === 'ai-cover-image' ? imageModel : aiModel;
+      const resp = await handlers[step](draftId, client, apiKey, modelArg);
       const body = await resp.json();
       results.push({ step, success: body.success ?? true, error: body.error });
 

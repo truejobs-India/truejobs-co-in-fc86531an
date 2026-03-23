@@ -39,6 +39,22 @@ const VERTEX_MODEL_MAP: Record<string, { vertexModel: string; timeoutMs: number 
 
 const BEDROCK_MODELS = new Set(['nova-pro', 'nova-premier', 'mistral']);
 
+// ── Image model routing: maps frontend registry keys to gateway/vertex image models ──
+interface ImageModelRoute {
+  provider: 'lovable-gateway' | 'vertex-ai';
+  apiModel: string;
+  vertexEndpoint?: 'gemini' | 'imagen';
+}
+
+const IMAGE_MODEL_REGISTRY: Record<string, ImageModelRoute> = {
+  'gemini-flash-image':   { provider: 'lovable-gateway', apiModel: 'google/gemini-2.5-flash-image' },
+  'gemini-pro-image':     { provider: 'lovable-gateway', apiModel: 'google/gemini-3-pro-image-preview' },
+  'gemini-flash-image-2': { provider: 'lovable-gateway', apiModel: 'google/gemini-3.1-flash-image-preview' },
+  'vertex-pro':           { provider: 'vertex-ai', apiModel: 'gemini-2.5-flash-image', vertexEndpoint: 'gemini' },
+  'vertex-3-pro-image':   { provider: 'vertex-ai', apiModel: 'gemini-3-pro-image-preview', vertexEndpoint: 'gemini' },
+  'vertex-imagen':        { provider: 'vertex-ai', apiModel: 'imagen-3.0-generate-002', vertexEndpoint: 'imagen' },
+};
+
 // Aggregator domains that must NEVER appear as official links
 const AGGREGATOR_DOMAINS = [
   'sarkariexam.com', 'sarkarinaukri.com', 'indgovtjobs.in',

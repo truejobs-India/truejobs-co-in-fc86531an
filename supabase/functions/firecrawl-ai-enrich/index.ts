@@ -20,6 +20,25 @@ const corsHeaders = {
 const AI_GATEWAY = 'https://ai.gateway.lovable.dev/v1/chat/completions';
 const DEFAULT_MODEL = 'google/gemini-3-flash-preview';
 
+// ── Model routing: maps frontend registry keys to gateway model IDs or provider routes ──
+const GATEWAY_MODEL_MAP: Record<string, string> = {
+  'gemini-flash': 'google/gemini-2.5-flash',
+  'gemini-pro': 'google/gemini-2.5-pro',
+  'gpt5': 'openai/gpt-5',
+  'gpt5-mini': 'openai/gpt-5-mini',
+  'lovable-gemini': 'google/gemini-3-flash-preview',
+};
+
+const VERTEX_MODEL_MAP: Record<string, { vertexModel: string; timeoutMs: number }> = {
+  'vertex-flash': { vertexModel: 'gemini-2.5-flash', timeoutMs: 90_000 },
+  'vertex-pro': { vertexModel: 'gemini-2.5-pro', timeoutMs: 120_000 },
+  'vertex-3.1-pro': { vertexModel: 'gemini-3.1-pro-preview', timeoutMs: 120_000 },
+  'vertex-3-flash': { vertexModel: 'gemini-3-flash-preview', timeoutMs: 90_000 },
+  'vertex-3.1-flash-lite': { vertexModel: 'gemini-3.1-flash-lite-preview', timeoutMs: 60_000 },
+};
+
+const BEDROCK_MODELS = new Set(['nova-pro', 'nova-premier', 'mistral']);
+
 // Aggregator domains that must NEVER appear as official links
 const AGGREGATOR_DOMAINS = [
   'sarkariexam.com', 'sarkarinaukri.com', 'indgovtjobs.in',
@@ -54,6 +73,7 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const action = body.action as string;
     const draftId = body.draft_id as string;
+    const aiModel = (body.aiModel as string) || '';
 
     if (!action) return json({ error: 'Missing action' }, 400);
     if (!draftId && action !== 'ai-run-all-batch') return json({ error: 'Missing draft_id' }, 400);
@@ -74,14 +94,14 @@ Deno.serve(async (req) => {
     const client = createClient(supabaseUrl, serviceRoleKey);
 
     switch (action) {
-      case 'ai-clean': return await handleAiClean(draftId, client, lovableKey);
-      case 'ai-enrich': return await handleAiEnrich(draftId, client, lovableKey);
-      case 'ai-find-links': return await handleAiFindLinks(draftId, client, lovableKey);
-      case 'ai-fix-missing': return await handleAiFixMissing(draftId, client, lovableKey);
-      case 'ai-seo': return await handleAiSeo(draftId, client, lovableKey);
-      case 'ai-cover-prompt': return await handleAiCoverPrompt(draftId, client, lovableKey);
-      case 'ai-cover-image': return await handleAiCoverImage(draftId, client, lovableKey);
-      case 'ai-run-all': return await handleAiRunAll(draftId, client, lovableKey);
+      case 'ai-clean': return await handleAiClean(draftId, client, lovableKey, aiModel);
+      case 'ai-enrich': return await handleAiEnrich(draftId, client, lovableKey, aiModel);
+      case 'ai-find-links': return await handleAiFindLinks(draftId, client, lovableKey, aiModel);
+      case 'ai-fix-missing': return await handleAiFixMissing(draftId, client, lovableKey, aiModel);
+      case 'ai-seo': return await handleAiSeo(draftId, client, lovableKey, aiModel);
+      case 'ai-cover-prompt': return await handleAiCoverPrompt(draftId, client, lovableKey, aiModel);
+      case 'ai-cover-image': return await handleAiCoverImage(draftId, client, lovableKey, aiModel);
+      case 'ai-run-all': return await handleAiRunAll(draftId, client, lovableKey, aiModel);
       case 'rollback-ai-action': return await handleRollbackAiAction(draftId, client);
       default: return json({ error: `Unknown action: ${action}` }, 400);
     }
@@ -91,16 +111,80 @@ Deno.serve(async (req) => {
   }
 });
 
-// ============ AI Gateway helper ============
+// ============ Multi-model AI dispatcher ============
 
 async function callAI(
   apiKey: string,
   systemPrompt: string,
   userPrompt: string,
   toolDef?: { name: string; description: string; parameters: Record<string, unknown> },
+  aiModel?: string,
 ): Promise<any> {
+  const modelKey = aiModel || '';
+
+  // ── Route: Vertex AI (GCP Service Account) ──
+  const vertexDef = VERTEX_MODEL_MAP[modelKey];
+  if (vertexDef) {
+    console.log(`[firecrawl-ai-enrich] routing to Vertex AI: ${vertexDef.vertexModel}`);
+    const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+    const fullPrompt = `${systemPrompt}\n\n${userPrompt}${toolDef ? `\n\nReturn valid JSON matching this schema:\n${JSON.stringify(toolDef.parameters, null, 2)}` : ''}`;
+    const text = await callVertexGemini(vertexDef.vertexModel, fullPrompt, vertexDef.timeoutMs);
+    if (toolDef) {
+      // Parse JSON from Vertex text response
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) return JSON.parse(jsonMatch[0]);
+      throw new Error('Vertex AI did not return valid JSON');
+    }
+    return text;
+  }
+
+  // ── Route: AWS Bedrock (Nova / Mistral) ──
+  if (BEDROCK_MODELS.has(modelKey)) {
+    if (modelKey === 'mistral') {
+      console.log(`[firecrawl-ai-enrich] routing to Bedrock Mistral`);
+      const { awsSigV4Fetch } = await import('../_shared/bedrock-nova.ts');
+      const region = Deno.env.get('AWS_REGION') || 'us-east-1';
+      const host = `bedrock-runtime.${region}.amazonaws.com`;
+      const mistralModelId = 'us.mistral.mistral-large-2407-v1:0';
+      const fullPrompt = `${systemPrompt}\n\n${userPrompt}${toolDef ? `\n\nReturn valid JSON matching this schema:\n${JSON.stringify(toolDef.parameters, null, 2)}` : ''}`;
+      const payload = JSON.stringify({
+        messages: [{ role: 'user', content: [{ text: fullPrompt }] }],
+        inferenceConfig: { maxTokens: 8192, temperature: 0.5 },
+      });
+      const resp = await awsSigV4Fetch(host, `/model/${mistralModelId}/converse`, payload, region, 'bedrock');
+      if (!resp.ok) {
+        const errText = await resp.text().catch(() => 'unknown');
+        throw new Error(`Mistral Bedrock error ${resp.status}: ${errText.substring(0, 300)}`);
+      }
+      const data = await resp.json();
+      const resultText = data?.output?.message?.content?.[0]?.text || '';
+      if (toolDef) {
+        const jsonMatch = resultText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) return JSON.parse(jsonMatch[0]);
+        throw new Error('Mistral did not return valid JSON');
+      }
+      return resultText;
+    } else {
+      // nova-pro or nova-premier
+      console.log(`[firecrawl-ai-enrich] routing to Bedrock Nova: ${modelKey}`);
+      const { callBedrockNova } = await import('../_shared/bedrock-nova.ts');
+      const fullPrompt = `${systemPrompt}\n\n${userPrompt}${toolDef ? `\n\nReturn valid JSON matching this schema:\n${JSON.stringify(toolDef.parameters, null, 2)}` : ''}`;
+      const text = await callBedrockNova(modelKey, fullPrompt, { maxTokens: 8192, temperature: 0.5 });
+      if (toolDef) {
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        if (jsonMatch) return JSON.parse(jsonMatch[0]);
+        throw new Error('Nova did not return valid JSON');
+      }
+      return text;
+    }
+  }
+
+  // ── Route: Lovable AI Gateway (default) ──
+  const gatewayModelId = GATEWAY_MODEL_MAP[modelKey] || DEFAULT_MODEL;
+  console.log(`[firecrawl-ai-enrich] routing to AI Gateway: ${gatewayModelId}`);
+
   const bodyPayload: any = {
-    model: DEFAULT_MODEL,
+    model: gatewayModelId,
     messages: [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: userPrompt },
@@ -208,7 +292,7 @@ function snapshotOldValues(draft: any, fieldsToUpdate: Record<string, unknown>):
 
 // ============ 1. AI Clean ============
 
-async function handleAiClean(draftId: string, client: any, apiKey: string) {
+async function handleAiClean(draftId: string, client: any, apiKey: string, aiModel?: string) {
   const draft = await fetchDraft(draftId, client);
 
   const guard = checkStatusGuard(draft, 'ai-clean');
@@ -235,6 +319,7 @@ async function handleAiClean(draftId: string, client: any, apiKey: string) {
         additionalProperties: false,
       },
     },
+    aiModel,
   );
 
   const update: Record<string, unknown> = { ai_clean_at: new Date().toISOString() };
@@ -263,7 +348,7 @@ async function handleAiClean(draftId: string, client: any, apiKey: string) {
 
 // ============ 2. AI Enrich ============
 
-async function handleAiEnrich(draftId: string, client: any, apiKey: string) {
+async function handleAiEnrich(draftId: string, client: any, apiKey: string, aiModel?: string) {
   const draft = await fetchDraft(draftId, client);
 
   const guard = checkStatusGuard(draft, 'ai-enrich');
@@ -304,6 +389,7 @@ async function handleAiEnrich(draftId: string, client: any, apiKey: string) {
         additionalProperties: false,
       },
     },
+    aiModel,
   );
 
   const update: Record<string, unknown> = { ai_enrich_at: new Date().toISOString() };
@@ -337,7 +423,7 @@ async function handleAiEnrich(draftId: string, client: any, apiKey: string) {
 
 // ============ 3. AI Find Official Links ============
 
-async function handleAiFindLinks(draftId: string, client: any, apiKey: string) {
+async function handleAiFindLinks(draftId: string, client: any, apiKey: string, aiModel?: string) {
   const draft = await fetchDraft(draftId, client);
   const context = getDraftContext(draft);
   const rawLinks = (draft.raw_links_found || []).slice(0, 100).join('\n');
@@ -367,6 +453,7 @@ Rules:
         additionalProperties: false,
       },
     },
+    aiModel,
   );
 
   const update: Record<string, unknown> = {
@@ -420,7 +507,7 @@ Rules:
 
 // ============ 4. AI Fix Missing ============
 
-async function handleAiFixMissing(draftId: string, client: any, apiKey: string) {
+async function handleAiFixMissing(draftId: string, client: any, apiKey: string, aiModel?: string) {
   const draft = await fetchDraft(draftId, client);
 
   const protectedFields = getProtectedFields(draft);
@@ -460,6 +547,7 @@ async function handleAiFixMissing(draftId: string, client: any, apiKey: string) 
         additionalProperties: false,
       },
     },
+    aiModel,
   );
 
   const update: Record<string, unknown> = { ai_fix_missing_at: new Date().toISOString() };
@@ -483,7 +571,7 @@ async function handleAiFixMissing(draftId: string, client: any, apiKey: string) 
 
 // ============ 5. AI SEO ============
 
-async function handleAiSeo(draftId: string, client: any, apiKey: string) {
+async function handleAiSeo(draftId: string, client: any, apiKey: string, aiModel?: string) {
   const draft = await fetchDraft(draftId, client);
   const protectedFields = getProtectedFields(draft);
   const context = getDraftContext(draft);
@@ -525,6 +613,7 @@ Rules:
         additionalProperties: false,
       },
     },
+    aiModel,
   );
 
   const update: Record<string, unknown> = { ai_seo_at: new Date().toISOString() };
@@ -549,7 +638,7 @@ Rules:
 
 // ============ 6. AI Cover Prompt ============
 
-async function handleAiCoverPrompt(draftId: string, client: any, apiKey: string) {
+async function handleAiCoverPrompt(draftId: string, client: any, apiKey: string, aiModel?: string) {
   const draft = await fetchDraft(draftId, client);
   const context = getDraftContext(draft);
 
@@ -575,6 +664,7 @@ Rules:
         additionalProperties: false,
       },
     },
+    aiModel,
   );
 
   const update: Record<string, unknown> = {
@@ -589,7 +679,7 @@ Rules:
 
 // ============ 7. AI Cover Image ============
 
-async function handleAiCoverImage(draftId: string, client: any, apiKey: string) {
+async function handleAiCoverImage(draftId: string, client: any, apiKey: string, aiModel?: string) {
   const draft = await fetchDraft(draftId, client);
 
   let prompt = draft.cover_image_prompt;
@@ -656,7 +746,7 @@ async function handleAiCoverImage(draftId: string, client: any, apiKey: string) 
 
 // ============ 8. AI Run All ============
 
-async function handleAiRunAll(draftId: string, client: any, apiKey: string) {
+async function handleAiRunAll(draftId: string, client: any, apiKey: string, aiModel?: string) {
   const steps = [
     'ai-clean', 'ai-enrich', 'ai-find-links', 'ai-fix-missing', 'ai-seo', 'ai-cover-prompt', 'ai-cover-image',
   ];
@@ -674,7 +764,7 @@ async function handleAiRunAll(draftId: string, client: any, apiKey: string) {
 
   for (const step of steps) {
     try {
-      const resp = await handlers[step](draftId, client, apiKey);
+      const resp = await handlers[step](draftId, client, apiKey, aiModel);
       const body = await resp.json();
       results.push({ step, success: body.success ?? true, error: body.error });
 

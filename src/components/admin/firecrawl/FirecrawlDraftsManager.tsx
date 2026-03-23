@@ -19,6 +19,8 @@ import {
   ThumbsUp, Undo2, CircleDot,
 } from 'lucide-react';
 import { FirecrawlSourcesManager } from './FirecrawlSourcesManager';
+import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSelector';
+import { SEO_FIX_MODEL_VALUES } from '@/lib/aiModels';
 
 interface DraftJob {
   id: string;
@@ -70,6 +72,9 @@ export function FirecrawlDraftsManager() {
   const [busyRows, setBusyRows] = useState<Record<string, string>>({});
   const [activeFilter, setActiveFilter] = useState<FilterTab>('all');
   const [dedupRunning, setDedupRunning] = useState(false);
+  const [selectedModel, setSelectedModel] = useState(() =>
+    getLastUsedModel('text', 'gemini-flash', [...SEO_FIX_MODEL_VALUES]),
+  );
 
   const fetchDrafts = useCallback(async () => {
     setLoading(true);
@@ -100,7 +105,7 @@ export function FirecrawlDraftsManager() {
     setBusyRows(prev => ({ ...prev, [draftId]: action }));
     try {
       const { data, error } = await supabase.functions.invoke('firecrawl-ai-enrich', {
-        body: { action, draft_id: draftId },
+        body: { action, draft_id: draftId, aiModel: selectedModel },
       });
       if (error) throw new Error(error.message);
       if (data?.error) throw new Error(data.error);
@@ -238,6 +243,13 @@ export function FirecrawlDraftsManager() {
             Firecrawl Draft Jobs
           </CardTitle>
           <div className="flex items-center gap-2">
+            <AiModelSelector
+              value={selectedModel}
+              onValueChange={setSelectedModel}
+              capability="text"
+              size="sm"
+              allowedValues={[...SEO_FIX_MODEL_VALUES]}
+            />
             <Button
               variant="outline" size="sm"
               onClick={runDedup} disabled={dedupRunning}

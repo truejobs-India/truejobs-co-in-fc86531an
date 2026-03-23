@@ -1,6 +1,6 @@
 /**
  * Admin control surface for Firecrawl sources (Source 3 Phase 5).
- * Enable/disable, view stats, re-run discovery, inspect errors.
+ * Enable/disable, view stats, re-run discovery, scrape pending, extract batch.
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
@@ -16,7 +16,7 @@ import { toast } from '@/hooks/use-toast';
 import {
   RefreshCw, Loader2, Play, AlertTriangle, CheckCircle,
   Globe, Settings, BarChart3, ChevronDown, ChevronUp,
-  PlayCircle, Square, XCircle,
+  PlayCircle, Square, XCircle, Download, FileText,
 } from 'lucide-react';
 
 interface FirecrawlSource {
@@ -39,8 +39,26 @@ interface FirecrawlSource {
 
 interface SourceStats {
   totalStaged: number;
+  pendingUrlOnly: number;
+  scraped: number;
+  extracted: number;
+  extractionFailed: number;
+  rejectedBucket: number;
+  duplicateStaged: number;
   bucketCounts: Record<string, number>;
   statusCounts: Record<string, number>;
+  draftCounts: {
+    total: number;
+    high: number;
+    medium: number;
+    low: number;
+    draft: number;
+    reviewed: number;
+    approved: number;
+    duplicate: number;
+  };
+  lastScrapeAt: string | null;
+  lastExtractAt: string | null;
   recentRuns: any[];
 }
 
@@ -161,6 +179,27 @@ export function FirecrawlSourcesManager() {
     }
   };
 
+  const runScrapePending = async (sourceId: string) => {
+    setBusySources(prev => ({ ...prev, [sourceId]: 'scraping' }));
+    try {
+      const { data, error } = await supabase.functions.invoke('firecrawl-ingest', {
+        body: { action: 'scrape-pending', source_id: sourceId, max_items: 20 },
+      });
+      if (error) throw new Error(error.message);
+      if (data?.error) throw new Error(data.error);
+
+      toast({
+        title: 'Scrape Pending complete',
+        description: `Scraped: ${data.scraped || 0}, Failed: ${data.failed || 0}, Total eligible: ${data.total || 0}`,
+      });
+      if (expandedSource === sourceId) await fetchStats(sourceId);
+    } catch (e: any) {
+      toast({ title: 'Scrape Pending failed', description: e.message, variant: 'destructive' });
+    } finally {
+      setBusySources(prev => { const n = { ...prev }; delete n[sourceId]; return n; });
+    }
+  };
+
   const runExtractBatch = async (sourceId: string) => {
     setBusySources(prev => ({ ...prev, [sourceId]: 'extracting' }));
     try {
@@ -171,11 +210,12 @@ export function FirecrawlSourcesManager() {
       if (data?.error) throw new Error(data.error);
 
       toast({
-        title: 'Extraction complete',
-        description: `Extracted: ${data.extracted || 0}, Failed: ${data.failed || 0}`,
+        title: 'Extract Pending complete',
+        description: `Extracted: ${data.extracted || 0}, Failed: ${data.failed || 0}, Total: ${data.total || 0}`,
       });
+      if (expandedSource === sourceId) await fetchStats(sourceId);
     } catch (e: any) {
-      toast({ title: 'Extraction failed', description: e.message, variant: 'destructive' });
+      toast({ title: 'Extract failed', description: e.message, variant: 'destructive' });
     } finally {
       setBusySources(prev => { const n = { ...prev }; delete n[sourceId]; return n; });
     }
@@ -196,7 +236,7 @@ export function FirecrawlSourcesManager() {
       setExpandedSource(null);
     } else {
       setExpandedSource(sourceId);
-      if (!sourceStats[sourceId]) fetchStats(sourceId);
+      fetchStats(sourceId);
     }
   };
 
@@ -219,16 +259,10 @@ export function FirecrawlSourcesManager() {
 
     for (let i = 0; i < enabledSources.length; i++) {
       if (stopRequestedRef.current) {
-        // Mark remaining as skipped
         for (let j = i; j < enabledSources.length; j++) {
           results.push({
-            sourceId: enabledSources[j].id,
-            sourceName: enabledSources[j].source_name,
-            status: 'skipped',
-            staged: 0,
-            rejected: 0,
-            durationMs: 0,
-            error: 'Stopped by admin',
+            sourceId: enabledSources[j].id, sourceName: enabledSources[j].source_name,
+            status: 'skipped', staged: 0, rejected: 0, durationMs: 0, error: 'Stopped by admin',
           });
         }
         break;
@@ -248,22 +282,14 @@ export function FirecrawlSourcesManager() {
         if (data?.error) throw new Error(data.error);
 
         results.push({
-          sourceId: source.id,
-          sourceName: source.source_name,
-          status: 'success',
-          staged: data.stats?.staged || 0,
-          rejected: data.stats?.rejected || 0,
+          sourceId: source.id, sourceName: source.source_name, status: 'success',
+          staged: data.stats?.staged || 0, rejected: data.stats?.rejected || 0,
           durationMs: Date.now() - sourceStart,
         });
       } catch (e: any) {
         results.push({
-          sourceId: source.id,
-          sourceName: source.source_name,
-          status: 'error',
-          staged: 0,
-          rejected: 0,
-          durationMs: Date.now() - sourceStart,
-          error: e.message,
+          sourceId: source.id, sourceName: source.source_name, status: 'error',
+          staged: 0, rejected: 0, durationMs: Date.now() - sourceStart, error: e.message,
         });
       } finally {
         setBusySources(prev => { const n = { ...prev }; delete n[source.id]; return n; });
@@ -271,14 +297,7 @@ export function FirecrawlSourcesManager() {
     }
 
     const completedAt = new Date().toISOString();
-    const report: BatchReport = {
-      results,
-      totalDurationMs: Date.now() - batchStart,
-      startedAt,
-      completedAt,
-    };
-
-    setBatchReport(report);
+    setBatchReport({ results, totalDurationMs: Date.now() - batchStart, startedAt, completedAt });
     setRunAllActive(false);
     setRunAllCurrentSource(null);
     setRunAllProgress({ current: 0, total: 0 });
@@ -323,6 +342,8 @@ export function FirecrawlSourcesManager() {
     return `${Math.floor(secs / 60)}m ${secs % 60}s`;
   };
 
+  const isBusy = (sourceId: string) => !!busySources[sourceId] || runAllActive;
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-3">
@@ -333,8 +354,7 @@ export function FirecrawlSourcesManager() {
         <div className="flex items-center gap-2">
           {!runAllActive ? (
             <Button
-              variant="default"
-              size="sm"
+              variant="default" size="sm"
               onClick={runAllSources}
               disabled={loading || sources.filter(s => s.is_enabled).length === 0}
             >
@@ -378,43 +398,26 @@ export function FirecrawlSourcesManager() {
           <div className="mb-4 border rounded-lg bg-muted/30 p-3 space-y-2">
             <div className="flex items-center justify-between">
               <h4 className="text-sm font-semibold flex items-center gap-1.5">
-                <BarChart3 className="h-4 w-4" />
-                Batch Run Report
+                <BarChart3 className="h-4 w-4" /> Batch Run Report
               </h4>
               <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">
-                  Total: {formatDuration(batchReport.totalDurationMs)}
-                </span>
-                <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setBatchReport(null)}>
-                  Dismiss
-                </Button>
+                <span className="text-xs text-muted-foreground">Total: {formatDuration(batchReport.totalDurationMs)}</span>
+                <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setBatchReport(null)}>Dismiss</Button>
               </div>
             </div>
-
-            {/* Summary badges */}
             <div className="flex gap-2 text-xs">
               <Badge variant="default" className="bg-green-600 text-white">
                 {batchReport.results.filter(r => r.status === 'success').length} Succeeded
               </Badge>
               {batchReport.results.some(r => r.status === 'error') && (
-                <Badge variant="destructive">
-                  {batchReport.results.filter(r => r.status === 'error').length} Failed
-                </Badge>
+                <Badge variant="destructive">{batchReport.results.filter(r => r.status === 'error').length} Failed</Badge>
               )}
               {batchReport.results.some(r => r.status === 'skipped') && (
-                <Badge variant="secondary">
-                  {batchReport.results.filter(r => r.status === 'skipped').length} Skipped
-                </Badge>
+                <Badge variant="secondary">{batchReport.results.filter(r => r.status === 'skipped').length} Skipped</Badge>
               )}
-              <Badge variant="outline">
-                {batchReport.results.reduce((sum, r) => sum + r.staged, 0)} Total Staged
-              </Badge>
-              <Badge variant="outline">
-                {batchReport.results.reduce((sum, r) => sum + r.rejected, 0)} Total Rejected
-              </Badge>
+              <Badge variant="outline">{batchReport.results.reduce((s, r) => s + r.staged, 0)} Total Staged</Badge>
+              <Badge variant="outline">{batchReport.results.reduce((s, r) => s + r.rejected, 0)} Total Rejected</Badge>
             </div>
-
-            {/* Per-source results table */}
             <Table>
               <TableHeader>
                 <TableRow>
@@ -454,185 +457,218 @@ export function FirecrawlSourcesManager() {
           <p className="text-center py-6 text-muted-foreground text-sm">No Firecrawl sources configured.</p>
         ) : (
           <div className="space-y-2">
-            {sources.map(source => (
-              <div key={source.id} className={`border rounded-lg ${runAllCurrentSource === source.id ? 'ring-2 ring-primary' : ''}`}>
-                {/* Source row */}
-                <div className="flex items-center gap-3 p-3">
-                  <Switch
-                    checked={source.is_enabled}
-                    onCheckedChange={(checked) => toggleEnabled(source.id, checked)}
-                    disabled={runAllActive}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="font-medium text-sm truncate">{source.source_name}</p>
-                      <Badge className={`text-[10px] ${priorityColor(source.priority)}`}>
-                        {source.priority}
-                      </Badge>
-                      {source.last_error && (
-                        <AlertTriangle className="h-3.5 w-3.5 text-destructive shrink-0" />
-                      )}
-                    </div>
-                    <p className="text-xs text-muted-foreground truncate">{source.seed_url}</p>
-                  </div>
+            {sources.map(source => {
+              const stats = sourceStats[source.id];
+              const hasPendingScrape = stats ? stats.pendingUrlOnly > 0 : false;
+              const hasPendingExtract = stats ? stats.scraped > 0 : false;
 
-                  <div className="flex items-center gap-3 text-xs text-muted-foreground shrink-0">
-                    <div className="text-center">
-                      <p className="font-medium text-foreground">{source.total_items_found}</p>
-                      <p>Items</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="font-medium text-foreground">{timeAgo(source.last_fetched_at)}</p>
-                      <p>Last run</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-1 shrink-0">
-                    <Button
-                      size="sm" variant="outline"
-                      disabled={!!busySources[source.id] || runAllActive}
-                      onClick={() => runDiscovery(source.id)}
-                      title="Run Discovery"
-                    >
-                      {busySources[source.id] === 'discovering' ? (
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                      ) : (
-                        <Play className="h-3 w-3" />
-                      )}
-                    </Button>
-                    <Button
-                      size="sm" variant="outline"
-                      disabled={!!busySources[source.id] || runAllActive}
-                      onClick={() => runExtractBatch(source.id)}
-                      title="Extract Batch"
-                    >
-                      {busySources[source.id] === 'extracting' ? (
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                      ) : (
-                        <Settings className="h-3 w-3" />
-                      )}
-                    </Button>
-                    <Button
-                      size="sm" variant="ghost"
-                      onClick={() => toggleExpand(source.id)}
-                    >
-                      {expandedSource === source.id ? (
-                        <ChevronUp className="h-3 w-3" />
-                      ) : (
-                        <ChevronDown className="h-3 w-3" />
-                      )}
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Expanded details */}
-                {expandedSource === source.id && (
-                  <div className="border-t p-3 space-y-3 bg-muted/30">
-                    {/* Edit seed URL */}
-                    <div className="flex items-center gap-2">
-                      <Label className="text-xs shrink-0">Seed URL</Label>
-                      <Input
-                        value={editingSeed[source.id] ?? source.seed_url}
-                        onChange={(e) => setEditingSeed(prev => ({ ...prev, [source.id]: e.target.value }))}
-                        className="h-7 text-xs"
-                      />
-                      {editingSeed[source.id] && editingSeed[source.id] !== source.seed_url && (
-                        <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => saveSeedUrl(source.id)}>
-                          Save
-                        </Button>
-                      )}
-                    </div>
-
-                    {/* Priority select */}
-                    <div className="flex items-center gap-2">
-                      <Label className="text-xs shrink-0">Priority</Label>
-                      <select
-                        value={source.priority}
-                        onChange={(e) => updatePriority(source.id, e.target.value)}
-                        className="h-7 text-xs rounded border px-2 bg-background"
-                      >
-                        <option value="High">High</option>
-                        <option value="Medium">Medium</option>
-                        <option value="Low">Low</option>
-                      </select>
-                      <span className="text-xs text-muted-foreground">
-                        Max pages/run: {source.max_pages_per_run}
-                      </span>
-                    </div>
-
-                    {/* Error display */}
-                    {source.last_error && (
-                      <div className="bg-destructive/10 text-destructive text-xs p-2 rounded">
-                        <strong>Last error:</strong> {source.last_error}
+              return (
+                <div key={source.id} className={`border rounded-lg ${runAllCurrentSource === source.id ? 'ring-2 ring-primary' : ''}`}>
+                  {/* Source row */}
+                  <div className="flex items-center gap-3 p-3">
+                    <Switch
+                      checked={source.is_enabled}
+                      onCheckedChange={(checked) => toggleEnabled(source.id, checked)}
+                      disabled={runAllActive}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium text-sm truncate">{source.source_name}</p>
+                        <Badge className={`text-[10px] ${priorityColor(source.priority)}`}>{source.priority}</Badge>
+                        {source.last_error && <AlertTriangle className="h-3.5 w-3.5 text-destructive shrink-0" />}
                       </div>
-                    )}
+                      <p className="text-xs text-muted-foreground truncate">{source.seed_url}</p>
+                    </div>
 
-                    {/* Stats */}
-                    {sourceStats[source.id] ? (
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-1 text-xs font-medium">
-                          <BarChart3 className="h-3 w-3" /> Discovery Stats
-                        </div>
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                          <div className="bg-background p-2 rounded border text-center">
-                            <p className="font-bold">{sourceStats[source.id].totalStaged}</p>
-                            <p className="text-muted-foreground">Total Staged</p>
-                          </div>
-                          {Object.entries(sourceStats[source.id].bucketCounts || {}).map(([bucket, count]) => (
-                            <div key={bucket} className="bg-background p-2 rounded border text-center">
-                              <p className="font-bold">{count as number}</p>
-                              <p className="text-muted-foreground truncate">{bucket}</p>
-                            </div>
-                          ))}
-                        </div>
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground shrink-0">
+                      <div className="text-center">
+                        <p className="font-medium text-foreground">{source.total_items_found}</p>
+                        <p>Items</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="font-medium text-foreground">{timeAgo(source.last_fetched_at)}</p>
+                        <p>Last run</p>
+                      </div>
+                    </div>
 
-                        {/* Recent runs */}
-                        {sourceStats[source.id].recentRuns.length > 0 && (
-                          <div>
-                            <p className="text-xs font-medium mb-1">Recent Runs</p>
-                            <Table>
-                              <TableHeader>
-                                <TableRow>
-                                  <TableHead className="text-xs h-7">When</TableHead>
-                                  <TableHead className="text-xs h-7">Status</TableHead>
-                                  <TableHead className="text-xs h-7">Pages</TableHead>
-                                  <TableHead className="text-xs h-7">Accepted</TableHead>
-                                  <TableHead className="text-xs h-7">Rejected</TableHead>
-                                  <TableHead className="text-xs h-7">New</TableHead>
-                                </TableRow>
-                              </TableHeader>
-                              <TableBody>
-                                {sourceStats[source.id].recentRuns.map((run: any) => (
-                                  <TableRow key={run.id}>
-                                    <TableCell className="text-xs py-1">{timeAgo(run.started_at)}</TableCell>
-                                    <TableCell className="text-xs py-1">
-                                      <Badge variant={run.status === 'success' ? 'default' : 'destructive'} className="text-[9px]">
-                                        {run.status}
-                                      </Badge>
-                                    </TableCell>
-                                    <TableCell className="text-xs py-1">{run.pages_fetched}</TableCell>
-                                    <TableCell className="text-xs py-1">{run.pages_accepted}</TableCell>
-                                    <TableCell className="text-xs py-1">{run.pages_rejected}</TableCell>
-                                    <TableCell className="text-xs py-1">{run.items_new}</TableCell>
-                                  </TableRow>
-                                ))}
-                              </TableBody>
-                            </Table>
-                          </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {/* Discover */}
+                      <Button size="sm" variant="outline" disabled={isBusy(source.id)} onClick={() => runDiscovery(source.id)} title="Discover URLs">
+                        {busySources[source.id] === 'discovering' ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
+                      </Button>
+                      {/* Scrape Pending */}
+                      <Button size="sm" variant="outline" disabled={isBusy(source.id)} onClick={() => runScrapePending(source.id)} title="Scrape Pending (fetch page content)">
+                        {busySources[source.id] === 'scraping' ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
+                      </Button>
+                      {/* Extract Pending */}
+                      <Button size="sm" variant="outline" disabled={isBusy(source.id)} onClick={() => runExtractBatch(source.id)} title="Extract Pending (create drafts)">
+                        {busySources[source.id] === 'extracting' ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileText className="h-3 w-3" />}
+                      </Button>
+                      {/* Expand */}
+                      <Button size="sm" variant="ghost" onClick={() => toggleExpand(source.id)}>
+                        {expandedSource === source.id ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Expanded details */}
+                  {expandedSource === source.id && (
+                    <div className="border-t p-3 space-y-3 bg-muted/30">
+                      {/* Edit seed URL */}
+                      <div className="flex items-center gap-2">
+                        <Label className="text-xs shrink-0">Seed URL</Label>
+                        <Input
+                          value={editingSeed[source.id] ?? source.seed_url}
+                          onChange={(e) => setEditingSeed(prev => ({ ...prev, [source.id]: e.target.value }))}
+                          className="h-7 text-xs"
+                        />
+                        {editingSeed[source.id] && editingSeed[source.id] !== source.seed_url && (
+                          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => saveSeedUrl(source.id)}>Save</Button>
                         )}
                       </div>
-                    ) : (
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Loader2 className="h-3 w-3 animate-spin" /> Loading stats...
+
+                      {/* Priority select */}
+                      <div className="flex items-center gap-2">
+                        <Label className="text-xs shrink-0">Priority</Label>
+                        <select
+                          value={source.priority}
+                          onChange={(e) => updatePriority(source.id, e.target.value)}
+                          className="h-7 text-xs rounded border px-2 bg-background"
+                        >
+                          <option value="High">High</option>
+                          <option value="Medium">Medium</option>
+                          <option value="Low">Low</option>
+                        </select>
+                        <span className="text-xs text-muted-foreground">Max pages/run: {source.max_pages_per_run}</span>
                       </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
+
+                      {/* Error display */}
+                      {source.last_error && (
+                        <div className="bg-destructive/10 text-destructive text-xs p-2 rounded">
+                          <strong>Last error:</strong> {source.last_error}
+                        </div>
+                      )}
+
+                      {/* Stats */}
+                      {stats ? (
+                        <div className="space-y-3">
+                          {/* Pipeline progress */}
+                          <div>
+                            <div className="flex items-center gap-1 text-xs font-medium mb-1.5">
+                              <BarChart3 className="h-3 w-3" /> Pipeline Progress
+                            </div>
+                            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-1.5 text-xs">
+                              <StatBox label="Total Staged" value={stats.totalStaged} />
+                              <StatBox label="URL-Only" value={stats.pendingUrlOnly} highlight={stats.pendingUrlOnly > 0 ? 'warn' : undefined} />
+                              <StatBox label="Scraped" value={stats.scraped} highlight={stats.scraped > 0 ? 'info' : undefined} />
+                              <StatBox label="Extracted" value={stats.extracted} highlight="good" />
+                              <StatBox label="Failed" value={stats.extractionFailed} highlight={stats.extractionFailed > 0 ? 'bad' : undefined} />
+                              <StatBox label="Rejected" value={stats.rejectedBucket} />
+                              <StatBox label="Duplicate" value={stats.duplicateStaged} />
+                            </div>
+                          </div>
+
+                          {/* Draft stats */}
+                          {stats.draftCounts.total > 0 && (
+                            <div>
+                              <div className="flex items-center gap-1 text-xs font-medium mb-1.5">
+                                <FileText className="h-3 w-3" /> Draft Jobs
+                              </div>
+                              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-1.5 text-xs">
+                                <StatBox label="Total" value={stats.draftCounts.total} />
+                                <StatBox label="High Conf." value={stats.draftCounts.high} highlight="good" />
+                                <StatBox label="Medium" value={stats.draftCounts.medium} highlight="info" />
+                                <StatBox label="Low" value={stats.draftCounts.low} highlight="warn" />
+                                <StatBox label="Draft" value={stats.draftCounts.draft} />
+                                <StatBox label="Reviewed" value={stats.draftCounts.reviewed} highlight="info" />
+                                <StatBox label="Approved" value={stats.draftCounts.approved} highlight="good" />
+                                <StatBox label="Duplicate" value={stats.draftCounts.duplicate} highlight={stats.draftCounts.duplicate > 0 ? 'bad' : undefined} />
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Bucket counts */}
+                          {Object.keys(stats.bucketCounts).length > 0 && (
+                            <div>
+                              <p className="text-xs font-medium mb-1">Buckets</p>
+                              <div className="flex flex-wrap gap-1.5">
+                                {Object.entries(stats.bucketCounts).map(([bucket, count]) => (
+                                  <Badge key={bucket} variant="outline" className="text-[10px]">
+                                    {bucket}: {count as number}
+                                  </Badge>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Timestamps */}
+                          <div className="flex gap-4 text-[10px] text-muted-foreground">
+                            <span>Last scrape: {timeAgo(stats.lastScrapeAt)}</span>
+                            <span>Last extract: {timeAgo(stats.lastExtractAt)}</span>
+                          </div>
+
+                          {/* Recent runs */}
+                          {stats.recentRuns.length > 0 && (
+                            <div>
+                              <p className="text-xs font-medium mb-1">Recent Runs</p>
+                              <Table>
+                                <TableHeader>
+                                  <TableRow>
+                                    <TableHead className="text-xs h-7">When</TableHead>
+                                    <TableHead className="text-xs h-7">Status</TableHead>
+                                    <TableHead className="text-xs h-7">Pages</TableHead>
+                                    <TableHead className="text-xs h-7">Accepted</TableHead>
+                                    <TableHead className="text-xs h-7">Rejected</TableHead>
+                                    <TableHead className="text-xs h-7">New</TableHead>
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                  {stats.recentRuns.map((run: any) => (
+                                    <TableRow key={run.id}>
+                                      <TableCell className="text-xs py-1">{timeAgo(run.started_at)}</TableCell>
+                                      <TableCell className="text-xs py-1">
+                                        <Badge variant={run.status === 'success' ? 'default' : 'destructive'} className="text-[9px]">{run.status}</Badge>
+                                      </TableCell>
+                                      <TableCell className="text-xs py-1">{run.pages_fetched}</TableCell>
+                                      <TableCell className="text-xs py-1">{run.pages_accepted}</TableCell>
+                                      <TableCell className="text-xs py-1">{run.pages_rejected}</TableCell>
+                                      <TableCell className="text-xs py-1">{run.items_new}</TableCell>
+                                    </TableRow>
+                                  ))}
+                                </TableBody>
+                              </Table>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <Loader2 className="h-3 w-3 animate-spin" /> Loading stats...
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </CardContent>
     </Card>
+  );
+}
+
+// ── Small stat box component ──
+function StatBox({ label, value, highlight }: { label: string; value: number; highlight?: 'good' | 'warn' | 'bad' | 'info' }) {
+  const bg = highlight === 'good' ? 'bg-green-50 border-green-200 dark:bg-green-950 dark:border-green-800'
+    : highlight === 'warn' ? 'bg-yellow-50 border-yellow-200 dark:bg-yellow-950 dark:border-yellow-800'
+    : highlight === 'bad' ? 'bg-red-50 border-red-200 dark:bg-red-950 dark:border-red-800'
+    : highlight === 'info' ? 'bg-blue-50 border-blue-200 dark:bg-blue-950 dark:border-blue-800'
+    : 'bg-background';
+
+  return (
+    <div className={`p-1.5 rounded border text-center ${bg}`}>
+      <p className="font-bold text-sm">{value}</p>
+      <p className="text-muted-foreground text-[10px] leading-tight">{label}</p>
+    </div>
   );
 }

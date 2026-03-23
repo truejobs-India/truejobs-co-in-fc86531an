@@ -60,6 +60,8 @@ Deno.serve(async (req) => {
         return await handleExtractItem(body, adminClient);
       case 'extract-batch':
         return await handleExtractBatch(body, adminClient);
+      case 'scrape-pending':
+        return await handleScrapePending(body, adminClient);
       case 'dedup-drafts':
         return await handleDedupDrafts(body, adminClient);
       case 'validate-for-approval':
@@ -480,7 +482,7 @@ async function handleDiscoverSource(
   }
 }
 
-// ============ source-stats ============
+// ============ source-stats (enhanced) ============
 
 async function handleSourceStats(
   body: Record<string, unknown>,
@@ -497,18 +499,55 @@ async function handleSourceStats(
 
   if (!source) return jsonResponse({ error: 'Source not found' }, 404);
 
-  const { data: bucketData } = await client
+  // Staged items breakdown
+  const { data: stagedData } = await client
     .from('firecrawl_staged_items')
-    .select('bucket, status')
+    .select('bucket, status, extraction_status, extracted_markdown')
     .eq('firecrawl_source_id', sourceId);
+
+  const items = stagedData || [];
+  const totalStaged = items.length;
 
   const bucketCounts: Record<string, number> = {};
   const statusCounts: Record<string, number> = {};
-  for (const item of (bucketData || [])) {
+  let pendingUrlOnly = 0;
+  let scraped = 0;
+  let extracted = 0;
+  let extractionFailed = 0;
+  let rejectedBucket = 0;
+  let duplicateStaged = 0;
+
+  for (const item of items) {
     bucketCounts[item.bucket] = (bucketCounts[item.bucket] || 0) + 1;
     statusCounts[item.status] = (statusCounts[item.status] || 0) + 1;
+
+    if (!item.extracted_markdown && item.bucket === 'single_recruitment') pendingUrlOnly++;
+    if (item.extracted_markdown && item.extraction_status === 'pending') scraped++;
+    if (item.extraction_status === 'extracted') extracted++;
+    if (item.extraction_status === 'failed') extractionFailed++;
+    if (item.bucket === 'rejected') rejectedBucket++;
+    if (item.status === 'duplicate') duplicateStaged++;
   }
 
+  // Draft job counts
+  const { data: drafts } = await client
+    .from('firecrawl_draft_jobs')
+    .select('id, extraction_confidence, status, dedup_status')
+    .eq('firecrawl_source_id', sourceId);
+
+  const draftItems = drafts || [];
+  const draftCounts = {
+    total: draftItems.length,
+    high: draftItems.filter((d: any) => d.extraction_confidence === 'high').length,
+    medium: draftItems.filter((d: any) => d.extraction_confidence === 'medium').length,
+    low: draftItems.filter((d: any) => d.extraction_confidence === 'low').length,
+    draft: draftItems.filter((d: any) => d.status === 'draft').length,
+    reviewed: draftItems.filter((d: any) => d.status === 'reviewed').length,
+    approved: draftItems.filter((d: any) => d.status === 'approved').length,
+    duplicate: draftItems.filter((d: any) => d.dedup_status === 'duplicate').length,
+  };
+
+  // Recent runs
   const { data: recentRuns } = await client
     .from('firecrawl_fetch_runs')
     .select('id, run_mode, status, started_at, finished_at, pages_fetched, items_found, items_new, items_skipped, pages_accepted, pages_rejected, bucket_counts, error_log')
@@ -516,13 +555,149 @@ async function handleSourceStats(
     .order('started_at', { ascending: false })
     .limit(5);
 
+  // Timestamps for last scrape / last extract
+  const { data: lastScrapeRun } = await client
+    .from('firecrawl_fetch_runs')
+    .select('finished_at')
+    .eq('firecrawl_source_id', sourceId)
+    .in('status', ['success', 'partial'])
+    .order('finished_at', { ascending: false })
+    .limit(1);
+
+  // Last extract time from draft jobs
+  const { data: lastDraft } = await client
+    .from('firecrawl_draft_jobs')
+    .select('created_at')
+    .eq('firecrawl_source_id', sourceId)
+    .order('created_at', { ascending: false })
+    .limit(1);
+
   return jsonResponse({
     success: true,
     source,
-    totalStaged: bucketData?.length || 0,
+    totalStaged,
+    pendingUrlOnly,
+    scraped,
+    extracted,
+    extractionFailed,
+    rejectedBucket,
+    duplicateStaged,
     bucketCounts,
     statusCounts,
+    draftCounts,
+    lastScrapeAt: lastScrapeRun?.[0]?.finished_at || null,
+    lastExtractAt: lastDraft?.[0]?.created_at || null,
     recentRuns: recentRuns || [],
+  });
+}
+
+// ============ scrape-pending ============
+
+async function handleScrapePending(
+  body: Record<string, unknown>,
+  client: ReturnType<typeof createClient>
+) {
+  const sourceId = body.source_id as string;
+  if (!sourceId) return jsonResponse({ error: 'source_id required' }, 400);
+
+  const maxItems = Math.min(Math.max((body.max_items as number) || 20, 1), 50);
+
+  const { data: source } = await client.from('firecrawl_sources').select('id, source_name').eq('id', sourceId).single();
+  if (!source) return jsonResponse({ error: 'Source not found' }, 404);
+
+  // Find eligible staged rows: single_recruitment, no markdown, pending
+  const { data: items, error } = await client
+    .from('firecrawl_staged_items')
+    .select('id, page_url, url_normalized')
+    .eq('firecrawl_source_id', sourceId)
+    .eq('bucket', 'single_recruitment')
+    .eq('status', 'staged')
+    .eq('extraction_status', 'pending')
+    .is('extracted_markdown', null)
+    .order('created_at', { ascending: true })
+    .limit(maxItems);
+
+  if (error) return jsonResponse({ error: error.message }, 500);
+  if (!items || items.length === 0) {
+    return jsonResponse({ success: true, message: 'No pending items to scrape', scraped: 0, failed: 0, total: 0 });
+  }
+
+  console.log(`[firecrawl-ingest] scrape-pending: ${items.length} items for ${source.source_name}`);
+
+  // Create audit run
+  const { data: run } = await client
+    .from('firecrawl_fetch_runs')
+    .insert({ firecrawl_source_id: sourceId, run_mode: 'manual_admin', status: 'running' })
+    .select('id').single();
+  const runId = run?.id;
+
+  let scrapedCount = 0;
+  let failedCount = 0;
+  let skippedCount = 0;
+  const results: { url: string; status: string; title?: string; contentLength?: number; error?: string }[] = [];
+
+  for (const item of items) {
+    try {
+      const scrapeResult = await scrapePage(item.page_url, {
+        formats: ['markdown', 'links'],
+        onlyMainContent: true,
+      });
+
+      if (!scrapeResult.success || !scrapeResult.markdown) {
+        failedCount++;
+        results.push({ url: item.page_url, status: 'failed', error: scrapeResult.error || 'No content returned' });
+        continue;
+      }
+
+      const contentHash = await generateContentHash(scrapeResult.markdown);
+
+      // Refine classification with title
+      const refined = classifyPage(item.page_url, scrapeResult.metadata?.title);
+
+      await client
+        .from('firecrawl_staged_items')
+        .update({
+          page_title: scrapeResult.metadata?.title || null,
+          extracted_markdown: scrapeResult.markdown.substring(0, 100_000),
+          extracted_links: scrapeResult.links?.slice(0, 200) || [],
+          content_hash: contentHash,
+          metadata: scrapeResult.metadata || {},
+          bucket: refined.bucket,
+          classification_reason: refined.reason + ' (scrape-pending refined)',
+          classification_signals: refined.signals,
+        })
+        .eq('id', item.id);
+
+      scrapedCount++;
+      results.push({
+        url: item.page_url,
+        status: 'scraped',
+        title: scrapeResult.metadata?.title,
+        contentLength: scrapeResult.markdown.length,
+      });
+    } catch (e) {
+      failedCount++;
+      results.push({ url: item.page_url, status: 'failed', error: e instanceof Error ? e.message : String(e) });
+    }
+  }
+
+  // Finalize audit run
+  const runStatus = failedCount > 0 && scrapedCount > 0 ? 'partial' : failedCount > 0 ? 'error' : 'success';
+  if (runId) await finalizeRun(client, runId, runStatus, {
+    pagesFetched: scrapedCount + failedCount,
+    itemsFound: items.length,
+    itemsNew: scrapedCount,
+    itemsSkipped: skippedCount,
+    errorLog: failedCount > 0 ? `${failedCount} scrape failures` : null,
+  });
+
+  return jsonResponse({
+    success: true,
+    total: items.length,
+    scraped: scrapedCount,
+    failed: failedCount,
+    skipped: skippedCount,
+    results,
   });
 }
 

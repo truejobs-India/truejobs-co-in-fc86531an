@@ -293,6 +293,24 @@ export function FirecrawlDraftsManager() {
                 <TableBody>
                   {drafts.map(draft => {
                     const missingCount = draft.fields_missing?.length || 0;
+                    // Readiness assessment
+                    const blockers: string[] = [];
+                    const warnings: string[] = [];
+                    if (!draft.title || draft.title.length < 10) blockers.push('Title missing/short');
+                    if (!draft.organization_name) blockers.push('No organization');
+                    if (draft.dedup_status === 'duplicate') blockers.push('Duplicate');
+                    if (draft.extraction_confidence === 'none') blockers.push('No confidence');
+                    if (!draft.official_notification_url && !draft.seo_title) warnings.push('No official links');
+                    if (!draft.seo_title) warnings.push('No SEO');
+                    if (!draft.cover_image_url) warnings.push('No cover');
+                    if (draft.extraction_confidence === 'low') warnings.push('Low confidence');
+                    const readiness = blockers.length > 0 ? 'red' : warnings.length > 0 ? 'yellow' : 'green';
+                    const readinessTooltip = blockers.length > 0
+                      ? `Blockers: ${blockers.join(', ')}`
+                      : warnings.length > 0
+                        ? `Warnings: ${warnings.join(', ')}`
+                        : 'Ready for review';
+
                     return (
                       <TableRow key={draft.id} className={busyRows[draft.id] ? 'opacity-70' : ''}>
                         <TableCell>
@@ -308,6 +326,21 @@ export function FirecrawlDraftsManager() {
                           </div>
                         </TableCell>
                         <TableCell className="text-xs">{draft.state || '—'}</TableCell>
+                        <TableCell>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger>
+                                <CircleDot className={`h-4 w-4 ${
+                                  readiness === 'green' ? 'text-green-500' :
+                                  readiness === 'yellow' ? 'text-yellow-500' : 'text-red-500'
+                                }`} />
+                              </TooltipTrigger>
+                              <TooltipContent side="right" className="max-w-[250px]">
+                                <p className="text-xs">{readinessTooltip}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </TableCell>
                         <TableCell>{confidenceBadge(draft.extraction_confidence)}</TableCell>
                         <TableCell>
                           <div className="space-y-0.5">

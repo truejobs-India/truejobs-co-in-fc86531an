@@ -90,9 +90,7 @@ Deno.serve(async (req) => {
     const action = body.action as string;
     const draftId = body.draft_id as string;
     const aiModel = (body.aiModel as string) || '';
-
-    if (!action) return json({ error: 'Missing action' }, 400);
-    if (!draftId && action !== 'ai-run-all-batch') return json({ error: 'Missing draft_id' }, 400);
+    const imageModel = (body.imageModel as string) || '';
 
     // Auth check
     const authHeader = req.headers.get('Authorization');

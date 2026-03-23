@@ -774,6 +774,23 @@ async function handleAiRunAll(draftId: string, client: any, apiKey: string, aiMo
     }
   }
 
+  // Persist failed/skipped step entries into ai_enrichment_log
+  const failedSteps = results.filter(r => !r.success);
+  if (failedSteps.length > 0) {
+    const latestDraft = await fetchDraft(draftId, client);
+    let log = latestDraft.ai_enrichment_log || [];
+    for (const r of failedSteps) {
+      const isGuard = r.error?.includes('Cannot run') || r.error?.includes('reviewed') || r.error?.includes('approved');
+      log = [...log, {
+        action: r.step,
+        at: new Date().toISOString(),
+        status: isGuard ? 'skipped' : 'failed',
+        ...(isGuard ? { reason: r.error } : { error: r.error }),
+      }];
+    }
+    await client.from('firecrawl_draft_jobs').update({ ai_enrichment_log: log }).eq('id', draftId);
+  }
+
   const successCount = results.filter(r => r.success).length;
   return json({
     success: true,

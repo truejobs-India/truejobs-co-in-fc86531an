@@ -1,13 +1,14 @@
 /**
  * Admin UI for managing Firecrawl draft jobs (Source 3 Phase 5 + hardening).
  * Lists draft jobs with row-level AI actions, dedup flags, review controls,
- * publish gating, and missing-fields indicators.
+ * publish gating, missing-fields indicators, bulk Run All, and labeled AI step badges.
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { toast } from '@/hooks/use-toast';
@@ -16,7 +17,7 @@ import {
   RefreshCw, Loader2, MoreHorizontal, Sparkles, Wrench, Link2,
   Search, Image, FileText, Zap, CheckCircle, XCircle,
   AlertTriangle, ExternalLink, Copy, ShieldCheck, ShieldAlert, Eye,
-  ThumbsUp, Undo2, CircleDot,
+  ThumbsUp, Undo2, CircleDot, Circle, Ban, X,
 } from 'lucide-react';
 import { FirecrawlSourcesManager } from './FirecrawlSourcesManager';
 import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSelector';
@@ -39,6 +40,7 @@ interface DraftJob {
   ai_seo_at: string | null;
   ai_cover_prompt_at: string | null;
   ai_cover_image_at: string | null;
+  ai_enrichment_log: any[] | null;
   seo_title: string | null;
   cover_image_url: string | null;
   official_notification_url: string | null;
@@ -64,7 +66,96 @@ const AI_ACTIONS: { action: AiAction; label: string; icon: typeof Sparkles; desc
   { action: 'ai-cover-image', label: 'Cover Image', icon: Image, description: 'Generate & upload cover' },
 ];
 
+// Step-to-field mapping for AI step indicators
+const AI_STEP_MAP: { action: string; label: string; tsField: keyof DraftJob }[] = [
+  { action: 'ai-clean', label: 'Clean', tsField: 'ai_clean_at' },
+  { action: 'ai-enrich', label: 'Enrich', tsField: 'ai_enrich_at' },
+  { action: 'ai-find-links', label: 'Links', tsField: 'ai_links_at' },
+  { action: 'ai-fix-missing', label: 'Fix', tsField: 'ai_fix_missing_at' },
+  { action: 'ai-seo', label: 'SEO', tsField: 'ai_seo_at' },
+  { action: 'ai-cover-prompt', label: 'Prompt', tsField: 'ai_cover_prompt_at' },
+  { action: 'ai-cover-image', label: 'Image', tsField: 'ai_cover_image_at' },
+];
+
+type StepState = 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
+
+function getStepState(
+  draft: DraftJob,
+  stepAction: string,
+  tsField: keyof DraftJob,
+  busyAction: string | undefined,
+): { state: StepState; tooltip: string } {
+  // Running check
+  if (busyAction === stepAction || busyAction === 'ai-run-all') {
+    // If ai-run-all, we can't tell which sub-step, so show running for incomplete steps
+    if (busyAction === 'ai-run-all' && draft[tsField]) {
+      return { state: 'completed', tooltip: `Completed: ${draft[tsField]}` };
+    }
+    if (busyAction === stepAction || (busyAction === 'ai-run-all' && !draft[tsField])) {
+      return { state: 'running', tooltip: 'Running...' };
+    }
+  }
+
+  // Completed: timestamp exists
+  if (draft[tsField]) {
+    return { state: 'completed', tooltip: `Done: ${new Date(draft[tsField] as string).toLocaleString()}` };
+  }
+
+  // Check enrichment log for failure/skip info
+  const log = draft.ai_enrichment_log;
+  if (log && Array.isArray(log)) {
+    // Find last entry for this action
+    for (let i = log.length - 1; i >= 0; i--) {
+      const entry = log[i] as any;
+      if (entry?.action === stepAction) {
+        if (entry.status === 'failed') {
+          return { state: 'failed', tooltip: `Failed: ${entry.error || 'Unknown error'}` };
+        }
+        if (entry.status === 'skipped') {
+          return { state: 'skipped', tooltip: `Skipped: ${entry.reason || 'Status guard or protection'}` };
+        }
+        // Legacy entry without status field but also no timestamp = treat as pending (rollback case)
+        break;
+      }
+    }
+  }
+
+  return { state: 'pending', tooltip: 'Not yet run' };
+}
+
+const STEP_BADGE_STYLES: Record<StepState, string> = {
+  pending: 'bg-muted text-muted-foreground border-border',
+  running: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200 border-blue-300',
+  completed: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200 border-green-300',
+  failed: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200 border-red-300',
+  skipped: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-200 border-yellow-300',
+};
+
+const STEP_ICONS: Record<StepState, typeof Circle> = {
+  pending: Circle,
+  running: Loader2,
+  completed: CheckCircle,
+  failed: XCircle,
+  skipped: Ban,
+};
+
 type FilterTab = 'all' | 'draft' | 'reviewed' | 'approved' | 'duplicate' | 'rejected';
+
+interface BulkProgress {
+  total: number;
+  current: number;
+  currentTitle: string;
+  succeeded: number;
+  failed: number;
+  skipped: number;
+}
+
+interface BulkResult {
+  id: string;
+  title: string;
+  success: boolean;
+  error?: string;
+}
 
 export function FirecrawlDraftsManager() {
   const [drafts, setDrafts] = useState<DraftJob[]>([]);
@@ -76,11 +167,17 @@ export function FirecrawlDraftsManager() {
     getLastUsedModel('text', 'gemini-flash', [...SEO_FIX_MODEL_VALUES]),
   );
 
+  // Bulk run state
+  const [bulkRunning, setBulkRunning] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState<BulkProgress | null>(null);
+  const [bulkResults, setBulkResults] = useState<BulkResult[] | null>(null);
+  const bulkCancelRef = useRef(false);
+
   const fetchDrafts = useCallback(async () => {
     setLoading(true);
     let query = supabase
       .from('firecrawl_draft_jobs')
-      .select('id, title, organization_name, post_name, state, extraction_confidence, status, fields_extracted, fields_missing, ai_clean_at, ai_enrich_at, ai_links_at, ai_fix_missing_at, ai_seo_at, ai_cover_prompt_at, ai_cover_image_at, seo_title, cover_image_url, official_notification_url, official_link_confidence, source_name, source_bucket, dedup_status, dedup_reason, dedup_match_ids, created_at, updated_at')
+      .select('id, title, organization_name, post_name, state, extraction_confidence, status, fields_extracted, fields_missing, ai_clean_at, ai_enrich_at, ai_links_at, ai_fix_missing_at, ai_seo_at, ai_cover_prompt_at, ai_cover_image_at, ai_enrichment_log, seo_title, cover_image_url, official_notification_url, official_link_confidence, source_name, source_bucket, dedup_status, dedup_reason, dedup_match_ids, created_at, updated_at')
       .order('created_at', { ascending: false })
       .limit(100);
 
@@ -123,6 +220,85 @@ export function FirecrawlDraftsManager() {
     }
   };
 
+  // ── Bulk Run All ──
+  const getEligibleDrafts = useCallback(() => {
+    return drafts.filter(d =>
+      d.status === 'draft' &&
+      d.dedup_status !== 'duplicate' &&
+      !busyRows[d.id]
+    );
+  }, [drafts, busyRows]);
+
+  const runBulkAll = async () => {
+    const eligible = getEligibleDrafts();
+    if (eligible.length === 0) {
+      toast({ title: 'No eligible rows', description: 'No draft rows available for bulk processing.' });
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Run all AI steps on ${eligible.length} eligible draft row(s)?\n\nThis processes rows sequentially and may take several minutes.`
+    );
+    if (!confirmed) return;
+
+    bulkCancelRef.current = false;
+    setBulkRunning(true);
+    setBulkResults(null);
+    const results: BulkResult[] = [];
+    const progress: BulkProgress = {
+      total: eligible.length, current: 0, currentTitle: '',
+      succeeded: 0, failed: 0, skipped: 0,
+    };
+    setBulkProgress({ ...progress });
+
+    for (let i = 0; i < eligible.length; i++) {
+      if (bulkCancelRef.current) {
+        // Mark remaining as skipped
+        for (let j = i; j < eligible.length; j++) {
+          results.push({ id: eligible[j].id, title: eligible[j].title || 'Untitled', success: false, error: 'Cancelled' });
+          progress.skipped++;
+        }
+        break;
+      }
+
+      const draft = eligible[i];
+      progress.current = i + 1;
+      progress.currentTitle = draft.title || 'Untitled';
+      setBulkProgress({ ...progress });
+
+      // Set busy state for this row
+      setBusyRows(prev => ({ ...prev, [draft.id]: 'ai-run-all' }));
+
+      try {
+        const { data, error } = await supabase.functions.invoke('firecrawl-ai-enrich', {
+          body: { action: 'ai-run-all', draft_id: draft.id, aiModel: selectedModel },
+        });
+        if (error) throw new Error(error.message);
+        if (data?.error) throw new Error(data.error);
+
+        results.push({ id: draft.id, title: draft.title || 'Untitled', success: true });
+        progress.succeeded++;
+      } catch (e: any) {
+        results.push({ id: draft.id, title: draft.title || 'Untitled', success: false, error: e.message });
+        progress.failed++;
+      } finally {
+        setBusyRows(prev => { const n = { ...prev }; delete n[draft.id]; return n; });
+      }
+
+      setBulkProgress({ ...progress });
+    }
+
+    setBulkResults(results);
+    setBulkRunning(false);
+    setBulkProgress(null);
+    await fetchDrafts();
+
+    toast({
+      title: 'Bulk Run All complete',
+      description: `✅ ${progress.succeeded} succeeded · ❌ ${progress.failed} failed · ⏭ ${progress.skipped} skipped`,
+    });
+  };
+
   const runDedup = async () => {
     setDedupRunning(true);
     try {
@@ -144,7 +320,6 @@ export function FirecrawlDraftsManager() {
   };
 
   const updateStatus = async (draftId: string, newStatus: string) => {
-    // For approval, run publish gating first
     if (newStatus === 'approved') {
       try {
         const { data, error } = await supabase.functions.invoke('firecrawl-ingest', {
@@ -160,19 +335,13 @@ export function FirecrawlDraftsManager() {
             variant: 'destructive',
           });
           if (data.warnings?.length > 0) {
-            toast({
-              title: 'Warnings',
-              description: data.warnings.join('; '),
-            });
+            toast({ title: 'Warnings', description: data.warnings.join('; ') });
           }
           return;
         }
 
         if (data.warnings?.length > 0) {
-          toast({
-            title: 'Approved with warnings',
-            description: data.warnings.join('; '),
-          });
+          toast({ title: 'Approved with warnings', description: data.warnings.join('; ') });
         }
       } catch (e: any) {
         toast({ title: 'Validation error', description: e.message, variant: 'destructive' });
@@ -180,7 +349,6 @@ export function FirecrawlDraftsManager() {
       }
     }
 
-    // Get current user for reviewed_by
     const { data: { user } } = await supabase.auth.getUser();
 
     const { error } = await supabase
@@ -218,11 +386,6 @@ export function FirecrawlDraftsManager() {
     }
   };
 
-  const aiStatusDot = (timestamp: string | null) => {
-    if (timestamp) return <CheckCircle className="h-3 w-3 text-green-500" />;
-    return <XCircle className="h-3 w-3 text-muted-foreground/40" />;
-  };
-
   const filterTabs: { key: FilterTab; label: string }[] = [
     { key: 'all', label: 'All' },
     { key: 'draft', label: 'Draft' },
@@ -231,6 +394,8 @@ export function FirecrawlDraftsManager() {
     { key: 'duplicate', label: 'Duplicates' },
     { key: 'rejected', label: 'Rejected' },
   ];
+
+  const eligibleCount = getEligibleDrafts().length;
 
   return (
     <div className="space-y-4">
@@ -251,6 +416,19 @@ export function FirecrawlDraftsManager() {
               allowedValues={[...SEO_FIX_MODEL_VALUES]}
             />
             <Button
+              variant="default" size="sm"
+              onClick={runBulkAll}
+              disabled={bulkRunning || eligibleCount === 0 || loading}
+              title={`Run all AI steps on ${eligibleCount} eligible draft rows`}
+            >
+              {bulkRunning ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+              ) : (
+                <Zap className="h-3.5 w-3.5 mr-1.5" />
+              )}
+              Bulk Run All{eligibleCount > 0 ? ` (${eligibleCount})` : ''}
+            </Button>
+            <Button
               variant="outline" size="sm"
               onClick={runDedup} disabled={dedupRunning}
             >
@@ -264,6 +442,7 @@ export function FirecrawlDraftsManager() {
           </div>
         </CardHeader>
         <CardContent>
+          {/* Filter tabs */}
           <div className="flex gap-1 mb-3">
             {filterTabs.map(tab => (
               <Button
@@ -277,6 +456,55 @@ export function FirecrawlDraftsManager() {
               </Button>
             ))}
           </div>
+
+          {/* Bulk progress bar */}
+          {bulkRunning && bulkProgress && (
+            <div className="mb-3 p-3 rounded-lg border bg-muted/50 space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="font-medium">
+                  Processing {bulkProgress.current}/{bulkProgress.total} — <span className="text-muted-foreground">{bulkProgress.currentTitle}</span>
+                </span>
+                <Button
+                  size="sm" variant="ghost"
+                  className="h-6 text-xs text-destructive hover:text-destructive"
+                  onClick={() => { bulkCancelRef.current = true; }}
+                >
+                  <X className="h-3 w-3 mr-1" /> Cancel
+                </Button>
+              </div>
+              <Progress value={(bulkProgress.current / bulkProgress.total) * 100} className="h-2" />
+              <div className="flex gap-3 text-xs text-muted-foreground">
+                <span className="text-green-600">✅ {bulkProgress.succeeded}</span>
+                <span className="text-red-600">❌ {bulkProgress.failed}</span>
+                <span>⏭ {bulkProgress.skipped}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Bulk results summary */}
+          {bulkResults && !bulkRunning && (
+            <div className="mb-3 p-3 rounded-lg border bg-muted/30 space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium">Bulk Run Complete</p>
+                <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => setBulkResults(null)}>
+                  Dismiss
+                </Button>
+              </div>
+              <div className="flex gap-3 text-xs">
+                <span className="text-green-600">✅ {bulkResults.filter(r => r.success).length} succeeded</span>
+                <span className="text-red-600">❌ {bulkResults.filter(r => !r.success && r.error !== 'Cancelled').length} failed</span>
+                <span>⏭ {bulkResults.filter(r => r.error === 'Cancelled').length} cancelled</span>
+              </div>
+              {bulkResults.filter(r => !r.success && r.error !== 'Cancelled').length > 0 && (
+                <div className="text-xs space-y-0.5 mt-1">
+                  <p className="font-medium text-destructive">Failed rows:</p>
+                  {bulkResults.filter(r => !r.success && r.error !== 'Cancelled').map(r => (
+                    <p key={r.id} className="text-muted-foreground">• {r.title}: {r.error}</p>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {loading ? (
             <div className="flex items-center justify-center py-12">
@@ -297,7 +525,7 @@ export function FirecrawlDraftsManager() {
                     <TableHead>Confidence</TableHead>
                     <TableHead>Dedup</TableHead>
                     <TableHead>Fields</TableHead>
-                    <TableHead className="text-center">AI Steps</TableHead>
+                    <TableHead className="text-center min-w-[280px]">AI Steps</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
@@ -305,7 +533,6 @@ export function FirecrawlDraftsManager() {
                 <TableBody>
                   {drafts.map(draft => {
                     const missingCount = draft.fields_missing?.length || 0;
-                    // Readiness assessment
                     const blockers: string[] = [];
                     const warnings: string[] = [];
                     if (!draft.title || draft.title.length < 10) blockers.push('Title missing/short');
@@ -374,15 +601,28 @@ export function FirecrawlDraftsManager() {
                             )}
                           </div>
                         </TableCell>
+                        {/* AI Step Badges */}
                         <TableCell>
-                          <div className="flex items-center gap-1 justify-center" title="Clean | Enrich | Links | Fix | SEO | Prompt | Image">
-                            {aiStatusDot(draft.ai_clean_at)}
-                            {aiStatusDot(draft.ai_enrich_at)}
-                            {aiStatusDot(draft.ai_links_at)}
-                            {aiStatusDot(draft.ai_fix_missing_at)}
-                            {aiStatusDot(draft.ai_seo_at)}
-                            {aiStatusDot(draft.ai_cover_prompt_at)}
-                            {aiStatusDot(draft.ai_cover_image_at)}
+                          <div className="flex flex-wrap gap-1 justify-center">
+                            <TooltipProvider>
+                              {AI_STEP_MAP.map(({ action, label, tsField }) => {
+                                const { state, tooltip } = getStepState(draft, action, tsField, busyRows[draft.id]);
+                                const Icon = STEP_ICONS[state];
+                                return (
+                                  <Tooltip key={action}>
+                                    <TooltipTrigger>
+                                      <span className={`inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[9px] font-medium ${STEP_BADGE_STYLES[state]}`}>
+                                        <Icon className={`h-2.5 w-2.5 ${state === 'running' ? 'animate-spin' : ''}`} />
+                                        {label}
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top" className="max-w-[250px]">
+                                      <p className="text-xs">{tooltip}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                );
+                              })}
+                            </TooltipProvider>
                           </div>
                         </TableCell>
                         <TableCell>
@@ -422,7 +662,6 @@ export function FirecrawlDraftsManager() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end" className="w-52">
-                                {/* Review actions */}
                                 <DropdownMenuItem onClick={() => updateStatus(draft.id, 'reviewed')}>
                                   <Eye className="h-3.5 w-3.5 mr-2" /> Mark Reviewed
                                 </DropdownMenuItem>
@@ -434,7 +673,6 @@ export function FirecrawlDraftsManager() {
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
 
-                                {/* AI actions */}
                                 {AI_ACTIONS.map(({ action, label, icon: Icon, description }) => (
                                   <DropdownMenuItem
                                     key={action}

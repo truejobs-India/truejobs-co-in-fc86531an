@@ -68,6 +68,45 @@ const INDIAN_CITIES = [
 
 // ============ Field extraction patterns ============
 
+/** Values that are table artifacts / noise, never valid field values */
+const GARBAGE_VALUES = new Set([
+  'total', 'na', 'n/a', 'nil', 'details', 'see below', 'check below',
+  'various', 'mentioned below', 'as per rules', 'click here', 'view',
+  'download', 'apply now', 'apply online', 'register',
+]);
+
+/** Values that are table column headers, never valid extracted values */
+const TABLE_HEADER_NOISE = new Set([
+  'pay level', 'distance required', 'relaxation (years)', 'age relaxation',
+  'application fee', 'category', 'general', 'obc', 'sc', 'st', 'ews',
+  'sl no', 'sr no', 'serial number', 's.no',
+]);
+
+function isGarbageValue(val: string): boolean {
+  const lower = val.toLowerCase().trim();
+  if (GARBAGE_VALUES.has(lower)) return true;
+  if (TABLE_HEADER_NOISE.has(lower)) return true;
+  // Pure numbers without context
+  if (/^\d{1,2}$/.test(lower)) return true;
+  return false;
+}
+
+/**
+ * Clean extracted value — strip markdown artifacts, pipe chars, and validate.
+ */
+function cleanExtractedValue(val: string): string | null {
+  let cleaned = val
+    .replace(/^\|+\s*/, '')      // leading pipe chars from table
+    .replace(/\s*\|+$/, '')      // trailing pipe chars
+    .replace(/\*+/g, '')         // bold markers
+    .replace(/<br\s*\/?>/gi, ', ') // HTML breaks
+    .trim();
+  
+  if (!cleaned || cleaned.length <= 1 || cleaned.length >= 500) return null;
+  if (isGarbageValue(cleaned)) return null;
+  return cleaned;
+}
+
 /**
  * Extract a field value using multiple label patterns.
  * Looks for "Label: Value" or "Label – Value" patterns on a single line.
@@ -80,16 +119,16 @@ function extractLabeled(text: string, labels: string[]): string | null {
     const re = new RegExp(`(?:^|\\n)\\s*\\**${escaped}\\**\\s*[:–\\-|]\\s*(.+?)\\s*$`, 'im');
     const match = text.match(re);
     if (match && match[1]) {
-      const val = match[1].replace(/\*+/g, '').trim();
-      if (val && val.length > 1 && val.length < 500) return val;
+      const val = cleanExtractedValue(match[1]);
+      if (val) return val;
     }
 
     // Pattern 2: Markdown table row "| Label | Value |"
     const tableRe = new RegExp(`\\|\\s*\\**${escaped}\\**\\s*\\|\\s*(.+?)\\s*\\|`, 'im');
     const tableMatch = text.match(tableRe);
     if (tableMatch && tableMatch[1]) {
-      const val = tableMatch[1].replace(/\*+/g, '').trim();
-      if (val && val.length > 1 && val.length < 500) return val;
+      const val = cleanExtractedValue(tableMatch[1]);
+      if (val) return val;
     }
   }
   return null;

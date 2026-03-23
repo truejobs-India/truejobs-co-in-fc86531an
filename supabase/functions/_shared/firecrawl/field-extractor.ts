@@ -403,9 +403,22 @@ export function extractFields(
   const job_role = extractLabeled(cleanedText, ['Job Role', 'Role', 'Position']);
   if (job_role) raw_fields['job_role'] = job_role;
 
-  const category = extractLabeled(cleanedText, [
+  // Category extraction — validate against known job categories
+  const VALID_CATEGORIES = [
+    'central government', 'state government', 'railway', 'banking', 'defence',
+    'teaching', 'police', 'medical', 'engineering', 'psu', 'ssc', 'upsc',
+    'government jobs', 'walk-in', 'contract', 'permanent', 'temporary',
+    'group a', 'group b', 'group c', 'group d',
+  ];
+  let category = extractLabeled(cleanedText, [
     'Category', 'Job Category', 'Job Type', 'Type',
   ]);
+  // Validate: only keep if it matches known categories
+  if (category) {
+    const catLower = category.toLowerCase();
+    const isValid = VALID_CATEGORIES.some(c => catLower.includes(c));
+    if (!isValid && catLower.length < 30) category = null;
+  }
 
   const department = extractLabeled(cleanedText, [
     'Department', 'Dept', 'Ministry', 'Division',

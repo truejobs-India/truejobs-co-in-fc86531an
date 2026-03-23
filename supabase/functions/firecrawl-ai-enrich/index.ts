@@ -292,7 +292,7 @@ function snapshotOldValues(draft: any, fieldsToUpdate: Record<string, unknown>):
 
 // ============ 1. AI Clean ============
 
-async function handleAiClean(draftId: string, client: any, apiKey: string) {
+async function handleAiClean(draftId: string, client: any, apiKey: string, aiModel?: string) {
   const draft = await fetchDraft(draftId, client);
 
   const guard = checkStatusGuard(draft, 'ai-clean');

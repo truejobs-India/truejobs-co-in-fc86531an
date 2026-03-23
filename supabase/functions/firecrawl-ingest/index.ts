@@ -1,13 +1,11 @@
 /**
  * Source 3: Firecrawl Ingest Edge Function
- * Phase 3 — Discovery + Bucketing + Field Extraction. Supports:
- *   - test-source: scrape a single source and return preview
- *   - list-sources: list all registered Firecrawl sources
- *   - run-source: scrape + stage seed page content
- *   - discover-source: scrape seed → extract links → filter → classify → stage candidates
- *   - source-stats: get discovery statistics for a source
- *   - extract-item: clean + extract fields from a single staged recruitment item → draft job
- *   - extract-batch: extract fields from multiple staged recruitment items for a source
+ * Phases 1-5 — Discovery + Bucketing + Field Extraction + Dedup + Validation.
+ * Supports:
+ *   - test-source, list-sources, run-source, discover-source, source-stats
+ *   - extract-item, extract-batch
+ *   - dedup-drafts (cross-source: firecrawl + rss_items + employment_news_jobs + jobs)
+ *   - validate-for-approval
  *
  * Completely isolated from Source 1 (rss-ingest) and Source 2 (Employment News).
  */
@@ -64,6 +62,8 @@ Deno.serve(async (req) => {
         return await handleExtractBatch(body, adminClient);
       case 'dedup-drafts':
         return await handleDedupDrafts(body, adminClient);
+      case 'validate-for-approval':
+        return await handleValidateForApproval(body, adminClient);
       default:
         return jsonResponse({ error: `Unknown action: ${action}` }, 400);
     }
@@ -140,7 +140,6 @@ async function handleTestSource(
     return jsonResponse({ success: false, error: scrapeResult.error, mode: 'scrape' });
   }
 
-  // Apply discovery pipeline preview (no DB writes)
   const filterConfig: UrlFilterConfig = {
     allowedDomains: source?.allowed_domains || [],
     allowedUrlPatterns: source?.allowed_url_patterns || [],
@@ -153,7 +152,6 @@ async function handleTestSource(
   const accepted = filtered.filter(f => f.accepted);
   const rejected = filtered.filter(f => !f.accepted);
 
-  // Classify accepted URLs into buckets
   const classified = accepted.map(f => {
     const classification = classifyPage(f.normalized, null);
     return { url: f.url, normalized: f.normalized, ...classification };
@@ -180,7 +178,7 @@ async function handleTestSource(
   });
 }
 
-// ============ run-source (Phase 1: simple scrape + stage) ============
+// ============ run-source ============
 
 async function handleRunSource(
   body: Record<string, unknown>,
@@ -255,7 +253,7 @@ async function handleRunSource(
   }
 }
 
-// ============ discover-source (Phase 2: full discovery pipeline) ============
+// ============ discover-source ============
 
 async function handleDiscoverSource(
   body: Record<string, unknown>,
@@ -292,7 +290,6 @@ async function handleDiscoverSource(
   };
 
   try {
-    // Step 1: Scrape the seed/listing page
     const seedResult = await scrapePage(source.seed_url, { formats: ['markdown', 'links'], onlyMainContent: true });
 
     if (!seedResult.success) {
@@ -306,7 +303,6 @@ async function handleDiscoverSource(
     const discoveredLinks = seedResult.links || [];
     stats.linksDiscovered = discoveredLinks.length;
 
-    // Step 2: Load existing normalized URLs for this source to skip known duplicates
     const { data: existingItems } = await client
       .from('firecrawl_staged_items')
       .select('url_normalized')
@@ -317,11 +313,9 @@ async function handleDiscoverSource(
       (existingItems || []).map((i: any) => i.url_normalized).filter(Boolean)
     );
 
-    // Also add the seed URL itself
     const seedNorm = normalizeUrl(source.seed_url);
     if (seedNorm) existingNormalized.add(seedNorm);
 
-    // Step 3: Filter and classify URLs
     const filterConfig: UrlFilterConfig = {
       allowedDomains: source.allowed_domains || [],
       allowedUrlPatterns: source.allowed_url_patterns || [],
@@ -336,32 +330,26 @@ async function handleDiscoverSource(
     stats.accepted = acceptedUrls.length;
     stats.rejected = rejectedUrls.length;
 
-    // Step 4: Classify accepted URLs into buckets
     const classifiedCandidates = acceptedUrls.map(f => ({
       ...f,
       classification: classifyPage(f.normalized, null),
     }));
 
-    // Count buckets
     for (const c of classifiedCandidates) {
       const b = c.classification.bucket;
       stats.bucketCounts[b] = (stats.bucketCounts[b] || 0) + 1;
     }
 
-    // Step 5: Pick top single_recruitment candidates for detail scraping (cost control)
     const recruitmentCandidates = classifiedCandidates
       .filter(c => c.classification.bucket === 'single_recruitment')
       .sort((a, b) => {
-        // Prefer high confidence, then more signals
         const confOrder = { high: 3, medium: 2, low: 1 };
         return (confOrder[b.classification.confidence] - confOrder[a.classification.confidence])
           || (b.classification.signals.length - a.classification.signals.length);
       })
       .slice(0, maxDetailScrapes);
 
-    // Step 6: Stage all classified candidates (URL-level, without scraping non-recruitment ones)
     for (const candidate of classifiedCandidates) {
-      // Skip rejected bucket items
       if (candidate.classification.bucket === 'rejected') {
         stats.rejected++;
         continue;
@@ -375,7 +363,7 @@ async function handleDiscoverSource(
             fetch_run_id: runId,
             page_url: candidate.url,
             url_normalized: candidate.normalized,
-            page_title: null, // title not yet known (hasn't been scraped)
+            page_title: null,
             extracted_markdown: null,
             extracted_links: [],
             metadata: {
@@ -402,7 +390,6 @@ async function handleDiscoverSource(
       }
     }
 
-    // Step 7: Scrape top recruitment candidates for detail content
     const detailResults: any[] = [];
 
     for (const candidate of recruitmentCandidates) {
@@ -417,7 +404,6 @@ async function handleDiscoverSource(
         if (detailResult.success && detailResult.markdown) {
           const contentHash = await generateContentHash(detailResult.markdown);
 
-          // Update the staged item with scraped content
           await client
             .from('firecrawl_staged_items')
             .update({
@@ -433,7 +419,6 @@ async function handleDiscoverSource(
             .eq('firecrawl_source_id', source.id)
             .eq('url_normalized', candidate.normalized);
 
-          // Re-classify with title now available
           const refined = classifyPage(candidate.normalized, detailResult.metadata?.title);
           if (refined.bucket !== candidate.classification.bucket) {
             await client
@@ -468,7 +453,6 @@ async function handleDiscoverSource(
       }
     }
 
-    // Finalize
     const runStatus = stats.errors > 0 ? 'partial' : 'success';
     if (runId) await finalizeRun(client, runId, runStatus, {
       pagesFetched: stats.pagesScraped,
@@ -513,7 +497,6 @@ async function handleSourceStats(
 
   if (!source) return jsonResponse({ error: 'Source not found' }, 404);
 
-  // Bucket counts
   const { data: bucketData } = await client
     .from('firecrawl_staged_items')
     .select('bucket, status')
@@ -526,7 +509,6 @@ async function handleSourceStats(
     statusCounts[item.status] = (statusCounts[item.status] || 0) + 1;
   }
 
-  // Recent runs
   const { data: recentRuns } = await client
     .from('firecrawl_fetch_runs')
     .select('id, run_mode, status, started_at, finished_at, pages_fetched, items_found, items_new, items_skipped, pages_accepted, pages_rejected, bucket_counts, error_log')
@@ -544,7 +526,7 @@ async function handleSourceStats(
   });
 }
 
-// ============ extract-item (Phase 3: clean + extract → draft job) ============
+// ============ extract-item ============
 
 async function handleExtractItem(
   body: Record<string, unknown>,
@@ -571,16 +553,13 @@ async function handleExtractItem(
 
   console.log(`[firecrawl-ingest] extract-item: ${item.page_url}`);
 
-  // Mark as extracting
   await client.from('firecrawl_staged_items').update({ extraction_status: 'extracting' }).eq('id', stagedItemId);
 
   try {
     const source = item.firecrawl_sources as any;
 
-    // Step 1: Clean content
     const cleanResult = cleanScrapedContent(item.extracted_markdown);
 
-    // Step 2: Extract fields
     const linkInfos = cleanResult.extractedLinks.map(l => ({
       text: l.text, url: l.url, context: l.context,
     }));
@@ -591,33 +570,23 @@ async function handleExtractItem(
       item.page_url
     );
 
-    // Step 3: Upsert draft job record
     const draftData = {
       staged_item_id: stagedItemId,
       firecrawl_source_id: item.firecrawl_source_id,
-
-      // Source attribution (internal)
       source_name: source?.source_name || null,
       source_url: item.page_url,
       source_seed_url: source?.seed_url || null,
       source_page_url: item.discovered_from_url,
       source_bucket: item.bucket,
-
-      // Extracted fields
       ...extraction.fields,
-
-      // Extraction metadata
       extraction_confidence: extraction.confidence,
       fields_extracted: extraction.fields_extracted,
       fields_missing: extraction.fields_missing,
       extraction_warnings: extraction.warnings,
-
-      // Raw evidence (internal, never published)
       raw_scraped_text: item.extracted_markdown.substring(0, 200_000),
       raw_links_found: (item.extracted_links || []).slice(0, 500),
       extracted_raw_fields: extraction.raw_fields,
       cleaning_log: cleanResult.cleaningLog,
-
       status: 'draft',
     };
 
@@ -633,7 +602,6 @@ async function handleExtractItem(
       return jsonResponse({ success: false, error: draftError.message }, 500);
     }
 
-    // Mark staged item as extracted
     await client.from('firecrawl_staged_items').update({ extraction_status: 'extracted' }).eq('id', stagedItemId);
 
     return jsonResponse({
@@ -654,7 +622,7 @@ async function handleExtractItem(
   }
 }
 
-// ============ extract-batch (Phase 3: batch extraction for a source) ============
+// ============ extract-batch ============
 
 async function handleExtractBatch(
   body: Record<string, unknown>,
@@ -663,9 +631,8 @@ async function handleExtractBatch(
   const sourceId = body.source_id as string;
   if (!sourceId) return jsonResponse({ error: 'source_id required' }, 400);
 
-  const maxItems = Math.min((body.max_items as number) || 10, 20); // hard cap at 20
+  const maxItems = Math.min((body.max_items as number) || 10, 20);
 
-  // Get single_recruitment items that have content but haven't been extracted yet
   const { data: items, error } = await client
     .from('firecrawl_staged_items')
     .select('id')
@@ -689,7 +656,6 @@ async function handleExtractBatch(
 
   for (const item of items) {
     try {
-      // Reuse extract-item logic via direct call
       const result = await handleExtractItemInternal(item.id, client);
       results.push({ staged_item_id: item.id, ...result });
       if (result.success) successCount++;
@@ -709,7 +675,7 @@ async function handleExtractBatch(
   });
 }
 
-/** Internal extraction for a single item (shared by extract-item and extract-batch) */
+/** Internal extraction for a single item */
 async function handleExtractItemInternal(
   stagedItemId: string,
   client: ReturnType<typeof createClient>
@@ -769,15 +735,20 @@ async function handleExtractItemInternal(
   }
 }
 
-// ============ dedup-drafts (Phase 5) ============
+// ============ dedup-drafts (CROSS-SOURCE) ============
+
+function normalizeTextForDedup(s: string | null): string {
+  if (!s) return '';
+  return s.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
+}
 
 async function handleDedupDrafts(
   body: Record<string, unknown>,
   client: ReturnType<typeof createClient>
 ) {
-  console.log('[firecrawl-ingest] dedup-drafts: running');
+  console.log('[firecrawl-ingest] dedup-drafts: running cross-source dedup');
 
-  // Fetch all draft-status records for comparison
+  // 1. Fetch all firecrawl draft candidates
   const { data: allDrafts, error } = await client
     .from('firecrawl_draft_jobs')
     .select('id, normalized_title, organization_name, official_notification_url, official_apply_url, last_date_of_application, total_vacancies, dedup_status')
@@ -799,10 +770,55 @@ async function handleDedupDrafts(
     total_vacancies: d.total_vacancies,
   }));
 
+  // 2. Build cross-source candidates from rss_items (Source 1)
+  const { data: rssItems } = await client
+    .from('rss_items')
+    .select('id, item_title, canonical_link')
+    .in('current_status', ['new', 'triaged', 'published'])
+    .limit(500);
+
+  const crossSourceCandidates: DedupCandidate[] = [];
+
+  for (const rss of (rssItems || [])) {
+    crossSourceCandidates.push({
+      id: `rss:${rss.id}`,
+      normalized_title: normalizeTextForDedup(rss.item_title),
+      organization_name: null,
+      official_notification_url: rss.canonical_link || null,
+      official_apply_url: null,
+      last_date_of_application: null,
+      total_vacancies: null,
+    });
+  }
+
+  // 3. Build cross-source candidates from employment_news_jobs (Source 2)
+  const { data: enJobs } = await client
+    .from('employment_news_jobs')
+    .select('id, org_name, post, last_date, vacancies, apply_link')
+    .in('status', ['pending', 'published', 'enriched'])
+    .limit(500);
+
+  for (const en of (enJobs || [])) {
+    const normTitle = normalizeTextForDedup(
+      en.org_name && en.post ? `${en.org_name} ${en.post}` : en.post || en.org_name
+    );
+    crossSourceCandidates.push({
+      id: `en:${en.id}`,
+      normalized_title: normTitle,
+      organization_name: en.org_name,
+      official_notification_url: null,
+      official_apply_url: en.apply_link || null,
+      last_date_of_application: en.last_date,
+      total_vacancies: en.vacancies,
+    });
+  }
+
+  // 4. Combine all candidates (firecrawl + cross-source)
+  const allCandidates = [...candidates, ...crossSourceCandidates];
+
   let duplicatesFound = 0;
   let checked = 0;
 
-  // Only check items that haven't been deduped yet
   const unchecked = allDrafts.filter((d: any) => d.dedup_status === 'unchecked');
 
   for (const draft of unchecked) {
@@ -816,12 +832,20 @@ async function handleDedupDrafts(
       total_vacancies: draft.total_vacancies,
     };
 
-    const result = checkDuplicate(target, candidates);
+    const result = checkDuplicate(target, allCandidates);
     checked++;
+
+    // Annotate cross-source matches
+    let reason = result.reason;
+    const crossMatches = result.matchedIds.filter(id => id.startsWith('rss:') || id.startsWith('en:'));
+    if (crossMatches.length > 0) {
+      const sources = crossMatches.map(id => id.startsWith('rss:') ? 'RSS/Atom' : 'Employment News');
+      reason = `CROSS-SOURCE match (${[...new Set(sources)].join(', ')}): ${reason}`;
+    }
 
     const update: Record<string, unknown> = {
       dedup_status: result.isDuplicate ? 'duplicate' : 'clean',
-      dedup_reason: result.reason,
+      dedup_reason: reason,
       dedup_match_ids: result.matchedIds,
       dedup_checked_at: new Date().toISOString(),
     };
@@ -831,7 +855,73 @@ async function handleDedupDrafts(
     if (result.isDuplicate) duplicatesFound++;
   }
 
-  return jsonResponse({ success: true, checked, duplicatesFound, totalDrafts: allDrafts.length });
+  return jsonResponse({
+    success: true,
+    checked,
+    duplicatesFound,
+    totalDrafts: allDrafts.length,
+    crossSourceCandidates: crossSourceCandidates.length,
+  });
+}
+
+// ============ validate-for-approval (PUBLISH GATING) ============
+
+async function handleValidateForApproval(
+  body: Record<string, unknown>,
+  client: ReturnType<typeof createClient>
+) {
+  const draftId = body.draft_id as string;
+  if (!draftId) return jsonResponse({ error: 'draft_id required' }, 400);
+
+  const { data: draft, error } = await client
+    .from('firecrawl_draft_jobs')
+    .select('*')
+    .eq('id', draftId)
+    .single();
+
+  if (error || !draft) return jsonResponse({ error: 'Draft not found' }, 404);
+
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  // Mandatory checks
+  if (!draft.title || draft.title.length < 10) errors.push('Title missing or too short (<10 chars)');
+  if (!draft.organization_name) errors.push('Organization name is missing');
+  if (!draft.post_name && !draft.total_vacancies) errors.push('Either post_name or total_vacancies must exist');
+  if (!draft.last_date_of_application) warnings.push('Last date of application is missing');
+  if (draft.extraction_confidence === 'none') errors.push('Extraction confidence is "none" — unreliable data');
+  if (draft.extraction_confidence === 'low') warnings.push('Extraction confidence is "low" — review carefully');
+  if (draft.dedup_status === 'duplicate') errors.push('Draft is flagged as duplicate — resolve before approving');
+
+  // Recommended checks
+  if (!draft.official_notification_url && !draft.official_apply_url) {
+    warnings.push('No official links found — recommended before publishing');
+  }
+  if (!draft.seo_title) warnings.push('SEO title not generated');
+  if (!draft.meta_description) warnings.push('Meta description not generated');
+  if (!draft.cover_image_url) warnings.push('Cover image not generated');
+
+  const canApprove = errors.length === 0;
+
+  return jsonResponse({
+    success: true,
+    draft_id: draftId,
+    can_approve: canApprove,
+    errors,
+    warnings,
+    fields_summary: {
+      title: !!draft.title,
+      organization: !!draft.organization_name,
+      post_name: !!draft.post_name,
+      vacancies: !!draft.total_vacancies,
+      last_date: !!draft.last_date_of_application,
+      official_links: !!(draft.official_notification_url || draft.official_apply_url),
+      seo: !!(draft.seo_title && draft.meta_description),
+      cover_image: !!draft.cover_image_url,
+      confidence: draft.extraction_confidence,
+      dedup: draft.dedup_status,
+    },
+  });
 }
 
 // ============ Helpers ============
@@ -881,7 +971,6 @@ async function updateSourceAfterFetch(
     update.last_success_at = new Date().toISOString();
   }
   if (newItems) {
-    // Use raw SQL for increment — but simpler to just re-read
     const { data: src } = await client.from('firecrawl_sources').select('total_items_found').eq('id', sourceId).single();
     update.total_items_found = (src?.total_items_found || 0) + newItems;
   }

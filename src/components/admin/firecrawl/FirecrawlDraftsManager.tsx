@@ -281,6 +281,7 @@ export function FirecrawlDraftsManager() {
                   <TableRow>
                     <TableHead className="min-w-[200px]">Title / Org</TableHead>
                     <TableHead>State</TableHead>
+                    <TableHead>Ready</TableHead>
                     <TableHead>Confidence</TableHead>
                     <TableHead>Dedup</TableHead>
                     <TableHead>Fields</TableHead>

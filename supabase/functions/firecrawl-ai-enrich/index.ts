@@ -567,7 +567,7 @@ async function handleAiFixMissing(draftId: string, client: any, apiKey: string, 
 
 // ============ 5. AI SEO ============
 
-async function handleAiSeo(draftId: string, client: any, apiKey: string) {
+async function handleAiSeo(draftId: string, client: any, apiKey: string, aiModel?: string) {
   const draft = await fetchDraft(draftId, client);
   const protectedFields = getProtectedFields(draft);
   const context = getDraftContext(draft);

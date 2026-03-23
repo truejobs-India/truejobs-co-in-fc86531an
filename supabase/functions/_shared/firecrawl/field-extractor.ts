@@ -140,11 +140,13 @@ function extractLabeled(text: string, labels: string[]): string | null {
 function extractNumber(text: string, labels: string[]): number | null {
   const raw = extractLabeled(text, labels);
   if (!raw) return null;
-  // Find first number in the value
-  const numMatch = raw.match(/(\d[\d,]*)/);
-  if (numMatch) {
-    const num = parseInt(numMatch[1].replace(/,/g, ''), 10);
-    if (!isNaN(num) && num > 0 && num < 1_000_000) return num;
+  // Find ALL numbers in the value, prefer the largest (often the total)
+  const numMatches = raw.match(/(\d[\d,]*)/g);
+  if (numMatches) {
+    const numbers = numMatches
+      .map(m => parseInt(m.replace(/,/g, ''), 10))
+      .filter(n => !isNaN(n) && n > 0 && n < 1_000_000);
+    if (numbers.length > 0) return Math.max(...numbers);
   }
   return null;
 }

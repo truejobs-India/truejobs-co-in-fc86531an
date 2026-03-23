@@ -20,6 +20,25 @@ const corsHeaders = {
 const AI_GATEWAY = 'https://ai.gateway.lovable.dev/v1/chat/completions';
 const DEFAULT_MODEL = 'google/gemini-3-flash-preview';
 
+// ── Model routing: maps frontend registry keys to gateway model IDs or provider routes ──
+const GATEWAY_MODEL_MAP: Record<string, string> = {
+  'gemini-flash': 'google/gemini-2.5-flash',
+  'gemini-pro': 'google/gemini-2.5-pro',
+  'gpt5': 'openai/gpt-5',
+  'gpt5-mini': 'openai/gpt-5-mini',
+  'lovable-gemini': 'google/gemini-3-flash-preview',
+};
+
+const VERTEX_MODEL_MAP: Record<string, { vertexModel: string; timeoutMs: number }> = {
+  'vertex-flash': { vertexModel: 'gemini-2.5-flash', timeoutMs: 90_000 },
+  'vertex-pro': { vertexModel: 'gemini-2.5-pro', timeoutMs: 120_000 },
+  'vertex-3.1-pro': { vertexModel: 'gemini-3.1-pro-preview', timeoutMs: 120_000 },
+  'vertex-3-flash': { vertexModel: 'gemini-3-flash-preview', timeoutMs: 90_000 },
+  'vertex-3.1-flash-lite': { vertexModel: 'gemini-3.1-flash-lite-preview', timeoutMs: 60_000 },
+};
+
+const BEDROCK_MODELS = new Set(['nova-pro', 'nova-premier', 'mistral']);
+
 // Aggregator domains that must NEVER appear as official links
 const AGGREGATOR_DOMAINS = [
   'sarkariexam.com', 'sarkarinaukri.com', 'indgovtjobs.in',

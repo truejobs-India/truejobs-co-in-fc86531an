@@ -673,7 +673,7 @@ Rules:
 
 // ============ 7. AI Cover Image ============
 
-async function handleAiCoverImage(draftId: string, client: any, apiKey: string) {
+async function handleAiCoverImage(draftId: string, client: any, apiKey: string, aiModel?: string) {
   const draft = await fetchDraft(draftId, client);
 
   let prompt = draft.cover_image_prompt;

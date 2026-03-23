@@ -80,6 +80,14 @@ const BRANDING_TOKENS = [
   'sharma jobs', 'sharmajobs',
   'sarkarinaukri.com', 'naukri day', 'rojgar result',
   'freejobalert', 'free job alert', 'employment news',
+  // Source-specific shortforms and branding
+  'snb', 'gjg', 'agj', 'msn govt jobs', 'sj govt jobs',
+  'adda247', 'bankersadda', 'bankers adda',
+  'government jobs india freshersnow',
+  'govt jobs alert freshersnow',
+  'sarkari disha', 'sarkaridisha',
+  'recruitment guru', 'recruitment.guru',
+  'testbook', 'gradeup', 'prepp.in', 'safalta',
 ];
 
 /** URLs to social/non-official sites */

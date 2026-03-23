@@ -101,3 +101,9 @@ verify_jwt = false
 
 [functions.rss-ai-process]
 verify_jwt = false
+
+[functions.firecrawl-ingest]
+verify_jwt = false
+
+[functions.firecrawl-ai-enrich]
+verify_jwt = false

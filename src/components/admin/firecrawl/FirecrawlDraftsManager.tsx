@@ -11,11 +11,12 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { toast } from '@/hooks/use-toast';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   RefreshCw, Loader2, MoreHorizontal, Sparkles, Wrench, Link2,
   Search, Image, FileText, Zap, CheckCircle, XCircle,
   AlertTriangle, ExternalLink, Copy, ShieldCheck, ShieldAlert, Eye,
-  ThumbsUp,
+  ThumbsUp, Undo2, CircleDot,
 } from 'lucide-react';
 import { FirecrawlSourcesManager } from './FirecrawlSourcesManager';
 
@@ -49,7 +50,7 @@ interface DraftJob {
   updated_at: string;
 }
 
-type AiAction = 'ai-clean' | 'ai-enrich' | 'ai-find-links' | 'ai-fix-missing' | 'ai-seo' | 'ai-cover-prompt' | 'ai-cover-image' | 'ai-run-all';
+type AiAction = 'ai-clean' | 'ai-enrich' | 'ai-find-links' | 'ai-fix-missing' | 'ai-seo' | 'ai-cover-prompt' | 'ai-cover-image' | 'ai-run-all' | 'rollback-ai-action';
 
 const AI_ACTIONS: { action: AiAction; label: string; icon: typeof Sparkles; description: string }[] = [
   { action: 'ai-clean', label: 'AI Clean', icon: Wrench, description: 'Remove source branding & polish' },
@@ -280,6 +281,7 @@ export function FirecrawlDraftsManager() {
                   <TableRow>
                     <TableHead className="min-w-[200px]">Title / Org</TableHead>
                     <TableHead>State</TableHead>
+                    <TableHead>Ready</TableHead>
                     <TableHead>Confidence</TableHead>
                     <TableHead>Dedup</TableHead>
                     <TableHead>Fields</TableHead>
@@ -291,6 +293,24 @@ export function FirecrawlDraftsManager() {
                 <TableBody>
                   {drafts.map(draft => {
                     const missingCount = draft.fields_missing?.length || 0;
+                    // Readiness assessment
+                    const blockers: string[] = [];
+                    const warnings: string[] = [];
+                    if (!draft.title || draft.title.length < 10) blockers.push('Title missing/short');
+                    if (!draft.organization_name) blockers.push('No organization');
+                    if (draft.dedup_status === 'duplicate') blockers.push('Duplicate');
+                    if (draft.extraction_confidence === 'none') blockers.push('No confidence');
+                    if (!draft.official_notification_url && !draft.seo_title) warnings.push('No official links');
+                    if (!draft.seo_title) warnings.push('No SEO');
+                    if (!draft.cover_image_url) warnings.push('No cover');
+                    if (draft.extraction_confidence === 'low') warnings.push('Low confidence');
+                    const readiness = blockers.length > 0 ? 'red' : warnings.length > 0 ? 'yellow' : 'green';
+                    const readinessTooltip = blockers.length > 0
+                      ? `Blockers: ${blockers.join(', ')}`
+                      : warnings.length > 0
+                        ? `Warnings: ${warnings.join(', ')}`
+                        : 'Ready for review';
+
                     return (
                       <TableRow key={draft.id} className={busyRows[draft.id] ? 'opacity-70' : ''}>
                         <TableCell>
@@ -306,6 +326,21 @@ export function FirecrawlDraftsManager() {
                           </div>
                         </TableCell>
                         <TableCell className="text-xs">{draft.state || '—'}</TableCell>
+                        <TableCell>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger>
+                                <CircleDot className={`h-4 w-4 ${
+                                  readiness === 'green' ? 'text-green-500' :
+                                  readiness === 'yellow' ? 'text-yellow-500' : 'text-red-500'
+                                }`} />
+                              </TooltipTrigger>
+                              <TooltipContent side="right" className="max-w-[250px]">
+                                <p className="text-xs">{readinessTooltip}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </TableCell>
                         <TableCell>{confidenceBadge(draft.extraction_confidence)}</TableCell>
                         <TableCell>
                           <div className="space-y-0.5">
@@ -403,6 +438,12 @@ export function FirecrawlDraftsManager() {
                                   </DropdownMenuItem>
                                 ))}
                                 <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={() => runAiAction(draft.id, 'rollback-ai-action')}
+                                  disabled={!!busyRows[draft.id]}
+                                >
+                                  <Undo2 className="h-3.5 w-3.5 mr-2" /> Undo Last AI
+                                </DropdownMenuItem>
                                 {draft.official_notification_url && (
                                   <DropdownMenuItem asChild>
                                     <a href={draft.official_notification_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2">

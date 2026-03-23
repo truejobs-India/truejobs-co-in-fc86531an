@@ -82,6 +82,7 @@ Deno.serve(async (req) => {
       case 'ai-cover-prompt': return await handleAiCoverPrompt(draftId, client, lovableKey);
       case 'ai-cover-image': return await handleAiCoverImage(draftId, client, lovableKey);
       case 'ai-run-all': return await handleAiRunAll(draftId, client, lovableKey);
+      case 'rollback-ai-action': return await handleRollbackAiAction(draftId, client);
       default: return json({ error: `Unknown action: ${action}` }, 400);
     }
   } catch (e) {
@@ -691,6 +692,51 @@ async function handleAiRunAll(draftId: string, client: any, apiKey: string) {
     succeeded: successCount,
     failed: steps.length - successCount,
     results,
+  });
+}
+
+// ============ 9. Rollback Last AI Action ============
+
+async function handleRollbackAiAction(draftId: string, client: any) {
+  const draft = await fetchDraft(draftId, client);
+  const log = draft.ai_enrichment_log as any[] | null;
+
+  if (!log || log.length === 0) {
+    return json({ error: 'No AI actions to rollback' }, 400);
+  }
+
+  // Find the last log entry that has old_values
+  let lastWithOldValues: any = null;
+  let lastIndex = -1;
+  for (let i = log.length - 1; i >= 0; i--) {
+    if (log[i].old_values && Object.keys(log[i].old_values).length > 0) {
+      lastWithOldValues = log[i];
+      lastIndex = i;
+      break;
+    }
+  }
+
+  if (!lastWithOldValues) {
+    return json({ error: 'No rollback data found — last action had no field changes' }, 400);
+  }
+
+  const restoredFields = Object.keys(lastWithOldValues.old_values);
+  const update: Record<string, unknown> = { ...lastWithOldValues.old_values };
+
+  // Append rollback log entry
+  update.ai_enrichment_log = appendLog(log, 'rollback', {
+    rolled_back_action: lastWithOldValues.action,
+    rolled_back_at: lastWithOldValues.at,
+    restored_fields: restoredFields,
+  });
+
+  await client.from('firecrawl_draft_jobs').update(update).eq('id', draftId);
+
+  return json({
+    success: true,
+    action: 'rollback',
+    rolled_back: lastWithOldValues.action,
+    restored_fields: restoredFields,
   });
 }
 

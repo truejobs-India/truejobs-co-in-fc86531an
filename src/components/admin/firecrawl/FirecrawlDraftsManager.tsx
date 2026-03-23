@@ -243,6 +243,13 @@ export function FirecrawlDraftsManager() {
             Firecrawl Draft Jobs
           </CardTitle>
           <div className="flex items-center gap-2">
+            <AiModelSelector
+              value={selectedModel}
+              onValueChange={setSelectedModel}
+              capability="text"
+              size="sm"
+              allowedValues={[...SEO_FIX_MODEL_VALUES]}
+            />
             <Button
               variant="outline" size="sm"
               onClick={runDedup} disabled={dedupRunning}

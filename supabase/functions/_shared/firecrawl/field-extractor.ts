@@ -209,7 +209,40 @@ function extractCity(text: string): string | null {
 
 interface LinkInfo { text: string; url: string; context: string }
 
-function findOfficialUrl(links: LinkInfo[], keywords: string[]): string | null {
+/** Aggregator domains that must NEVER appear as official links */
+const AGGREGATOR_DOMAINS = [
+  'sarkariexam.com', 'sarkarinaukri.com', 'indgovtjobs.in',
+  'allgovernmentjobs.in', 'mysarkarinaukri.com', 'govtjobguru.in',
+  'sarkarinaukriblog.com', 'freshersnow.com', 'careerpower.in',
+  'sharmajobs.com', 'sarkaridisha.com', 'recruitment.guru',
+  'sarkariresult.com', 'freejobalert.com', 'jagranjosh.com',
+  'adda247.com', 'testbook.com', 'gradeup.co', 'byjus.com',
+  'embibe.com', 'prepp.in', 'safalta.com', 'rojgarresult.in',
+  'naukri.com', 'naukriday.com',
+];
+
+function isAggregatorDomain(url: string): boolean {
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    return AGGREGATOR_DOMAINS.some(d => hostname === d || hostname.endsWith('.' + d));
+  } catch { return false; }
+}
+
+/** Deep-path indicators that score higher (exact page vs homepage) */
+const DEEP_PATH_KEYWORDS = [
+  '/recruitment', '/notification', '/advt', '/advertisement',
+  '/career', '/vacancy', '/pdf', '/circular', '/apply',
+  '/registration', '/application', '/admit', '/result',
+];
+
+/**
+ * Score and rank official URL candidates, return the best match.
+ * Scoring: +3 deep path, +2 keyword match in text, +1 keyword in URL,
+ *          -10 aggregator domain, -2 root/homepage-only URL
+ */
+function findBestOfficialUrl(links: LinkInfo[], keywords: string[]): string | null {
+  const scored: { url: string; score: number }[] = [];
+
   for (const link of links) {
     const lower = link.url.toLowerCase();
     const textLower = link.text.toLowerCase();
@@ -219,11 +252,37 @@ function findOfficialUrl(links: LinkInfo[], keywords: string[]): string | null {
       lower.includes('.org.in') || lower.includes('.ac.in');
     if (!isOfficial) continue;
 
-    if (keywords.some(k => lower.includes(k) || textLower.includes(k))) {
-      return link.url;
+    // Block aggregator domains at rule-based layer
+    if (isAggregatorDomain(link.url)) continue;
+
+    let score = 0;
+
+    // Keyword match in link text
+    if (keywords.some(k => textLower.includes(k))) score += 2;
+    // Keyword match in URL path
+    if (keywords.some(k => lower.includes(k))) score += 1;
+
+    // Deep path bonus (not just a homepage)
+    const hasDeepPath = DEEP_PATH_KEYWORDS.some(p => lower.includes(p));
+    if (hasDeepPath) score += 3;
+
+    // Penalize root/homepage-only URLs
+    try {
+      const parsed = new URL(link.url);
+      if (parsed.pathname === '/' || parsed.pathname === '') score -= 2;
+    } catch { /* ignore */ }
+
+    // Only include if there's at least some relevance
+    if (score > 0 || keywords.length === 0) {
+      scored.push({ url: link.url, score });
     }
   }
-  return null;
+
+  if (scored.length === 0) return null;
+
+  // Sort descending by score, return best
+  scored.sort((a, b) => b.score - a.score);
+  return scored[0].url;
 }
 
 // ============ Description summary reconstruction ============

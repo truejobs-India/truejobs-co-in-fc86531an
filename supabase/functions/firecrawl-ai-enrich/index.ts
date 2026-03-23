@@ -504,7 +504,7 @@ Rules:
 
 // ============ 4. AI Fix Missing ============
 
-async function handleAiFixMissing(draftId: string, client: any, apiKey: string) {
+async function handleAiFixMissing(draftId: string, client: any, apiKey: string, aiModel?: string) {
   const draft = await fetchDraft(draftId, client);
 
   const protectedFields = getProtectedFields(draft);

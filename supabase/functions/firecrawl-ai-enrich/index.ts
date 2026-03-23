@@ -92,6 +92,9 @@ Deno.serve(async (req) => {
     const aiModel = (body.aiModel as string) || '';
     const imageModel = (body.imageModel as string) || '';
 
+    if (!action) return json({ error: 'Missing action' }, 400);
+    if (!draftId && action !== 'ai-run-all-batch') return json({ error: 'Missing draft_id' }, 400);
+
     // Auth check
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) return json({ error: 'Missing Authorization' }, 401);
@@ -114,8 +117,8 @@ Deno.serve(async (req) => {
       case 'ai-fix-missing': return await handleAiFixMissing(draftId, client, lovableKey, aiModel);
       case 'ai-seo': return await handleAiSeo(draftId, client, lovableKey, aiModel);
       case 'ai-cover-prompt': return await handleAiCoverPrompt(draftId, client, lovableKey, aiModel);
-      case 'ai-cover-image': return await handleAiCoverImage(draftId, client, lovableKey, aiModel);
-      case 'ai-run-all': return await handleAiRunAll(draftId, client, lovableKey, aiModel);
+      case 'ai-cover-image': return await handleAiCoverImage(draftId, client, lovableKey, imageModel);
+      case 'ai-run-all': return await handleAiRunAll(draftId, client, lovableKey, aiModel, imageModel);
       case 'rollback-ai-action': return await handleRollbackAiAction(draftId, client);
       default: return json({ error: `Unknown action: ${action}` }, 400);
     }

@@ -105,7 +105,7 @@ export function FirecrawlDraftsManager() {
     setBusyRows(prev => ({ ...prev, [draftId]: action }));
     try {
       const { data, error } = await supabase.functions.invoke('firecrawl-ai-enrich', {
-        body: { action, draft_id: draftId },
+        body: { action, draft_id: draftId, aiModel: selectedModel },
       });
       if (error) throw new Error(error.message);
       if (data?.error) throw new Error(data.error);

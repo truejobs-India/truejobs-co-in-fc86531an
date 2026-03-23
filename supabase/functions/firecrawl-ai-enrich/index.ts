@@ -453,6 +453,7 @@ Rules:
         additionalProperties: false,
       },
     },
+    aiModel,
   );
 
   const update: Record<string, unknown> = {

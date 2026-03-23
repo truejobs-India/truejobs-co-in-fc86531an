@@ -1,88 +1,59 @@
 
 
-# Phase 5 Hardening — Remaining Gaps Fix
+# Security Audit: firecrawl-ingest & firecrawl-ai-enrich
 
-## Findings Summary
+## Current State: SAFE
 
-After deep inspection, these are the real remaining gaps:
+Both functions already implement strict server-side auth and admin-role enforcement. No fixes needed.
 
-### Gap 1: Official-Link Finding — Rule-based extraction is weak
-**Current**: `findOfficialUrl` in `field-extractor.ts` returns the **first** matching link, not the best. No scoring. No aggregator blocklist at the rule-based layer. The AI layer has a blocklist but the rule-based layer doesn't.
+### firecrawl-ingest (lines 37-44, 78-101)
+- **Auth check**: `checkAdmin()` is called at line 43, BEFORE any action handler runs
+- **Token validation**: Uses `supabase.auth.getUser(token)` with service role key — server-side verification, not client-side
+- **Admin enforcement**: Queries `user_roles` table for `role = 'admin'` — same `has_role` pattern used across all admin functions
+- **All 9 actions** (test-source, list-sources, run-source, discover-source, source-stats, extract-item, extract-batch, dedup-drafts, validate-for-approval) are gated behind the single `checkAdmin()` call at line 43-44
+- **Unauthenticated requests**: Rejected at line 84 (missing auth header) or line 90 (invalid token)
+- **Non-admin authenticated users**: Rejected at line 99
 
-**Fix**: 
-- Add URL scoring in `findOfficialUrl` — prefer deeper paths (with `/recruitment/`, `/notification/`, `/pdf/`) over root homepages
-- Add aggregator blocklist check at rule-based layer too (reuse same list from ai-enrich)
-- Score and rank candidates, return highest-scored match
+### firecrawl-ai-enrich (lines 61-72)
+- **Auth check**: Lines 62-72, runs BEFORE the action switch at line 76
+- **Token validation**: `supabase.auth.getUser(token)` — same server-side pattern
+- **Admin enforcement**: Queries `user_roles` for `role = 'admin'` — rejects with 403 if not admin
+- **All actions** (ai-clean, ai-enrich, ai-find-links, ai-fix-missing, ai-seo, ai-cover-prompt, ai-cover-image, ai-run-all, rollback-ai-action) are gated behind lines 62-72
+- **Unauthenticated requests**: Rejected at line 63
+- **Non-admin authenticated users**: Rejected at line 72
 
-### Gap 2: Security — Edge functions missing `verify_jwt = false` in config.toml
-**Current**: `firecrawl-ingest` and `firecrawl-ai-enrich` are NOT listed in `config.toml`. They do internal JWT validation, but without `verify_jwt = false` in config, Lovable's deployment may enforce JWT at the gateway level, potentially causing issues.
+### Why `verify_jwt = false` is correct here
+Per the project's documented pattern (see `disable-jwt-edge-functions` context), Lovable's signing-keys system requires `verify_jwt = false` so functions can validate JWTs themselves using `getUser()` or `getClaims()`. Both functions do exactly this. Setting `verify_jwt = true` would cause the gateway to reject requests signed with the project's anon key before the function's own auth logic runs — potentially breaking legitimate admin calls.
 
-**Fix**: Add both functions to `supabase/config.toml` with `verify_jwt = false` (they handle auth internally).
+### No code path bypasses auth
+- OPTIONS (CORS preflight) returns no data — safe
+- Missing `action` returns 400 — but only after auth check passes (firecrawl-ingest line 41 is before auth... let me re-check)
 
-**RLS**: All 4 tables have `FOR ALL TO authenticated USING (has_role(auth.uid(), 'admin'))` — solid. Edge functions check JWT + admin role server-side — solid. No gaps found.
+**Wait — potential issue in firecrawl-ingest**: Line 41 (`if (!action) return ...`) runs BEFORE `checkAdmin()` at line 43. This means an unauthenticated caller sending `{}` gets a 400 error with "Missing action parameter" instead of a 401. This is a minor information leak (confirms the function exists and expects an `action` field) but is not a security vulnerability — no data is exposed, no mutation occurs.
 
-### Gap 3: No rollback mechanism for AI changes
-**Current**: `old_values` are stored in `ai_enrichment_log` but there's no way to restore them. No UI or backend action for rollback.
+**Recommended minor fix**: Move the auth check before the action check in firecrawl-ingest. This is a best-practice hardening, not a vulnerability fix.
 
-**Fix**: Add a `rollback-ai-action` action to `firecrawl-ai-enrich` that reads the last log entry's `old_values` and restores them. Add a "Undo Last AI" button in the UI.
+## Plan
 
-### Gap 4: Review flow lacks publish-readiness indicators in UI
-**Current**: The drafts table shows confidence badge and missing field count, but doesn't visually surface critical blockers (no title, no org, duplicate, no official links) in an obvious way.
+### File: `supabase/functions/firecrawl-ingest/index.ts`
+- Swap lines 41 and 43-44 so auth runs before action validation
+- This ensures unauthenticated callers get 401, not 400 with parameter hints
 
-**Fix**: Add a "readiness" column in the table with color-coded indicator and tooltip showing blockers. Simple traffic-light: green (ready), yellow (warnings), red (blockers).
+### No other changes needed
+- No files created
+- No DB changes
+- No RLS changes
+- Both functions are already secure for all mutating paths
 
-### Gap 5: Source-specific cleaning not implemented
-**Current**: General-purpose cleaner handles all sources identically. Some sources have unique noise patterns.
+## Verdict
 
-**Fix**: Add source-specific junk patterns to `content-cleaner.ts`:
-- FreshersNow: "Government Jobs India", "Govt Jobs Alert" headers
-- CareerPower: "Adda247", "Bankersadda" brand mentions
-- SarkariNaukriBlog: "SNB" brand token
-- GovtJobGuru: "GJG" shortform
-- MySarkariNaukri: "MSN" shortform
-- AllGovernmentJobs: "AGJ" shortform
-- SharmaJobs: "SJ" shortform
+| Check | firecrawl-ingest | firecrawl-ai-enrich |
+|-------|-----------------|---------------------|
+| Auth required | Yes (getUser) | Yes (getUser) |
+| Admin role enforced | Yes (user_roles query) | Yes (user_roles query) |
+| All actions gated | Yes (single gate before switch) | Yes (single gate before switch) |
+| No data leak on unauth | Minor (action hint) — fixed | Yes |
+| Service role for DB ops | Yes | Yes |
 
-### Gap 6: `rss_items.current_status` filter uses wrong values
-**Current**: Cross-source dedup queries `rss_items` with `.in('current_status', ['new', 'triaged', 'published'])`. But the valid enum values (from the trigger) are: `'new', 'updated', 'queued', 'reviewed', 'ignored', 'duplicate'`. There's no `'triaged'` or `'published'` status.
-
-**Fix**: Change to `.in('current_status', ['new', 'updated', 'queued', 'reviewed'])`.
-
----
-
-## Implementation Plan
-
-### File 1: `supabase/functions/_shared/firecrawl/field-extractor.ts`
-- Add `AGGREGATOR_DOMAINS` constant (import pattern from ai-enrich)
-- Rewrite `findOfficialUrl` → `findBestOfficialUrl` with scoring: +3 for path-depth match, +2 for keyword match, -10 for aggregator domain, -2 for root/homepage-only URL
-- Return highest-scoring candidate instead of first match
-
-### File 2: `supabase/functions/_shared/firecrawl/content-cleaner.ts`
-- Add source-specific branding tokens: `'snb'`, `'gjg'`, `'adda247'`, `'bankersadda'`, `'msn govt jobs'`, `'agj'`, `'sj govt jobs'`, `'government jobs india freshersnow'`
-
-### File 3: `supabase/functions/firecrawl-ingest/index.ts`
-- Fix cross-source dedup RSS query: change `['new', 'triaged', 'published']` → `['new', 'updated', 'queued', 'reviewed']`
-
-### File 4: `supabase/functions/firecrawl-ai-enrich/index.ts`
-- Add `rollback-ai-action` handler: reads last `ai_enrichment_log` entry with `old_values`, restores those fields, appends a rollback log entry
-
-### File 5: `src/components/admin/firecrawl/FirecrawlDraftsManager.tsx`
-- Add readiness indicator column (traffic-light)
-- Add "Undo Last AI" button in dropdown menu
-- Show blocker tooltips
-
-### File 6: `supabase/config.toml`
-- Add `[functions.firecrawl-ingest]` and `[functions.firecrawl-ai-enrich]` with `verify_jwt = false`
-
-### No DB migrations needed — all changes are code-level.
-
----
-
-## What remains weak after fixes
-- **Official links from AI**: Even with blocklist + scoring, AI can still hallucinate URLs. Always human-verify.
-- **Extraction from poorly structured pages**: Regex-based extraction will miss non-standard layouts. AI Enrich compensates.
-- **Cross-source dedup fuzzy matching**: Can miss close but not identical variants. Periodic manual spot-checks recommended.
-
-## Final verdict
-After these fixes, Source 3 is **safe for controlled production use** with admin review before any publishing.
+**Final confirmation**: Only authenticated admin users can invoke either function. The `verify_jwt = false` setting is correct for this architecture.
 

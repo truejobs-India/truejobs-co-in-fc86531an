@@ -50,7 +50,7 @@ interface DraftJob {
   updated_at: string;
 }
 
-type AiAction = 'ai-clean' | 'ai-enrich' | 'ai-find-links' | 'ai-fix-missing' | 'ai-seo' | 'ai-cover-prompt' | 'ai-cover-image' | 'ai-run-all';
+type AiAction = 'ai-clean' | 'ai-enrich' | 'ai-find-links' | 'ai-fix-missing' | 'ai-seo' | 'ai-cover-prompt' | 'ai-cover-image' | 'ai-run-all' | 'rollback-ai-action';
 
 const AI_ACTIONS: { action: AiAction; label: string; icon: typeof Sparkles; description: string }[] = [
   { action: 'ai-clean', label: 'AI Clean', icon: Wrench, description: 'Remove source branding & polish' },

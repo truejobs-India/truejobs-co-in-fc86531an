@@ -1,59 +1,93 @@
 
 
-# Security Audit: firecrawl-ingest & firecrawl-ai-enrich
+# Plan: Add Scrape Pending, Extract Pending, and Progress Counts to Firecrawl Sources
 
-## Current State: SAFE
+## Problem Summary
+Discovery works and stages URLs, but most staged rows have `extracted_markdown = null` (URL-only). There's no UI to batch-scrape those pages or batch-extract them into drafts. The existing `extract-batch` action works but only processes items that already have markdown. A new `scrape-pending` action is needed.
 
-Both functions already implement strict server-side auth and admin-role enforcement. No fixes needed.
+## Architecture
 
-### firecrawl-ingest (lines 37-44, 78-101)
-- **Auth check**: `checkAdmin()` is called at line 43, BEFORE any action handler runs
-- **Token validation**: Uses `supabase.auth.getUser(token)` with service role key — server-side verification, not client-side
-- **Admin enforcement**: Queries `user_roles` table for `role = 'admin'` — same `has_role` pattern used across all admin functions
-- **All 9 actions** (test-source, list-sources, run-source, discover-source, source-stats, extract-item, extract-batch, dedup-drafts, validate-for-approval) are gated behind the single `checkAdmin()` call at line 43-44
-- **Unauthenticated requests**: Rejected at line 84 (missing auth header) or line 90 (invalid token)
-- **Non-admin authenticated users**: Rejected at line 99
+```text
+Discovery (exists) → Scrape Pending (NEW) → Extract Pending (exists as extract-batch)
+   stages URLs         fills markdown         creates draft jobs
+```
 
-### firecrawl-ai-enrich (lines 61-72)
-- **Auth check**: Lines 62-72, runs BEFORE the action switch at line 76
-- **Token validation**: `supabase.auth.getUser(token)` — same server-side pattern
-- **Admin enforcement**: Queries `user_roles` for `role = 'admin'` — rejects with 403 if not admin
-- **All actions** (ai-clean, ai-enrich, ai-find-links, ai-fix-missing, ai-seo, ai-cover-prompt, ai-cover-image, ai-run-all, rollback-ai-action) are gated behind lines 62-72
-- **Unauthenticated requests**: Rejected at line 63
-- **Non-admin authenticated users**: Rejected at line 72
+## Changes
 
-### Why `verify_jwt = false` is correct here
-Per the project's documented pattern (see `disable-jwt-edge-functions` context), Lovable's signing-keys system requires `verify_jwt = false` so functions can validate JWTs themselves using `getUser()` or `getClaims()`. Both functions do exactly this. Setting `verify_jwt = true` would cause the gateway to reject requests signed with the project's anon key before the function's own auth logic runs — potentially breaking legitimate admin calls.
+### 1. Edge Function: `firecrawl-ingest/index.ts`
 
-### No code path bypasses auth
-- OPTIONS (CORS preflight) returns no data — safe
-- Missing `action` returns 400 — but only after auth check passes (firecrawl-ingest line 41 is before auth... let me re-check)
+**Add new action: `scrape-pending`**
+- Accepts `source_id` and optional `max_items` (default 20, max 50)
+- Queries `firecrawl_staged_items` where:
+  - `firecrawl_source_id = source_id`
+  - `bucket = 'single_recruitment'`
+  - `extracted_markdown IS NULL`
+  - `status = 'staged'`
+  - `extraction_status = 'pending'`
+- For each row, calls `scrapePage(row.page_url)` via existing Firecrawl client
+- On success: updates the row with `extracted_markdown`, `page_title`, `content_hash`, `extracted_links`, `metadata`
+- On failure: increments error count, logs but continues
+- Returns: `{ scraped, skipped, failed, total }`
+- Creates a `firecrawl_fetch_runs` audit record
 
-**Wait — potential issue in firecrawl-ingest**: Line 41 (`if (!action) return ...`) runs BEFORE `checkAdmin()` at line 43. This means an unauthenticated caller sending `{}` gets a 400 error with "Missing action parameter" instead of a 401. This is a minor information leak (confirms the function exists and expects an `action` field) but is not a security vulnerability — no data is exposed, no mutation occurs.
+**Enhance `source-stats` action** to return richer counts:
+- `totalStaged` (all staged items)
+- `pendingUrlOnly` (staged, no markdown)
+- `scraped` (has markdown, extraction_status = pending)
+- `extracted` (extraction_status = extracted)
+- `extractionFailed` (extraction_status = failed)
+- `rejectedBucket` (bucket = rejected)
+- `duplicateStaged` (status = duplicate)
+- Draft counts from `firecrawl_draft_jobs`: total, by confidence (high/medium/low), by status (draft/reviewed/approved)
+- `lastScrapeAt`, `lastExtractAt` timestamps
 
-**Recommended minor fix**: Move the auth check before the action check in firecrawl-ingest. This is a best-practice hardening, not a vulnerability fix.
+### 2. Frontend: `FirecrawlSourcesManager.tsx`
 
-## Plan
+**Per-source buttons (alongside existing Discovery and Extract buttons):**
+- **Scrape Pending** button (Download icon) — calls `scrape-pending` action
+  - Disabled when no URL-only rows exist or action is running
+  - Shows spinner during operation
+  - Shows toast with results: X scraped, Y failed
+- **Extract Pending** button (already exists as Extract Batch — keep it, improve labeling)
 
-### File: `supabase/functions/firecrawl-ingest/index.ts`
-- Swap lines 41 and 43-44 so auth runs before action validation
-- This ensures unauthenticated callers get 401, not 400 with parameter hints
+**Per-source progress counts in expanded section:**
+Replace the current basic stats grid with a comprehensive breakdown:
+- Total Staged | URL-Only | Scraped | Extracted | Failed | Rejected | Duplicate
+- Draft stats: Total Drafts | High | Medium | Low confidence | Reviewed | Approved
+- Last scrape time | Last extract time
 
-### No other changes needed
-- No files created
-- No DB changes
-- No RLS changes
-- Both functions are already secure for all mutating paths
+**Post-action feedback:**
+- Toast with counts after each operation
+- Stats auto-refresh after scrape/extract completes
 
-## Verdict
+### 3. Processing Rules (enforced in code)
+- Source-scoped: every action takes `source_id`, never global
+- No re-scrape: only rows with `extracted_markdown IS NULL`
+- No re-extract: only rows with `extraction_status = 'pending'` and `extracted_markdown IS NOT NULL`
+- No auto-publish: nothing touches `jobs` table or changes status beyond `draft`
+- Batched: `max_items` parameter with sensible defaults
+- Isolated: no interaction with RSS or Employment News tables
 
-| Check | firecrawl-ingest | firecrawl-ai-enrich |
-|-------|-----------------|---------------------|
-| Auth required | Yes (getUser) | Yes (getUser) |
-| Admin role enforced | Yes (user_roles query) | Yes (user_roles query) |
-| All actions gated | Yes (single gate before switch) | Yes (single gate before switch) |
-| No data leak on unauth | Minor (action hint) — fixed | Yes |
-| Service role for DB ops | Yes | Yes |
+### 4. Files Modified
+| File | Change |
+|------|--------|
+| `supabase/functions/firecrawl-ingest/index.ts` | Add `scrape-pending` action handler; enhance `source-stats` response |
+| `src/components/admin/firecrawl/FirecrawlSourcesManager.tsx` | Add Scrape Pending button, enhanced stats display, post-action feedback |
 
-**Final confirmation**: Only authenticated admin users can invoke either function. The `verify_jwt = false` setting is correct for this architecture.
+### 5. Field/Status Reference
+| Field | Meaning |
+|-------|---------|
+| `extracted_markdown IS NULL` | URL-only, needs scraping |
+| `extracted_markdown IS NOT NULL` | Page content present |
+| `extraction_status = 'pending'` | Not yet extracted to draft |
+| `extraction_status = 'extracted'` | Draft job created |
+| `extraction_status = 'failed'` | Extraction attempted but failed |
+| `bucket = 'single_recruitment'` | Eligible for scrape + extract |
+
+### 6. Safeguards
+- No auto-publish — nothing touches live `jobs` table
+- No Source 1/Source 2 interference — all queries scoped to `firecrawl_source_id`
+- Dedup logic preserved — extract uses existing `handleExtractItemInternal`
+- Review flow preserved — drafts created as `status = 'draft'`
+- Cost control — `max_items` caps Firecrawl API calls per run
 

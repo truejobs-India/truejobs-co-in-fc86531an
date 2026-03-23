@@ -319,6 +319,7 @@ async function handleAiClean(draftId: string, client: any, apiKey: string, aiMod
         additionalProperties: false,
       },
     },
+    aiModel,
   );
 
   const update: Record<string, unknown> = { ai_clean_at: new Date().toISOString() };

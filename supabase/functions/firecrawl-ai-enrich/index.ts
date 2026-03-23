@@ -421,7 +421,7 @@ async function handleAiEnrich(draftId: string, client: any, apiKey: string, aiMo
 
 // ============ 3. AI Find Official Links ============
 
-async function handleAiFindLinks(draftId: string, client: any, apiKey: string) {
+async function handleAiFindLinks(draftId: string, client: any, apiKey: string, aiModel?: string) {
   const draft = await fetchDraft(draftId, client);
   const context = getDraftContext(draft);
   const rawLinks = (draft.raw_links_found || []).slice(0, 100).join('\n');

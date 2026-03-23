@@ -39,6 +39,22 @@ const VERTEX_MODEL_MAP: Record<string, { vertexModel: string; timeoutMs: number 
 
 const BEDROCK_MODELS = new Set(['nova-pro', 'nova-premier', 'mistral']);
 
+// ── Image model routing: maps frontend registry keys to gateway/vertex image models ──
+interface ImageModelRoute {
+  provider: 'lovable-gateway' | 'vertex-ai';
+  apiModel: string;
+  vertexEndpoint?: 'gemini' | 'imagen';
+}
+
+const IMAGE_MODEL_REGISTRY: Record<string, ImageModelRoute> = {
+  'gemini-flash-image':   { provider: 'lovable-gateway', apiModel: 'google/gemini-2.5-flash-image' },
+  'gemini-pro-image':     { provider: 'lovable-gateway', apiModel: 'google/gemini-3-pro-image-preview' },
+  'gemini-flash-image-2': { provider: 'lovable-gateway', apiModel: 'google/gemini-3.1-flash-image-preview' },
+  'vertex-pro':           { provider: 'vertex-ai', apiModel: 'gemini-2.5-flash-image', vertexEndpoint: 'gemini' },
+  'vertex-3-pro-image':   { provider: 'vertex-ai', apiModel: 'gemini-3-pro-image-preview', vertexEndpoint: 'gemini' },
+  'vertex-imagen':        { provider: 'vertex-ai', apiModel: 'imagen-3.0-generate-002', vertexEndpoint: 'imagen' },
+};
+
 // Aggregator domains that must NEVER appear as official links
 const AGGREGATOR_DOMAINS = [
   'sarkariexam.com', 'sarkarinaukri.com', 'indgovtjobs.in',
@@ -74,6 +90,7 @@ Deno.serve(async (req) => {
     const action = body.action as string;
     const draftId = body.draft_id as string;
     const aiModel = (body.aiModel as string) || '';
+    const imageModel = (body.imageModel as string) || '';
 
     if (!action) return json({ error: 'Missing action' }, 400);
     if (!draftId && action !== 'ai-run-all-batch') return json({ error: 'Missing draft_id' }, 400);
@@ -100,8 +117,8 @@ Deno.serve(async (req) => {
       case 'ai-fix-missing': return await handleAiFixMissing(draftId, client, lovableKey, aiModel);
       case 'ai-seo': return await handleAiSeo(draftId, client, lovableKey, aiModel);
       case 'ai-cover-prompt': return await handleAiCoverPrompt(draftId, client, lovableKey, aiModel);
-      case 'ai-cover-image': return await handleAiCoverImage(draftId, client, lovableKey, aiModel);
-      case 'ai-run-all': return await handleAiRunAll(draftId, client, lovableKey, aiModel);
+      case 'ai-cover-image': return await handleAiCoverImage(draftId, client, lovableKey, imageModel);
+      case 'ai-run-all': return await handleAiRunAll(draftId, client, lovableKey, aiModel, imageModel);
       case 'rollback-ai-action': return await handleRollbackAiAction(draftId, client);
       default: return json({ error: `Unknown action: ${action}` }, 400);
     }
@@ -679,7 +696,7 @@ Rules:
 
 // ============ 7. AI Cover Image ============
 
-async function handleAiCoverImage(draftId: string, client: any, apiKey: string, aiModel?: string) {
+async function handleAiCoverImage(draftId: string, client: any, apiKey: string, imageModel?: string) {
   const draft = await fetchDraft(draftId, client);
 
   let prompt = draft.cover_image_prompt;
@@ -693,26 +710,93 @@ async function handleAiCoverImage(draftId: string, client: any, apiKey: string, 
 
   if (!prompt) return json({ error: 'No cover image prompt available' }, 400);
 
-  const resp = await fetch(AI_GATEWAY, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'google/gemini-3.1-flash-image-preview',
-      messages: [{ role: 'user', content: prompt }],
-      modalities: ['image', 'text'],
-    }),
-  });
+  // Resolve image model route
+  const modelKey = imageModel || 'gemini-flash-image-2';
+  const route = IMAGE_MODEL_REGISTRY[modelKey] || IMAGE_MODEL_REGISTRY['gemini-flash-image-2'];
+  console.log(`[firecrawl-ai-enrich] cover image: model=${modelKey} provider=${route.provider} apiModel=${route.apiModel}`);
 
-  if (!resp.ok) {
-    const errText = await resp.text().catch(() => '');
-    throw new Error(`Image generation failed ${resp.status}: ${errText.substring(0, 300)}`);
+  let imageUrl: string | undefined;
+
+  if (route.provider === 'vertex-ai') {
+    // ── Vertex AI direct path ──
+    const { getVertexAccessToken } = await import('../_shared/vertex-ai.ts');
+    const accessToken = await getVertexAccessToken();
+    const projectId = Deno.env.get('GCP_PROJECT_ID');
+    const location = Deno.env.get('GCP_LOCATION') || 'us-central1';
+
+    if (route.vertexEndpoint === 'imagen') {
+      // Imagen model
+      const imagenUrl = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${route.apiModel}:predict`;
+      const imagenResp = await fetch(imagenUrl, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          instances: [{ prompt }],
+          parameters: { sampleCount: 1, aspectRatio: '16:9', personGeneration: 'allow_adult' },
+        }),
+      });
+      if (!imagenResp.ok) {
+        const errText = await imagenResp.text().catch(() => '');
+        throw new Error(`Imagen error ${imagenResp.status}: ${errText.substring(0, 300)}`);
+      }
+      const imagenData = await imagenResp.json();
+      const b64 = imagenData.predictions?.[0]?.bytesBase64Encoded;
+      if (b64) imageUrl = `data:image/png;base64,${b64}`;
+    } else {
+      // Gemini image model via Vertex
+      const isGemini3 = route.apiModel.startsWith('gemini-3');
+      const apiVersion = isGemini3 ? 'v1beta1' : 'v1';
+      const loc = isGemini3 ? 'global' : location;
+      const host = isGemini3 ? 'aiplatform.googleapis.com' : `${location}-aiplatform.googleapis.com`;
+      const vertexUrl = `https://${host}/${apiVersion}/projects/${projectId}/locations/${loc}/publishers/google/models/${route.apiModel}:generateContent`;
+
+      const vertexResp = await fetch(vertexUrl, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          generationConfig: { responseModalities: ['IMAGE', 'TEXT'] },
+        }),
+      });
+      if (!vertexResp.ok) {
+        const errText = await vertexResp.text().catch(() => '');
+        throw new Error(`Vertex image error ${vertexResp.status}: ${errText.substring(0, 300)}`);
+      }
+      const vertexData = await vertexResp.json();
+      const parts = vertexData.candidates?.[0]?.content?.parts || [];
+      for (const part of parts) {
+        if (part.inlineData?.data) {
+          const mime = part.inlineData.mimeType || 'image/png';
+          imageUrl = `data:${mime};base64,${part.inlineData.data}`;
+          break;
+        }
+      }
+    }
+  } else {
+    // ── Lovable AI Gateway path ──
+    const resp = await fetch(AI_GATEWAY, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: route.apiModel,
+        messages: [{ role: 'user', content: prompt }],
+        modalities: ['image', 'text'],
+      }),
+    });
+
+    if (!resp.ok) {
+      const errText = await resp.text().catch(() => '');
+      if (resp.status === 429) throw new Error('Rate limited — try again shortly');
+      if (resp.status === 402) throw new Error('Credits exhausted — add funds in Settings');
+      throw new Error(`Image generation failed ${resp.status}: ${errText.substring(0, 300)}`);
+    }
+
+    const imgData = await resp.json();
+    imageUrl = imgData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
   }
-
-  const imgData = await resp.json();
-  const imageUrl = imgData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
 
   if (!imageUrl) {
     return json({ error: 'Image generation returned no image' }, 500);
@@ -734,19 +818,23 @@ async function handleAiCoverImage(draftId: string, client: any, apiKey: string, 
 
   const { data: { publicUrl } } = client.storage.from('blog-assets').getPublicUrl(storagePath);
 
+  // Re-fetch draft for latest log since cover prompt may have been auto-generated
+  const latestDraft = await fetchDraft(draftId, client);
   const update: Record<string, unknown> = {
     ai_cover_image_at: new Date().toISOString(),
     cover_image_url: publicUrl,
-    ai_enrichment_log: appendLog(draft.ai_enrichment_log, 'ai-cover-image', { storage_path: storagePath }),
+    ai_enrichment_log: appendLog(latestDraft.ai_enrichment_log, 'ai-cover-image', {
+      storage_path: storagePath, model_used: modelKey, provider: route.provider,
+    }),
   };
 
   await client.from('firecrawl_draft_jobs').update(update).eq('id', draftId);
-  return json({ success: true, action: 'ai-cover-image', cover_image_url: publicUrl });
+  return json({ success: true, action: 'ai-cover-image', cover_image_url: publicUrl, model_used: modelKey });
 }
 
 // ============ 8. AI Run All ============
 
-async function handleAiRunAll(draftId: string, client: any, apiKey: string, aiModel?: string) {
+async function handleAiRunAll(draftId: string, client: any, apiKey: string, aiModel?: string, imageModel?: string) {
   const steps = [
     'ai-clean', 'ai-enrich', 'ai-find-links', 'ai-fix-missing', 'ai-seo', 'ai-cover-prompt', 'ai-cover-image',
   ];
@@ -764,7 +852,9 @@ async function handleAiRunAll(draftId: string, client: any, apiKey: string, aiMo
 
   for (const step of steps) {
     try {
-      const resp = await handlers[step](draftId, client, apiKey, aiModel);
+      // Pass imageModel for image step, aiModel for all text steps
+      const modelArg = step === 'ai-cover-image' ? imageModel : aiModel;
+      const resp = await handlers[step](draftId, client, apiKey, modelArg);
       const body = await resp.json();
       results.push({ step, success: body.success ?? true, error: body.error });
 

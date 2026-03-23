@@ -2,7 +2,7 @@
  * Admin control surface for Firecrawl sources (Source 3 Phase 5).
  * Enable/disable, view stats, re-run discovery, inspect errors.
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,10 +11,12 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Progress } from '@/components/ui/progress';
 import { toast } from '@/hooks/use-toast';
 import {
   RefreshCw, Loader2, Play, AlertTriangle, CheckCircle,
   Globe, Settings, BarChart3, ChevronDown, ChevronUp,
+  PlayCircle, Square, XCircle,
 } from 'lucide-react';
 
 interface FirecrawlSource {
@@ -42,6 +44,23 @@ interface SourceStats {
   recentRuns: any[];
 }
 
+interface SourceRunResult {
+  sourceId: string;
+  sourceName: string;
+  status: 'success' | 'error' | 'skipped';
+  staged: number;
+  rejected: number;
+  durationMs: number;
+  error?: string;
+}
+
+interface BatchReport {
+  results: SourceRunResult[];
+  totalDurationMs: number;
+  startedAt: string;
+  completedAt: string;
+}
+
 export function FirecrawlSourcesManager() {
   const [sources, setSources] = useState<FirecrawlSource[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,6 +68,13 @@ export function FirecrawlSourcesManager() {
   const [expandedSource, setExpandedSource] = useState<string | null>(null);
   const [sourceStats, setSourceStats] = useState<Record<string, SourceStats>>({});
   const [editingSeed, setEditingSeed] = useState<Record<string, string>>({});
+
+  // Run-all state
+  const [runAllActive, setRunAllActive] = useState(false);
+  const [runAllCurrentSource, setRunAllCurrentSource] = useState<string | null>(null);
+  const [runAllProgress, setRunAllProgress] = useState({ current: 0, total: 0 });
+  const [batchReport, setBatchReport] = useState<BatchReport | null>(null);
+  const stopRequestedRef = useRef(false);
 
   const fetchSources = useCallback(async () => {
     setLoading(true);
@@ -174,6 +200,103 @@ export function FirecrawlSourcesManager() {
     }
   };
 
+  // ── Run All Sources Sequentially ──
+  const runAllSources = async () => {
+    const enabledSources = sources.filter(s => s.is_enabled);
+    if (enabledSources.length === 0) {
+      toast({ title: 'No enabled sources', description: 'Enable at least one source first.', variant: 'destructive' });
+      return;
+    }
+
+    stopRequestedRef.current = false;
+    setRunAllActive(true);
+    setBatchReport(null);
+    setRunAllProgress({ current: 0, total: enabledSources.length });
+
+    const results: SourceRunResult[] = [];
+    const batchStart = Date.now();
+    const startedAt = new Date().toISOString();
+
+    for (let i = 0; i < enabledSources.length; i++) {
+      if (stopRequestedRef.current) {
+        // Mark remaining as skipped
+        for (let j = i; j < enabledSources.length; j++) {
+          results.push({
+            sourceId: enabledSources[j].id,
+            sourceName: enabledSources[j].source_name,
+            status: 'skipped',
+            staged: 0,
+            rejected: 0,
+            durationMs: 0,
+            error: 'Stopped by admin',
+          });
+        }
+        break;
+      }
+
+      const source = enabledSources[i];
+      setRunAllCurrentSource(source.id);
+      setRunAllProgress({ current: i + 1, total: enabledSources.length });
+      setBusySources(prev => ({ ...prev, [source.id]: 'discovering' }));
+
+      const sourceStart = Date.now();
+      try {
+        const { data, error } = await supabase.functions.invoke('firecrawl-ingest', {
+          body: { action: 'discover-source', source_id: source.id },
+        });
+        if (error) throw new Error(error.message);
+        if (data?.error) throw new Error(data.error);
+
+        results.push({
+          sourceId: source.id,
+          sourceName: source.source_name,
+          status: 'success',
+          staged: data.stats?.staged || 0,
+          rejected: data.stats?.rejected || 0,
+          durationMs: Date.now() - sourceStart,
+        });
+      } catch (e: any) {
+        results.push({
+          sourceId: source.id,
+          sourceName: source.source_name,
+          status: 'error',
+          staged: 0,
+          rejected: 0,
+          durationMs: Date.now() - sourceStart,
+          error: e.message,
+        });
+      } finally {
+        setBusySources(prev => { const n = { ...prev }; delete n[source.id]; return n; });
+      }
+    }
+
+    const completedAt = new Date().toISOString();
+    const report: BatchReport = {
+      results,
+      totalDurationMs: Date.now() - batchStart,
+      startedAt,
+      completedAt,
+    };
+
+    setBatchReport(report);
+    setRunAllActive(false);
+    setRunAllCurrentSource(null);
+    setRunAllProgress({ current: 0, total: 0 });
+    await fetchSources();
+
+    const successCount = results.filter(r => r.status === 'success').length;
+    const errorCount = results.filter(r => r.status === 'error').length;
+    toast({
+      title: 'Batch run complete',
+      description: `${successCount} succeeded, ${errorCount} failed, ${results.filter(r => r.status === 'skipped').length} skipped`,
+    });
+  };
+
+  const stopRunAll = () => {
+    stopRequestedRef.current = true;
+    toast({ title: 'Stopping...', description: 'Will stop after current source finishes.' });
+  };
+
   const priorityColor = (p: string) => {
     switch (p) {
       case 'High': return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
@@ -193,6 +316,13 @@ export function FirecrawlSourcesManager() {
     return `${Math.floor(hrs / 24)}d ago`;
   };
 
+  const formatDuration = (ms: number) => {
+    if (ms < 1000) return `${ms}ms`;
+    const secs = Math.round(ms / 1000);
+    if (secs < 60) return `${secs}s`;
+    return `${Math.floor(secs / 60)}m ${secs % 60}s`;
+  };
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-3">
@@ -200,12 +330,122 @@ export function FirecrawlSourcesManager() {
           <Globe className="h-5 w-5" />
           Firecrawl Sources
         </CardTitle>
-        <Button variant="outline" size="sm" onClick={fetchSources} disabled={loading}>
-          <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          {!runAllActive ? (
+            <Button
+              variant="default"
+              size="sm"
+              onClick={runAllSources}
+              disabled={loading || sources.filter(s => s.is_enabled).length === 0}
+            >
+              <PlayCircle className="h-3.5 w-3.5 mr-1.5" />
+              Run All Sources
+            </Button>
+          ) : (
+            <Button variant="destructive" size="sm" onClick={stopRunAll}>
+              <Square className="h-3.5 w-3.5 mr-1.5" />
+              Stop
+            </Button>
+          )}
+          <Button variant="outline" size="sm" onClick={fetchSources} disabled={loading || runAllActive}>
+            <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+        </div>
       </CardHeader>
       <CardContent>
+        {/* Run-all progress bar */}
+        {runAllActive && runAllProgress.total > 0 && (
+          <div className="mb-4 space-y-1.5">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span className="flex items-center gap-1.5">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Running source {runAllProgress.current} of {runAllProgress.total}
+                {runAllCurrentSource && (
+                  <span className="font-medium text-foreground">
+                    — {sources.find(s => s.id === runAllCurrentSource)?.source_name}
+                  </span>
+                )}
+              </span>
+              <span>{Math.round((runAllProgress.current / runAllProgress.total) * 100)}%</span>
+            </div>
+            <Progress value={(runAllProgress.current / runAllProgress.total) * 100} className="h-2" />
+          </div>
+        )}
+
+        {/* Batch report */}
+        {batchReport && (
+          <div className="mb-4 border rounded-lg bg-muted/30 p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-semibold flex items-center gap-1.5">
+                <BarChart3 className="h-4 w-4" />
+                Batch Run Report
+              </h4>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">
+                  Total: {formatDuration(batchReport.totalDurationMs)}
+                </span>
+                <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setBatchReport(null)}>
+                  Dismiss
+                </Button>
+              </div>
+            </div>
+
+            {/* Summary badges */}
+            <div className="flex gap-2 text-xs">
+              <Badge variant="default" className="bg-green-600 text-white">
+                {batchReport.results.filter(r => r.status === 'success').length} Succeeded
+              </Badge>
+              {batchReport.results.some(r => r.status === 'error') && (
+                <Badge variant="destructive">
+                  {batchReport.results.filter(r => r.status === 'error').length} Failed
+                </Badge>
+              )}
+              {batchReport.results.some(r => r.status === 'skipped') && (
+                <Badge variant="secondary">
+                  {batchReport.results.filter(r => r.status === 'skipped').length} Skipped
+                </Badge>
+              )}
+              <Badge variant="outline">
+                {batchReport.results.reduce((sum, r) => sum + r.staged, 0)} Total Staged
+              </Badge>
+              <Badge variant="outline">
+                {batchReport.results.reduce((sum, r) => sum + r.rejected, 0)} Total Rejected
+              </Badge>
+            </div>
+
+            {/* Per-source results table */}
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-xs h-7">Source</TableHead>
+                  <TableHead className="text-xs h-7">Status</TableHead>
+                  <TableHead className="text-xs h-7 text-right">Staged</TableHead>
+                  <TableHead className="text-xs h-7 text-right">Rejected</TableHead>
+                  <TableHead className="text-xs h-7 text-right">Duration</TableHead>
+                  <TableHead className="text-xs h-7">Error</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {batchReport.results.map((r) => (
+                  <TableRow key={r.sourceId}>
+                    <TableCell className="text-xs py-1 font-medium">{r.sourceName}</TableCell>
+                    <TableCell className="text-xs py-1">
+                      {r.status === 'success' && <CheckCircle className="h-3.5 w-3.5 text-green-600 inline" />}
+                      {r.status === 'error' && <XCircle className="h-3.5 w-3.5 text-destructive inline" />}
+                      {r.status === 'skipped' && <span className="text-muted-foreground">Skipped</span>}
+                    </TableCell>
+                    <TableCell className="text-xs py-1 text-right">{r.staged}</TableCell>
+                    <TableCell className="text-xs py-1 text-right">{r.rejected}</TableCell>
+                    <TableCell className="text-xs py-1 text-right">{formatDuration(r.durationMs)}</TableCell>
+                    <TableCell className="text-xs py-1 text-destructive truncate max-w-[200px]">{r.error || '—'}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+
         {loading ? (
           <div className="flex items-center justify-center py-8">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -215,12 +455,13 @@ export function FirecrawlSourcesManager() {
         ) : (
           <div className="space-y-2">
             {sources.map(source => (
-              <div key={source.id} className="border rounded-lg">
+              <div key={source.id} className={`border rounded-lg ${runAllCurrentSource === source.id ? 'ring-2 ring-primary' : ''}`}>
                 {/* Source row */}
                 <div className="flex items-center gap-3 p-3">
                   <Switch
                     checked={source.is_enabled}
                     onCheckedChange={(checked) => toggleEnabled(source.id, checked)}
+                    disabled={runAllActive}
                   />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
@@ -249,7 +490,7 @@ export function FirecrawlSourcesManager() {
                   <div className="flex items-center gap-1 shrink-0">
                     <Button
                       size="sm" variant="outline"
-                      disabled={!!busySources[source.id]}
+                      disabled={!!busySources[source.id] || runAllActive}
                       onClick={() => runDiscovery(source.id)}
                       title="Run Discovery"
                     >
@@ -261,7 +502,7 @@ export function FirecrawlSourcesManager() {
                     </Button>
                     <Button
                       size="sm" variant="outline"
-                      disabled={!!busySources[source.id]}
+                      disabled={!!busySources[source.id] || runAllActive}
                       onClick={() => runExtractBatch(source.id)}
                       title="Extract Batch"
                     >

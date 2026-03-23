@@ -1379,6 +1379,7 @@ export type Database = {
       }
       firecrawl_draft_jobs: {
         Row: {
+          admin_edited_fields: string[] | null
           age_limit: string | null
           ai_clean_at: string | null
           ai_cover_image_at: string | null
@@ -1450,6 +1451,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          admin_edited_fields?: string[] | null
           age_limit?: string | null
           ai_clean_at?: string | null
           ai_cover_image_at?: string | null
@@ -1521,6 +1523,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          admin_edited_fields?: string[] | null
           age_limit?: string | null
           ai_clean_at?: string | null
           ai_cover_image_at?: string | null

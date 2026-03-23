@@ -1,10 +1,13 @@
 /**
- * Source 3 Phase 4: AI enrichment for firecrawl draft jobs.
+ * Source 3 Phase 4+5: AI enrichment for firecrawl draft jobs.
  * Separate actions: ai-clean, ai-enrich, ai-find-links, ai-fix-missing,
  *                   ai-seo, ai-cover-prompt, ai-cover-image, ai-run-all
  *
- * Each action updates only its related fields — no blind overwrites.
- * Uses Lovable AI Gateway (Gemini) for all text AI.
+ * Hardening:
+ * - admin_edited_fields protection: AI skips fields the admin manually edited
+ * - Status guards: reviewed/approved drafts block AI Clean and AI Enrich
+ * - Aggregator domain blocklist for official link validation
+ * - Old-value snapshots in audit log for rollback
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -16,6 +19,27 @@ const corsHeaders = {
 
 const AI_GATEWAY = 'https://ai.gateway.lovable.dev/v1/chat/completions';
 const DEFAULT_MODEL = 'google/gemini-3-flash-preview';
+
+// Aggregator domains that must NEVER appear as official links
+const AGGREGATOR_DOMAINS = [
+  'sarkariexam.com', 'sarkarinaukri.com', 'indgovtjobs.in',
+  'allgovernmentjobs.in', 'mysarkarinaukri.com', 'govtjobguru.in',
+  'sarkarinaukriblog.com', 'freshersnow.com', 'careerpower.in',
+  'sharmajobs.com', 'sarkaridisha.com', 'recruitment.guru',
+  'sarkariresult.com', 'freejobalert.com', 'jagranjosh.com',
+  'adda247.com', 'testbook.com', 'gradeup.co', 'byjus.com',
+  'embibe.com', 'prepp.in', 'safalta.com', 'rojgarresult.in',
+];
+
+function isAggregatorUrl(url: string): boolean {
+  if (!url) return false;
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    return AGGREGATOR_DOMAINS.some(d => hostname === d || hostname.endsWith('.' + d));
+  } catch {
+    return false;
+  }
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
@@ -147,14 +171,49 @@ async function fetchDraft(draftId: string, client: any) {
   return data;
 }
 
+/** Get the set of admin-edited fields that AI should not overwrite */
+function getProtectedFields(draft: any): Set<string> {
+  return new Set(draft.admin_edited_fields || []);
+}
+
+/** Check if AI mutation actions are allowed on this draft status */
+function checkStatusGuard(draft: any, action: string): string | null {
+  const blockedStatuses = ['approved'];
+  // reviewed blocks destructive AI but allows safe actions
+  const destructiveActions = ['ai-clean', 'ai-enrich'];
+
+  if (blockedStatuses.includes(draft.status)) {
+    return `Cannot run ${action} on an approved draft. Change status first.`;
+  }
+  if (draft.status === 'reviewed' && destructiveActions.includes(action)) {
+    return `Cannot run ${action} on a reviewed draft — it may overwrite verified data. Use Fix Missing or SEO instead.`;
+  }
+  return null;
+}
+
 function appendLog(existing: any[], action: string, result: Record<string, unknown>) {
   return [...(existing || []), { action, at: new Date().toISOString(), ...result }];
+}
+
+/** Build old_values snapshot for fields that will change */
+function snapshotOldValues(draft: any, fieldsToUpdate: Record<string, unknown>): Record<string, unknown> {
+  const old: Record<string, unknown> = {};
+  for (const key of Object.keys(fieldsToUpdate)) {
+    if (key === 'ai_enrichment_log' || key.endsWith('_at')) continue; // skip meta
+    if (draft[key] !== undefined) old[key] = draft[key];
+  }
+  return old;
 }
 
 // ============ 1. AI Clean ============
 
 async function handleAiClean(draftId: string, client: any, apiKey: string) {
   const draft = await fetchDraft(draftId, client);
+
+  const guard = checkStatusGuard(draft, 'ai-clean');
+  if (guard) return json({ error: guard }, 400);
+
+  const protectedFields = getProtectedFields(draft);
 
   const result = await callAI(
     apiKey,
@@ -178,19 +237,38 @@ async function handleAiClean(draftId: string, client: any, apiKey: string) {
   );
 
   const update: Record<string, unknown> = { ai_clean_at: new Date().toISOString() };
-  if (result.title && result.title.length > 5) update.title = result.title;
-  if (result.description_summary) update.description_summary = result.description_summary;
-  if (result.organization_name) update.organization_name = result.organization_name;
-  update.ai_enrichment_log = appendLog(draft.ai_enrichment_log, 'ai-clean', { changes: result.changes_made });
+  const skipped: string[] = [];
+
+  if (result.title && result.title.length > 5 && !protectedFields.has('title')) {
+    update.title = result.title;
+  } else if (protectedFields.has('title')) skipped.push('title');
+
+  if (result.description_summary && !protectedFields.has('description_summary')) {
+    update.description_summary = result.description_summary;
+  } else if (protectedFields.has('description_summary')) skipped.push('description_summary');
+
+  if (result.organization_name && !protectedFields.has('organization_name')) {
+    update.organization_name = result.organization_name;
+  } else if (protectedFields.has('organization_name')) skipped.push('organization_name');
+
+  const oldValues = snapshotOldValues(draft, update);
+  update.ai_enrichment_log = appendLog(draft.ai_enrichment_log, 'ai-clean', {
+    changes: result.changes_made, skipped_protected: skipped, old_values: oldValues,
+  });
 
   await client.from('firecrawl_draft_jobs').update(update).eq('id', draftId);
-  return json({ success: true, action: 'ai-clean', changes: result.changes_made });
+  return json({ success: true, action: 'ai-clean', changes: result.changes_made, skipped_protected: skipped });
 }
 
 // ============ 2. AI Enrich ============
 
 async function handleAiEnrich(draftId: string, client: any, apiKey: string) {
   const draft = await fetchDraft(draftId, client);
+
+  const guard = checkStatusGuard(draft, 'ai-enrich');
+  if (guard) return json({ error: guard }, 400);
+
+  const protectedFields = getProtectedFields(draft);
   const context = getDraftContext(draft);
 
   const result = await callAI(
@@ -227,7 +305,6 @@ async function handleAiEnrich(draftId: string, client: any, apiKey: string) {
     },
   );
 
-  // Only update fields that have new non-null values and where existing was weak
   const update: Record<string, unknown> = { ai_enrich_at: new Date().toISOString() };
   const fieldsToCheck = [
     'organization_name', 'post_name', 'job_role', 'qualification', 'age_limit',
@@ -236,19 +313,25 @@ async function handleAiEnrich(draftId: string, client: any, apiKey: string) {
   ];
 
   const improved: string[] = [];
+  const skipped: string[] = [];
+
   for (const f of fieldsToCheck) {
+    if (protectedFields.has(f)) { skipped.push(f); continue; }
     const newVal = result[f];
     const oldVal = draft[f];
-    // Only overwrite if old is empty/null OR new is substantially longer
     if (newVal && (!oldVal || (typeof newVal === 'string' && typeof oldVal === 'string' && newVal.length > oldVal.length * 1.3))) {
       update[f] = newVal;
       improved.push(f);
     }
   }
 
-  update.ai_enrichment_log = appendLog(draft.ai_enrichment_log, 'ai-enrich', { improved });
+  const oldValues = snapshotOldValues(draft, update);
+  update.ai_enrichment_log = appendLog(draft.ai_enrichment_log, 'ai-enrich', {
+    improved, skipped_protected: skipped, old_values: oldValues,
+  });
+
   await client.from('firecrawl_draft_jobs').update(update).eq('id', draftId);
-  return json({ success: true, action: 'ai-enrich', improved });
+  return json({ success: true, action: 'ai-enrich', improved, skipped_protected: skipped });
 }
 
 // ============ 3. AI Find Official Links ============
@@ -291,20 +374,38 @@ Rules:
     official_link_reason: result.reason,
   };
 
-  // Only update URLs if AI found them and existing is empty
+  // Code-level aggregator blocklist validation on AI-returned URLs
+  const linkValidation: Record<string, string> = {};
+
   if (result.official_notification_url && !draft.official_notification_url) {
-    update.official_notification_url = result.official_notification_url;
+    if (isAggregatorUrl(result.official_notification_url)) {
+      linkValidation.notification = 'BLOCKED: aggregator domain';
+    } else {
+      update.official_notification_url = result.official_notification_url;
+      linkValidation.notification = 'accepted';
+    }
   }
   if (result.official_apply_url && !draft.official_apply_url) {
-    update.official_apply_url = result.official_apply_url;
+    if (isAggregatorUrl(result.official_apply_url)) {
+      linkValidation.apply = 'BLOCKED: aggregator domain';
+    } else {
+      update.official_apply_url = result.official_apply_url;
+      linkValidation.apply = 'accepted';
+    }
   }
   if (result.official_website_url && !draft.official_website_url) {
-    update.official_website_url = result.official_website_url;
+    if (isAggregatorUrl(result.official_website_url)) {
+      linkValidation.website = 'BLOCKED: aggregator domain';
+    } else {
+      update.official_website_url = result.official_website_url;
+      linkValidation.website = 'accepted';
+    }
   }
 
   update.ai_enrichment_log = appendLog(draft.ai_enrichment_log, 'ai-find-links', {
     confidence: result.confidence,
     reason: result.reason,
+    link_validation: linkValidation,
     found: {
       notification: !!result.official_notification_url,
       apply: !!result.official_apply_url,
@@ -313,7 +414,7 @@ Rules:
   });
 
   await client.from('firecrawl_draft_jobs').update(update).eq('id', draftId);
-  return json({ success: true, action: 'ai-find-links', ...result });
+  return json({ success: true, action: 'ai-find-links', link_validation: linkValidation, ...result });
 }
 
 // ============ 4. AI Fix Missing ============
@@ -321,7 +422,8 @@ Rules:
 async function handleAiFixMissing(draftId: string, client: any, apiKey: string) {
   const draft = await fetchDraft(draftId, client);
 
-  // Identify blank/weak fields
+  const protectedFields = getProtectedFields(draft);
+
   const weakFields: string[] = [];
   const checkFields = [
     'title', 'organization_name', 'post_name', 'job_role', 'qualification',
@@ -330,6 +432,7 @@ async function handleAiFixMissing(draftId: string, client: any, apiKey: string) 
   ];
 
   for (const f of checkFields) {
+    if (protectedFields.has(f)) continue; // skip admin-edited fields
     if (!draft[f] || (typeof draft[f] === 'string' && draft[f].length < 3)) {
       weakFields.push(f);
     }
@@ -368,7 +471,11 @@ async function handleAiFixMissing(draftId: string, client: any, apiKey: string) 
     }
   }
 
-  update.ai_enrichment_log = appendLog(draft.ai_enrichment_log, 'ai-fix-missing', { targeted: weakFields, fixed });
+  const oldValues = snapshotOldValues(draft, update);
+  update.ai_enrichment_log = appendLog(draft.ai_enrichment_log, 'ai-fix-missing', {
+    targeted: weakFields, fixed, old_values: oldValues,
+  });
+
   await client.from('firecrawl_draft_jobs').update(update).eq('id', draftId);
   return json({ success: true, action: 'ai-fix-missing', targeted: weakFields, fixed });
 }
@@ -377,6 +484,7 @@ async function handleAiFixMissing(draftId: string, client: any, apiKey: string) 
 
 async function handleAiSeo(draftId: string, client: any, apiKey: string) {
   const draft = await fetchDraft(draftId, client);
+  const protectedFields = getProtectedFields(draft);
   const context = getDraftContext(draft);
 
   const result = await callAI(
@@ -418,19 +526,21 @@ Rules:
     },
   );
 
-  const update: Record<string, unknown> = {
-    ai_seo_at: new Date().toISOString(),
-    seo_title: result.seo_title,
-    meta_description: result.meta_description,
-    slug_suggestion: result.slug_suggestion,
-    intro_text: result.intro_text,
-    faq_suggestions: result.faq_suggestions || [],
-    ai_enrichment_log: appendLog(draft.ai_enrichment_log, 'ai-seo', {
-      seo_title_len: result.seo_title?.length,
-      meta_desc_len: result.meta_description?.length,
-      faq_count: result.faq_suggestions?.length,
-    }),
-  };
+  const update: Record<string, unknown> = { ai_seo_at: new Date().toISOString() };
+
+  if (!protectedFields.has('seo_title')) update.seo_title = result.seo_title;
+  if (!protectedFields.has('meta_description')) update.meta_description = result.meta_description;
+  if (!protectedFields.has('slug_suggestion')) update.slug_suggestion = result.slug_suggestion;
+  if (!protectedFields.has('intro_text')) update.intro_text = result.intro_text;
+  update.faq_suggestions = result.faq_suggestions || [];
+
+  const oldValues = snapshotOldValues(draft, update);
+  update.ai_enrichment_log = appendLog(draft.ai_enrichment_log, 'ai-seo', {
+    seo_title_len: result.seo_title?.length,
+    meta_desc_len: result.meta_description?.length,
+    faq_count: result.faq_suggestions?.length,
+    old_values: oldValues,
+  });
 
   await client.from('firecrawl_draft_jobs').update(update).eq('id', draftId);
   return json({ success: true, action: 'ai-seo', ...result });
@@ -481,20 +591,17 @@ Rules:
 async function handleAiCoverImage(draftId: string, client: any, apiKey: string) {
   const draft = await fetchDraft(draftId, client);
 
-  // Generate prompt first if missing
   let prompt = draft.cover_image_prompt;
   if (!prompt) {
     const promptResult = await handleAiCoverPrompt(draftId, client, apiKey);
     const promptBody = await promptResult.json();
     if (!promptBody.success) return json(promptBody, 500);
-    // Re-fetch draft to get updated prompt
     const updated = await fetchDraft(draftId, client);
     prompt = updated.cover_image_prompt;
   }
 
   if (!prompt) return json({ error: 'No cover image prompt available' }, 400);
 
-  // Generate image using Lovable AI image model
   const resp = await fetch(AI_GATEWAY, {
     method: 'POST',
     headers: {
@@ -520,7 +627,6 @@ async function handleAiCoverImage(draftId: string, client: any, apiKey: string) 
     return json({ error: 'Image generation returned no image' }, 500);
   }
 
-  // Upload base64 image to storage
   const base64Data = imageUrl.replace(/^data:image\/\w+;base64,/, '');
   const bytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
   const slug = draft.slug_suggestion || draft.id;
@@ -569,13 +675,11 @@ async function handleAiRunAll(draftId: string, client: any, apiKey: string) {
     try {
       const resp = await handlers[step](draftId, client, apiKey);
       const body = await resp.json();
-      results.push({ step, success: body.success ?? true });
+      results.push({ step, success: body.success ?? true, error: body.error });
 
-      // Brief delay between steps to avoid rate limiting
       await new Promise(r => setTimeout(r, 1500));
     } catch (e) {
       results.push({ step, success: false, error: e instanceof Error ? e.message : String(e) });
-      // Continue to next step on non-fatal errors
     }
   }
 

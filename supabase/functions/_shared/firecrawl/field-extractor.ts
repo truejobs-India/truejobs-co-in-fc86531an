@@ -74,12 +74,21 @@ const INDIAN_CITIES = [
  */
 function extractLabeled(text: string, labels: string[]): string | null {
   for (const label of labels) {
-    // Pattern: "Label" followed by : or – or - then value (rest of line)
     const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    // Pattern 1: "Label" followed by : or – or - then value (rest of line)
     const re = new RegExp(`(?:^|\\n)\\s*\\**${escaped}\\**\\s*[:–\\-|\\]\\s*(.+?)\\s*$`, 'im');
     const match = text.match(re);
     if (match && match[1]) {
       const val = match[1].replace(/\*+/g, '').trim();
+      if (val && val.length > 1 && val.length < 500) return val;
+    }
+
+    // Pattern 2: Markdown table row "| Label | Value |"
+    const tableRe = new RegExp(`\\|\\s*\\**${escaped}\\**\\s*\\|\\s*(.+?)\\s*\\|`, 'im');
+    const tableMatch = text.match(tableRe);
+    if (tableMatch && tableMatch[1]) {
+      const val = tableMatch[1].replace(/\*+/g, '').trim();
       if (val && val.length > 1 && val.length < 500) return val;
     }
   }

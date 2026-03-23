@@ -1,6 +1,7 @@
 /**
- * Admin UI for managing Firecrawl draft jobs (Source 3 Phase 5).
- * Lists draft jobs with row-level AI actions, dedup flags, review controls, missing-fields indicators.
+ * Admin UI for managing Firecrawl draft jobs (Source 3 Phase 5 + hardening).
+ * Lists draft jobs with row-level AI actions, dedup flags, review controls,
+ * publish gating, and missing-fields indicators.
  */
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
@@ -14,6 +15,7 @@ import {
   RefreshCw, Loader2, MoreHorizontal, Sparkles, Wrench, Link2,
   Search, Image, FileText, Zap, CheckCircle, XCircle,
   AlertTriangle, ExternalLink, Copy, ShieldCheck, ShieldAlert, Eye,
+  ThumbsUp,
 } from 'lucide-react';
 import { FirecrawlSourcesManager } from './FirecrawlSourcesManager';
 
@@ -59,7 +61,7 @@ const AI_ACTIONS: { action: AiAction; label: string; icon: typeof Sparkles; desc
   { action: 'ai-cover-image', label: 'Cover Image', icon: Image, description: 'Generate & upload cover' },
 ];
 
-type FilterTab = 'all' | 'draft' | 'reviewed' | 'duplicate' | 'rejected';
+type FilterTab = 'all' | 'draft' | 'reviewed' | 'approved' | 'duplicate' | 'rejected';
 
 export function FirecrawlDraftsManager() {
   const [drafts, setDrafts] = useState<DraftJob[]>([]);
@@ -78,6 +80,7 @@ export function FirecrawlDraftsManager() {
 
     if (activeFilter === 'draft') query = query.eq('status', 'draft');
     else if (activeFilter === 'reviewed') query = query.eq('status', 'reviewed');
+    else if (activeFilter === 'approved') query = query.eq('status', 'approved');
     else if (activeFilter === 'duplicate') query = query.eq('dedup_status', 'duplicate');
     else if (activeFilter === 'rejected') query = query.eq('status', 'rejected');
 
@@ -124,7 +127,7 @@ export function FirecrawlDraftsManager() {
       if (data?.error) throw new Error(data.error);
       toast({
         title: 'Dedup complete',
-        description: `Checked: ${data.checked || 0}, Duplicates found: ${data.duplicatesFound || 0}`,
+        description: `Checked: ${data.checked || 0}, Duplicates: ${data.duplicatesFound || 0}, Cross-source candidates: ${data.crossSourceCandidates || 0}`,
       });
       await fetchDrafts();
     } catch (e: any) {
@@ -135,12 +138,52 @@ export function FirecrawlDraftsManager() {
   };
 
   const updateStatus = async (draftId: string, newStatus: string) => {
+    // For approval, run publish gating first
+    if (newStatus === 'approved') {
+      try {
+        const { data, error } = await supabase.functions.invoke('firecrawl-ingest', {
+          body: { action: 'validate-for-approval', draft_id: draftId },
+        });
+        if (error) throw new Error(error.message);
+        if (data?.error) throw new Error(data.error);
+
+        if (!data.can_approve) {
+          toast({
+            title: 'Cannot approve',
+            description: `Blocking issues: ${data.errors?.join('; ') || 'Unknown'}`,
+            variant: 'destructive',
+          });
+          if (data.warnings?.length > 0) {
+            toast({
+              title: 'Warnings',
+              description: data.warnings.join('; '),
+            });
+          }
+          return;
+        }
+
+        if (data.warnings?.length > 0) {
+          toast({
+            title: 'Approved with warnings',
+            description: data.warnings.join('; '),
+          });
+        }
+      } catch (e: any) {
+        toast({ title: 'Validation error', description: e.message, variant: 'destructive' });
+        return;
+      }
+    }
+
+    // Get current user for reviewed_by
+    const { data: { user } } = await supabase.auth.getUser();
+
     const { error } = await supabase
       .from('firecrawl_draft_jobs')
       .update({
         status: newStatus,
         reviewed_at: new Date().toISOString(),
-      })
+        reviewed_by: user?.id || null,
+      } as any)
       .eq('id', draftId);
 
     if (error) {
@@ -178,16 +221,15 @@ export function FirecrawlDraftsManager() {
     { key: 'all', label: 'All' },
     { key: 'draft', label: 'Draft' },
     { key: 'reviewed', label: 'Reviewed' },
+    { key: 'approved', label: 'Approved' },
     { key: 'duplicate', label: 'Duplicates' },
     { key: 'rejected', label: 'Rejected' },
   ];
 
   return (
     <div className="space-y-4">
-      {/* Sources manager */}
       <FirecrawlSourcesManager />
 
-      {/* Drafts */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between pb-3">
           <CardTitle className="text-lg flex items-center gap-2">
@@ -209,7 +251,6 @@ export function FirecrawlDraftsManager() {
           </div>
         </CardHeader>
         <CardContent>
-          {/* Filter tabs */}
           <div className="flex gap-1 mb-3">
             {filterTabs.map(tab => (
               <Button
@@ -298,7 +339,11 @@ export function FirecrawlDraftsManager() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <Badge variant={draft.status === 'reviewed' ? 'default' : 'secondary'} className="text-[10px]">
+                          <Badge variant={
+                            draft.status === 'approved' ? 'default' :
+                            draft.status === 'reviewed' ? 'secondary' :
+                            draft.status === 'rejected' ? 'destructive' : 'outline'
+                          } className="text-[10px]">
                             {draft.status}
                           </Badge>
                         </TableCell>
@@ -333,6 +378,9 @@ export function FirecrawlDraftsManager() {
                                 {/* Review actions */}
                                 <DropdownMenuItem onClick={() => updateStatus(draft.id, 'reviewed')}>
                                   <Eye className="h-3.5 w-3.5 mr-2" /> Mark Reviewed
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => updateStatus(draft.id, 'approved')}>
+                                  <ThumbsUp className="h-3.5 w-3.5 mr-2" /> Approve
                                 </DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => updateStatus(draft.id, 'rejected')} className="text-destructive">
                                   <XCircle className="h-3.5 w-3.5 mr-2" /> Reject
@@ -379,12 +427,6 @@ export function FirecrawlDraftsManager() {
               </Table>
             </div>
           )}
-
-          <div className="mt-3 flex items-center gap-4 text-[10px] text-muted-foreground flex-wrap">
-            <span className="flex items-center gap-1"><CheckCircle className="h-3 w-3 text-green-500" /> Done</span>
-            <span className="flex items-center gap-1"><XCircle className="h-3 w-3 text-muted-foreground/40" /> Pending</span>
-            <span>AI Steps: Clean | Enrich | Links | Fix | SEO | Prompt | Image</span>
-          </div>
         </CardContent>
       </Card>
     </div>

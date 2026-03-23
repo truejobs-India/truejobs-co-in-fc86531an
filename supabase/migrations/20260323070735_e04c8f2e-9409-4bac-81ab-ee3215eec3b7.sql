@@ -1,0 +1,1 @@
+UPDATE firecrawl_staged_items SET extraction_status = 'pending' WHERE extraction_status = 'failed';

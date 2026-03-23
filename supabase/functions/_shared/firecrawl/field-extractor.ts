@@ -68,6 +68,45 @@ const INDIAN_CITIES = [
 
 // ============ Field extraction patterns ============
 
+/** Values that are table artifacts / noise, never valid field values */
+const GARBAGE_VALUES = new Set([
+  'total', 'na', 'n/a', 'nil', 'details', 'see below', 'check below',
+  'various', 'mentioned below', 'as per rules', 'click here', 'view',
+  'download', 'apply now', 'apply online', 'register',
+]);
+
+/** Values that are table column headers, never valid extracted values */
+const TABLE_HEADER_NOISE = new Set([
+  'pay level', 'distance required', 'relaxation (years)', 'age relaxation',
+  'application fee', 'category', 'general', 'obc', 'sc', 'st', 'ews',
+  'sl no', 'sr no', 'serial number', 's.no',
+]);
+
+function isGarbageValue(val: string): boolean {
+  const lower = val.toLowerCase().trim();
+  if (GARBAGE_VALUES.has(lower)) return true;
+  if (TABLE_HEADER_NOISE.has(lower)) return true;
+  // Pure numbers without context
+  if (/^\d{1,2}$/.test(lower)) return true;
+  return false;
+}
+
+/**
+ * Clean extracted value — strip markdown artifacts, pipe chars, and validate.
+ */
+function cleanExtractedValue(val: string): string | null {
+  let cleaned = val
+    .replace(/^\|+\s*/, '')      // leading pipe chars from table
+    .replace(/\s*\|+$/, '')      // trailing pipe chars
+    .replace(/\*+/g, '')         // bold markers
+    .replace(/<br\s*\/?>/gi, ', ') // HTML breaks
+    .trim();
+  
+  if (!cleaned || cleaned.length <= 1 || cleaned.length >= 500) return null;
+  if (isGarbageValue(cleaned)) return null;
+  return cleaned;
+}
+
 /**
  * Extract a field value using multiple label patterns.
  * Looks for "Label: Value" or "Label – Value" patterns on a single line.
@@ -76,20 +115,20 @@ function extractLabeled(text: string, labels: string[]): string | null {
   for (const label of labels) {
     const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-    // Pattern 1: "Label" followed by : or – or - then value (rest of line)
-    const re = new RegExp(`(?:^|\\n)\\s*\\**${escaped}\\**\\s*[:–\\-|\\]\\s*(.+?)\\s*$`, 'im');
+    // Pattern 1: "Label" followed by : or – or - or | then value (rest of line)
+    const re = new RegExp(`(?:^|\\n)\\s*\\**${escaped}\\**\\s*[:–\\-|]\\s*(.+?)\\s*$`, 'im');
     const match = text.match(re);
     if (match && match[1]) {
-      const val = match[1].replace(/\*+/g, '').trim();
-      if (val && val.length > 1 && val.length < 500) return val;
+      const val = cleanExtractedValue(match[1]);
+      if (val) return val;
     }
 
     // Pattern 2: Markdown table row "| Label | Value |"
     const tableRe = new RegExp(`\\|\\s*\\**${escaped}\\**\\s*\\|\\s*(.+?)\\s*\\|`, 'im');
     const tableMatch = text.match(tableRe);
     if (tableMatch && tableMatch[1]) {
-      const val = tableMatch[1].replace(/\*+/g, '').trim();
-      if (val && val.length > 1 && val.length < 500) return val;
+      const val = cleanExtractedValue(tableMatch[1]);
+      if (val) return val;
     }
   }
   return null;
@@ -101,11 +140,13 @@ function extractLabeled(text: string, labels: string[]): string | null {
 function extractNumber(text: string, labels: string[]): number | null {
   const raw = extractLabeled(text, labels);
   if (!raw) return null;
-  // Find first number in the value
-  const numMatch = raw.match(/(\d[\d,]*)/);
-  if (numMatch) {
-    const num = parseInt(numMatch[1].replace(/,/g, ''), 10);
-    if (!isNaN(num) && num > 0 && num < 1_000_000) return num;
+  // Find ALL numbers in the value, prefer the largest (often the total)
+  const numMatches = raw.match(/(\d[\d,]*)/g);
+  if (numMatches) {
+    const numbers = numMatches
+      .map(m => parseInt(m.replace(/,/g, ''), 10))
+      .filter(n => !isNaN(n) && n > 0 && n < 1_000_000);
+    if (numbers.length > 0) return Math.max(...numbers);
   }
   return null;
 }
@@ -183,9 +224,14 @@ function extractState(text: string): string | null {
     return labeled;
   }
 
-  // Scan text for state names
+  // Limit scan to first 40% of text to avoid sidebar/nav contamination
+  const scanLength = Math.min(text.length, Math.max(2000, Math.floor(text.length * 0.4)));
+  const scanText = text.substring(0, scanLength);
+  
+  // Scan limited text for state names, prefer word-boundary matches
   for (const state of INDIAN_STATES) {
-    if (text.includes(state)) return state;
+    const stateRe = new RegExp(`\\b${state}\\b`, 'i');
+    if (stateRe.test(scanText)) return state;
   }
   return null;
 }
@@ -357,9 +403,22 @@ export function extractFields(
   const job_role = extractLabeled(cleanedText, ['Job Role', 'Role', 'Position']);
   if (job_role) raw_fields['job_role'] = job_role;
 
-  const category = extractLabeled(cleanedText, [
+  // Category extraction — validate against known job categories
+  const VALID_CATEGORIES = [
+    'central government', 'state government', 'railway', 'banking', 'defence',
+    'teaching', 'police', 'medical', 'engineering', 'psu', 'ssc', 'upsc',
+    'government jobs', 'walk-in', 'contract', 'permanent', 'temporary',
+    'group a', 'group b', 'group c', 'group d',
+  ];
+  let category = extractLabeled(cleanedText, [
     'Category', 'Job Category', 'Job Type', 'Type',
   ]);
+  // Validate: only keep if it matches known categories
+  if (category) {
+    const catLower = category.toLowerCase();
+    const isValid = VALID_CATEGORIES.some(c => catLower.includes(c));
+    if (!isValid && catLower.length < 30) category = null;
+  }
 
   const department = extractLabeled(cleanedText, [
     'Department', 'Dept', 'Ministry', 'Division',

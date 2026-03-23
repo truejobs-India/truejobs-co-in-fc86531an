@@ -82,6 +82,7 @@ Deno.serve(async (req) => {
       case 'ai-cover-prompt': return await handleAiCoverPrompt(draftId, client, lovableKey);
       case 'ai-cover-image': return await handleAiCoverImage(draftId, client, lovableKey);
       case 'ai-run-all': return await handleAiRunAll(draftId, client, lovableKey);
+      case 'rollback-ai-action': return await handleRollbackAiAction(draftId, client);
       default: return json({ error: `Unknown action: ${action}` }, 400);
     }
   } catch (e) {

@@ -411,13 +411,25 @@ export function FirecrawlDraftsManager() {
             Firecrawl Draft Jobs
           </CardTitle>
           <div className="flex items-center gap-2">
-            <AiModelSelector
-              value={selectedModel}
-              onValueChange={setSelectedModel}
-              capability="text"
-              size="sm"
-              allowedValues={[...SEO_FIX_MODEL_VALUES]}
-            />
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] text-muted-foreground font-medium">Text:</span>
+              <AiModelSelector
+                value={selectedModel}
+                onValueChange={setSelectedModel}
+                capability="text"
+                size="sm"
+                allowedValues={[...SEO_FIX_MODEL_VALUES]}
+              />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] text-muted-foreground font-medium">Image:</span>
+              <AiModelSelector
+                value={selectedImageModel}
+                onValueChange={setSelectedImageModel}
+                capability="image"
+                size="sm"
+              />
+            </div>
             <Button
               variant="default" size="sm"
               onClick={runBulkAll}

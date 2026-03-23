@@ -547,6 +547,7 @@ async function handleAiFixMissing(draftId: string, client: any, apiKey: string, 
         additionalProperties: false,
       },
     },
+    aiModel,
   );
 
   const update: Record<string, unknown> = { ai_fix_missing_at: new Date().toISOString() };

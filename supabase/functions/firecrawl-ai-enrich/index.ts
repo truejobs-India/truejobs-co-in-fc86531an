@@ -277,7 +277,7 @@ function checkStatusGuard(draft: any, action: string): string | null {
 }
 
 function appendLog(existing: any[], action: string, result: Record<string, unknown>) {
-  return [...(existing || []), { action, at: new Date().toISOString(), ...result }];
+  return [...(existing || []), { action, at: new Date().toISOString(), status: 'success', ...result }];
 }
 
 /** Build old_values snapshot for fields that will change */

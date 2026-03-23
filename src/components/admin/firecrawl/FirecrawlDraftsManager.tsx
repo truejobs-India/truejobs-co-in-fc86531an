@@ -19,6 +19,8 @@ import {
   ThumbsUp, Undo2, CircleDot,
 } from 'lucide-react';
 import { FirecrawlSourcesManager } from './FirecrawlSourcesManager';
+import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSelector';
+import { SEO_FIX_MODEL_VALUES } from '@/lib/aiModels';
 
 interface DraftJob {
   id: string;

@@ -774,7 +774,7 @@ async function handleDedupDrafts(
   const { data: rssItems } = await client
     .from('rss_items')
     .select('id, item_title, canonical_link')
-    .in('current_status', ['new', 'triaged', 'published'])
+    .in('current_status', ['new', 'updated', 'queued', 'reviewed'])
     .limit(500);
 
   const crossSourceCandidates: DedupCandidate[] = [];

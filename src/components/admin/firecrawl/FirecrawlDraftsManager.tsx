@@ -438,6 +438,12 @@ export function FirecrawlDraftsManager() {
                                   </DropdownMenuItem>
                                 ))}
                                 <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={() => runAiAction(draft.id, 'rollback-ai-action')}
+                                  disabled={!!busyRows[draft.id]}
+                                >
+                                  <Undo2 className="h-3.5 w-3.5 mr-2" /> Undo Last AI
+                                </DropdownMenuItem>
                                 {draft.official_notification_url && (
                                   <DropdownMenuItem asChild>
                                     <a href={draft.official_notification_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2">

@@ -439,9 +439,9 @@ export function extractFields(
   ]);
 
   // URL extraction from links
-  const official_notification_url = findOfficialUrl(links, ['notification', 'advt', 'advertisement', 'pdf']);
-  const official_apply_url = findOfficialUrl(links, ['apply', 'registration', 'application', 'recruit']);
-  const official_website_url = findOfficialUrl(links, ['official', 'website', 'home']);
+  const official_notification_url = findBestOfficialUrl(links, ['notification', 'advt', 'advertisement', 'pdf']);
+  const official_apply_url = findBestOfficialUrl(links, ['apply', 'registration', 'application', 'recruit']);
+  const official_website_url = findBestOfficialUrl(links, ['official', 'website', 'home']);
 
   const fields: ExtractedJobFields = {
     title,

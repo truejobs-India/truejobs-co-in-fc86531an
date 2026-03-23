@@ -73,6 +73,7 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const action = body.action as string;
     const draftId = body.draft_id as string;
+    const aiModel = (body.aiModel as string) || '';
 
     if (!action) return json({ error: 'Missing action' }, 400);
     if (!draftId && action !== 'ai-run-all-batch') return json({ error: 'Missing draft_id' }, 400);
@@ -93,14 +94,14 @@ Deno.serve(async (req) => {
     const client = createClient(supabaseUrl, serviceRoleKey);
 
     switch (action) {
-      case 'ai-clean': return await handleAiClean(draftId, client, lovableKey);
-      case 'ai-enrich': return await handleAiEnrich(draftId, client, lovableKey);
-      case 'ai-find-links': return await handleAiFindLinks(draftId, client, lovableKey);
-      case 'ai-fix-missing': return await handleAiFixMissing(draftId, client, lovableKey);
-      case 'ai-seo': return await handleAiSeo(draftId, client, lovableKey);
-      case 'ai-cover-prompt': return await handleAiCoverPrompt(draftId, client, lovableKey);
-      case 'ai-cover-image': return await handleAiCoverImage(draftId, client, lovableKey);
-      case 'ai-run-all': return await handleAiRunAll(draftId, client, lovableKey);
+      case 'ai-clean': return await handleAiClean(draftId, client, lovableKey, aiModel);
+      case 'ai-enrich': return await handleAiEnrich(draftId, client, lovableKey, aiModel);
+      case 'ai-find-links': return await handleAiFindLinks(draftId, client, lovableKey, aiModel);
+      case 'ai-fix-missing': return await handleAiFixMissing(draftId, client, lovableKey, aiModel);
+      case 'ai-seo': return await handleAiSeo(draftId, client, lovableKey, aiModel);
+      case 'ai-cover-prompt': return await handleAiCoverPrompt(draftId, client, lovableKey, aiModel);
+      case 'ai-cover-image': return await handleAiCoverImage(draftId, client, lovableKey, aiModel);
+      case 'ai-run-all': return await handleAiRunAll(draftId, client, lovableKey, aiModel);
       case 'rollback-ai-action': return await handleRollbackAiAction(draftId, client);
       default: return json({ error: `Unknown action: ${action}` }, 400);
     }
@@ -110,16 +111,80 @@ Deno.serve(async (req) => {
   }
 });
 
-// ============ AI Gateway helper ============
+// ============ Multi-model AI dispatcher ============
 
 async function callAI(
   apiKey: string,
   systemPrompt: string,
   userPrompt: string,
   toolDef?: { name: string; description: string; parameters: Record<string, unknown> },
+  aiModel?: string,
 ): Promise<any> {
+  const modelKey = aiModel || '';
+
+  // ── Route: Vertex AI (GCP Service Account) ──
+  const vertexDef = VERTEX_MODEL_MAP[modelKey];
+  if (vertexDef) {
+    console.log(`[firecrawl-ai-enrich] routing to Vertex AI: ${vertexDef.vertexModel}`);
+    const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+    const fullPrompt = `${systemPrompt}\n\n${userPrompt}${toolDef ? `\n\nReturn valid JSON matching this schema:\n${JSON.stringify(toolDef.parameters, null, 2)}` : ''}`;
+    const text = await callVertexGemini(vertexDef.vertexModel, fullPrompt, vertexDef.timeoutMs);
+    if (toolDef) {
+      // Parse JSON from Vertex text response
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) return JSON.parse(jsonMatch[0]);
+      throw new Error('Vertex AI did not return valid JSON');
+    }
+    return text;
+  }
+
+  // ── Route: AWS Bedrock (Nova / Mistral) ──
+  if (BEDROCK_MODELS.has(modelKey)) {
+    if (modelKey === 'mistral') {
+      console.log(`[firecrawl-ai-enrich] routing to Bedrock Mistral`);
+      const { awsSigV4Fetch } = await import('../_shared/bedrock-nova.ts');
+      const region = Deno.env.get('AWS_REGION') || 'us-east-1';
+      const host = `bedrock-runtime.${region}.amazonaws.com`;
+      const mistralModelId = 'us.mistral.mistral-large-2407-v1:0';
+      const fullPrompt = `${systemPrompt}\n\n${userPrompt}${toolDef ? `\n\nReturn valid JSON matching this schema:\n${JSON.stringify(toolDef.parameters, null, 2)}` : ''}`;
+      const payload = JSON.stringify({
+        messages: [{ role: 'user', content: [{ text: fullPrompt }] }],
+        inferenceConfig: { maxTokens: 8192, temperature: 0.5 },
+      });
+      const resp = await awsSigV4Fetch(host, `/model/${mistralModelId}/converse`, payload, region, 'bedrock');
+      if (!resp.ok) {
+        const errText = await resp.text().catch(() => 'unknown');
+        throw new Error(`Mistral Bedrock error ${resp.status}: ${errText.substring(0, 300)}`);
+      }
+      const data = await resp.json();
+      const resultText = data?.output?.message?.content?.[0]?.text || '';
+      if (toolDef) {
+        const jsonMatch = resultText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) return JSON.parse(jsonMatch[0]);
+        throw new Error('Mistral did not return valid JSON');
+      }
+      return resultText;
+    } else {
+      // nova-pro or nova-premier
+      console.log(`[firecrawl-ai-enrich] routing to Bedrock Nova: ${modelKey}`);
+      const { callBedrockNova } = await import('../_shared/bedrock-nova.ts');
+      const fullPrompt = `${systemPrompt}\n\n${userPrompt}${toolDef ? `\n\nReturn valid JSON matching this schema:\n${JSON.stringify(toolDef.parameters, null, 2)}` : ''}`;
+      const text = await callBedrockNova(modelKey, fullPrompt, { maxTokens: 8192, temperature: 0.5 });
+      if (toolDef) {
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        if (jsonMatch) return JSON.parse(jsonMatch[0]);
+        throw new Error('Nova did not return valid JSON');
+      }
+      return text;
+    }
+  }
+
+  // ── Route: Lovable AI Gateway (default) ──
+  const gatewayModelId = GATEWAY_MODEL_MAP[modelKey] || DEFAULT_MODEL;
+  console.log(`[firecrawl-ai-enrich] routing to AI Gateway: ${gatewayModelId}`);
+
   const bodyPayload: any = {
-    model: DEFAULT_MODEL,
+    model: gatewayModelId,
     messages: [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: userPrompt },

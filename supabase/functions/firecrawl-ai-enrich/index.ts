@@ -696,7 +696,7 @@ Rules:
 
 // ============ 7. AI Cover Image ============
 
-async function handleAiCoverImage(draftId: string, client: any, apiKey: string, aiModel?: string) {
+async function handleAiCoverImage(draftId: string, client: any, apiKey: string, imageModel?: string) {
   const draft = await fetchDraft(draftId, client);
 
   let prompt = draft.cover_image_prompt;
@@ -710,26 +710,93 @@ async function handleAiCoverImage(draftId: string, client: any, apiKey: string, 
 
   if (!prompt) return json({ error: 'No cover image prompt available' }, 400);
 
-  const resp = await fetch(AI_GATEWAY, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'google/gemini-3.1-flash-image-preview',
-      messages: [{ role: 'user', content: prompt }],
-      modalities: ['image', 'text'],
-    }),
-  });
+  // Resolve image model route
+  const modelKey = imageModel || 'gemini-flash-image-2';
+  const route = IMAGE_MODEL_REGISTRY[modelKey] || IMAGE_MODEL_REGISTRY['gemini-flash-image-2'];
+  console.log(`[firecrawl-ai-enrich] cover image: model=${modelKey} provider=${route.provider} apiModel=${route.apiModel}`);
 
-  if (!resp.ok) {
-    const errText = await resp.text().catch(() => '');
-    throw new Error(`Image generation failed ${resp.status}: ${errText.substring(0, 300)}`);
+  let imageUrl: string | undefined;
+
+  if (route.provider === 'vertex-ai') {
+    // ── Vertex AI direct path ──
+    const { getVertexAccessToken } = await import('../_shared/vertex-ai.ts');
+    const accessToken = await getVertexAccessToken();
+    const projectId = Deno.env.get('GCP_PROJECT_ID');
+    const location = Deno.env.get('GCP_LOCATION') || 'us-central1';
+
+    if (route.vertexEndpoint === 'imagen') {
+      // Imagen model
+      const imagenUrl = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${route.apiModel}:predict`;
+      const imagenResp = await fetch(imagenUrl, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          instances: [{ prompt }],
+          parameters: { sampleCount: 1, aspectRatio: '16:9', personGeneration: 'allow_adult' },
+        }),
+      });
+      if (!imagenResp.ok) {
+        const errText = await imagenResp.text().catch(() => '');
+        throw new Error(`Imagen error ${imagenResp.status}: ${errText.substring(0, 300)}`);
+      }
+      const imagenData = await imagenResp.json();
+      const b64 = imagenData.predictions?.[0]?.bytesBase64Encoded;
+      if (b64) imageUrl = `data:image/png;base64,${b64}`;
+    } else {
+      // Gemini image model via Vertex
+      const isGemini3 = route.apiModel.startsWith('gemini-3');
+      const apiVersion = isGemini3 ? 'v1beta1' : 'v1';
+      const loc = isGemini3 ? 'global' : location;
+      const host = isGemini3 ? 'aiplatform.googleapis.com' : `${location}-aiplatform.googleapis.com`;
+      const vertexUrl = `https://${host}/${apiVersion}/projects/${projectId}/locations/${loc}/publishers/google/models/${route.apiModel}:generateContent`;
+
+      const vertexResp = await fetch(vertexUrl, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          generationConfig: { responseModalities: ['IMAGE', 'TEXT'] },
+        }),
+      });
+      if (!vertexResp.ok) {
+        const errText = await vertexResp.text().catch(() => '');
+        throw new Error(`Vertex image error ${vertexResp.status}: ${errText.substring(0, 300)}`);
+      }
+      const vertexData = await vertexResp.json();
+      const parts = vertexData.candidates?.[0]?.content?.parts || [];
+      for (const part of parts) {
+        if (part.inlineData?.data) {
+          const mime = part.inlineData.mimeType || 'image/png';
+          imageUrl = `data:${mime};base64,${part.inlineData.data}`;
+          break;
+        }
+      }
+    }
+  } else {
+    // ── Lovable AI Gateway path ──
+    const resp = await fetch(AI_GATEWAY, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: route.apiModel,
+        messages: [{ role: 'user', content: prompt }],
+        modalities: ['image', 'text'],
+      }),
+    });
+
+    if (!resp.ok) {
+      const errText = await resp.text().catch(() => '');
+      if (resp.status === 429) throw new Error('Rate limited — try again shortly');
+      if (resp.status === 402) throw new Error('Credits exhausted — add funds in Settings');
+      throw new Error(`Image generation failed ${resp.status}: ${errText.substring(0, 300)}`);
+    }
+
+    const imgData = await resp.json();
+    imageUrl = imgData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
   }
-
-  const imgData = await resp.json();
-  const imageUrl = imgData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
 
   if (!imageUrl) {
     return json({ error: 'Image generation returned no image' }, 500);
@@ -751,14 +818,18 @@ async function handleAiCoverImage(draftId: string, client: any, apiKey: string, 
 
   const { data: { publicUrl } } = client.storage.from('blog-assets').getPublicUrl(storagePath);
 
+  // Re-fetch draft for latest log since cover prompt may have been auto-generated
+  const latestDraft = await fetchDraft(draftId, client);
   const update: Record<string, unknown> = {
     ai_cover_image_at: new Date().toISOString(),
     cover_image_url: publicUrl,
-    ai_enrichment_log: appendLog(draft.ai_enrichment_log, 'ai-cover-image', { storage_path: storagePath }),
+    ai_enrichment_log: appendLog(latestDraft.ai_enrichment_log, 'ai-cover-image', {
+      storage_path: storagePath, model_used: modelKey, provider: route.provider,
+    }),
   };
 
   await client.from('firecrawl_draft_jobs').update(update).eq('id', draftId);
-  return json({ success: true, action: 'ai-cover-image', cover_image_url: publicUrl });
+  return json({ success: true, action: 'ai-cover-image', cover_image_url: publicUrl, model_used: modelKey });
 }
 
 // ============ 8. AI Run All ============

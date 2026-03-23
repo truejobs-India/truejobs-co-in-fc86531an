@@ -166,6 +166,9 @@ export function FirecrawlDraftsManager() {
   const [selectedModel, setSelectedModel] = useState(() =>
     getLastUsedModel('text', 'gemini-flash', [...SEO_FIX_MODEL_VALUES]),
   );
+  const [selectedImageModel, setSelectedImageModel] = useState(() =>
+    getLastUsedModel('image', 'gemini-flash-image-2'),
+  );
 
   // Bulk run state
   const [bulkRunning, setBulkRunning] = useState(false);

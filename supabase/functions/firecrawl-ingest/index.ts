@@ -60,6 +60,8 @@ Deno.serve(async (req) => {
         return await handleExtractItem(body, adminClient);
       case 'extract-batch':
         return await handleExtractBatch(body, adminClient);
+      case 'scrape-pending':
+        return await handleScrapePending(body, adminClient);
       case 'dedup-drafts':
         return await handleDedupDrafts(body, adminClient);
       case 'validate-for-approval':

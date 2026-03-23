@@ -1,93 +1,122 @@
 
 
-# Plan: Add Scrape Pending, Extract Pending, and Progress Counts to Firecrawl Sources
+# Updated Plan: Bulk Run All + AI Step Indicators
 
-## Problem Summary
-Discovery works and stages URLs, but most staged rows have `extracted_markdown = null` (URL-only). There's no UI to batch-scrape those pages or batch-extract them into drafts. The existing `extract-batch` action works but only processes items that already have markdown. A new `scrape-pending` action is needed.
+## Files to Edit
 
-## Architecture
+| File | Changes |
+|------|---------|
+| `src/components/admin/firecrawl/FirecrawlDraftsManager.tsx` | Add bulk run button, progress UI, cancel support. Replace AI step dots with labeled badges using enrichment log data. Fetch `ai_enrichment_log` in query. |
+| `supabase/functions/firecrawl-ai-enrich/index.ts` | In `handleAiRunAll`, persist failed/skipped step entries into `ai_enrichment_log` so failures are visible after the fact. |
 
-```text
-Discovery (exists) → Scrape Pending (NEW) → Extract Pending (exists as extract-batch)
-   stages URLs         fills markdown         creates draft jobs
+---
+
+## A. Bulk Run All — Default Eligibility
+
+**Default rule (draft rows only):**
+- `status === 'draft'` — reviewed, approved, rejected rows are **excluded**
+- `dedup_status !== 'duplicate'`
+- Not currently in `busyRows`
+
+**Scope:** operates on the currently loaded/filtered list only. If the "Draft" filter tab is active, only those rows. If "All" is active, still only rows matching the eligibility rules above (i.e. draft-status rows within the visible set).
+
+Reviewed rows are **not** included by default.
+
+**UI:**
+- Button in header: "⚡ Bulk Run All" (disabled when already running or no eligible rows)
+- `window.confirm` with eligible count before starting
+- Progress bar below filter tabs: "Processing 3/12 — Title..." with succeeded/failed/skipped counts
+- Cancel button (stops after current row finishes)
+- Persistent dismissible summary card at end showing succeeded/failed/skipped with failed row titles and errors
+- Auto-refreshes draft list on completion
+
+**Sequential execution:** Client-side `for` loop over eligible rows, calling existing `runAiAction(id, 'ai-run-all')` one at a time. Uses a `useRef` cancel flag checked between iterations.
+
+---
+
+## B. AI Step Indicators — State Determination
+
+### Data source
+Add `ai_enrichment_log` to the select query. This is a JSON array where each entry has `{ action, at, ...details }`.
+
+### Backend change (edge function)
+In `handleAiRunAll`, after processing all steps, persist failed step entries into `ai_enrichment_log`:
+
+```typescript
+// After the loop, write failure entries for steps that failed
+const draft = await fetchDraft(draftId, client);
+let log = draft.ai_enrichment_log || [];
+for (const r of results) {
+  if (!r.success) {
+    log = [...log, { action: r.step, at: new Date().toISOString(), status: 'failed', error: r.error }];
+  }
+}
+if (results.some(r => !r.success)) {
+  await client.from('firecrawl_draft_jobs').update({ ai_enrichment_log: log }).eq('id', draftId);
+}
 ```
 
-## Changes
+Also add a `status: 'success'` field to existing `appendLog` calls so successful entries are explicitly tagged (backward compatible — existing entries without `status` are treated as success since they only get written on success).
 
-### 1. Edge Function: `firecrawl-ingest/index.ts`
+### Step-to-field mapping
 
-**Add new action: `scrape-pending`**
-- Accepts `source_id` and optional `max_items` (default 20, max 50)
-- Queries `firecrawl_staged_items` where:
-  - `firecrawl_source_id = source_id`
-  - `bucket = 'single_recruitment'`
-  - `extracted_markdown IS NULL`
-  - `status = 'staged'`
-  - `extraction_status = 'pending'`
-- For each row, calls `scrapePage(row.page_url)` via existing Firecrawl client
-- On success: updates the row with `extracted_markdown`, `page_title`, `content_hash`, `extracted_links`, `metadata`
-- On failure: increments error count, logs but continues
-- Returns: `{ scraped, skipped, failed, total }`
-- Creates a `firecrawl_fetch_runs` audit record
+| Step | Timestamp field | Log action name |
+|------|----------------|-----------------|
+| Clean | `ai_clean_at` | `ai-clean` |
+| Enrich | `ai_enrich_at` | `ai-enrich` |
+| Links | `ai_links_at` | `ai-find-links` |
+| Fix | `ai_fix_missing_at` | `ai-fix-missing` |
+| SEO | `ai_seo_at` | `ai-seo` |
+| Prompt | `ai_cover_prompt_at` | `ai-cover-prompt` |
+| Image | `ai_cover_image_at` | `ai-cover-image` |
 
-**Enhance `source-stats` action** to return richer counts:
-- `totalStaged` (all staged items)
-- `pendingUrlOnly` (staged, no markdown)
-- `scraped` (has markdown, extraction_status = pending)
-- `extracted` (extraction_status = extracted)
-- `extractionFailed` (extraction_status = failed)
-- `rejectedBucket` (bucket = rejected)
-- `duplicateStaged` (status = duplicate)
-- Draft counts from `firecrawl_draft_jobs`: total, by confidence (high/medium/low), by status (draft/reviewed/approved)
-- `lastScrapeAt`, `lastExtractAt` timestamps
+### State determination logic (per step)
 
-### 2. Frontend: `FirecrawlSourcesManager.tsx`
+```
+function getStepState(draft, stepAction, timestampField, busyAction):
+  if busyRows[draft.id] matches this step → "running"
+  if draft[timestampField] is not null → "completed"
+  
+  // Check enrichment log for last entry matching this action
+  lastEntry = last item in ai_enrichment_log where action === stepAction
+  if lastEntry exists:
+    if lastEntry.status === 'failed' → "failed" (tooltip: lastEntry.error)
+    if lastEntry.status === 'skipped' → "skipped"
+    // entry exists without explicit status = legacy success but timestamp missing
+    // (e.g. after rollback) → "pending"
+  
+  → "pending" (never attempted)
+```
 
-**Per-source buttons (alongside existing Discovery and Extract buttons):**
-- **Scrape Pending** button (Download icon) — calls `scrape-pending` action
-  - Disabled when no URL-only rows exist or action is running
-  - Shows spinner during operation
-  - Shows toast with results: X scraped, Y failed
-- **Extract Pending** button (already exists as Extract Batch — keep it, improve labeling)
+| State | How determined | Badge |
+|-------|---------------|-------|
+| **Pending** | No timestamp, no log entry (or rolled back) | Gray outline: `○ Clean` |
+| **Running** | `busyRows[id]` matches step or is `ai-run-all` and step is current | Blue spinning: `⟳ Clean` |
+| **Completed** | `ai_*_at` timestamp exists | Green: `✓ Clean` |
+| **Failed** | No timestamp + last log entry has `status: 'failed'` | Red: `✗ Clean` (tooltip shows error) |
+| **Skipped** | No timestamp + last log entry has `status: 'skipped'` | Yellow/amber: `⊘ Clean` |
 
-**Per-source progress counts in expanded section:**
-Replace the current basic stats grid with a comprehensive breakdown:
-- Total Staged | URL-Only | Scraped | Extracted | Failed | Rejected | Duplicate
-- Draft stats: Total Drafts | High | Medium | Low confidence | Reviewed | Approved
-- Last scrape time | Last extract time
+### Visual design
+Replace the 7 tiny identical dots with a row of compact labeled mini-badges:
 
-**Post-action feedback:**
-- Toast with counts after each operation
-- Stats auto-refresh after scrape/extract completes
+```text
+✓Clean  ✓Enrich  ✗Links  ○Fix  ○SEO  ○Prompt  ○Image
+```
 
-### 3. Processing Rules (enforced in code)
-- Source-scoped: every action takes `source_id`, never global
-- No re-scrape: only rows with `extracted_markdown IS NULL`
-- No re-extract: only rows with `extraction_status = 'pending'` and `extracted_markdown IS NOT NULL`
-- No auto-publish: nothing touches `jobs` table or changes status beyond `draft`
-- Batched: `max_items` parameter with sensible defaults
-- Isolated: no interaction with RSS or Employment News tables
+Each badge is a small `<Badge>` with:
+- Icon (CheckCircle / Loader2 spinning / Circle / XCircle / Ban)
+- Short label (Clean, Enrich, Links, Fix, SEO, Prompt, Image)
+- Color coding: green/blue/gray/red/amber
+- Tooltip with timestamp (if completed) or error message (if failed)
 
-### 4. Files Modified
-| File | Change |
-|------|--------|
-| `supabase/functions/firecrawl-ingest/index.ts` | Add `scrape-pending` action handler; enhance `source-stats` response |
-| `src/components/admin/firecrawl/FirecrawlSourcesManager.tsx` | Add Scrape Pending button, enhanced stats display, post-action feedback |
+---
 
-### 5. Field/Status Reference
-| Field | Meaning |
-|-------|---------|
-| `extracted_markdown IS NULL` | URL-only, needs scraping |
-| `extracted_markdown IS NOT NULL` | Page content present |
-| `extraction_status = 'pending'` | Not yet extracted to draft |
-| `extraction_status = 'extracted'` | Draft job created |
-| `extraction_status = 'failed'` | Extraction attempted but failed |
-| `bucket = 'single_recruitment'` | Eligible for scrape + extract |
+## C. Safeguards Preserved
 
-### 6. Safeguards
-- No auto-publish — nothing touches live `jobs` table
-- No Source 1/Source 2 interference — all queries scoped to `firecrawl_source_id`
-- Dedup logic preserved — extract uses existing `handleExtractItemInternal`
-- Review flow preserved — drafts created as `status = 'draft'`
-- Cost control — `max_items` caps Firecrawl API calls per run
+- All server-side guards (`checkStatusGuard`, `getProtectedFields`, `admin_edited_fields`) untouched
+- No auto-publish — `ai-run-all` never touches `jobs` table
+- Reviewed/approved/rejected rows excluded from bulk by default
+- Dedup logic intact — duplicate rows excluded
+- Sequential processing prevents rate-limit issues
+- Existing row-level AI actions and dropdown menu unchanged
 

@@ -35,13 +35,13 @@ Deno.serve(async (req) => {
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
   try {
+    const authResult = await checkAdmin(req, supabaseUrl, serviceRoleKey);
+    if (!authResult.authorized) return jsonResponse({ error: authResult.error }, 401);
+
     const body = await req.json().catch(() => ({}));
     const action = body.action as string;
 
     if (!action) return jsonResponse({ error: 'Missing action parameter' }, 400);
-
-    const authResult = await checkAdmin(req, supabaseUrl, serviceRoleKey);
-    if (!authResult.authorized) return jsonResponse({ error: authResult.error }, 401);
 
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
 

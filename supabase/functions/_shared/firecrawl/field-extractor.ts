@@ -222,9 +222,14 @@ function extractState(text: string): string | null {
     return labeled;
   }
 
-  // Scan text for state names
+  // Limit scan to first 40% of text to avoid sidebar/nav contamination
+  const scanLength = Math.min(text.length, Math.max(2000, Math.floor(text.length * 0.4)));
+  const scanText = text.substring(0, scanLength);
+  
+  // Scan limited text for state names, prefer word-boundary matches
   for (const state of INDIAN_STATES) {
-    if (text.includes(state)) return state;
+    const stateRe = new RegExp(`\\b${state}\\b`, 'i');
+    if (stateRe.test(scanText)) return state;
   }
   return null;
 }

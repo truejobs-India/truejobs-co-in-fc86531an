@@ -530,16 +530,34 @@ export function FirecrawlSourcesManager() {
               {batchReport.results.some(r => r.status === 'skipped') && (
                 <Badge variant="secondary">{batchReport.results.filter(r => r.status === 'skipped').length} Skipped</Badge>
               )}
-              <Badge variant="outline">{batchReport.results.reduce((s, r) => s + r.staged, 0)} Total Staged</Badge>
-              <Badge variant="outline">{batchReport.results.reduce((s, r) => s + r.rejected, 0)} Total Rejected</Badge>
+              {batchReport.type === 'scrape-extract' ? (
+                <>
+                  <Badge variant="outline">{batchReport.results.reduce((s, r) => s + (r.scraped || 0), 0)} Total Scraped</Badge>
+                  <Badge variant="outline">{batchReport.results.reduce((s, r) => s + (r.extracted || 0), 0)} Total Extracted</Badge>
+                </>
+              ) : (
+                <>
+                  <Badge variant="outline">{batchReport.results.reduce((s, r) => s + r.staged, 0)} Total Staged</Badge>
+                  <Badge variant="outline">{batchReport.results.reduce((s, r) => s + r.rejected, 0)} Total Rejected</Badge>
+                </>
+              )}
             </div>
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead className="text-xs h-7">Source</TableHead>
                   <TableHead className="text-xs h-7">Status</TableHead>
-                  <TableHead className="text-xs h-7 text-right">Staged</TableHead>
-                  <TableHead className="text-xs h-7 text-right">Rejected</TableHead>
+                  {batchReport.type === 'scrape-extract' ? (
+                    <>
+                      <TableHead className="text-xs h-7 text-right">Scraped</TableHead>
+                      <TableHead className="text-xs h-7 text-right">Extracted</TableHead>
+                    </>
+                  ) : (
+                    <>
+                      <TableHead className="text-xs h-7 text-right">Staged</TableHead>
+                      <TableHead className="text-xs h-7 text-right">Rejected</TableHead>
+                    </>
+                  )}
                   <TableHead className="text-xs h-7 text-right">Duration</TableHead>
                   <TableHead className="text-xs h-7">Error</TableHead>
                 </TableRow>
@@ -553,8 +571,17 @@ export function FirecrawlSourcesManager() {
                       {r.status === 'error' && <XCircle className="h-3.5 w-3.5 text-destructive inline" />}
                       {r.status === 'skipped' && <span className="text-muted-foreground">Skipped</span>}
                     </TableCell>
-                    <TableCell className="text-xs py-1 text-right">{r.staged}</TableCell>
-                    <TableCell className="text-xs py-1 text-right">{r.rejected}</TableCell>
+                    {batchReport.type === 'scrape-extract' ? (
+                      <>
+                        <TableCell className="text-xs py-1 text-right">{r.scraped || 0}</TableCell>
+                        <TableCell className="text-xs py-1 text-right">{r.extracted || 0}</TableCell>
+                      </>
+                    ) : (
+                      <>
+                        <TableCell className="text-xs py-1 text-right">{r.staged}</TableCell>
+                        <TableCell className="text-xs py-1 text-right">{r.rejected}</TableCell>
+                      </>
+                    )}
                     <TableCell className="text-xs py-1 text-right">{formatDuration(r.durationMs)}</TableCell>
                     <TableCell className="text-xs py-1 text-destructive truncate max-w-[200px]">{r.error || '—'}</TableCell>
                   </TableRow>

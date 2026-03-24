@@ -718,30 +718,40 @@ async function handleAiCoverImage(draftId: string, client: any, apiKey: string, 
   let imageUrl: string | undefined;
 
   if (route.provider === 'vertex-ai') {
-    // ── Vertex AI direct path ──
+    // ── Vertex AI direct path with retry for 429 ──
     const { getVertexAccessToken } = await import('../_shared/vertex-ai.ts');
     const accessToken = await getVertexAccessToken();
     const projectId = Deno.env.get('GCP_PROJECT_ID');
     const location = Deno.env.get('GCP_LOCATION') || 'us-central1';
+    const maxImageRetries = 4;
 
     if (route.vertexEndpoint === 'imagen') {
       // Imagen model
       const imagenUrl = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${route.apiModel}:predict`;
-      const imagenResp = await fetch(imagenUrl, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          instances: [{ prompt }],
-          parameters: { sampleCount: 1, aspectRatio: '16:9', personGeneration: 'allow_adult' },
-        }),
-      });
-      if (!imagenResp.ok) {
-        const errText = await imagenResp.text().catch(() => '');
-        throw new Error(`Imagen error ${imagenResp.status}: ${errText.substring(0, 300)}`);
+      for (let attempt = 0; attempt <= maxImageRetries; attempt++) {
+        const imagenResp = await fetch(imagenUrl, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            instances: [{ prompt }],
+            parameters: { sampleCount: 1, aspectRatio: '16:9', personGeneration: 'allow_adult' },
+          }),
+        });
+        if (imagenResp.status === 429 && attempt < maxImageRetries) {
+          const wait = Math.min(3000 * Math.pow(2, attempt), 60000) + Math.random() * 2000;
+          console.log(`[firecrawl-ai-enrich] Imagen 429, retry ${attempt + 1}/${maxImageRetries} after ${Math.round(wait)}ms`);
+          await new Promise(r => setTimeout(r, wait));
+          continue;
+        }
+        if (!imagenResp.ok) {
+          const errText = await imagenResp.text().catch(() => '');
+          throw new Error(`Imagen error ${imagenResp.status}: ${errText.substring(0, 300)}`);
+        }
+        const imagenData = await imagenResp.json();
+        const b64 = imagenData.predictions?.[0]?.bytesBase64Encoded;
+        if (b64) imageUrl = `data:image/png;base64,${b64}`;
+        break;
       }
-      const imagenData = await imagenResp.json();
-      const b64 = imagenData.predictions?.[0]?.bytesBase64Encoded;
-      if (b64) imageUrl = `data:image/png;base64,${b64}`;
     } else {
       // Gemini image model via Vertex
       const isGemini3 = route.apiModel.startsWith('gemini-3');
@@ -750,26 +760,35 @@ async function handleAiCoverImage(draftId: string, client: any, apiKey: string, 
       const host = isGemini3 ? 'aiplatform.googleapis.com' : `${location}-aiplatform.googleapis.com`;
       const vertexUrl = `https://${host}/${apiVersion}/projects/${projectId}/locations/${loc}/publishers/google/models/${route.apiModel}:generateContent`;
 
-      const vertexResp = await fetch(vertexUrl, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          generationConfig: { responseModalities: ['IMAGE', 'TEXT'] },
-        }),
-      });
-      if (!vertexResp.ok) {
-        const errText = await vertexResp.text().catch(() => '');
-        throw new Error(`Vertex image error ${vertexResp.status}: ${errText.substring(0, 300)}`);
-      }
-      const vertexData = await vertexResp.json();
-      const parts = vertexData.candidates?.[0]?.content?.parts || [];
-      for (const part of parts) {
-        if (part.inlineData?.data) {
-          const mime = part.inlineData.mimeType || 'image/png';
-          imageUrl = `data:${mime};base64,${part.inlineData.data}`;
-          break;
+      for (let attempt = 0; attempt <= maxImageRetries; attempt++) {
+        const vertexResp = await fetch(vertexUrl, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            generationConfig: { responseModalities: ['IMAGE', 'TEXT'] },
+          }),
+        });
+        if (vertexResp.status === 429 && attempt < maxImageRetries) {
+          const wait = Math.min(3000 * Math.pow(2, attempt), 60000) + Math.random() * 2000;
+          console.log(`[firecrawl-ai-enrich] Vertex image 429, retry ${attempt + 1}/${maxImageRetries} after ${Math.round(wait)}ms`);
+          await new Promise(r => setTimeout(r, wait));
+          continue;
         }
+        if (!vertexResp.ok) {
+          const errText = await vertexResp.text().catch(() => '');
+          throw new Error(`Vertex image error ${vertexResp.status}: ${errText.substring(0, 300)}`);
+        }
+        const vertexData = await vertexResp.json();
+        const parts = vertexData.candidates?.[0]?.content?.parts || [];
+        for (const part of parts) {
+          if (part.inlineData?.data) {
+            const mime = part.inlineData.mimeType || 'image/png';
+            imageUrl = `data:${mime};base64,${part.inlineData.data}`;
+            break;
+          }
+        }
+        break;
       }
     }
   } else {

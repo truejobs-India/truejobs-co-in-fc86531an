@@ -119,3 +119,12 @@ verify_jwt = false
 
 [functions.azure-emp-news-retry-failed]
 verify_jwt = false
+
+[functions.azure-emp-news-build-fragments]
+verify_jwt = false
+
+[functions.azure-emp-news-reconstruct-notices]
+verify_jwt = false
+
+[functions.azure-emp-news-ai-clean-drafts]
+verify_jwt = false

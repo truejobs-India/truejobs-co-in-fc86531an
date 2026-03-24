@@ -76,11 +76,11 @@ export function AzureEmpNewsWorkspace() {
         </TabsContent>
 
         <TabsContent value="reconstructed">
-          <PlaceholderTab title="Reconstructed Notices" description="Multi-page notice reconstruction will appear here. Build in Prompt 3." />
+          <ReconstructedNoticesTab />
         </TabsContent>
 
         <TabsContent value="drafts">
-          <PlaceholderTab title="Draft Jobs" description="AI-extracted draft jobs for review and validation will appear here. Build in Prompt 3." />
+          <DraftJobsTab />
         </TabsContent>
 
         <TabsContent value="publish">

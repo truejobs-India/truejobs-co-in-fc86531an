@@ -609,13 +609,14 @@ async function callAI(model: string, prompt: string, maxTokensParam?: number): P
     case 'gemini': {
       const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
       const vertexModel = model === 'gemini-pro' ? 'gemini-2.5-pro' : 'gemini-2.5-flash';
-      const text = await callVertexGemini(vertexModel, prompt, 90_000, { responseMimeType: 'application/json', temperature: 0.5 });
+      const geminiOpts = { responseMimeType: 'application/json', temperature: 0.5, maxOutputTokens: maxTokensParam || 16384 };
+      const text = await callVertexGemini(vertexModel, prompt, 90_000, geminiOpts);
       try {
         return tryParseJSON(text);
       } catch (e1) {
         console.warn("Vertex Gemini JSON parse failed, retrying...", (e1 as Error).message);
         await delay(2000);
-        const text2 = await callVertexGemini(vertexModel, prompt, 90_000, { responseMimeType: 'application/json', temperature: 0.5 });
+        const text2 = await callVertexGemini(vertexModel, prompt, 90_000, geminiOpts);
         return tryParseJSON(text2);
       }
     }

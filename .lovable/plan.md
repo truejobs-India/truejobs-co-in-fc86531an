@@ -1,110 +1,143 @@
 
 
-## Plan: Azure OCR Queue — Prompt 2 of 4
+## Plan: Prompt 3 — Fragment Building, Reconstruction & AI Draft Creation
 
 ### What this builds
-Fully functional OCR Queue tab that submits uploaded page images to Azure Document Intelligence Layout API, polls for results, stores extracted text, and provides retry controls. Four new edge functions handle all server-side Azure communication.
+Three new edge functions and two new UI tabs that take OCR-completed pages through deterministic fragment building, multi-page notice reconstruction, and AI-powered draft job extraction.
 
 ### Architecture
 
 ```text
-Frontend (OcrQueueTab.tsx)
-  ├── Issue selector + progress summary
-  ├── Pages table with status/retry/error
-  └── Actions: Start OCR, Retry Page, Retry All Failed
-        │
-        ▼  supabase.functions.invoke()
 Edge Functions (all new, isolated)
-  ├── azure-emp-news-start-ocr    → marks pages processing, calls process-page for each
-  ├── azure-emp-news-process-page → submits to Azure, polls, saves result
-  ├── azure-emp-news-retry-page   → resets single page, calls process-page
-  └── azure-emp-news-retry-failed → finds all failed pages, calls process-page for each
+  ├── azure-emp-news-build-fragments     → Stage A: deterministic cleanup + fragment detection + continuation hints
+  ├── azure-emp-news-reconstruct-notices → Stage B: merge fragments into reconstructed notices
+  └── azure-emp-news-ai-clean-drafts    → Stage C: AI extraction via Lovable AI Gateway, notice-by-notice
+
+UI Components (new)
+  ├── ReconstructedNoticesTab.tsx  → list notices, view merged text, trigger rebuild
+  └── DraftJobsTab.tsx            → list drafts, validation badges, preview JSON, trigger AI
 ```
 
-### Edge function design
+### Edge Function Design
 
-**azure-emp-news-process-page** (core worker):
-1. Fetch page record from `azure_emp_news_pages`
-2. Get image public URL from storage bucket `employment-news-azure`
-3. Download image bytes server-side
-4. POST to Azure Document Intelligence Layout API (`/documentModels/prebuilt-layout:analyze`)
-5. Get `Operation-Location` header → store in `azure_operation_url`
-6. Poll `Operation-Location` with backoff (2s, 4s, 8s, max 10 attempts)
-7. On success: save `azure_result_json`, extract text content from `analyzeResult.content`, save to `extracted_content`, set `ocr_status=completed`, set `processed_at`
-8. On failure: save `error_message`, set `ocr_status=failed`, increment `retry_count`
-9. After each page: update issue-level counters (`ocr_completed_pages`, `ocr_failed_pages`, `ocr_status`)
+**azure-emp-news-build-fragments** (`issue_id`):
+1. Guard: all pages must be `ocr_status=completed` or issue `ocr_status=completed/partially_completed` — reject if any are still `pending/processing`
+2. Delete existing fragments for this issue (idempotent rebuild)
+3. For each completed page, read `azure_result_json.analyzeResult`:
+   - Use `paragraphs` array with `role` and `boundingRegions` from Azure Layout output
+   - Remove header/footer paragraphs (role=`pageHeader`/`pageFooter`/`pageNumber`)
+   - Group remaining paragraphs into fragments using heading detection, spacing gaps, and content patterns
+   - Classify each fragment: `job_notice` (keywords: vacancy, recruitment, post, qualification, last date, apply), `admission`, `editorial`, `advertisement`, `unknown`
+   - Detect continuation patterns in text: `contd. on page`, `continued from page`, `contd. from`, regex-based
+   - Also infer continuation when a page ends mid-sentence and next page starts without a heading
+   - Save `continuation_hint`, `continuation_to_page`, `continuation_from_page`
+   - Save `bbox` from Azure boundingRegions
+4. Insert all fragments into `azure_emp_news_fragments`
+5. Save `cleaned_content` on each page (text minus headers/footers)
+6. Update issue `reconstruction_status` to `pending` (ready for Stage B)
 
-**azure-emp-news-start-ocr**:
-- Takes `issue_id`
-- Fetches all pages with `ocr_status=pending`
-- Processes them sequentially (page-by-page) to avoid rate limits
-- Updates issue `ocr_status` to `processing` at start, then `completed`/`partially_completed`/`failed` at end
+**azure-emp-news-reconstruct-notices** (`issue_id`):
+1. Guard: fragments must exist (run build-fragments first)
+2. Delete existing reconstructed notices for this issue (idempotent)
+3. Load all fragments ordered by `page_no`, `fragment_index`
+4. Merge logic:
+   - Start a new notice group at each `job_notice`/`admission`/`editorial`/`advertisement` fragment that has no `continuation_from_page`
+   - Follow continuation chains: if fragment has `continuation_to_page`, find matching fragment on target page
+   - Also merge consecutive fragments on same page that share employer name patterns
+5. For each merged group:
+   - Generate `notice_key` (e.g., `issue-{page}-{index}`)
+   - Set `notice_title` from first heading or employer-like line
+   - Set `employer_name` from detected org name patterns
+   - Set `start_page`, `end_page`
+   - Set `merged_text` (concatenated cleaned text)
+   - Set `merged_blocks_json` (array of fragment references with page/index)
+   - Calculate `reconstruction_confidence` (1.0 for single-page, 0.7-0.9 for multi-page based on continuation evidence strength)
+   - Set `ai_status` = `pending`
+6. Insert into `azure_emp_news_reconstructed_notices`
+7. Update issue `reconstruction_status` = `completed`
 
-**azure-emp-news-retry-page**:
-- Takes `page_id`
-- Resets page status to `pending`, clears error
-- Calls process-page logic
-- Updates issue counters
-
-**azure-emp-news-retry-failed**:
-- Takes `issue_id`
-- Finds all `ocr_status=failed` pages
-- Processes each sequentially
-- Updates issue counters
-
-All four functions: auth-first pattern (admin check before body parsing), CORS headers, `verify_jwt = false` in config.toml.
+**azure-emp-news-ai-clean-drafts** (`issue_id` or `notice_id` for single):
+1. Guard: reconstructed notices must exist
+2. For each notice with `ai_status=pending` (or the specific one):
+   - Filter: skip `editorial`/`advertisement` type notices (determined by majority fragment type)
+   - Call Lovable AI Gateway (`https://ai.gateway.lovable.dev/v1/chat/completions`) with `LOVABLE_API_KEY`
+   - Model: `google/gemini-2.5-flash` (good balance of speed/quality for structured extraction)
+   - Use tool calling for structured output (not raw JSON in prompt)
+   - System prompt instructs: clean OCR artifacts, extract structured job fields, do NOT hallucinate
+   - Tool schema defines: `employer_name`, `post_names[]`, `vacancies`, `qualification`, `age_limit`, `salary`, `application_method`, `official_website`, `last_date`, `ad_reference`, `source_pages`
+   - Process notice-by-notice with 1s delay between calls
+3. Deterministic validation after AI response:
+   - `employer_name` not empty → else `review_needed`
+   - `post_names` not empty for job notices → else `review_needed`
+   - Website looks like valid URL/domain if present → else flag in `validation_notes`
+   - Dates parseable if present → else flag
+   - If merged text was very short (<50 chars) → `review_needed`
+   - If all checks pass → `passed`
+4. Save to `azure_emp_news_draft_jobs`:
+   - `draft_title` = employer name + first post or notice title
+   - `draft_data` = raw AI tool call output
+   - `ai_cleaned_data` = validated/cleaned version
+   - `validation_status` and `validation_notes`
+   - `publish_status` = `draft`
+5. Update notice `ai_status` = `completed`/`failed`
+6. Update issue `ai_status` accordingly
 
 ### New files
 
 | File | Purpose |
 |------|---------|
-| `supabase/functions/azure-emp-news-start-ocr/index.ts` | Start OCR for all pending pages in an issue |
-| `supabase/functions/azure-emp-news-process-page/index.ts` | Core: submit image to Azure, poll, save result |
-| `supabase/functions/azure-emp-news-retry-page/index.ts` | Retry single failed page |
-| `supabase/functions/azure-emp-news-retry-failed/index.ts` | Retry all failed pages in an issue |
-| `src/components/admin/emp-news/azure-based-extraction/OcrQueueTab.tsx` | Full OCR Queue UI |
+| `supabase/functions/azure-emp-news-build-fragments/index.ts` | Stage A: deterministic fragment building |
+| `supabase/functions/azure-emp-news-reconstruct-notices/index.ts` | Stage B: merge fragments into notices |
+| `supabase/functions/azure-emp-news-ai-clean-drafts/index.ts` | Stage C: AI extraction via Lovable AI Gateway |
+| `src/components/admin/emp-news/azure-based-extraction/ReconstructedNoticesTab.tsx` | Notices list, merged text viewer, rebuild action |
+| `src/components/admin/emp-news/azure-based-extraction/DraftJobsTab.tsx` | Draft list, validation badges, JSON preview, generate action |
 
 ### Modified files
 
 | File | Change |
 |------|--------|
-| `src/components/admin/emp-news/azure-based-extraction/AzureEmpNewsWorkspace.tsx` | Replace OCR placeholder with `OcrQueueTab` component |
-| `supabase/config.toml` | Add `verify_jwt = false` for all 4 new functions |
+| `AzureEmpNewsWorkspace.tsx` | Replace two placeholder tabs with new components |
+| `supabase/config.toml` | Add `verify_jwt = false` for 3 new functions |
 
-### OcrQueueTab UI
+### No DB migration needed
+All tables (`azure_emp_news_fragments`, `azure_emp_news_reconstructed_notices`, `azure_emp_news_draft_jobs`) already exist from Prompt 1.
 
-- Issue selector dropdown (reuses existing issues list)
-- Progress summary card: uploaded / completed / pending / failed counts
-- Progress bar showing completion percentage
-- Pages table: page_no, filename, ocr_status (badge), retry_count, processed_at, error_message (truncated), actions
-- Action buttons: "Start OCR" (for all pending), "Retry Page" (per row, for failed), "Retry All Failed" (bulk)
-- Auto-refresh via polling (every 5s while processing) to show live progress
-- Toast notifications for success/failure
+### UI: ReconstructedNoticesTab
+- Issue selector dropdown
+- "Build Fragments" button (Stage A) — disabled unless OCR is completed/partially_completed
+- "Reconstruct Notices" button (Stage B) — disabled unless fragments exist
+- Summary: total notices, job notices, editorial, advertisement counts
+- Table: notice_key, start_page, end_page, notice_title, employer_name, reconstruction_confidence (bar), ai_status badge
+- Expandable row or dialog to view merged_text
 
-### Environment variables required
+### UI: DraftJobsTab
+- Issue selector dropdown
+- "Generate AI Drafts" button — disabled unless reconstructed notices exist with ai_status=pending
+- Table: draft_title, linked notice, validation_status badge (green/red/yellow), publish_status, created_at
+- Expandable row or dialog to preview `draft_data`/`ai_cleaned_data` as formatted JSON
+- Validation notes shown inline
+- Counts: total drafts, passed, failed, review_needed
 
-- `AZURE_DOCINTEL_ENDPOINT` — Azure Document Intelligence endpoint URL
-- `AZURE_DOCINTEL_KEY` — Azure Document Intelligence API key
-
-Will use `secrets--add_secret` to request these from the user.
-
-### Design decisions
-
-1. **Sequential processing** within edge functions to respect Azure rate limits (not parallel)
-2. **Single consolidated edge function** approach considered but rejected — keeping 4 separate functions for clarity and independent retry capability
-3. **Polling inside edge function** rather than client-side polling of Azure — cleaner, keeps Azure credentials server-side only
-4. **Max 10 poll attempts** with exponential backoff (2s base) — ~17 minutes max wait per page which is generous for Layout API
-5. **Auto-retry count**: limited to 3 automatic retries tracked via `retry_count`; manual retry always allowed
-6. **Issue counter sync**: after each page completes, count completed/failed pages and update issue record
+### AI approach
+Uses the Lovable AI Gateway with `LOVABLE_API_KEY` (already configured). Uses tool calling for structured output extraction — no raw JSON parsing needed. Model: `google/gemini-2.5-flash`.
 
 ### Test checklist
-- [ ] Secrets `AZURE_DOCINTEL_ENDPOINT` and `AZURE_DOCINTEL_KEY` are set
-- [ ] Start OCR on an issue with uploaded pages — pages transition to processing → completed
-- [ ] OCR Queue tab shows live progress summary
-- [ ] Failed pages show error message and retry button
-- [ ] Retry single page works and increments retry_count
-- [ ] Retry All Failed processes all failed pages
-- [ ] Issue-level ocr_status updates correctly
-- [ ] Azure key never exposed to client
-- [ ] Old Employment News system unaffected
+- [ ] Build Fragments on an issue with completed OCR — fragments created in DB
+- [ ] Headers/footers stripped from fragments
+- [ ] Continuation hints detected for multi-page notices
+- [ ] Reconstruct Notices merges continuation chains correctly
+- [ ] Non-job fragments classified as editorial/advertisement
+- [ ] AI Drafts extracts structured fields from job notices
+- [ ] Validation catches empty employer name → review_needed
+- [ ] Draft preview shows structured data correctly
+- [ ] Rate limit errors (429) shown to admin, not silent
+- [ ] Cannot run fragments if OCR still pending — proper guard message
+- [ ] Old Employment News system completely unaffected
+
+### Assumptions
+- Azure Layout output contains `analyzeResult.paragraphs[]` with `role`, `content`, `boundingRegions` — standard for Layout model
+- `google/gemini-2.5-flash` via Lovable AI Gateway for AI cleaning (fast, structured output capable)
+- Fragments are rebuilt idempotently (delete + reinsert) to allow re-running after fixes
+- Editorial/advertisement notices are reconstructed but skipped during AI draft creation
+- Processing is sequential (notice-by-notice) with 1s delay to respect rate limits
 

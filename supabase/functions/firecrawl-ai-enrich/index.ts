@@ -278,6 +278,37 @@ function getProtectedFields(draft: any): Set<string> {
   return new Set(draft.admin_edited_fields || []);
 }
 
+/** All tracked fields from the field extractor — used to recalculate fields_missing/fields_extracted */
+const ALL_TRACKED_FIELDS = [
+  'title', 'normalized_title', 'organization_name', 'post_name', 'job_role',
+  'category', 'department', 'location', 'city', 'state',
+  'total_vacancies', 'application_mode', 'qualification', 'age_limit',
+  'application_fee', 'salary', 'pay_scale', 'opening_date', 'closing_date',
+  'last_date_of_application', 'exam_date', 'selection_process',
+  'official_notification_url', 'official_apply_url', 'official_website_url',
+  'canonical_url', 'description_summary',
+];
+
+/** Recalculate fields_extracted and fields_missing based on current draft state and persist */
+async function recalculateFieldCounts(draftId: string, client: any): Promise<{ fields_extracted: number; fields_missing: string[] }> {
+  const draft = await fetchDraft(draftId, client);
+  const missing: string[] = [];
+  const extracted: string[] = [];
+  for (const f of ALL_TRACKED_FIELDS) {
+    const val = draft[f];
+    if (val === null || val === undefined || (typeof val === 'string' && val.trim().length === 0)) {
+      missing.push(f);
+    } else {
+      extracted.push(f);
+    }
+  }
+  await client.from('firecrawl_draft_jobs').update({
+    fields_extracted: extracted.length,
+    fields_missing: missing,
+  }).eq('id', draftId);
+  return { fields_extracted: extracted.length, fields_missing: missing };
+}
+
 /** Check if AI mutation actions are allowed on this draft status */
 function checkStatusGuard(draft: any, action: string): string | null {
   const blockedStatuses = ['approved'];

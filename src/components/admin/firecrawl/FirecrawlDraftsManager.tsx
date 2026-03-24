@@ -809,10 +809,28 @@ export function FirecrawlDraftsManager() {
                         <TableCell className="text-right">
                           <div className="flex items-center gap-1 justify-end">
                             <Button
+                              size="sm" variant="outline"
+                              disabled={!!busyRows[draft.id] || hasExistingImage(draft)}
+                              onClick={() => createImage(draft.id)}
+                              title={hasExistingImage(draft) ? 'Image already exists' : 'Generate cover image'}
+                              className="gap-1"
+                            >
+                              {busyRows[draft.id] === 'ai-cover-image' ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : hasExistingImage(draft) ? (
+                                <CheckCircle className="h-3 w-3 text-green-500" />
+                              ) : (
+                                <Image className="h-3 w-3" />
+                              )}
+                              <span className="hidden sm:inline text-xs">
+                                {hasExistingImage(draft) ? 'Has Image' : 'Image'}
+                              </span>
+                            </Button>
+                            <Button
                               size="sm" variant="default"
                               disabled={!!busyRows[draft.id]}
                               onClick={() => runAiAction(draft.id, 'ai-run-all')}
-                              title="Run All AI Steps"
+                              title="Run All AI Steps (text only)"
                               className="gap-1"
                             >
                               {busyRows[draft.id] === 'ai-run-all' ? (

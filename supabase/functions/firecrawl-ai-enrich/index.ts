@@ -124,8 +124,12 @@ Deno.serve(async (req) => {
       default: return json({ error: `Unknown action: ${action}` }, 400);
     }
   } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Internal error';
     console.error('[firecrawl-ai-enrich] Error:', e);
-    return json({ error: e instanceof Error ? e.message : 'Internal error' }, 500);
+    // Return appropriate status codes for known business errors
+    if (msg.includes('Draft not found')) return json({ error: msg }, 404);
+    if (msg.includes('429') || msg.includes('RESOURCE_EXHAUSTED') || msg.includes('rate limit')) return json({ error: msg }, 429);
+    return json({ error: msg }, 500);
   }
 });
 

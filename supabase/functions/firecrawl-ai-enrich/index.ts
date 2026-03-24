@@ -947,7 +947,85 @@ async function handleAiRunAll(draftId: string, client: any, apiKey: string, aiMo
   });
 }
 
-// ============ 9. Rollback Last AI Action ============
+// ============ 9b. AI Fix Fields (comprehensive field fill + recalculate) ============
+
+async function handleAiFixFields(draftId: string, client: any, apiKey: string, aiModel?: string) {
+  const draft = await fetchDraft(draftId, client);
+  const protectedFields = getProtectedFields(draft);
+
+  // Find ALL empty/missing fields from the tracked list
+  const missingFields: string[] = [];
+  for (const f of ALL_TRACKED_FIELDS) {
+    if (protectedFields.has(f)) continue;
+    const val = draft[f];
+    if (val === null || val === undefined || (typeof val === 'string' && val.trim().length === 0)) {
+      missingFields.push(f);
+    }
+  }
+
+  if (missingFields.length === 0) {
+    const fieldCounts = await recalculateFieldCounts(draftId, client);
+    return json({ success: true, action: 'ai-fix-fields', message: 'No missing fields', fixed: [], fields_extracted: fieldCounts.fields_extracted, fields_missing: fieldCounts.fields_missing });
+  }
+
+  const context = getDraftContext(draft);
+  const result = await callAI(
+    apiKey,
+    `You are an Indian government jobs data specialist. Fill in missing fields for a job listing based on available context and raw scraped text. Use null if truly unknowable from the available data. Never invent fake data. For URL fields, only provide real government website URLs.`,
+    `These fields are missing: ${missingFields.join(', ')}\n\nExisting data:\n${context}\n\nRaw text (first 5000 chars):\n${(draft.raw_scraped_text || '').substring(0, 5000)}`,
+    {
+      name: 'fix_all_fields',
+      description: 'Return values for all missing fields',
+      parameters: {
+        type: 'object',
+        properties: Object.fromEntries(
+          missingFields.map(f => [f, { type: ['string', 'null'] }])
+        ),
+        required: [],
+        additionalProperties: false,
+      },
+    },
+    aiModel,
+  );
+
+  const update: Record<string, unknown> = {};
+  const fixed: string[] = [];
+
+  for (const f of missingFields) {
+    const val = result[f];
+    if (val && val !== 'null' && val !== 'N/A' && val !== 'NA' && (typeof val === 'string' ? val.trim().length > 1 : true)) {
+      // For numeric fields like total_vacancies
+      if (f === 'total_vacancies') {
+        const num = parseInt(val, 10);
+        if (!isNaN(num) && num > 0) { update[f] = num; fixed.push(f); }
+      } else {
+        update[f] = val;
+        fixed.push(f);
+      }
+    }
+  }
+
+  const oldValues = snapshotOldValues(draft, update);
+  update.ai_enrichment_log = appendLog(draft.ai_enrichment_log, 'ai-fix-fields', {
+    targeted: missingFields, fixed, old_values: oldValues,
+  });
+
+  await client.from('firecrawl_draft_jobs').update(update).eq('id', draftId);
+
+  // Recalculate field counts
+  const fieldCounts = await recalculateFieldCounts(draftId, client);
+
+  return json({
+    success: true,
+    action: 'ai-fix-fields',
+    targeted: missingFields,
+    fixed,
+    fields_extracted: fieldCounts.fields_extracted,
+    fields_missing: fieldCounts.fields_missing,
+  });
+}
+
+// ============ 10. Rollback Last AI Action ============
 
 async function handleRollbackAiAction(draftId: string, client: any) {
   const draft = await fetchDraft(draftId, client);

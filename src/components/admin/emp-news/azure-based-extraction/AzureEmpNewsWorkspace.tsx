@@ -5,6 +5,8 @@ import { IssuesTab } from './IssuesTab';
 import { UploadTab } from './UploadTab';
 import { PlaceholderTab } from './PlaceholderTab';
 import { OcrQueueTab } from './OcrQueueTab';
+import { ReconstructedNoticesTab } from './ReconstructedNoticesTab';
+import { DraftJobsTab } from './DraftJobsTab';
 import type { AzureEmpNewsIssue } from '@/types/azureEmpNews';
 import { FileText, Upload, Cpu, Layers, Briefcase, ScrollText } from 'lucide-react';
 
@@ -74,11 +76,11 @@ export function AzureEmpNewsWorkspace() {
         </TabsContent>
 
         <TabsContent value="reconstructed">
-          <PlaceholderTab title="Reconstructed Notices" description="Multi-page notice reconstruction will appear here. Build in Prompt 3." />
+          <ReconstructedNoticesTab />
         </TabsContent>
 
         <TabsContent value="drafts">
-          <PlaceholderTab title="Draft Jobs" description="AI-extracted draft jobs for review and validation will appear here. Build in Prompt 3." />
+          <DraftJobsTab />
         </TabsContent>
 
         <TabsContent value="publish">

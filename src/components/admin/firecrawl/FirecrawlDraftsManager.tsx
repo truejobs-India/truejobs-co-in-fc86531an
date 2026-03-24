@@ -63,10 +63,9 @@ const AI_ACTIONS: { action: AiAction; label: string; icon: typeof Sparkles; desc
   { action: 'ai-fix-missing', label: 'Fix Missing', icon: AlertTriangle, description: 'Fill weak/blank fields' },
   { action: 'ai-seo', label: 'AI SEO', icon: Search, description: 'Generate SEO metadata & FAQs' },
   { action: 'ai-cover-prompt', label: 'Cover Prompt', icon: FileText, description: 'Generate image prompt' },
-  { action: 'ai-cover-image', label: 'Cover Image', icon: Image, description: 'Generate & upload cover' },
 ];
 
-// Step-to-field mapping for AI step indicators
+// Step-to-field mapping for AI step indicators (image steps removed — handled separately)
 const AI_STEP_MAP: { action: string; label: string; tsField: keyof DraftJob }[] = [
   { action: 'ai-clean', label: 'Clean', tsField: 'ai_clean_at' },
   { action: 'ai-enrich', label: 'Enrich', tsField: 'ai_enrich_at' },
@@ -74,7 +73,6 @@ const AI_STEP_MAP: { action: string; label: string; tsField: keyof DraftJob }[] 
   { action: 'ai-fix-missing', label: 'Fix', tsField: 'ai_fix_missing_at' },
   { action: 'ai-seo', label: 'SEO', tsField: 'ai_seo_at' },
   { action: 'ai-cover-prompt', label: 'Prompt', tsField: 'ai_cover_prompt_at' },
-  { action: 'ai-cover-image', label: 'Image', tsField: 'ai_cover_image_at' },
 ];
 
 type StepState = 'pending' | 'running' | 'completed' | 'failed' | 'skipped';

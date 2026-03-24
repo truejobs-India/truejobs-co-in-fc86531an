@@ -54,7 +54,7 @@ interface DraftJob {
   updated_at: string;
 }
 
-type AiAction = 'ai-clean' | 'ai-enrich' | 'ai-find-links' | 'ai-fix-missing' | 'ai-seo' | 'ai-cover-prompt' | 'ai-cover-image' | 'ai-run-all' | 'rollback-ai-action';
+type AiAction = 'ai-clean' | 'ai-enrich' | 'ai-find-links' | 'ai-fix-missing' | 'ai-seo' | 'ai-cover-prompt' | 'ai-cover-image' | 'ai-run-all' | 'ai-fix-fields' | 'rollback-ai-action';
 
 const AI_ACTIONS: { action: AiAction; label: string; icon: typeof Sparkles; description: string }[] = [
   { action: 'ai-clean', label: 'AI Clean', icon: Wrench, description: 'Remove source branding & polish' },
@@ -178,6 +178,11 @@ export function FirecrawlDraftsManager() {
   const [bulkImageRunning, setBulkImageRunning] = useState(false);
   const [bulkImageProgress, setBulkImageProgress] = useState<BulkProgress | null>(null);
   const bulkImageCancelRef = useRef(false);
+
+  // Bulk fix fields state
+  const [bulkFixFieldsRunning, setBulkFixFieldsRunning] = useState(false);
+  const [bulkFixFieldsProgress, setBulkFixFieldsProgress] = useState<BulkProgress | null>(null);
+  const bulkFixFieldsCancelRef = useRef(false);
 
   const fetchDrafts = useCallback(async () => {
     setLoading(true);
@@ -443,6 +448,72 @@ export function FirecrawlDraftsManager() {
 
   const imageEligibleCount = getDraftsNeedingImages().length;
 
+  // Drafts with missing fields
+  const getDraftsNeedingFieldFix = useCallback(() => {
+    return drafts.filter(d =>
+      d.status === 'draft' &&
+      d.dedup_status !== 'duplicate' &&
+      (d.fields_missing?.length || 0) > 0 &&
+      !busyRows[d.id]
+    );
+  }, [drafts, busyRows]);
+
+  const fixFieldsEligibleCount = getDraftsNeedingFieldFix().length;
+
+  const runBulkFixFields = async () => {
+    const eligible = getDraftsNeedingFieldFix();
+    if (eligible.length === 0) {
+      toast({ title: 'No rows need field fixes', description: 'All eligible rows have complete fields.' });
+      return;
+    }
+    const confirmed = window.confirm(
+      `Fix missing fields on ${eligible.length} row(s) using AI?\n\nThis processes rows sequentially.`
+    );
+    if (!confirmed) return;
+
+    bulkFixFieldsCancelRef.current = false;
+    setBulkFixFieldsRunning(true);
+    const progress: BulkProgress = {
+      total: eligible.length, current: 0, currentTitle: '',
+      succeeded: 0, failed: 0, skipped: 0,
+    };
+    setBulkFixFieldsProgress({ ...progress });
+
+    for (let i = 0; i < eligible.length; i++) {
+      if (bulkFixFieldsCancelRef.current) {
+        progress.skipped += eligible.length - i;
+        break;
+      }
+      const draft = eligible[i];
+      progress.current = i + 1;
+      progress.currentTitle = draft.title || 'Untitled';
+      setBulkFixFieldsProgress({ ...progress });
+
+      setBusyRows(prev => ({ ...prev, [draft.id]: 'ai-fix-fields' }));
+      try {
+        const { data, error } = await supabase.functions.invoke('firecrawl-ai-enrich', {
+          body: { action: 'ai-fix-fields', draft_id: draft.id, aiModel: selectedModel },
+        });
+        if (error) throw new Error(error.message);
+        if (data?.error) throw new Error(data.error);
+        progress.succeeded++;
+      } catch {
+        progress.failed++;
+      } finally {
+        setBusyRows(prev => { const n = { ...prev }; delete n[draft.id]; return n; });
+      }
+      setBulkFixFieldsProgress({ ...progress });
+    }
+
+    setBulkFixFieldsRunning(false);
+    setBulkFixFieldsProgress(null);
+    await fetchDrafts();
+    toast({
+      title: 'Bulk Fix Fields complete',
+      description: `✅ ${progress.succeeded} fixed · ❌ ${progress.failed} failed · ⏭ ${progress.skipped} skipped`,
+    });
+  };
+
   const updateStatus = async (draftId: string, newStatus: string) => {
     if (newStatus === 'approved') {
       try {
@@ -592,6 +663,26 @@ export function FirecrawlDraftsManager() {
                   Bulk Images{imageEligibleCount > 0 ? ` (${imageEligibleCount})` : ''}
                 </Button>
               )}
+              {bulkFixFieldsRunning ? (
+                <Button
+                  variant="destructive" size="sm"
+                  onClick={() => { bulkFixFieldsCancelRef.current = true; }}
+                  title="Stop bulk fix fields"
+                >
+                  <X className="h-3.5 w-3.5 mr-1.5" />
+                  Stop Fix Fields
+                </Button>
+              ) : (
+                <Button
+                  variant="outline" size="sm"
+                  onClick={runBulkFixFields}
+                  disabled={fixFieldsEligibleCount === 0 || loading}
+                  title={`Fix missing fields on ${fixFieldsEligibleCount} rows using AI`}
+                >
+                  <AlertTriangle className="h-3.5 w-3.5 mr-1.5" />
+                  Bulk Fix Fields{fixFieldsEligibleCount > 0 ? ` (${fixFieldsEligibleCount})` : ''}
+                </Button>
+              )}
               <Button
                 variant="outline" size="sm"
                 onClick={runDedup} disabled={dedupRunning}
@@ -666,6 +757,30 @@ export function FirecrawlDraftsManager() {
                 <span className="text-green-600">✅ {bulkImageProgress.succeeded}</span>
                 <span className="text-red-600">❌ {bulkImageProgress.failed}</span>
                 <span>⏭ {bulkImageProgress.skipped}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Bulk fix fields progress bar */}
+          {bulkFixFieldsRunning && bulkFixFieldsProgress && (
+            <div className="mb-3 p-3 rounded-lg border bg-muted/50 space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="font-medium">
+                  🔧 Fixing fields {bulkFixFieldsProgress.current}/{bulkFixFieldsProgress.total} — <span className="text-muted-foreground">{bulkFixFieldsProgress.currentTitle}</span>
+                </span>
+                <Button
+                  size="sm" variant="ghost"
+                  className="h-6 text-xs text-destructive hover:text-destructive"
+                  onClick={() => { bulkFixFieldsCancelRef.current = true; }}
+                >
+                  <X className="h-3 w-3 mr-1" /> Cancel
+                </Button>
+              </div>
+              <Progress value={(bulkFixFieldsProgress.current / bulkFixFieldsProgress.total) * 100} className="h-2" />
+              <div className="flex gap-3 text-xs text-muted-foreground">
+                <span className="text-green-600">✅ {bulkFixFieldsProgress.succeeded}</span>
+                <span className="text-red-600">❌ {bulkFixFieldsProgress.failed}</span>
+                <span>⏭ {bulkFixFieldsProgress.skipped}</span>
               </div>
             </div>
           )}

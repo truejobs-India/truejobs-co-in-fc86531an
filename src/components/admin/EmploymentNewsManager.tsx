@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { AzureEmpNewsWorkspace } from './emp-news/azure-based-extraction/AzureEmpNewsWorkspace';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -121,6 +122,7 @@ export function EmploymentNewsManager() {
   const { toast } = useToast();
   const toastRef = useRef(toast);
   toastRef.current = toast;
+  const [workspace, setWorkspace] = useState<'classic' | 'azure'>('classic');
   const [view, setView] = useState<'upload' | 'pipeline'>('pipeline');
 
   // Upload state
@@ -777,6 +779,28 @@ export function EmploymentNewsManager() {
   // ───── RENDER ─────
   return (
     <div className="space-y-6">
+      {/* Workspace switcher */}
+      <div className="flex items-center gap-2 border-b pb-3">
+        <Button
+          variant={workspace === 'classic' ? 'default' : 'outline'}
+          onClick={() => setWorkspace('classic')}
+          size="sm"
+        >
+          Classic Pipeline
+        </Button>
+        <Button
+          variant={workspace === 'azure' ? 'default' : 'outline'}
+          onClick={() => setWorkspace('azure')}
+          size="sm"
+        >
+          Azure Based Extraction
+        </Button>
+      </div>
+
+      {workspace === 'azure' ? (
+        <AzureEmpNewsWorkspace />
+      ) : (
+      <>
       {/* Tab switcher */}
       <div className="flex items-center gap-2">
         <Button
@@ -1527,6 +1551,8 @@ export function EmploymentNewsManager() {
           })()}
         </DialogContent>
       </Dialog>
+      </>
+      )}
     </div>
   );
 }

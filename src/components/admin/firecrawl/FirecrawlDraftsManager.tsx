@@ -179,6 +179,11 @@ export function FirecrawlDraftsManager() {
   const [bulkImageProgress, setBulkImageProgress] = useState<BulkProgress | null>(null);
   const bulkImageCancelRef = useRef(false);
 
+  // Bulk fix fields state
+  const [bulkFixFieldsRunning, setBulkFixFieldsRunning] = useState(false);
+  const [bulkFixFieldsProgress, setBulkFixFieldsProgress] = useState<BulkProgress | null>(null);
+  const bulkFixFieldsCancelRef = useRef(false);
+
   const fetchDrafts = useCallback(async () => {
     setLoading(true);
     let query = supabase

@@ -7,6 +7,7 @@ import { PlaceholderTab } from './PlaceholderTab';
 import { OcrQueueTab } from './OcrQueueTab';
 import { ReconstructedNoticesTab } from './ReconstructedNoticesTab';
 import { DraftJobsTab } from './DraftJobsTab';
+import { PublishLogTab } from './PublishLogTab';
 import type { AzureEmpNewsIssue } from '@/types/azureEmpNews';
 import { FileText, Upload, Cpu, Layers, Briefcase, ScrollText } from 'lucide-react';
 

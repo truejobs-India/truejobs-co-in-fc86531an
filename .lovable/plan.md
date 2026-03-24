@@ -1,87 +1,110 @@
 
 
-## Plan: Azure Based Extraction — Prompt 1 of 4
+## Plan: Azure OCR Queue — Prompt 2 of 4
 
 ### What this builds
-A completely separate "Azure Based Extraction" workspace inside the existing "Emp News" admin tab. It adds issue creation and serial-numbered image upload capabilities, with placeholder tabs for future OCR/reconstruction/publishing stages.
+Fully functional OCR Queue tab that submits uploaded page images to Azure Document Intelligence Layout API, polls for results, stores extracted text, and provides retry controls. Four new edge functions handle all server-side Azure communication.
 
-### Insertion strategy
-The existing `EmploymentNewsManager.tsx` component will get a **minimal** change: a toggle at the top to switch between "Classic Pipeline" (existing UI, unchanged) and "Azure Based Extraction" (new component). This is the only modification to any existing file besides `AdminDashboard.tsx` (no change needed there — it already renders `EmploymentNewsManager` under the emp-news tab).
-
-### Architecture overview
+### Architecture
 
 ```text
-EmploymentNewsManager.tsx (minimal edit — add sub-view toggle)
-  ├── [Classic Pipeline] → existing code, untouched
-  └── [Azure Based Extraction] → new AzureEmpNewsWorkspace component
-        ├── Issues tab (functional)
-        ├── Upload tab (functional)
-        ├── OCR Queue tab (placeholder)
-        ├── Reconstructed Notices tab (placeholder)
-        ├── Draft Jobs tab (placeholder)
-        └── Publish Log tab (placeholder)
+Frontend (OcrQueueTab.tsx)
+  ├── Issue selector + progress summary
+  ├── Pages table with status/retry/error
+  └── Actions: Start OCR, Retry Page, Retry All Failed
+        │
+        ▼  supabase.functions.invoke()
+Edge Functions (all new, isolated)
+  ├── azure-emp-news-start-ocr    → marks pages processing, calls process-page for each
+  ├── azure-emp-news-process-page → submits to Azure, polls, saves result
+  ├── azure-emp-news-retry-page   → resets single page, calls process-page
+  └── azure-emp-news-retry-failed → finds all failed pages, calls process-page for each
 ```
 
-### Files to create
+### Edge function design
+
+**azure-emp-news-process-page** (core worker):
+1. Fetch page record from `azure_emp_news_pages`
+2. Get image public URL from storage bucket `employment-news-azure`
+3. Download image bytes server-side
+4. POST to Azure Document Intelligence Layout API (`/documentModels/prebuilt-layout:analyze`)
+5. Get `Operation-Location` header → store in `azure_operation_url`
+6. Poll `Operation-Location` with backoff (2s, 4s, 8s, max 10 attempts)
+7. On success: save `azure_result_json`, extract text content from `analyzeResult.content`, save to `extracted_content`, set `ocr_status=completed`, set `processed_at`
+8. On failure: save `error_message`, set `ocr_status=failed`, increment `retry_count`
+9. After each page: update issue-level counters (`ocr_completed_pages`, `ocr_failed_pages`, `ocr_status`)
+
+**azure-emp-news-start-ocr**:
+- Takes `issue_id`
+- Fetches all pages with `ocr_status=pending`
+- Processes them sequentially (page-by-page) to avoid rate limits
+- Updates issue `ocr_status` to `processing` at start, then `completed`/`partially_completed`/`failed` at end
+
+**azure-emp-news-retry-page**:
+- Takes `page_id`
+- Resets page status to `pending`, clears error
+- Calls process-page logic
+- Updates issue counters
+
+**azure-emp-news-retry-failed**:
+- Takes `issue_id`
+- Finds all `ocr_status=failed` pages
+- Processes each sequentially
+- Updates issue counters
+
+All four functions: auth-first pattern (admin check before body parsing), CORS headers, `verify_jwt = false` in config.toml.
+
+### New files
 
 | File | Purpose |
 |------|---------|
-| `src/types/azureEmpNews.ts` | TypeScript types for all 6 tables |
-| `src/components/admin/emp-news/azure-based-extraction/AzureEmpNewsWorkspace.tsx` | Main workspace with 6 tabs |
-| `src/components/admin/emp-news/azure-based-extraction/IssuesTab.tsx` | Create/list/delete issues |
-| `src/components/admin/emp-news/azure-based-extraction/UploadTab.tsx` | Image upload with filename validation, page-number detection, duplicate rejection, gap warnings, progress display |
-| `src/components/admin/emp-news/azure-based-extraction/PlaceholderTab.tsx` | Reusable empty-state placeholder for OCR/Reconstructed/Draft/Publish tabs |
+| `supabase/functions/azure-emp-news-start-ocr/index.ts` | Start OCR for all pending pages in an issue |
+| `supabase/functions/azure-emp-news-process-page/index.ts` | Core: submit image to Azure, poll, save result |
+| `supabase/functions/azure-emp-news-retry-page/index.ts` | Retry single failed page |
+| `supabase/functions/azure-emp-news-retry-failed/index.ts` | Retry all failed pages in an issue |
+| `src/components/admin/emp-news/azure-based-extraction/OcrQueueTab.tsx` | Full OCR Queue UI |
 
-### Files to modify (minimal)
+### Modified files
 
 | File | Change |
 |------|--------|
-| `src/components/admin/EmploymentNewsManager.tsx` | Add ~15 lines at top of render: two buttons to toggle between "Classic Pipeline" and "Azure Based Extraction", conditionally render new workspace component |
+| `src/components/admin/emp-news/azure-based-extraction/AzureEmpNewsWorkspace.tsx` | Replace OCR placeholder with `OcrQueueTab` component |
+| `supabase/config.toml` | Add `verify_jwt = false` for all 4 new functions |
 
-### Database migration
+### OcrQueueTab UI
 
-**6 tables** with `azure_emp_news_` prefix, matching the schema exactly as specified. All use validation triggers (not CHECK constraints) per guidelines. Indexes on `issue_id`, `page_no`, `ocr_status`, `publish_status`, `created_at`. Foreign keys with `ON DELETE CASCADE` from pages/fragments/notices/drafts/logs → issues. RLS enabled with admin-only policies using `has_role()`.
+- Issue selector dropdown (reuses existing issues list)
+- Progress summary card: uploaded / completed / pending / failed counts
+- Progress bar showing completion percentage
+- Pages table: page_no, filename, ocr_status (badge), retry_count, processed_at, error_message (truncated), actions
+- Action buttons: "Start OCR" (for all pending), "Retry Page" (per row, for failed), "Retry All Failed" (bulk)
+- Auto-refresh via polling (every 5s while processing) to show live progress
+- Toast notifications for success/failure
 
-### Storage strategy
+### Environment variables required
 
-- **Bucket**: `employment-news-azure` (public, for admin image viewing)
-- **Path pattern**: `{issue_id}/pages/001.jpg`, `{issue_id}/pages/002.jpg`, etc.
-- **Completely separate** from existing blog-assets or any old emp news storage
-- Created via SQL migration: `INSERT INTO storage.buckets`
-- RLS policies: authenticated users with admin role can upload/read/delete
+- `AZURE_DOCINTEL_ENDPOINT` — Azure Document Intelligence endpoint URL
+- `AZURE_DOCINTEL_KEY` — Azure Document Intelligence API key
 
-### Upload flow logic
+Will use `secrets--add_secret` to request these from the user.
 
-1. User selects an issue from dropdown (or creates one first in Issues tab)
-2. Multi-file upload accepts images (jpg, jpeg, png, webp)
-3. Each filename is validated against pattern `/^\d{3}\.(jpg|jpeg|png|webp)$/i`
-4. Page number extracted from filename (e.g., `003.jpg` → page 3)
-5. Duplicates checked against existing `azure_emp_news_pages` for that issue
-6. Missing page gaps detected and warned (e.g., "Pages 4, 7 missing between 1-10")
-7. Files uploaded to `employment-news-azure/{issue_id}/pages/{page_no padded}.{ext}`
-8. Records inserted into `azure_emp_news_pages`
-9. `azure_emp_news_issues.uploaded_pages` and `total_pages` updated
-10. "Start Azure Extraction" button shown but disabled/non-functional (placeholder)
+### Design decisions
+
+1. **Sequential processing** within edge functions to respect Azure rate limits (not parallel)
+2. **Single consolidated edge function** approach considered but rejected — keeping 4 separate functions for clarity and independent retry capability
+3. **Polling inside edge function** rather than client-side polling of Azure — cleaner, keeps Azure credentials server-side only
+4. **Max 10 poll attempts** with exponential backoff (2s base) — ~17 minutes max wait per page which is generous for Layout API
+5. **Auto-retry count**: limited to 3 automatic retries tracked via `retry_count`; manual retry always allowed
+6. **Issue counter sync**: after each page completes, count completed/failed pages and update issue record
 
 ### Test checklist
-
-- [ ] Old Emp News "Classic Pipeline" still works identically
-- [ ] Toggle between Classic and Azure views works
-- [ ] Create a new issue with name and optional date
-- [ ] Upload files with valid names (001.jpg, 002.jpg) — records created
-- [ ] Upload file with invalid name (page1.jpg) — rejected with error
-- [ ] Upload duplicate page number — rejected with warning
-- [ ] Missing page gaps shown as warning
-- [ ] Page list displays correctly after upload
-- [ ] "Start Azure Extraction" button visible but non-functional
-- [ ] Placeholder tabs show empty states
-- [ ] Delete an issue removes all its pages and storage files
-
-### Assumptions
-
-- The storage bucket `employment-news-azure` is created as **public** so admin can view uploaded images directly via URL
-- RLS on all tables is admin-only (using existing `has_role` function)
-- No edge functions needed in this prompt — all operations use direct Supabase client calls
-- `created_by` on issues stores `auth.uid()` of the admin who created it
-- The `azure_emp_news_fragments`, `azure_emp_news_reconstructed_notices`, `azure_emp_news_draft_jobs`, and `azure_emp_news_publish_logs` tables are created now but not used until future prompts
+- [ ] Secrets `AZURE_DOCINTEL_ENDPOINT` and `AZURE_DOCINTEL_KEY` are set
+- [ ] Start OCR on an issue with uploaded pages — pages transition to processing → completed
+- [ ] OCR Queue tab shows live progress summary
+- [ ] Failed pages show error message and retry button
+- [ ] Retry single page works and increments retry_count
+- [ ] Retry All Failed processes all failed pages
+- [ ] Issue-level ocr_status updates correctly
+- [ ] Azure key never exposed to client
+- [ ] Old Employment News system unaffected
 

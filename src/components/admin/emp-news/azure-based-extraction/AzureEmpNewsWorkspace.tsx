@@ -85,7 +85,7 @@ export function AzureEmpNewsWorkspace() {
         </TabsContent>
 
         <TabsContent value="publish">
-          <PlaceholderTab title="Publish Log" description="Publish history and status logs will appear here. Build in Prompt 4." />
+          <PublishLogTab />
         </TabsContent>
       </Tabs>
     </div>

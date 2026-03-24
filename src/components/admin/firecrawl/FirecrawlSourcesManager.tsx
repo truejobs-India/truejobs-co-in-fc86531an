@@ -458,14 +458,24 @@ export function FirecrawlSourcesManager() {
         </CardTitle>
         <div className="flex items-center gap-2">
           {!runAllActive ? (
-            <Button
-              variant="default" size="sm"
-              onClick={runAllSources}
-              disabled={loading || sources.filter(s => s.is_enabled).length === 0}
-            >
-              <PlayCircle className="h-3.5 w-3.5 mr-1.5" />
-              Run All Sources
-            </Button>
+            <>
+              <Button
+                variant="default" size="sm"
+                onClick={runAllSources}
+                disabled={loading || sources.filter(s => s.is_enabled).length === 0}
+              >
+                <PlayCircle className="h-3.5 w-3.5 mr-1.5" />
+                Run All Discovery
+              </Button>
+              <Button
+                variant="secondary" size="sm"
+                onClick={runScrapeExtractAll}
+                disabled={loading || sources.filter(s => s.is_enabled).length === 0}
+              >
+                <Download className="h-3.5 w-3.5 mr-1.5" />
+                Scrape &amp; Extract All
+              </Button>
+            </>
           ) : (
             <Button variant="destructive" size="sm" onClick={stopRunAll}>
               <Square className="h-3.5 w-3.5 mr-1.5" />

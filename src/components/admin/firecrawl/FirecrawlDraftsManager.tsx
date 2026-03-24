@@ -161,6 +161,7 @@ export function FirecrawlDraftsManager() {
   const [busyRows, setBusyRows] = useState<Record<string, string>>({});
   const [activeFilter, setActiveFilter] = useState<FilterTab>('all');
   const [dedupRunning, setDedupRunning] = useState(false);
+  const [purging, setPurging] = useState(false);
   const [selectedModel, setSelectedModel] = useState(() =>
     getLastUsedModel('text', 'gemini-flash', [...SEO_FIX_MODEL_VALUES]),
   );

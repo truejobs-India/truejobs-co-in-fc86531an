@@ -572,7 +572,6 @@ export function FirecrawlDraftsManager() {
                   Bulk Run All{eligibleCount > 0 ? ` (${eligibleCount})` : ''}
                 </Button>
               )}
-              </Button>
               {bulkImageRunning ? (
                 <Button
                   variant="destructive" size="sm"

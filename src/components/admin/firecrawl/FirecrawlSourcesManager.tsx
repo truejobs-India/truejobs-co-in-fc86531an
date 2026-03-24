@@ -68,6 +68,8 @@ interface SourceRunResult {
   status: 'success' | 'error' | 'skipped';
   staged: number;
   rejected: number;
+  scraped?: number;
+  extracted?: number;
   durationMs: number;
   error?: string;
 }
@@ -77,6 +79,7 @@ interface BatchReport {
   totalDurationMs: number;
   startedAt: string;
   completedAt: string;
+  type?: 'discovery' | 'scrape-extract';
 }
 
 export function FirecrawlSourcesManager() {

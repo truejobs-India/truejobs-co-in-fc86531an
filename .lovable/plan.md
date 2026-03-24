@@ -1,122 +1,87 @@
 
 
-# Updated Plan: Bulk Run All + AI Step Indicators
+## Plan: Azure Based Extraction — Prompt 1 of 4
 
-## Files to Edit
+### What this builds
+A completely separate "Azure Based Extraction" workspace inside the existing "Emp News" admin tab. It adds issue creation and serial-numbered image upload capabilities, with placeholder tabs for future OCR/reconstruction/publishing stages.
 
-| File | Changes |
-|------|---------|
-| `src/components/admin/firecrawl/FirecrawlDraftsManager.tsx` | Add bulk run button, progress UI, cancel support. Replace AI step dots with labeled badges using enrichment log data. Fetch `ai_enrichment_log` in query. |
-| `supabase/functions/firecrawl-ai-enrich/index.ts` | In `handleAiRunAll`, persist failed/skipped step entries into `ai_enrichment_log` so failures are visible after the fact. |
+### Insertion strategy
+The existing `EmploymentNewsManager.tsx` component will get a **minimal** change: a toggle at the top to switch between "Classic Pipeline" (existing UI, unchanged) and "Azure Based Extraction" (new component). This is the only modification to any existing file besides `AdminDashboard.tsx` (no change needed there — it already renders `EmploymentNewsManager` under the emp-news tab).
 
----
-
-## A. Bulk Run All — Default Eligibility
-
-**Default rule (draft rows only):**
-- `status === 'draft'` — reviewed, approved, rejected rows are **excluded**
-- `dedup_status !== 'duplicate'`
-- Not currently in `busyRows`
-
-**Scope:** operates on the currently loaded/filtered list only. If the "Draft" filter tab is active, only those rows. If "All" is active, still only rows matching the eligibility rules above (i.e. draft-status rows within the visible set).
-
-Reviewed rows are **not** included by default.
-
-**UI:**
-- Button in header: "⚡ Bulk Run All" (disabled when already running or no eligible rows)
-- `window.confirm` with eligible count before starting
-- Progress bar below filter tabs: "Processing 3/12 — Title..." with succeeded/failed/skipped counts
-- Cancel button (stops after current row finishes)
-- Persistent dismissible summary card at end showing succeeded/failed/skipped with failed row titles and errors
-- Auto-refreshes draft list on completion
-
-**Sequential execution:** Client-side `for` loop over eligible rows, calling existing `runAiAction(id, 'ai-run-all')` one at a time. Uses a `useRef` cancel flag checked between iterations.
-
----
-
-## B. AI Step Indicators — State Determination
-
-### Data source
-Add `ai_enrichment_log` to the select query. This is a JSON array where each entry has `{ action, at, ...details }`.
-
-### Backend change (edge function)
-In `handleAiRunAll`, after processing all steps, persist failed step entries into `ai_enrichment_log`:
-
-```typescript
-// After the loop, write failure entries for steps that failed
-const draft = await fetchDraft(draftId, client);
-let log = draft.ai_enrichment_log || [];
-for (const r of results) {
-  if (!r.success) {
-    log = [...log, { action: r.step, at: new Date().toISOString(), status: 'failed', error: r.error }];
-  }
-}
-if (results.some(r => !r.success)) {
-  await client.from('firecrawl_draft_jobs').update({ ai_enrichment_log: log }).eq('id', draftId);
-}
-```
-
-Also add a `status: 'success'` field to existing `appendLog` calls so successful entries are explicitly tagged (backward compatible — existing entries without `status` are treated as success since they only get written on success).
-
-### Step-to-field mapping
-
-| Step | Timestamp field | Log action name |
-|------|----------------|-----------------|
-| Clean | `ai_clean_at` | `ai-clean` |
-| Enrich | `ai_enrich_at` | `ai-enrich` |
-| Links | `ai_links_at` | `ai-find-links` |
-| Fix | `ai_fix_missing_at` | `ai-fix-missing` |
-| SEO | `ai_seo_at` | `ai-seo` |
-| Prompt | `ai_cover_prompt_at` | `ai-cover-prompt` |
-| Image | `ai_cover_image_at` | `ai-cover-image` |
-
-### State determination logic (per step)
-
-```
-function getStepState(draft, stepAction, timestampField, busyAction):
-  if busyRows[draft.id] matches this step → "running"
-  if draft[timestampField] is not null → "completed"
-  
-  // Check enrichment log for last entry matching this action
-  lastEntry = last item in ai_enrichment_log where action === stepAction
-  if lastEntry exists:
-    if lastEntry.status === 'failed' → "failed" (tooltip: lastEntry.error)
-    if lastEntry.status === 'skipped' → "skipped"
-    // entry exists without explicit status = legacy success but timestamp missing
-    // (e.g. after rollback) → "pending"
-  
-  → "pending" (never attempted)
-```
-
-| State | How determined | Badge |
-|-------|---------------|-------|
-| **Pending** | No timestamp, no log entry (or rolled back) | Gray outline: `○ Clean` |
-| **Running** | `busyRows[id]` matches step or is `ai-run-all` and step is current | Blue spinning: `⟳ Clean` |
-| **Completed** | `ai_*_at` timestamp exists | Green: `✓ Clean` |
-| **Failed** | No timestamp + last log entry has `status: 'failed'` | Red: `✗ Clean` (tooltip shows error) |
-| **Skipped** | No timestamp + last log entry has `status: 'skipped'` | Yellow/amber: `⊘ Clean` |
-
-### Visual design
-Replace the 7 tiny identical dots with a row of compact labeled mini-badges:
+### Architecture overview
 
 ```text
-✓Clean  ✓Enrich  ✗Links  ○Fix  ○SEO  ○Prompt  ○Image
+EmploymentNewsManager.tsx (minimal edit — add sub-view toggle)
+  ├── [Classic Pipeline] → existing code, untouched
+  └── [Azure Based Extraction] → new AzureEmpNewsWorkspace component
+        ├── Issues tab (functional)
+        ├── Upload tab (functional)
+        ├── OCR Queue tab (placeholder)
+        ├── Reconstructed Notices tab (placeholder)
+        ├── Draft Jobs tab (placeholder)
+        └── Publish Log tab (placeholder)
 ```
 
-Each badge is a small `<Badge>` with:
-- Icon (CheckCircle / Loader2 spinning / Circle / XCircle / Ban)
-- Short label (Clean, Enrich, Links, Fix, SEO, Prompt, Image)
-- Color coding: green/blue/gray/red/amber
-- Tooltip with timestamp (if completed) or error message (if failed)
+### Files to create
 
----
+| File | Purpose |
+|------|---------|
+| `src/types/azureEmpNews.ts` | TypeScript types for all 6 tables |
+| `src/components/admin/emp-news/azure-based-extraction/AzureEmpNewsWorkspace.tsx` | Main workspace with 6 tabs |
+| `src/components/admin/emp-news/azure-based-extraction/IssuesTab.tsx` | Create/list/delete issues |
+| `src/components/admin/emp-news/azure-based-extraction/UploadTab.tsx` | Image upload with filename validation, page-number detection, duplicate rejection, gap warnings, progress display |
+| `src/components/admin/emp-news/azure-based-extraction/PlaceholderTab.tsx` | Reusable empty-state placeholder for OCR/Reconstructed/Draft/Publish tabs |
 
-## C. Safeguards Preserved
+### Files to modify (minimal)
 
-- All server-side guards (`checkStatusGuard`, `getProtectedFields`, `admin_edited_fields`) untouched
-- No auto-publish — `ai-run-all` never touches `jobs` table
-- Reviewed/approved/rejected rows excluded from bulk by default
-- Dedup logic intact — duplicate rows excluded
-- Sequential processing prevents rate-limit issues
-- Existing row-level AI actions and dropdown menu unchanged
+| File | Change |
+|------|--------|
+| `src/components/admin/EmploymentNewsManager.tsx` | Add ~15 lines at top of render: two buttons to toggle between "Classic Pipeline" and "Azure Based Extraction", conditionally render new workspace component |
+
+### Database migration
+
+**6 tables** with `azure_emp_news_` prefix, matching the schema exactly as specified. All use validation triggers (not CHECK constraints) per guidelines. Indexes on `issue_id`, `page_no`, `ocr_status`, `publish_status`, `created_at`. Foreign keys with `ON DELETE CASCADE` from pages/fragments/notices/drafts/logs → issues. RLS enabled with admin-only policies using `has_role()`.
+
+### Storage strategy
+
+- **Bucket**: `employment-news-azure` (public, for admin image viewing)
+- **Path pattern**: `{issue_id}/pages/001.jpg`, `{issue_id}/pages/002.jpg`, etc.
+- **Completely separate** from existing blog-assets or any old emp news storage
+- Created via SQL migration: `INSERT INTO storage.buckets`
+- RLS policies: authenticated users with admin role can upload/read/delete
+
+### Upload flow logic
+
+1. User selects an issue from dropdown (or creates one first in Issues tab)
+2. Multi-file upload accepts images (jpg, jpeg, png, webp)
+3. Each filename is validated against pattern `/^\d{3}\.(jpg|jpeg|png|webp)$/i`
+4. Page number extracted from filename (e.g., `003.jpg` → page 3)
+5. Duplicates checked against existing `azure_emp_news_pages` for that issue
+6. Missing page gaps detected and warned (e.g., "Pages 4, 7 missing between 1-10")
+7. Files uploaded to `employment-news-azure/{issue_id}/pages/{page_no padded}.{ext}`
+8. Records inserted into `azure_emp_news_pages`
+9. `azure_emp_news_issues.uploaded_pages` and `total_pages` updated
+10. "Start Azure Extraction" button shown but disabled/non-functional (placeholder)
+
+### Test checklist
+
+- [ ] Old Emp News "Classic Pipeline" still works identically
+- [ ] Toggle between Classic and Azure views works
+- [ ] Create a new issue with name and optional date
+- [ ] Upload files with valid names (001.jpg, 002.jpg) — records created
+- [ ] Upload file with invalid name (page1.jpg) — rejected with error
+- [ ] Upload duplicate page number — rejected with warning
+- [ ] Missing page gaps shown as warning
+- [ ] Page list displays correctly after upload
+- [ ] "Start Azure Extraction" button visible but non-functional
+- [ ] Placeholder tabs show empty states
+- [ ] Delete an issue removes all its pages and storage files
+
+### Assumptions
+
+- The storage bucket `employment-news-azure` is created as **public** so admin can view uploaded images directly via URL
+- RLS on all tables is admin-only (using existing `has_role` function)
+- No edge functions needed in this prompt — all operations use direct Supabase client calls
+- `created_by` on issues stores `auth.uid()` of the admin who created it
+- The `azure_emp_news_fragments`, `azure_emp_news_reconstructed_notices`, `azure_emp_news_draft_jobs`, and `azure_emp_news_publish_logs` tables are created now but not used until future prompts
 

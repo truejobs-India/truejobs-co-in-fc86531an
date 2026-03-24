@@ -17,7 +17,7 @@ import {
   RefreshCw, Loader2, MoreHorizontal, Sparkles, Wrench, Link2,
   Search, Image, FileText, Zap, CheckCircle, XCircle,
   AlertTriangle, ExternalLink, Copy, ShieldCheck, ShieldAlert, Eye,
-  ThumbsUp, Undo2, CircleDot, Circle, Ban, X,
+  ThumbsUp, Undo2, CircleDot, Circle, Ban, X, Trash2,
 } from 'lucide-react';
 import { FirecrawlSourcesManager } from './FirecrawlSourcesManager';
 import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSelector';
@@ -161,6 +161,7 @@ export function FirecrawlDraftsManager() {
   const [busyRows, setBusyRows] = useState<Record<string, string>>({});
   const [activeFilter, setActiveFilter] = useState<FilterTab>('all');
   const [dedupRunning, setDedupRunning] = useState(false);
+  const [purging, setPurging] = useState(false);
   const [selectedModel, setSelectedModel] = useState(() =>
     getLastUsedModel('text', 'gemini-flash', [...SEO_FIX_MODEL_VALUES]),
   );
@@ -327,6 +328,26 @@ export function FirecrawlDraftsManager() {
       toast({ title: 'Dedup failed', description: e.message, variant: 'destructive' });
     } finally {
       setDedupRunning(false);
+    }
+  };
+
+  const runPurgeHighDuplicates = async () => {
+    setPurging(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('firecrawl-ingest', {
+        body: { action: 'purge-high-duplicates' },
+      });
+      if (error) throw new Error(error.message);
+      if (data?.error) throw new Error(data.error);
+      toast({
+        title: 'Purge complete',
+        description: data.message || `Deleted ${data.deleted || 0} high-confidence duplicate(s).`,
+      });
+      await fetchDrafts();
+    } catch (e: any) {
+      toast({ title: 'Purge failed', description: e.message, variant: 'destructive' });
+    } finally {
+      setPurging(false);
     }
   };
 
@@ -689,6 +710,14 @@ export function FirecrawlDraftsManager() {
               >
                 {dedupRunning ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <ShieldAlert className="h-3.5 w-3.5 mr-1.5" />}
                 Dedup
+              </Button>
+              <Button
+                variant="destructive" size="sm"
+                onClick={runPurgeHighDuplicates} disabled={purging || dedupRunning}
+                title="Delete all high-confidence (≥5 score) duplicate rows, keeping the earliest instance"
+              >
+                {purging ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Trash2 className="h-3.5 w-3.5 mr-1.5" />}
+                Purge Duplicates
               </Button>
               <Button variant="outline" size="sm" onClick={fetchDrafts} disabled={loading}>
                 <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} />

@@ -652,6 +652,7 @@ export function FirecrawlDraftsManager() {
                 <span>⏭ {bulkImageProgress.skipped}</span>
               </div>
             </div>
+          )}
 
           {/* Bulk results summary */}
           {bulkResults && !bulkRunning && (

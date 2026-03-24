@@ -939,8 +939,9 @@ async function handleAiRunAll(draftId: string, client: any, apiKey: string, aiMo
     }
   }
 
-  // Recalculate fields_extracted and fields_missing after all steps
-  const fieldCounts = await recalculateFieldCounts(draftId, client);
+  // Recalculate fields — skip if draft was deleted mid-run
+  let fieldCounts = { fields_extracted: 0, fields_missing: [] as string[] };
+  try { fieldCounts = await recalculateFieldCounts(draftId, client); } catch { /* draft gone */ }
 
   const successCount = results.filter(r => r.success).length;
   return json({

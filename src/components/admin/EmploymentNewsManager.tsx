@@ -779,6 +779,28 @@ export function EmploymentNewsManager() {
   // ───── RENDER ─────
   return (
     <div className="space-y-6">
+      {/* Workspace switcher */}
+      <div className="flex items-center gap-2 border-b pb-3">
+        <Button
+          variant={workspace === 'classic' ? 'default' : 'outline'}
+          onClick={() => setWorkspace('classic')}
+          size="sm"
+        >
+          Classic Pipeline
+        </Button>
+        <Button
+          variant={workspace === 'azure' ? 'default' : 'outline'}
+          onClick={() => setWorkspace('azure')}
+          size="sm"
+        >
+          Azure Based Extraction
+        </Button>
+      </div>
+
+      {workspace === 'azure' ? (
+        <AzureEmpNewsWorkspace />
+      ) : (
+      <>
       {/* Tab switcher */}
       <div className="flex items-center gap-2">
         <Button

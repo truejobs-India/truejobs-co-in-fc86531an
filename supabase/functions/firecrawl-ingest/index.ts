@@ -1041,6 +1041,96 @@ async function handleDedupDrafts(
   });
 }
 
+// ============ purge-high-duplicates ============
+// Re-runs the dedup scoring on ALL draft/reviewed rows, groups them by match,
+// keeps the earliest row, and hard-deletes only high-confidence (≥5 score) duplicates.
+
+async function handlePurgeHighDuplicates(
+  body: Record<string, unknown>,
+  client: ReturnType<typeof createClient>
+) {
+  console.log('[firecrawl-ingest] purge-high-duplicates: starting');
+
+  // 1. Fetch all firecrawl draft candidates (draft + reviewed)
+  const { data: allDrafts, error } = await client
+    .from('firecrawl_draft_jobs')
+    .select('id, normalized_title, organization_name, official_notification_url, official_apply_url, last_date_of_application, total_vacancies, created_at')
+    .in('status', ['draft', 'reviewed'])
+    .order('created_at', { ascending: true });
+
+  if (error) return jsonResponse({ error: error.message }, 500);
+  if (!allDrafts || allDrafts.length === 0) {
+    return jsonResponse({ success: true, checked: 0, deleted: 0, message: 'No drafts to check' });
+  }
+
+  const candidates: DedupCandidate[] = allDrafts.map((d: any) => ({
+    id: d.id,
+    normalized_title: d.normalized_title,
+    organization_name: d.organization_name,
+    official_notification_url: d.official_notification_url,
+    official_apply_url: d.official_apply_url,
+    last_date_of_application: d.last_date_of_application,
+    total_vacancies: d.total_vacancies,
+  }));
+
+  // 2. For each draft, check against all others and track high-confidence matches
+  const idsToDelete = new Set<string>();
+  const idsToKeep = new Set<string>();
+
+  for (const draft of allDrafts) {
+    if (idsToDelete.has(draft.id)) continue; // already marked for deletion
+
+    const target: DedupCandidate = {
+      id: draft.id,
+      normalized_title: (draft as any).normalized_title,
+      organization_name: (draft as any).organization_name,
+      official_notification_url: (draft as any).official_notification_url,
+      official_apply_url: (draft as any).official_apply_url,
+      last_date_of_application: (draft as any).last_date_of_application,
+      total_vacancies: (draft as any).total_vacancies,
+    };
+
+    const result = checkDuplicate(target, candidates);
+
+    if (result.isDuplicate && result.confidence === 'high') {
+      // Keep the current (earliest due to ordering) and delete its matches
+      idsToKeep.add(draft.id);
+      for (const matchId of result.matchedIds) {
+        // Only delete firecrawl drafts, not cross-source refs
+        if (!matchId.startsWith('rss:') && !matchId.startsWith('en:') && !idsToKeep.has(matchId)) {
+          idsToDelete.add(matchId);
+        }
+      }
+    }
+  }
+
+  // 3. Hard-delete the duplicates
+  let deleted = 0;
+  if (idsToDelete.size > 0) {
+    const deleteArr = Array.from(idsToDelete);
+    // Delete in batches of 50
+    for (let i = 0; i < deleteArr.length; i += 50) {
+      const batch = deleteArr.slice(i, i + 50);
+      const { error: delErr } = await client
+        .from('firecrawl_draft_jobs')
+        .delete()
+        .in('id', batch);
+      if (!delErr) deleted += batch.length;
+      else console.error('[purge-high-duplicates] delete error:', delErr.message);
+    }
+  }
+
+  console.log(`[purge-high-duplicates] checked=${allDrafts.length}, deleted=${deleted}, kept=${idsToKeep.size}`);
+
+  return jsonResponse({
+    success: true,
+    checked: allDrafts.length,
+    deleted,
+    kept: idsToKeep.size,
+    message: `Purged ${deleted} high-confidence duplicate(s), kept ${idsToKeep.size} original(s).`,
+  });
+}
+
 // ============ validate-for-approval (PUBLISH GATING) ============
 
 async function handleValidateForApproval(

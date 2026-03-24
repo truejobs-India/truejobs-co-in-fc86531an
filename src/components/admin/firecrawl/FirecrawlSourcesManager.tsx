@@ -319,6 +319,108 @@ export function FirecrawlSourcesManager() {
     toast({ title: 'Stopping...', description: 'Will stop after current source finishes.' });
   };
 
+  // ── Scrape & Extract All Sources Sequentially ──
+  const runScrapeExtractAll = async () => {
+    const enabledSources = sources.filter(s => s.is_enabled);
+    if (enabledSources.length === 0) {
+      toast({ title: 'No enabled sources', description: 'Enable at least one source first.', variant: 'destructive' });
+      return;
+    }
+
+    stopRequestedRef.current = false;
+    setRunAllActive(true);
+    setBatchReport(null);
+    setRunAllProgress({ current: 0, total: enabledSources.length });
+
+    const results: SourceRunResult[] = [];
+    const batchStart = Date.now();
+    const startedAt = new Date().toISOString();
+
+    for (let i = 0; i < enabledSources.length; i++) {
+      if (stopRequestedRef.current) {
+        for (let j = i; j < enabledSources.length; j++) {
+          results.push({
+            sourceId: enabledSources[j].id, sourceName: enabledSources[j].source_name,
+            status: 'skipped', staged: 0, rejected: 0, scraped: 0, extracted: 0,
+            durationMs: 0, error: 'Stopped by admin',
+          });
+        }
+        break;
+      }
+
+      const source = enabledSources[i];
+      setRunAllCurrentSource(source.id);
+      setRunAllProgress({ current: i + 1, total: enabledSources.length });
+
+      const sourceStart = Date.now();
+      let scrapedCount = 0;
+      let extractedCount = 0;
+
+      try {
+        // Step 1: Scrape Pending
+        setBusySources(prev => ({ ...prev, [source.id]: 'scraping' }));
+        const { data: scrapeData, error: scrapeError } = await supabase.functions.invoke('firecrawl-ingest', {
+          body: { action: 'scrape-pending', source_id: source.id, max_items: 20 },
+        });
+        if (scrapeError) throw new Error(`Scrape: ${scrapeError.message}`);
+        if (scrapeData?.error) throw new Error(`Scrape: ${scrapeData.error}`);
+        scrapedCount = scrapeData?.scraped || 0;
+
+        if (stopRequestedRef.current) throw new Error('Stopped by admin');
+
+        // Step 2: Extract Pending
+        setBusySources(prev => ({ ...prev, [source.id]: 'extracting' }));
+        const { data: extractData, error: extractError } = await supabase.functions.invoke('firecrawl-ingest', {
+          body: { action: 'extract-batch', source_id: source.id, max_items: 10 },
+        });
+        if (extractError) throw new Error(`Extract: ${extractError.message}`);
+        if (extractData?.error) throw new Error(`Extract: ${extractData.error}`);
+        extractedCount = extractData?.extracted || 0;
+
+        results.push({
+          sourceId: source.id, sourceName: source.source_name, status: 'success',
+          staged: 0, rejected: 0, scraped: scrapedCount, extracted: extractedCount,
+          durationMs: Date.now() - sourceStart,
+        });
+      } catch (e: any) {
+        const wasStopped = e.message?.includes('Stopped by admin');
+        results.push({
+          sourceId: source.id, sourceName: source.source_name,
+          status: wasStopped ? 'skipped' : 'error',
+          staged: 0, rejected: 0, scraped: scrapedCount, extracted: extractedCount,
+          durationMs: Date.now() - sourceStart, error: e.message,
+        });
+        if (wasStopped) {
+          // Add remaining as skipped
+          for (let j = i + 1; j < enabledSources.length; j++) {
+            results.push({
+              sourceId: enabledSources[j].id, sourceName: enabledSources[j].source_name,
+              status: 'skipped', staged: 0, rejected: 0, scraped: 0, extracted: 0,
+              durationMs: 0, error: 'Stopped by admin',
+            });
+          }
+          break;
+        }
+      } finally {
+        setBusySources(prev => { const n = { ...prev }; delete n[source.id]; return n; });
+      }
+    }
+
+    const completedAt = new Date().toISOString();
+    setBatchReport({ results, totalDurationMs: Date.now() - batchStart, startedAt, completedAt, type: 'scrape-extract' });
+    setRunAllActive(false);
+    setRunAllCurrentSource(null);
+    setRunAllProgress({ current: 0, total: 0 });
+    await fetchSources();
+
+    const successCount = results.filter(r => r.status === 'success').length;
+    const errorCount = results.filter(r => r.status === 'error').length;
+    toast({
+      title: 'Scrape & Extract All complete',
+      description: `${successCount} succeeded, ${errorCount} failed, ${results.filter(r => r.status === 'skipped').length} skipped`,
+    });
+  };
+
   const priorityColor = (p: string) => {
     switch (p) {
       case 'High': return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';

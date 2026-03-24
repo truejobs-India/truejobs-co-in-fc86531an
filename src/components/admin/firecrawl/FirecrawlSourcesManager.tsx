@@ -68,6 +68,8 @@ interface SourceRunResult {
   status: 'success' | 'error' | 'skipped';
   staged: number;
   rejected: number;
+  scraped?: number;
+  extracted?: number;
   durationMs: number;
   error?: string;
 }
@@ -77,6 +79,7 @@ interface BatchReport {
   totalDurationMs: number;
   startedAt: string;
   completedAt: string;
+  type?: 'discovery' | 'scrape-extract';
 }
 
 export function FirecrawlSourcesManager() {
@@ -297,7 +300,7 @@ export function FirecrawlSourcesManager() {
     }
 
     const completedAt = new Date().toISOString();
-    setBatchReport({ results, totalDurationMs: Date.now() - batchStart, startedAt, completedAt });
+    setBatchReport({ results, totalDurationMs: Date.now() - batchStart, startedAt, completedAt, type: 'discovery' });
     setRunAllActive(false);
     setRunAllCurrentSource(null);
     setRunAllProgress({ current: 0, total: 0 });
@@ -314,6 +317,108 @@ export function FirecrawlSourcesManager() {
   const stopRunAll = () => {
     stopRequestedRef.current = true;
     toast({ title: 'Stopping...', description: 'Will stop after current source finishes.' });
+  };
+
+  // ── Scrape & Extract All Sources Sequentially ──
+  const runScrapeExtractAll = async () => {
+    const enabledSources = sources.filter(s => s.is_enabled);
+    if (enabledSources.length === 0) {
+      toast({ title: 'No enabled sources', description: 'Enable at least one source first.', variant: 'destructive' });
+      return;
+    }
+
+    stopRequestedRef.current = false;
+    setRunAllActive(true);
+    setBatchReport(null);
+    setRunAllProgress({ current: 0, total: enabledSources.length });
+
+    const results: SourceRunResult[] = [];
+    const batchStart = Date.now();
+    const startedAt = new Date().toISOString();
+
+    for (let i = 0; i < enabledSources.length; i++) {
+      if (stopRequestedRef.current) {
+        for (let j = i; j < enabledSources.length; j++) {
+          results.push({
+            sourceId: enabledSources[j].id, sourceName: enabledSources[j].source_name,
+            status: 'skipped', staged: 0, rejected: 0, scraped: 0, extracted: 0,
+            durationMs: 0, error: 'Stopped by admin',
+          });
+        }
+        break;
+      }
+
+      const source = enabledSources[i];
+      setRunAllCurrentSource(source.id);
+      setRunAllProgress({ current: i + 1, total: enabledSources.length });
+
+      const sourceStart = Date.now();
+      let scrapedCount = 0;
+      let extractedCount = 0;
+
+      try {
+        // Step 1: Scrape Pending
+        setBusySources(prev => ({ ...prev, [source.id]: 'scraping' }));
+        const { data: scrapeData, error: scrapeError } = await supabase.functions.invoke('firecrawl-ingest', {
+          body: { action: 'scrape-pending', source_id: source.id, max_items: 20 },
+        });
+        if (scrapeError) throw new Error(`Scrape: ${scrapeError.message}`);
+        if (scrapeData?.error) throw new Error(`Scrape: ${scrapeData.error}`);
+        scrapedCount = scrapeData?.scraped || 0;
+
+        if (stopRequestedRef.current) throw new Error('Stopped by admin');
+
+        // Step 2: Extract Pending
+        setBusySources(prev => ({ ...prev, [source.id]: 'extracting' }));
+        const { data: extractData, error: extractError } = await supabase.functions.invoke('firecrawl-ingest', {
+          body: { action: 'extract-batch', source_id: source.id, max_items: 10 },
+        });
+        if (extractError) throw new Error(`Extract: ${extractError.message}`);
+        if (extractData?.error) throw new Error(`Extract: ${extractData.error}`);
+        extractedCount = extractData?.extracted || 0;
+
+        results.push({
+          sourceId: source.id, sourceName: source.source_name, status: 'success',
+          staged: 0, rejected: 0, scraped: scrapedCount, extracted: extractedCount,
+          durationMs: Date.now() - sourceStart,
+        });
+      } catch (e: any) {
+        const wasStopped = e.message?.includes('Stopped by admin');
+        results.push({
+          sourceId: source.id, sourceName: source.source_name,
+          status: wasStopped ? 'skipped' : 'error',
+          staged: 0, rejected: 0, scraped: scrapedCount, extracted: extractedCount,
+          durationMs: Date.now() - sourceStart, error: e.message,
+        });
+        if (wasStopped) {
+          // Add remaining as skipped
+          for (let j = i + 1; j < enabledSources.length; j++) {
+            results.push({
+              sourceId: enabledSources[j].id, sourceName: enabledSources[j].source_name,
+              status: 'skipped', staged: 0, rejected: 0, scraped: 0, extracted: 0,
+              durationMs: 0, error: 'Stopped by admin',
+            });
+          }
+          break;
+        }
+      } finally {
+        setBusySources(prev => { const n = { ...prev }; delete n[source.id]; return n; });
+      }
+    }
+
+    const completedAt = new Date().toISOString();
+    setBatchReport({ results, totalDurationMs: Date.now() - batchStart, startedAt, completedAt, type: 'scrape-extract' });
+    setRunAllActive(false);
+    setRunAllCurrentSource(null);
+    setRunAllProgress({ current: 0, total: 0 });
+    await fetchSources();
+
+    const successCount = results.filter(r => r.status === 'success').length;
+    const errorCount = results.filter(r => r.status === 'error').length;
+    toast({
+      title: 'Scrape & Extract All complete',
+      description: `${successCount} succeeded, ${errorCount} failed, ${results.filter(r => r.status === 'skipped').length} skipped`,
+    });
   };
 
   const priorityColor = (p: string) => {
@@ -353,14 +458,24 @@ export function FirecrawlSourcesManager() {
         </CardTitle>
         <div className="flex items-center gap-2">
           {!runAllActive ? (
-            <Button
-              variant="default" size="sm"
-              onClick={runAllSources}
-              disabled={loading || sources.filter(s => s.is_enabled).length === 0}
-            >
-              <PlayCircle className="h-3.5 w-3.5 mr-1.5" />
-              Run All Sources
-            </Button>
+            <>
+              <Button
+                variant="default" size="sm"
+                onClick={runAllSources}
+                disabled={loading || sources.filter(s => s.is_enabled).length === 0}
+              >
+                <PlayCircle className="h-3.5 w-3.5 mr-1.5" />
+                Run All Discovery
+              </Button>
+              <Button
+                variant="secondary" size="sm"
+                onClick={runScrapeExtractAll}
+                disabled={loading || sources.filter(s => s.is_enabled).length === 0}
+              >
+                <Download className="h-3.5 w-3.5 mr-1.5" />
+                Scrape &amp; Extract All
+              </Button>
+            </>
           ) : (
             <Button variant="destructive" size="sm" onClick={stopRunAll}>
               <Square className="h-3.5 w-3.5 mr-1.5" />
@@ -415,16 +530,34 @@ export function FirecrawlSourcesManager() {
               {batchReport.results.some(r => r.status === 'skipped') && (
                 <Badge variant="secondary">{batchReport.results.filter(r => r.status === 'skipped').length} Skipped</Badge>
               )}
-              <Badge variant="outline">{batchReport.results.reduce((s, r) => s + r.staged, 0)} Total Staged</Badge>
-              <Badge variant="outline">{batchReport.results.reduce((s, r) => s + r.rejected, 0)} Total Rejected</Badge>
+              {batchReport.type === 'scrape-extract' ? (
+                <>
+                  <Badge variant="outline">{batchReport.results.reduce((s, r) => s + (r.scraped || 0), 0)} Total Scraped</Badge>
+                  <Badge variant="outline">{batchReport.results.reduce((s, r) => s + (r.extracted || 0), 0)} Total Extracted</Badge>
+                </>
+              ) : (
+                <>
+                  <Badge variant="outline">{batchReport.results.reduce((s, r) => s + r.staged, 0)} Total Staged</Badge>
+                  <Badge variant="outline">{batchReport.results.reduce((s, r) => s + r.rejected, 0)} Total Rejected</Badge>
+                </>
+              )}
             </div>
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead className="text-xs h-7">Source</TableHead>
                   <TableHead className="text-xs h-7">Status</TableHead>
-                  <TableHead className="text-xs h-7 text-right">Staged</TableHead>
-                  <TableHead className="text-xs h-7 text-right">Rejected</TableHead>
+                  {batchReport.type === 'scrape-extract' ? (
+                    <>
+                      <TableHead className="text-xs h-7 text-right">Scraped</TableHead>
+                      <TableHead className="text-xs h-7 text-right">Extracted</TableHead>
+                    </>
+                  ) : (
+                    <>
+                      <TableHead className="text-xs h-7 text-right">Staged</TableHead>
+                      <TableHead className="text-xs h-7 text-right">Rejected</TableHead>
+                    </>
+                  )}
                   <TableHead className="text-xs h-7 text-right">Duration</TableHead>
                   <TableHead className="text-xs h-7">Error</TableHead>
                 </TableRow>
@@ -438,8 +571,17 @@ export function FirecrawlSourcesManager() {
                       {r.status === 'error' && <XCircle className="h-3.5 w-3.5 text-destructive inline" />}
                       {r.status === 'skipped' && <span className="text-muted-foreground">Skipped</span>}
                     </TableCell>
-                    <TableCell className="text-xs py-1 text-right">{r.staged}</TableCell>
-                    <TableCell className="text-xs py-1 text-right">{r.rejected}</TableCell>
+                    {batchReport.type === 'scrape-extract' ? (
+                      <>
+                        <TableCell className="text-xs py-1 text-right">{r.scraped || 0}</TableCell>
+                        <TableCell className="text-xs py-1 text-right">{r.extracted || 0}</TableCell>
+                      </>
+                    ) : (
+                      <>
+                        <TableCell className="text-xs py-1 text-right">{r.staged}</TableCell>
+                        <TableCell className="text-xs py-1 text-right">{r.rejected}</TableCell>
+                      </>
+                    )}
                     <TableCell className="text-xs py-1 text-right">{formatDuration(r.durationMs)}</TableCell>
                     <TableCell className="text-xs py-1 text-destructive truncate max-w-[200px]">{r.error || '—'}</TableCell>
                   </TableRow>

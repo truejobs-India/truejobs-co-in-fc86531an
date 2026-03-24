@@ -526,68 +526,70 @@ export function FirecrawlDraftsManager() {
       <FirecrawlSourcesManager />
 
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between pb-3">
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Sparkles className="h-5 w-5" />
-            Firecrawl Draft Jobs
-          </CardTitle>
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1.5">
-              <span className="text-[10px] text-muted-foreground font-medium">Text:</span>
-              <AiModelSelector
-                value={selectedModel}
-                onValueChange={setSelectedModel}
-                capability="text"
-                size="sm"
-                allowedValues={[...SEO_FIX_MODEL_VALUES]}
-              />
+        <CardHeader className="pb-3">
+          <div className="flex flex-col gap-2">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Sparkles className="h-5 w-5" />
+              Firecrawl Draft Jobs
+            </CardTitle>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-muted-foreground font-medium">Text:</span>
+                <AiModelSelector
+                  value={selectedModel}
+                  onValueChange={setSelectedModel}
+                  capability="text"
+                  size="sm"
+                  allowedValues={[...SEO_FIX_MODEL_VALUES]}
+                />
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-muted-foreground font-medium">Image:</span>
+                <AiModelSelector
+                  value={selectedImageModel}
+                  onValueChange={setSelectedImageModel}
+                  capability="image"
+                  size="sm"
+                />
+              </div>
+              <Button
+                variant="default" size="sm"
+                onClick={runBulkAll}
+                disabled={bulkRunning || eligibleCount === 0 || loading}
+                title={`Run all AI steps on ${eligibleCount} eligible draft rows`}
+              >
+                {bulkRunning ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                ) : (
+                  <Zap className="h-3.5 w-3.5 mr-1.5" />
+                )}
+                Bulk Run All{eligibleCount > 0 ? ` (${eligibleCount})` : ''}
+              </Button>
+              <Button
+                variant="outline" size="sm"
+                onClick={runBulkImages}
+                disabled={bulkImageRunning || imageEligibleCount === 0 || loading}
+                title={`Generate cover images for ${imageEligibleCount} rows without images`}
+              >
+                {bulkImageRunning ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                ) : (
+                  <Image className="h-3.5 w-3.5 mr-1.5" />
+                )}
+                Bulk Images{imageEligibleCount > 0 ? ` (${imageEligibleCount})` : ''}
+              </Button>
+              <Button
+                variant="outline" size="sm"
+                onClick={runDedup} disabled={dedupRunning}
+              >
+                {dedupRunning ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <ShieldAlert className="h-3.5 w-3.5 mr-1.5" />}
+                Dedup
+              </Button>
+              <Button variant="outline" size="sm" onClick={fetchDrafts} disabled={loading}>
+                <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
+                Refresh
+              </Button>
             </div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-[10px] text-muted-foreground font-medium">Image:</span>
-              <AiModelSelector
-                value={selectedImageModel}
-                onValueChange={setSelectedImageModel}
-                capability="image"
-                size="sm"
-              />
-            </div>
-            <Button
-              variant="default" size="sm"
-              onClick={runBulkAll}
-              disabled={bulkRunning || eligibleCount === 0 || loading}
-              title={`Run all AI steps on ${eligibleCount} eligible draft rows`}
-            >
-              {bulkRunning ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
-              ) : (
-                <Zap className="h-3.5 w-3.5 mr-1.5" />
-              )}
-              Bulk Run All{eligibleCount > 0 ? ` (${eligibleCount})` : ''}
-            </Button>
-            <Button
-              variant="outline" size="sm"
-              onClick={runBulkImages}
-              disabled={bulkImageRunning || imageEligibleCount === 0 || loading}
-              title={`Generate cover images for ${imageEligibleCount} rows without images`}
-            >
-              {bulkImageRunning ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
-              ) : (
-                <Image className="h-3.5 w-3.5 mr-1.5" />
-              )}
-              Create Bulk Images{imageEligibleCount > 0 ? ` (${imageEligibleCount})` : ''}
-            </Button>
-            <Button
-              variant="outline" size="sm"
-              onClick={runDedup} disabled={dedupRunning}
-            >
-              {dedupRunning ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <ShieldAlert className="h-3.5 w-3.5 mr-1.5" />}
-              Run Dedup
-            </Button>
-            <Button variant="outline" size="sm" onClick={fetchDrafts} disabled={loading}>
-              <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
-              Refresh
-            </Button>
           </div>
         </CardHeader>
         <CardContent>

@@ -663,6 +663,26 @@ export function FirecrawlDraftsManager() {
                   Bulk Images{imageEligibleCount > 0 ? ` (${imageEligibleCount})` : ''}
                 </Button>
               )}
+              {bulkFixFieldsRunning ? (
+                <Button
+                  variant="destructive" size="sm"
+                  onClick={() => { bulkFixFieldsCancelRef.current = true; }}
+                  title="Stop bulk fix fields"
+                >
+                  <X className="h-3.5 w-3.5 mr-1.5" />
+                  Stop Fix Fields
+                </Button>
+              ) : (
+                <Button
+                  variant="outline" size="sm"
+                  onClick={runBulkFixFields}
+                  disabled={fixFieldsEligibleCount === 0 || loading}
+                  title={`Fix missing fields on ${fixFieldsEligibleCount} rows using AI`}
+                >
+                  <AlertTriangle className="h-3.5 w-3.5 mr-1.5" />
+                  Bulk Fix Fields{fixFieldsEligibleCount > 0 ? ` (${fixFieldsEligibleCount})` : ''}
+                </Button>
+              )}
               <Button
                 variant="outline" size="sm"
                 onClick={runDedup} disabled={dedupRunning}

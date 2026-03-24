@@ -7,8 +7,15 @@ import { Progress } from '@/components/ui/progress';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from '@/components/ui/use-toast';
-import { Play, RotateCcw, RefreshCw, Loader2 } from 'lucide-react';
+import { Play, RotateCcw, RefreshCw, Loader2, XCircle } from 'lucide-react';
 import type { AzureEmpNewsIssue, AzureEmpNewsPage } from '@/types/azureEmpNews';
+
+interface OcrProgress {
+  current: number;
+  total: number;
+  completed: number;
+  failed: number;
+}
 
 export function OcrQueueTab() {
   const [issues, setIssues] = useState<AzureEmpNewsIssue[]>([]);
@@ -16,7 +23,8 @@ export function OcrQueueTab() {
   const [pages, setPages] = useState<AzureEmpNewsPage[]>([]);
   const [loading, setLoading] = useState(false);
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [ocrProgress, setOcrProgress] = useState<OcrProgress | null>(null);
+  const cancelRef = useRef(false);
 
   const fetchIssues = useCallback(async () => {
     const { data } = await supabase
@@ -39,22 +47,48 @@ export function OcrQueueTab() {
   useEffect(() => { fetchIssues(); }, [fetchIssues]);
   useEffect(() => { fetchPages(); }, [fetchPages]);
 
-  // Auto-poll when processing
-  const selectedIssue = issues.find(i => i.id === selectedIssueId);
-  const isProcessing = selectedIssue?.ocr_status === 'processing';
+  // Process pages one-by-one via the existing process-page function
+  const processPageByPage = async (pageIds: string[], label: string) => {
+    cancelRef.current = false;
+    const progress: OcrProgress = { current: 0, total: pageIds.length, completed: 0, failed: 0 };
+    setOcrProgress({ ...progress });
 
-  useEffect(() => {
-    if (isProcessing) {
-      pollRef.current = setInterval(() => {
-        fetchPages();
-        fetchIssues();
-      }, 5000);
-    } else if (pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
+    for (let i = 0; i < pageIds.length; i++) {
+      if (cancelRef.current) {
+        toast({ title: `${label} Cancelled`, description: `Stopped after ${i} of ${pageIds.length} pages. Remaining pages stay pending.` });
+        break;
+      }
+
+      progress.current = i + 1;
+      setOcrProgress({ ...progress });
+
+      try {
+        const { data, error } = await supabase.functions.invoke('azure-emp-news-process-page', {
+          body: { page_id: pageIds[i] },
+        });
+        if (error) throw error;
+        if (data?.error) throw new Error(data.error);
+        progress.completed++;
+      } catch {
+        progress.failed++;
+      }
+
+      setOcrProgress({ ...progress });
+      // Refresh page list after each page to show live status
+      await fetchPages();
     }
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [isProcessing, fetchPages, fetchIssues]);
+
+    await fetchIssues();
+    setOcrProgress(null);
+    setActionInProgress(null);
+
+    if (!cancelRef.current) {
+      toast({
+        title: `${label} Complete`,
+        description: `Completed: ${progress.completed}, Failed: ${progress.failed}`,
+      });
+    }
+  };
 
   const handleStartOcr = async () => {
     if (!selectedIssueId) return;
@@ -64,12 +98,26 @@ export function OcrQueueTab() {
         body: { issue_id: selectedIssueId },
       });
       if (error) throw error;
-      toast({ title: 'OCR Started', description: `Processing ${data?.processed || 0} pages` });
-      await fetchPages();
-      await fetchIssues();
+      if (data?.error) throw new Error(data.error);
+
+      const pageIds: string[] = data?.page_ids || [];
+      if (pageIds.length === 0) {
+        toast({ title: 'No pending pages', description: data?.message || 'Nothing to process' });
+        setActionInProgress(null);
+        if (data?.stale_recovered > 0) {
+          toast({ title: 'Stale Recovery', description: `Reset ${data.stale_recovered} stuck pages to pending` });
+          await fetchPages();
+        }
+        return;
+      }
+
+      if (data?.stale_recovered > 0) {
+        toast({ title: 'Stale Recovery', description: `Reset ${data.stale_recovered} stuck pages to pending` });
+      }
+
+      await processPageByPage(pageIds, 'OCR');
     } catch (err: any) {
       toast({ title: 'Error', description: err.message || 'Failed to start OCR', variant: 'destructive' });
-    } finally {
       setActionInProgress(null);
     }
   };
@@ -99,14 +147,25 @@ export function OcrQueueTab() {
         body: { issue_id: selectedIssueId },
       });
       if (error) throw error;
-      toast({ title: 'Retry All', description: `Retrying ${data?.retried || 0} failed pages` });
-      await fetchPages();
-      await fetchIssues();
+      if (data?.error) throw new Error(data.error);
+
+      const pageIds: string[] = data?.page_ids || [];
+      if (pageIds.length === 0) {
+        toast({ title: 'No failed pages', description: 'Nothing to retry' });
+        setActionInProgress(null);
+        return;
+      }
+
+      await fetchPages(); // Refresh after reset
+      await processPageByPage(pageIds, 'Retry');
     } catch (err: any) {
       toast({ title: 'Error', description: err.message || 'Retry failed', variant: 'destructive' });
-    } finally {
       setActionInProgress(null);
     }
+  };
+
+  const handleCancel = () => {
+    cancelRef.current = true;
   };
 
   const pendingCount = pages.filter(p => p.ocr_status === 'pending').length;
@@ -115,6 +174,8 @@ export function OcrQueueTab() {
   const failedCount = pages.filter(p => p.ocr_status === 'failed').length;
   const totalCount = pages.length;
   const progressPct = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+
+  const isRunning = ocrProgress !== null;
 
   const statusBadge = (status: string) => {
     switch (status) {
@@ -141,7 +202,7 @@ export function OcrQueueTab() {
             ))}
           </SelectContent>
         </Select>
-        <Button size="sm" variant="outline" onClick={() => { fetchIssues(); fetchPages(); }}>
+        <Button size="sm" variant="outline" onClick={() => { fetchIssues(); fetchPages(); }} disabled={isRunning}>
           <RefreshCw className="h-3.5 w-3.5 mr-1" /> Refresh
         </Button>
       </div>
@@ -174,32 +235,52 @@ export function OcrQueueTab() {
                 </div>
               </div>
 
+              {/* Live progress during batch run */}
+              {ocrProgress && (
+                <div className="flex items-center gap-3 p-2 rounded bg-blue-50 dark:bg-blue-950 text-sm">
+                  <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+                  <span>
+                    Processing page {ocrProgress.current} of {ocrProgress.total}
+                    {' '}— ✓ {ocrProgress.completed} ✗ {ocrProgress.failed}
+                  </span>
+                </div>
+              )}
+
               <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  onClick={handleStartOcr}
-                  disabled={pendingCount === 0 || actionInProgress !== null}
-                >
-                  {actionInProgress === 'start' ? (
-                    <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
-                  ) : (
-                    <Play className="h-3.5 w-3.5 mr-1" />
-                  )}
-                  Start OCR ({pendingCount} pending)
-                </Button>
-                {failedCount > 0 && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={handleRetryAllFailed}
-                    disabled={actionInProgress !== null}
-                  >
-                    {actionInProgress === 'retry-all' ? (
-                      <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
-                    ) : (
-                      <RotateCcw className="h-3.5 w-3.5 mr-1" />
+                {!isRunning ? (
+                  <>
+                    <Button
+                      size="sm"
+                      onClick={handleStartOcr}
+                      disabled={pendingCount === 0 || actionInProgress !== null}
+                    >
+                      {actionInProgress === 'start' ? (
+                        <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                      ) : (
+                        <Play className="h-3.5 w-3.5 mr-1" />
+                      )}
+                      Start OCR ({pendingCount} pending)
+                    </Button>
+                    {failedCount > 0 && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={handleRetryAllFailed}
+                        disabled={actionInProgress !== null}
+                      >
+                        {actionInProgress === 'retry-all' ? (
+                          <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                        ) : (
+                          <RotateCcw className="h-3.5 w-3.5 mr-1" />
+                        )}
+                        Retry All Failed ({failedCount})
+                      </Button>
                     )}
-                    Retry All Failed ({failedCount})
+                  </>
+                ) : (
+                  <Button size="sm" variant="destructive" onClick={handleCancel}>
+                    <XCircle className="h-3.5 w-3.5 mr-1" />
+                    Cancel
                   </Button>
                 )}
               </div>
@@ -242,7 +323,7 @@ export function OcrQueueTab() {
                           {page.error_message || '—'}
                         </TableCell>
                         <TableCell>
-                          {page.ocr_status === 'failed' && (
+                          {page.ocr_status === 'failed' && !isRunning && (
                             <Button
                               size="sm"
                               variant="ghost"

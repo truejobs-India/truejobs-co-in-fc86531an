@@ -13,7 +13,15 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from '@/components/ui/use-toast';
 import { Sparkles, Eye, Loader2, Send, Pencil, CheckCircle2, Link2 } from 'lucide-react';
+import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSelector';
 import type { AzureEmpNewsIssue, AzureEmpNewsDraftJob } from '@/types/azureEmpNews';
+
+// Direct-API-only models — NO Lovable Gateway models
+const AZURE_EMP_NEWS_AI_MODELS = [
+  'vertex-flash', 'vertex-pro', 'vertex-3.1-pro', 'vertex-3-flash', 'vertex-3.1-flash-lite',
+  'nova-pro', 'nova-premier', 'mistral',
+  'sarvam-30b', 'sarvam-105b',
+] as const;
 
 const EDITABLE_FIELDS = [
   { key: 'employer_name', label: 'Employer Name' },
@@ -41,6 +49,9 @@ export function DraftJobsTab() {
   const [editFields, setEditFields] = useState<Record<string, string>>({});
   const [editSaving, setEditSaving] = useState(false);
   const [editTitleValue, setEditTitleValue] = useState('');
+  const [aiModel, setAiModel] = useState(() =>
+    getLastUsedModel('text', 'vertex-flash', AZURE_EMP_NEWS_AI_MODELS as unknown as readonly string[])
+  );
 
   const fetchIssues = useCallback(async () => {
     const { data } = await supabase
@@ -73,11 +84,11 @@ export function DraftJobsTab() {
     setGenerating(true);
     try {
       const { data, error } = await supabase.functions.invoke('azure-emp-news-ai-clean-drafts', {
-        body: { issue_id: selectedIssueId },
+        body: { issue_id: selectedIssueId, aiModel },
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
-      toast({ title: 'AI Drafts Generated', description: `Processed: ${data.processed}, Skipped: ${data.skipped}, Failed: ${data.failed}` });
+      toast({ title: 'AI Drafts Generated', description: `Model: ${aiModel} — Processed: ${data.processed}, Skipped: ${data.skipped}, Failed: ${data.failed}` });
       if (data.errors?.length) {
         toast({ title: 'Warnings', description: data.errors.join('\n'), variant: 'destructive' });
       }
@@ -226,6 +237,14 @@ export function DraftJobsTab() {
             ))}
           </SelectContent>
         </Select>
+
+        <AiModelSelector
+          value={aiModel}
+          onValueChange={setAiModel}
+          capability="text"
+          allowedValues={AZURE_EMP_NEWS_AI_MODELS as unknown as readonly string[]}
+          size="sm"
+        />
 
         <Button size="sm" onClick={handleGenerate} disabled={!canGenerate || generating}>
           {generating ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Sparkles className="h-4 w-4 mr-1" />}

@@ -6,6 +6,10 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+/**
+ * Thin orchestrator — resets failed pages to pending and returns their IDs.
+ * Does NOT process any pages. The frontend loops over azure-emp-news-process-page.
+ */
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -79,36 +83,26 @@ Deno.serve(async (req) => {
 
   if (!failedPages || failedPages.length === 0) {
     return new Response(
-      JSON.stringify({ message: "No failed pages to retry", retried: 0 }),
+      JSON.stringify({ message: "No failed pages to retry", page_ids: [] }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 
   // Reset all failed pages to pending
+  const failedIds = failedPages.map((p: any) => p.id);
   await serviceClient
     .from("azure_emp_news_pages")
     .update({ ocr_status: "pending", error_message: null })
-    .eq("issue_id", issue_id)
-    .eq("ocr_status", "failed");
+    .in("id", failedIds);
 
-  // Call start-ocr to process all pending pages (which now includes the reset ones)
-  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-  const startResp = await fetch(
-    `${supabaseUrl}/functions/v1/azure-emp-news-start-ocr`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: authHeader,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ issue_id }),
-    }
+  // Set issue status to processing
+  await serviceClient
+    .from("azure_emp_news_issues")
+    .update({ ocr_status: "processing" })
+    .eq("id", issue_id);
+
+  return new Response(
+    JSON.stringify({ page_ids: failedIds, retried: failedIds.length }),
+    { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
   );
-
-  const result = await startResp.json();
-
-  return new Response(JSON.stringify({ retried: failedPages.length, ...result }), {
-    status: startResp.status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
 });

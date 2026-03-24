@@ -332,6 +332,37 @@ interface AIRawResult {
   finishReason: string | null;
 }
 
+async function updateBatchProgress(
+  serviceClient: ReturnType<typeof createClient>,
+  batchId: string,
+  currentTotalChunks: number,
+  counts: { newCount?: number; updatedCount?: number } = {},
+) {
+  const { data: currentBatch } = await serviceClient
+    .from("upload_batches")
+    .select("total_extracted, new_count, updated_count, completed_chunks")
+    .eq("id", batchId)
+    .single();
+
+  const newCompletedChunks = (currentBatch?.completed_chunks || 0) + 1;
+  const isLastChunk = newCompletedChunks >= currentTotalChunks;
+
+  await serviceClient
+    .from("upload_batches")
+    .update({
+      total_extracted: (currentBatch?.total_extracted || 0) + (counts.newCount || 0) + (counts.updatedCount || 0),
+      new_count: (currentBatch?.new_count || 0) + (counts.newCount || 0),
+      updated_count: (currentBatch?.updated_count || 0) + (counts.updatedCount || 0),
+      completed_chunks: newCompletedChunks,
+      total_chunks: currentTotalChunks,
+      extraction_status: isLastChunk ? 'completed' : 'extracting',
+      status: isLastChunk ? 'completed' : 'processing',
+    })
+    .eq("id", batchId);
+
+  return { newCompletedChunks, isLastChunk };
+}
+
 async function callAI(
   resolved: ResolvedModel,
   systemPrompt: string,
@@ -644,6 +675,8 @@ Extract all job notifications from this text:`;
     const degraded = parseResult.parseMeta.retryTriggered || parseResult.parseMeta.repairAttempted || jobs.length === 0;
 
     if (jobs.length === 0) {
+      await updateBatchProgress(serviceClient, currentBatchId, currentTotalChunks);
+
       // No jobs but NOT a crash — return success with degraded flag
       return new Response(
         JSON.stringify({
@@ -749,27 +782,10 @@ Extract all job notifications from this text:`;
     }
 
     // ── Update batch counters ──
-    const { data: currentBatch } = await serviceClient
-      .from("upload_batches")
-      .select("total_extracted, new_count, updated_count, completed_chunks")
-      .eq("id", currentBatchId)
-      .single();
-
-    const newCompletedChunks = (currentBatch?.completed_chunks || 0) + 1;
-    const isLastChunk = newCompletedChunks >= currentTotalChunks;
-
-    await serviceClient
-      .from("upload_batches")
-      .update({
-        total_extracted: (currentBatch?.total_extracted || 0) + newCount + updatedCount,
-        new_count: (currentBatch?.new_count || 0) + newCount,
-        updated_count: (currentBatch?.updated_count || 0) + updatedCount,
-        completed_chunks: newCompletedChunks,
-        total_chunks: currentTotalChunks,
-        extraction_status: isLastChunk ? 'completed' : 'extracting',
-        status: isLastChunk ? "completed" : "processing",
-      })
-      .eq("id", currentBatchId);
+    await updateBatchProgress(serviceClient, currentBatchId, currentTotalChunks, {
+      newCount,
+      updatedCount,
+    });
 
     console.log(`[${requestId}] Done | chunk=${currentChunkIndex + 1}/${currentTotalChunks} | new=${newCount} updated=${updatedCount}`);
 

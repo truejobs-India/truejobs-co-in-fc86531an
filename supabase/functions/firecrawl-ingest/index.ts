@@ -64,6 +64,8 @@ Deno.serve(async (req) => {
         return await handleScrapePending(body, adminClient);
       case 'dedup-drafts':
         return await handleDedupDrafts(body, adminClient);
+      case 'purge-high-duplicates':
+        return await handlePurgeHighDuplicates(body, adminClient);
       case 'validate-for-approval':
         return await handleValidateForApproval(body, adminClient);
       default:

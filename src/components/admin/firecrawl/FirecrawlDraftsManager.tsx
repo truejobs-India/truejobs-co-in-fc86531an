@@ -761,6 +761,30 @@ export function FirecrawlDraftsManager() {
             </div>
           )}
 
+          {/* Bulk fix fields progress bar */}
+          {bulkFixFieldsRunning && bulkFixFieldsProgress && (
+            <div className="mb-3 p-3 rounded-lg border bg-muted/50 space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="font-medium">
+                  🔧 Fixing fields {bulkFixFieldsProgress.current}/{bulkFixFieldsProgress.total} — <span className="text-muted-foreground">{bulkFixFieldsProgress.currentTitle}</span>
+                </span>
+                <Button
+                  size="sm" variant="ghost"
+                  className="h-6 text-xs text-destructive hover:text-destructive"
+                  onClick={() => { bulkFixFieldsCancelRef.current = true; }}
+                >
+                  <X className="h-3 w-3 mr-1" /> Cancel
+                </Button>
+              </div>
+              <Progress value={(bulkFixFieldsProgress.current / bulkFixFieldsProgress.total) * 100} className="h-2" />
+              <div className="flex gap-3 text-xs text-muted-foreground">
+                <span className="text-green-600">✅ {bulkFixFieldsProgress.succeeded}</span>
+                <span className="text-red-600">❌ {bulkFixFieldsProgress.failed}</span>
+                <span>⏭ {bulkFixFieldsProgress.skipped}</span>
+              </div>
+            </div>
+          )}
+
           {/* Bulk results summary */}
           {bulkResults && !bulkRunning && (
             <div className="mb-3 p-3 rounded-lg border bg-muted/30 space-y-2">

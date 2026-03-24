@@ -552,19 +552,26 @@ export function FirecrawlDraftsManager() {
                   size="sm"
                 />
               </div>
-              <Button
-                variant="default" size="sm"
-                onClick={runBulkAll}
-                disabled={bulkRunning || eligibleCount === 0 || loading}
-                title={`Run all AI steps on ${eligibleCount} eligible draft rows`}
-              >
-                {bulkRunning ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
-                ) : (
+              {bulkRunning ? (
+                <Button
+                  variant="destructive" size="sm"
+                  onClick={() => { bulkCancelRef.current = true; }}
+                  title="Stop bulk Run All processing"
+                >
+                  <X className="h-3.5 w-3.5 mr-1.5" />
+                  Stop Run All
+                </Button>
+              ) : (
+                <Button
+                  variant="default" size="sm"
+                  onClick={runBulkAll}
+                  disabled={eligibleCount === 0 || loading}
+                  title={`Run all AI steps on ${eligibleCount} eligible draft rows`}
+                >
                   <Zap className="h-3.5 w-3.5 mr-1.5" />
-                )}
-                Bulk Run All{eligibleCount > 0 ? ` (${eligibleCount})` : ''}
-              </Button>
+                  Bulk Run All{eligibleCount > 0 ? ` (${eligibleCount})` : ''}
+                </Button>
+              )}
               {bulkImageRunning ? (
                 <Button
                   variant="destructive" size="sm"

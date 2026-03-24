@@ -269,8 +269,9 @@ async function fetchDraft(draftId: string, client: any) {
     .from('firecrawl_draft_jobs')
     .select('*')
     .eq('id', draftId)
-    .single();
-  if (error || !data) throw new Error('Draft not found');
+    .maybeSingle();
+  if (error) throw new Error(`Draft fetch error: ${error.message}`);
+  if (!data) throw new Error(`Draft not found (id: ${draftId}) — it may have been deleted`);
   return data;
 }
 

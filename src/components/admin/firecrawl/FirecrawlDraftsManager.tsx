@@ -566,6 +566,18 @@ export function FirecrawlDraftsManager() {
             </Button>
             <Button
               variant="outline" size="sm"
+              onClick={runBulkImages}
+              disabled={bulkImageRunning || imageEligibleCount === 0 || loading}
+              title={`Generate cover images for ${imageEligibleCount} rows without images`}
+            >
+              {bulkImageRunning ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+              ) : (
+                <Image className="h-3.5 w-3.5 mr-1.5" />
+              )}
+              Create Bulk Images{imageEligibleCount > 0 ? ` (${imageEligibleCount})` : ''}
+            <Button
+              variant="outline" size="sm"
               onClick={runDedup} disabled={dedupRunning}
             >
               {dedupRunning ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <ShieldAlert className="h-3.5 w-3.5 mr-1.5" />}

@@ -7,6 +7,7 @@ import { PlaceholderTab } from './PlaceholderTab';
 import { OcrQueueTab } from './OcrQueueTab';
 import { ReconstructedNoticesTab } from './ReconstructedNoticesTab';
 import { DraftJobsTab } from './DraftJobsTab';
+import { PublishLogTab } from './PublishLogTab';
 import type { AzureEmpNewsIssue } from '@/types/azureEmpNews';
 import { FileText, Upload, Cpu, Layers, Briefcase, ScrollText } from 'lucide-react';
 
@@ -84,7 +85,7 @@ export function AzureEmpNewsWorkspace() {
         </TabsContent>
 
         <TabsContent value="publish">
-          <PlaceholderTab title="Publish Log" description="Publish history and status logs will appear here. Build in Prompt 4." />
+          <PublishLogTab />
         </TabsContent>
       </Tabs>
     </div>

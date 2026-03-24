@@ -128,3 +128,6 @@ verify_jwt = false
 
 [functions.azure-emp-news-ai-clean-drafts]
 verify_jwt = false
+
+[functions.azure-emp-news-publish-drafts]
+verify_jwt = false

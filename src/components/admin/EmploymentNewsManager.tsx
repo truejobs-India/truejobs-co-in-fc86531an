@@ -341,6 +341,9 @@ export function EmploymentNewsManager() {
   const handleExtract = async () => {
     setIsExtracting(true);
     setExtractProgress({ current: 0, total: 0, newCount: 0, updatedCount: 0 });
+    let activeBatchId: string | null = null;
+    let completedChunksCount = 0;
+    let totalChunksCount = 0;
 
     try {
       const text = await extractText();
@@ -351,6 +354,7 @@ export function EmploymentNewsManager() {
       }
 
       const chunks = splitIntoChunks(text);
+      totalChunksCount = chunks.length;
       setExtractProgress(p => ({ ...p, total: chunks.length }));
 
       let batchId: string | null = null;
@@ -408,9 +412,11 @@ export function EmploymentNewsManager() {
 
         // Accumulate counts safely
         if (!batchId && data?.batchId) batchId = data.batchId;
+        if (batchId) activeBatchId = batchId;
         totalNew += data?.newCount ?? 0;
         totalUpdated += data?.updatedCount ?? 0;
         completedChunks++;
+        completedChunksCount = completedChunks;
         setExtractProgress(p => ({ ...p, newCount: totalNew, updatedCount: totalUpdated }));
 
         // Throttle between chunks
@@ -452,9 +458,14 @@ export function EmploymentNewsManager() {
       fetchJobs();
     } catch (err) {
       console.error('Extract error:', err);
+      if (activeBatchId) {
+        const fallbackStatus = completedChunksCount > 0 && completedChunksCount < totalChunksCount ? 'partial' : 'failed';
+        await supabase
+          .from('upload_batches')
+          .update({ extraction_status: fallbackStatus, status: fallbackStatus === 'partial' ? 'completed' : 'failed' })
+          .eq('id', activeBatchId);
+      }
       toast({ title: 'Extraction Failed', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
-      // Mark any in-progress batch as failed — but we don't have batchId in scope here
-      // The batch stays as 'extracting' but the UI will show it correctly
       fetchBatches();
     } finally {
       setIsExtracting(false);

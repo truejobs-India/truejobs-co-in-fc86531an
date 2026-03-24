@@ -448,6 +448,72 @@ export function FirecrawlDraftsManager() {
 
   const imageEligibleCount = getDraftsNeedingImages().length;
 
+  // Drafts with missing fields
+  const getDraftsNeedingFieldFix = useCallback(() => {
+    return drafts.filter(d =>
+      d.status === 'draft' &&
+      d.dedup_status !== 'duplicate' &&
+      (d.fields_missing?.length || 0) > 0 &&
+      !busyRows[d.id]
+    );
+  }, [drafts, busyRows]);
+
+  const fixFieldsEligibleCount = getDraftsNeedingFieldFix().length;
+
+  const runBulkFixFields = async () => {
+    const eligible = getDraftsNeedingFieldFix();
+    if (eligible.length === 0) {
+      toast({ title: 'No rows need field fixes', description: 'All eligible rows have complete fields.' });
+      return;
+    }
+    const confirmed = window.confirm(
+      `Fix missing fields on ${eligible.length} row(s) using AI?\n\nThis processes rows sequentially.`
+    );
+    if (!confirmed) return;
+
+    bulkFixFieldsCancelRef.current = false;
+    setBulkFixFieldsRunning(true);
+    const progress: BulkProgress = {
+      total: eligible.length, current: 0, currentTitle: '',
+      succeeded: 0, failed: 0, skipped: 0,
+    };
+    setBulkFixFieldsProgress({ ...progress });
+
+    for (let i = 0; i < eligible.length; i++) {
+      if (bulkFixFieldsCancelRef.current) {
+        progress.skipped += eligible.length - i;
+        break;
+      }
+      const draft = eligible[i];
+      progress.current = i + 1;
+      progress.currentTitle = draft.title || 'Untitled';
+      setBulkFixFieldsProgress({ ...progress });
+
+      setBusyRows(prev => ({ ...prev, [draft.id]: 'ai-fix-fields' }));
+      try {
+        const { data, error } = await supabase.functions.invoke('firecrawl-ai-enrich', {
+          body: { action: 'ai-fix-fields', draft_id: draft.id, aiModel: selectedModel },
+        });
+        if (error) throw new Error(error.message);
+        if (data?.error) throw new Error(data.error);
+        progress.succeeded++;
+      } catch {
+        progress.failed++;
+      } finally {
+        setBusyRows(prev => { const n = { ...prev }; delete n[draft.id]; return n; });
+      }
+      setBulkFixFieldsProgress({ ...progress });
+    }
+
+    setBulkFixFieldsRunning(false);
+    setBulkFixFieldsProgress(null);
+    await fetchDrafts();
+    toast({
+      title: 'Bulk Fix Fields complete',
+      description: `✅ ${progress.succeeded} fixed · ❌ ${progress.failed} failed · ⏭ ${progress.skipped} skipped`,
+    });
+  };
+
   const updateStatus = async (draftId: string, newStatus: string) => {
     if (newStatus === 'approved') {
       try {

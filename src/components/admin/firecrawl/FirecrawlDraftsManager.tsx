@@ -325,6 +325,124 @@ export function FirecrawlDraftsManager() {
     }
   };
 
+  // ── Per-row Create Image ──
+  const hasExistingImage = (draft: DraftJob): boolean => {
+    return !!(draft.cover_image_url && draft.cover_image_url.trim().length > 0);
+  };
+
+  const createImage = async (draftId: string) => {
+    const draft = drafts.find(d => d.id === draftId);
+    if (!draft) return;
+    if (hasExistingImage(draft)) {
+      toast({ title: 'Image exists', description: 'This row already has a cover image. Skipping.' });
+      return;
+    }
+    setBusyRows(prev => ({ ...prev, [draftId]: 'ai-cover-image' }));
+    try {
+      // First generate prompt, then generate image
+      const { data: promptData, error: promptErr } = await supabase.functions.invoke('firecrawl-ai-enrich', {
+        body: { action: 'ai-cover-prompt', draft_id: draftId, aiModel: selectedModel },
+      });
+      if (promptErr) throw new Error(promptErr.message);
+      if (promptData?.error) throw new Error(promptData.error);
+
+      const { data, error } = await supabase.functions.invoke('firecrawl-ai-enrich', {
+        body: { action: 'ai-cover-image', draft_id: draftId, imageModel: selectedImageModel },
+      });
+      if (error) throw new Error(error.message);
+      if (data?.error) throw new Error(data.error);
+      toast({ title: 'Cover image created', description: data.model_used || 'Done' });
+      await fetchDrafts();
+    } catch (e: any) {
+      toast({ title: 'Image generation failed', description: e.message, variant: 'destructive' });
+    } finally {
+      setBusyRows(prev => { const n = { ...prev }; delete n[draftId]; return n; });
+    }
+  };
+
+  // ── Bulk Create Images ──
+  const getDraftsNeedingImages = useCallback(() => {
+    return drafts.filter(d =>
+      d.status === 'draft' &&
+      d.dedup_status !== 'duplicate' &&
+      !hasExistingImage(d) &&
+      !busyRows[d.id]
+    );
+  }, [drafts, busyRows]);
+
+  const runBulkImages = async () => {
+    const eligible = getDraftsNeedingImages();
+    if (eligible.length === 0) {
+      toast({ title: 'No rows need images', description: 'All eligible rows already have cover images.' });
+      return;
+    }
+    const confirmed = window.confirm(
+      `Generate cover images for ${eligible.length} row(s) without images?\n\nThis processes rows sequentially and may take several minutes.`
+    );
+    if (!confirmed) return;
+
+    bulkImageCancelRef.current = false;
+    setBulkImageRunning(true);
+    const progress: BulkProgress = {
+      total: eligible.length, current: 0, currentTitle: '',
+      succeeded: 0, failed: 0, skipped: 0,
+    };
+    setBulkImageProgress({ ...progress });
+
+    for (let i = 0; i < eligible.length; i++) {
+      if (bulkImageCancelRef.current) {
+        progress.skipped += eligible.length - i;
+        break;
+      }
+      const draft = eligible[i];
+      progress.current = i + 1;
+      progress.currentTitle = draft.title || 'Untitled';
+      setBulkImageProgress({ ...progress });
+
+      // Re-check image existence from DB to avoid race conditions
+      const { data: freshDraft } = await supabase
+        .from('firecrawl_draft_jobs')
+        .select('cover_image_url')
+        .eq('id', draft.id)
+        .single();
+      if (freshDraft?.cover_image_url && freshDraft.cover_image_url.trim().length > 0) {
+        progress.skipped++;
+        setBulkImageProgress({ ...progress });
+        continue;
+      }
+
+      setBusyRows(prev => ({ ...prev, [draft.id]: 'ai-cover-image' }));
+      try {
+        // Generate prompt first
+        await supabase.functions.invoke('firecrawl-ai-enrich', {
+          body: { action: 'ai-cover-prompt', draft_id: draft.id, aiModel: selectedModel },
+        });
+        // Generate image
+        const { data, error } = await supabase.functions.invoke('firecrawl-ai-enrich', {
+          body: { action: 'ai-cover-image', draft_id: draft.id, imageModel: selectedImageModel },
+        });
+        if (error) throw new Error(error.message);
+        if (data?.error) throw new Error(data.error);
+        progress.succeeded++;
+      } catch {
+        progress.failed++;
+      } finally {
+        setBusyRows(prev => { const n = { ...prev }; delete n[draft.id]; return n; });
+      }
+      setBulkImageProgress({ ...progress });
+    }
+
+    setBulkImageRunning(false);
+    setBulkImageProgress(null);
+    await fetchDrafts();
+    toast({
+      title: 'Bulk Image Generation complete',
+      description: `✅ ${progress.succeeded} created · ❌ ${progress.failed} failed · ⏭ ${progress.skipped} skipped`,
+    });
+  };
+
+  const imageEligibleCount = getDraftsNeedingImages().length;
+
   const updateStatus = async (draftId: string, newStatus: string) => {
     if (newStatus === 'approved') {
       try {

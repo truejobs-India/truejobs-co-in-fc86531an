@@ -124,8 +124,12 @@ Deno.serve(async (req) => {
       default: return json({ error: `Unknown action: ${action}` }, 400);
     }
   } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Internal error';
     console.error('[firecrawl-ai-enrich] Error:', e);
-    return json({ error: e instanceof Error ? e.message : 'Internal error' }, 500);
+    // Return appropriate status codes for known business errors
+    if (msg.includes('Draft not found')) return json({ error: msg }, 404);
+    if (msg.includes('429') || msg.includes('RESOURCE_EXHAUSTED') || msg.includes('rate limit')) return json({ error: msg }, 429);
+    return json({ error: msg }, 500);
   }
 });
 
@@ -918,22 +922,26 @@ async function handleAiRunAll(draftId: string, client: any, apiKey: string, aiMo
   // Persist failed/skipped step entries into ai_enrichment_log
   const failedSteps = results.filter(r => !r.success);
   if (failedSteps.length > 0) {
-    const latestDraft = await fetchDraft(draftId, client);
-    let log = latestDraft.ai_enrichment_log || [];
-    for (const r of failedSteps) {
-      const isGuard = r.error?.includes('Cannot run') || r.error?.includes('reviewed') || r.error?.includes('approved');
-      log = [...log, {
-        action: r.step,
-        at: new Date().toISOString(),
-        status: isGuard ? 'skipped' : 'failed',
-        ...(isGuard ? { reason: r.error } : { error: r.error }),
-      }];
+    // Draft may have been deleted mid-run (e.g. by purge duplicates) — skip logging if so
+    const { data: latestDraft } = await client.from('firecrawl_draft_jobs').select('ai_enrichment_log').eq('id', draftId).maybeSingle();
+    if (latestDraft) {
+      let log = latestDraft.ai_enrichment_log || [];
+      for (const r of failedSteps) {
+        const isGuard = r.error?.includes('Cannot run') || r.error?.includes('reviewed') || r.error?.includes('approved');
+        log = [...log, {
+          action: r.step,
+          at: new Date().toISOString(),
+          status: isGuard ? 'skipped' : 'failed',
+          ...(isGuard ? { reason: r.error } : { error: r.error }),
+        }];
+      }
+      await client.from('firecrawl_draft_jobs').update({ ai_enrichment_log: log }).eq('id', draftId);
     }
-    await client.from('firecrawl_draft_jobs').update({ ai_enrichment_log: log }).eq('id', draftId);
   }
 
-  // Recalculate fields_extracted and fields_missing after all steps
-  const fieldCounts = await recalculateFieldCounts(draftId, client);
+  // Recalculate fields — skip if draft was deleted mid-run
+  let fieldCounts = { fields_extracted: 0, fields_missing: [] as string[] };
+  try { fieldCounts = await recalculateFieldCounts(draftId, client); } catch { /* draft gone */ }
 
   const successCount = results.filter(r => r.success).length;
   return json({

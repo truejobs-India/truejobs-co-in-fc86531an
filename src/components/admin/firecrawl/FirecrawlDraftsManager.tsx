@@ -565,19 +565,26 @@ export function FirecrawlDraftsManager() {
                 )}
                 Bulk Run All{eligibleCount > 0 ? ` (${eligibleCount})` : ''}
               </Button>
-              <Button
-                variant="outline" size="sm"
-                onClick={runBulkImages}
-                disabled={bulkImageRunning || imageEligibleCount === 0 || loading}
-                title={`Generate cover images for ${imageEligibleCount} rows without images`}
-              >
-                {bulkImageRunning ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
-                ) : (
+              {bulkImageRunning ? (
+                <Button
+                  variant="destructive" size="sm"
+                  onClick={() => { bulkImageCancelRef.current = true; }}
+                  title="Stop bulk image generation"
+                >
+                  <X className="h-3.5 w-3.5 mr-1.5" />
+                  Stop Images
+                </Button>
+              ) : (
+                <Button
+                  variant="outline" size="sm"
+                  onClick={runBulkImages}
+                  disabled={imageEligibleCount === 0 || loading}
+                  title={`Generate cover images for ${imageEligibleCount} rows without images`}
+                >
                   <Image className="h-3.5 w-3.5 mr-1.5" />
-                )}
-                Bulk Images{imageEligibleCount > 0 ? ` (${imageEligibleCount})` : ''}
-              </Button>
+                  Bulk Images{imageEligibleCount > 0 ? ` (${imageEligibleCount})` : ''}
+                </Button>
+              )}
               <Button
                 variant="outline" size="sm"
                 onClick={runDedup} disabled={dedupRunning}

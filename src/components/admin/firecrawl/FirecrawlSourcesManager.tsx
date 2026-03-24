@@ -300,7 +300,7 @@ export function FirecrawlSourcesManager() {
     }
 
     const completedAt = new Date().toISOString();
-    setBatchReport({ results, totalDurationMs: Date.now() - batchStart, startedAt, completedAt });
+    setBatchReport({ results, totalDurationMs: Date.now() - batchStart, startedAt, completedAt, type: 'discovery' });
     setRunAllActive(false);
     setRunAllCurrentSource(null);
     setRunAllProgress({ current: 0, total: 0 });

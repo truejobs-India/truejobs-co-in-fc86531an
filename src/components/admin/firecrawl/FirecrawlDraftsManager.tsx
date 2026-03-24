@@ -331,6 +331,26 @@ export function FirecrawlDraftsManager() {
     }
   };
 
+  const runPurgeHighDuplicates = async () => {
+    setPurging(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('firecrawl-ingest', {
+        body: { action: 'purge-high-duplicates' },
+      });
+      if (error) throw new Error(error.message);
+      if (data?.error) throw new Error(data.error);
+      toast({
+        title: 'Purge complete',
+        description: data.message || `Deleted ${data.deleted || 0} high-confidence duplicate(s).`,
+      });
+      await fetchDrafts();
+    } catch (e: any) {
+      toast({ title: 'Purge failed', description: e.message, variant: 'destructive' });
+    } finally {
+      setPurging(false);
+    }
+  };
+
   // ── Per-row Create Image ──
   const hasExistingImage = (draft: DraftJob): boolean => {
     return !!(draft.cover_image_url && draft.cover_image_url.trim().length > 0);

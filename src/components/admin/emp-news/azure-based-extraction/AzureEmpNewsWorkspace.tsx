@@ -70,7 +70,7 @@ export function AzureEmpNewsWorkspace() {
         </TabsContent>
 
         <TabsContent value="ocr">
-          <PlaceholderTab title="OCR Queue" description="Azure Document Intelligence OCR processing will appear here. Build in Prompt 2." />
+          <OcrQueueTab />
         </TabsContent>
 
         <TabsContent value="reconstructed">

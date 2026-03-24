@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { IssuesTab } from './IssuesTab';
 import { UploadTab } from './UploadTab';
 import { PlaceholderTab } from './PlaceholderTab';
+import { OcrQueueTab } from './OcrQueueTab';
 import type { AzureEmpNewsIssue } from '@/types/azureEmpNews';
 import { FileText, Upload, Cpu, Layers, Briefcase, ScrollText } from 'lucide-react';
 

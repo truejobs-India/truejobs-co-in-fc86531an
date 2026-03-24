@@ -931,6 +931,9 @@ async function handleAiRunAll(draftId: string, client: any, apiKey: string, aiMo
     await client.from('firecrawl_draft_jobs').update({ ai_enrichment_log: log }).eq('id', draftId);
   }
 
+  // Recalculate fields_extracted and fields_missing after all steps
+  const fieldCounts = await recalculateFieldCounts(draftId, client);
+
   const successCount = results.filter(r => r.success).length;
   return json({
     success: true,
@@ -939,6 +942,8 @@ async function handleAiRunAll(draftId: string, client: any, apiKey: string, aiMo
     succeeded: successCount,
     failed: steps.length - successCount,
     results,
+    fields_extracted: fieldCounts.fields_extracted,
+    fields_missing: fieldCounts.fields_missing,
   });
 }
 

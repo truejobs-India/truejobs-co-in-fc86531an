@@ -107,3 +107,15 @@ verify_jwt = false
 
 [functions.firecrawl-ai-enrich]
 verify_jwt = false
+
+[functions.azure-emp-news-process-page]
+verify_jwt = false
+
+[functions.azure-emp-news-start-ocr]
+verify_jwt = false
+
+[functions.azure-emp-news-retry-page]
+verify_jwt = false
+
+[functions.azure-emp-news-retry-failed]
+verify_jwt = false

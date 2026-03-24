@@ -106,6 +106,352 @@ export type Database = {
           },
         ]
       }
+      azure_emp_news_draft_jobs: {
+        Row: {
+          ai_cleaned_data: Json | null
+          created_at: string
+          draft_data: Json
+          draft_title: string
+          id: string
+          issue_id: string
+          linked_live_job_id: string | null
+          publish_status: string
+          reconstructed_notice_id: string | null
+          updated_at: string
+          validation_notes: string[]
+          validation_status: string
+        }
+        Insert: {
+          ai_cleaned_data?: Json | null
+          created_at?: string
+          draft_data?: Json
+          draft_title?: string
+          id?: string
+          issue_id: string
+          linked_live_job_id?: string | null
+          publish_status?: string
+          reconstructed_notice_id?: string | null
+          updated_at?: string
+          validation_notes?: string[]
+          validation_status?: string
+        }
+        Update: {
+          ai_cleaned_data?: Json | null
+          created_at?: string
+          draft_data?: Json
+          draft_title?: string
+          id?: string
+          issue_id?: string
+          linked_live_job_id?: string | null
+          publish_status?: string
+          reconstructed_notice_id?: string | null
+          updated_at?: string
+          validation_notes?: string[]
+          validation_status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "azure_emp_news_draft_jobs_issue_id_fkey"
+            columns: ["issue_id"]
+            isOneToOne: false
+            referencedRelation: "azure_emp_news_issues"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "azure_emp_news_draft_jobs_reconstructed_notice_id_fkey"
+            columns: ["reconstructed_notice_id"]
+            isOneToOne: false
+            referencedRelation: "azure_emp_news_reconstructed_notices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      azure_emp_news_fragments: {
+        Row: {
+          bbox: Json | null
+          cleaned_text: string
+          confidence: number | null
+          continuation_from_page: number | null
+          continuation_hint: string | null
+          continuation_to_page: number | null
+          created_at: string
+          fragment_index: number
+          fragment_type: string
+          id: string
+          issue_id: string
+          page_id: string
+          page_no: number
+          raw_text: string
+        }
+        Insert: {
+          bbox?: Json | null
+          cleaned_text?: string
+          confidence?: number | null
+          continuation_from_page?: number | null
+          continuation_hint?: string | null
+          continuation_to_page?: number | null
+          created_at?: string
+          fragment_index: number
+          fragment_type?: string
+          id?: string
+          issue_id: string
+          page_id: string
+          page_no: number
+          raw_text?: string
+        }
+        Update: {
+          bbox?: Json | null
+          cleaned_text?: string
+          confidence?: number | null
+          continuation_from_page?: number | null
+          continuation_hint?: string | null
+          continuation_to_page?: number | null
+          created_at?: string
+          fragment_index?: number
+          fragment_type?: string
+          id?: string
+          issue_id?: string
+          page_id?: string
+          page_no?: number
+          raw_text?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "azure_emp_news_fragments_issue_id_fkey"
+            columns: ["issue_id"]
+            isOneToOne: false
+            referencedRelation: "azure_emp_news_issues"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "azure_emp_news_fragments_page_id_fkey"
+            columns: ["page_id"]
+            isOneToOne: false
+            referencedRelation: "azure_emp_news_pages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      azure_emp_news_issues: {
+        Row: {
+          ai_status: string
+          created_at: string
+          created_by: string | null
+          id: string
+          issue_date: string | null
+          issue_name: string
+          ocr_completed_pages: number
+          ocr_failed_pages: number
+          ocr_status: string
+          publish_status: string
+          reconstruction_status: string
+          total_pages: number
+          updated_at: string
+          uploaded_pages: number
+        }
+        Insert: {
+          ai_status?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          issue_date?: string | null
+          issue_name: string
+          ocr_completed_pages?: number
+          ocr_failed_pages?: number
+          ocr_status?: string
+          publish_status?: string
+          reconstruction_status?: string
+          total_pages?: number
+          updated_at?: string
+          uploaded_pages?: number
+        }
+        Update: {
+          ai_status?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          issue_date?: string | null
+          issue_name?: string
+          ocr_completed_pages?: number
+          ocr_failed_pages?: number
+          ocr_status?: string
+          publish_status?: string
+          reconstruction_status?: string
+          total_pages?: number
+          updated_at?: string
+          uploaded_pages?: number
+        }
+        Relationships: []
+      }
+      azure_emp_news_pages: {
+        Row: {
+          azure_operation_url: string | null
+          azure_result_json: Json | null
+          cleaned_content: string | null
+          created_at: string
+          error_message: string | null
+          extracted_content: string | null
+          file_size: number | null
+          id: string
+          issue_id: string
+          mime_type: string | null
+          ocr_status: string
+          original_filename: string
+          page_no: number
+          processed_at: string | null
+          retry_count: number
+          storage_path: string
+          updated_at: string
+        }
+        Insert: {
+          azure_operation_url?: string | null
+          azure_result_json?: Json | null
+          cleaned_content?: string | null
+          created_at?: string
+          error_message?: string | null
+          extracted_content?: string | null
+          file_size?: number | null
+          id?: string
+          issue_id: string
+          mime_type?: string | null
+          ocr_status?: string
+          original_filename: string
+          page_no: number
+          processed_at?: string | null
+          retry_count?: number
+          storage_path: string
+          updated_at?: string
+        }
+        Update: {
+          azure_operation_url?: string | null
+          azure_result_json?: Json | null
+          cleaned_content?: string | null
+          created_at?: string
+          error_message?: string | null
+          extracted_content?: string | null
+          file_size?: number | null
+          id?: string
+          issue_id?: string
+          mime_type?: string | null
+          ocr_status?: string
+          original_filename?: string
+          page_no?: number
+          processed_at?: string | null
+          retry_count?: number
+          storage_path?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "azure_emp_news_pages_issue_id_fkey"
+            columns: ["issue_id"]
+            isOneToOne: false
+            referencedRelation: "azure_emp_news_issues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      azure_emp_news_publish_logs: {
+        Row: {
+          action: string
+          created_at: string
+          draft_job_id: string | null
+          id: string
+          issue_id: string
+          message: string | null
+          status: string
+        }
+        Insert: {
+          action?: string
+          created_at?: string
+          draft_job_id?: string | null
+          id?: string
+          issue_id: string
+          message?: string | null
+          status?: string
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          draft_job_id?: string | null
+          id?: string
+          issue_id?: string
+          message?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "azure_emp_news_publish_logs_draft_job_id_fkey"
+            columns: ["draft_job_id"]
+            isOneToOne: false
+            referencedRelation: "azure_emp_news_draft_jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "azure_emp_news_publish_logs_issue_id_fkey"
+            columns: ["issue_id"]
+            isOneToOne: false
+            referencedRelation: "azure_emp_news_issues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      azure_emp_news_reconstructed_notices: {
+        Row: {
+          ai_status: string
+          created_at: string
+          employer_name: string | null
+          end_page: number | null
+          id: string
+          issue_id: string
+          merged_blocks_json: Json | null
+          merged_text: string
+          notice_key: string
+          notice_title: string | null
+          reconstruction_confidence: number | null
+          start_page: number | null
+          updated_at: string
+        }
+        Insert: {
+          ai_status?: string
+          created_at?: string
+          employer_name?: string | null
+          end_page?: number | null
+          id?: string
+          issue_id: string
+          merged_blocks_json?: Json | null
+          merged_text?: string
+          notice_key: string
+          notice_title?: string | null
+          reconstruction_confidence?: number | null
+          start_page?: number | null
+          updated_at?: string
+        }
+        Update: {
+          ai_status?: string
+          created_at?: string
+          employer_name?: string | null
+          end_page?: number | null
+          id?: string
+          issue_id?: string
+          merged_blocks_json?: Json | null
+          merged_text?: string
+          notice_key?: string
+          notice_title?: string | null
+          reconstruction_confidence?: number | null
+          start_page?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "azure_emp_news_reconstructed_notices_issue_id_fkey"
+            columns: ["issue_id"]
+            isOneToOne: false
+            referencedRelation: "azure_emp_news_issues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       blog_ai_audit_log: {
         Row: {
           after_value: string

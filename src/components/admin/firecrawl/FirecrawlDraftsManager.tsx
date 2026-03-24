@@ -711,6 +711,14 @@ export function FirecrawlDraftsManager() {
                 {dedupRunning ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <ShieldAlert className="h-3.5 w-3.5 mr-1.5" />}
                 Dedup
               </Button>
+              <Button
+                variant="destructive" size="sm"
+                onClick={runPurgeHighDuplicates} disabled={purging || dedupRunning}
+                title="Delete all high-confidence (≥5 score) duplicate rows, keeping the earliest instance"
+              >
+                {purging ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Trash2 className="h-3.5 w-3.5 mr-1.5" />}
+                Purge Duplicates
+              </Button>
               <Button variant="outline" size="sm" onClick={fetchDrafts} disabled={loading}>
                 <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
                 Refresh

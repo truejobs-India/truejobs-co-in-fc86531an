@@ -1551,6 +1551,8 @@ export function EmploymentNewsManager() {
           })()}
         </DialogContent>
       </Dialog>
+      </>
+      )}
     </div>
   );
 }

@@ -630,6 +630,29 @@ export function FirecrawlDraftsManager() {
             </div>
           )}
 
+          {/* Bulk image progress bar */}
+          {bulkImageRunning && bulkImageProgress && (
+            <div className="mb-3 p-3 rounded-lg border bg-muted/50 space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="font-medium">
+                  🖼️ Creating images {bulkImageProgress.current}/{bulkImageProgress.total} — <span className="text-muted-foreground">{bulkImageProgress.currentTitle}</span>
+                </span>
+                <Button
+                  size="sm" variant="ghost"
+                  className="h-6 text-xs text-destructive hover:text-destructive"
+                  onClick={() => { bulkImageCancelRef.current = true; }}
+                >
+                  <X className="h-3 w-3 mr-1" /> Cancel
+                </Button>
+              </div>
+              <Progress value={(bulkImageProgress.current / bulkImageProgress.total) * 100} className="h-2" />
+              <div className="flex gap-3 text-xs text-muted-foreground">
+                <span className="text-green-600">✅ {bulkImageProgress.succeeded}</span>
+                <span className="text-red-600">❌ {bulkImageProgress.failed}</span>
+                <span>⏭ {bulkImageProgress.skipped}</span>
+              </div>
+            </div>
+
           {/* Bulk results summary */}
           {bulkResults && !bulkRunning && (
             <div className="mb-3 p-3 rounded-lg border bg-muted/30 space-y-2">

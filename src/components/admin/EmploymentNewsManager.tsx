@@ -122,6 +122,7 @@ export function EmploymentNewsManager() {
   const { toast } = useToast();
   const toastRef = useRef(toast);
   toastRef.current = toast;
+  const [workspace, setWorkspace] = useState<'classic' | 'azure'>('classic');
   const [view, setView] = useState<'upload' | 'pipeline'>('pipeline');
 
   // Upload state

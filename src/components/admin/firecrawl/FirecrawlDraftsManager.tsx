@@ -63,10 +63,9 @@ const AI_ACTIONS: { action: AiAction; label: string; icon: typeof Sparkles; desc
   { action: 'ai-fix-missing', label: 'Fix Missing', icon: AlertTriangle, description: 'Fill weak/blank fields' },
   { action: 'ai-seo', label: 'AI SEO', icon: Search, description: 'Generate SEO metadata & FAQs' },
   { action: 'ai-cover-prompt', label: 'Cover Prompt', icon: FileText, description: 'Generate image prompt' },
-  { action: 'ai-cover-image', label: 'Cover Image', icon: Image, description: 'Generate & upload cover' },
 ];
 
-// Step-to-field mapping for AI step indicators
+// Step-to-field mapping for AI step indicators (image steps removed — handled separately)
 const AI_STEP_MAP: { action: string; label: string; tsField: keyof DraftJob }[] = [
   { action: 'ai-clean', label: 'Clean', tsField: 'ai_clean_at' },
   { action: 'ai-enrich', label: 'Enrich', tsField: 'ai_enrich_at' },
@@ -74,7 +73,6 @@ const AI_STEP_MAP: { action: string; label: string; tsField: keyof DraftJob }[] 
   { action: 'ai-fix-missing', label: 'Fix', tsField: 'ai_fix_missing_at' },
   { action: 'ai-seo', label: 'SEO', tsField: 'ai_seo_at' },
   { action: 'ai-cover-prompt', label: 'Prompt', tsField: 'ai_cover_prompt_at' },
-  { action: 'ai-cover-image', label: 'Image', tsField: 'ai_cover_image_at' },
 ];
 
 type StepState = 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
@@ -175,6 +173,11 @@ export function FirecrawlDraftsManager() {
   const [bulkProgress, setBulkProgress] = useState<BulkProgress | null>(null);
   const [bulkResults, setBulkResults] = useState<BulkResult[] | null>(null);
   const bulkCancelRef = useRef(false);
+
+  // Bulk image state
+  const [bulkImageRunning, setBulkImageRunning] = useState(false);
+  const [bulkImageProgress, setBulkImageProgress] = useState<BulkProgress | null>(null);
+  const bulkImageCancelRef = useRef(false);
 
   const fetchDrafts = useCallback(async () => {
     setLoading(true);
@@ -322,6 +325,124 @@ export function FirecrawlDraftsManager() {
     }
   };
 
+  // ── Per-row Create Image ──
+  const hasExistingImage = (draft: DraftJob): boolean => {
+    return !!(draft.cover_image_url && draft.cover_image_url.trim().length > 0);
+  };
+
+  const createImage = async (draftId: string) => {
+    const draft = drafts.find(d => d.id === draftId);
+    if (!draft) return;
+    if (hasExistingImage(draft)) {
+      toast({ title: 'Image exists', description: 'This row already has a cover image. Skipping.' });
+      return;
+    }
+    setBusyRows(prev => ({ ...prev, [draftId]: 'ai-cover-image' }));
+    try {
+      // First generate prompt, then generate image
+      const { data: promptData, error: promptErr } = await supabase.functions.invoke('firecrawl-ai-enrich', {
+        body: { action: 'ai-cover-prompt', draft_id: draftId, aiModel: selectedModel },
+      });
+      if (promptErr) throw new Error(promptErr.message);
+      if (promptData?.error) throw new Error(promptData.error);
+
+      const { data, error } = await supabase.functions.invoke('firecrawl-ai-enrich', {
+        body: { action: 'ai-cover-image', draft_id: draftId, imageModel: selectedImageModel },
+      });
+      if (error) throw new Error(error.message);
+      if (data?.error) throw new Error(data.error);
+      toast({ title: 'Cover image created', description: data.model_used || 'Done' });
+      await fetchDrafts();
+    } catch (e: any) {
+      toast({ title: 'Image generation failed', description: e.message, variant: 'destructive' });
+    } finally {
+      setBusyRows(prev => { const n = { ...prev }; delete n[draftId]; return n; });
+    }
+  };
+
+  // ── Bulk Create Images ──
+  const getDraftsNeedingImages = useCallback(() => {
+    return drafts.filter(d =>
+      d.status === 'draft' &&
+      d.dedup_status !== 'duplicate' &&
+      !hasExistingImage(d) &&
+      !busyRows[d.id]
+    );
+  }, [drafts, busyRows]);
+
+  const runBulkImages = async () => {
+    const eligible = getDraftsNeedingImages();
+    if (eligible.length === 0) {
+      toast({ title: 'No rows need images', description: 'All eligible rows already have cover images.' });
+      return;
+    }
+    const confirmed = window.confirm(
+      `Generate cover images for ${eligible.length} row(s) without images?\n\nThis processes rows sequentially and may take several minutes.`
+    );
+    if (!confirmed) return;
+
+    bulkImageCancelRef.current = false;
+    setBulkImageRunning(true);
+    const progress: BulkProgress = {
+      total: eligible.length, current: 0, currentTitle: '',
+      succeeded: 0, failed: 0, skipped: 0,
+    };
+    setBulkImageProgress({ ...progress });
+
+    for (let i = 0; i < eligible.length; i++) {
+      if (bulkImageCancelRef.current) {
+        progress.skipped += eligible.length - i;
+        break;
+      }
+      const draft = eligible[i];
+      progress.current = i + 1;
+      progress.currentTitle = draft.title || 'Untitled';
+      setBulkImageProgress({ ...progress });
+
+      // Re-check image existence from DB to avoid race conditions
+      const { data: freshDraft } = await supabase
+        .from('firecrawl_draft_jobs')
+        .select('cover_image_url')
+        .eq('id', draft.id)
+        .single();
+      if (freshDraft?.cover_image_url && freshDraft.cover_image_url.trim().length > 0) {
+        progress.skipped++;
+        setBulkImageProgress({ ...progress });
+        continue;
+      }
+
+      setBusyRows(prev => ({ ...prev, [draft.id]: 'ai-cover-image' }));
+      try {
+        // Generate prompt first
+        await supabase.functions.invoke('firecrawl-ai-enrich', {
+          body: { action: 'ai-cover-prompt', draft_id: draft.id, aiModel: selectedModel },
+        });
+        // Generate image
+        const { data, error } = await supabase.functions.invoke('firecrawl-ai-enrich', {
+          body: { action: 'ai-cover-image', draft_id: draft.id, imageModel: selectedImageModel },
+        });
+        if (error) throw new Error(error.message);
+        if (data?.error) throw new Error(data.error);
+        progress.succeeded++;
+      } catch {
+        progress.failed++;
+      } finally {
+        setBusyRows(prev => { const n = { ...prev }; delete n[draft.id]; return n; });
+      }
+      setBulkImageProgress({ ...progress });
+    }
+
+    setBulkImageRunning(false);
+    setBulkImageProgress(null);
+    await fetchDrafts();
+    toast({
+      title: 'Bulk Image Generation complete',
+      description: `✅ ${progress.succeeded} created · ❌ ${progress.failed} failed · ⏭ ${progress.skipped} skipped`,
+    });
+  };
+
+  const imageEligibleCount = getDraftsNeedingImages().length;
+
   const updateStatus = async (draftId: string, newStatus: string) => {
     if (newStatus === 'approved') {
       try {
@@ -445,6 +566,19 @@ export function FirecrawlDraftsManager() {
             </Button>
             <Button
               variant="outline" size="sm"
+              onClick={runBulkImages}
+              disabled={bulkImageRunning || imageEligibleCount === 0 || loading}
+              title={`Generate cover images for ${imageEligibleCount} rows without images`}
+            >
+              {bulkImageRunning ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+              ) : (
+                <Image className="h-3.5 w-3.5 mr-1.5" />
+              )}
+              Create Bulk Images{imageEligibleCount > 0 ? ` (${imageEligibleCount})` : ''}
+            </Button>
+            <Button
+              variant="outline" size="sm"
               onClick={runDedup} disabled={dedupRunning}
             >
               {dedupRunning ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <ShieldAlert className="h-3.5 w-3.5 mr-1.5" />}
@@ -492,6 +626,30 @@ export function FirecrawlDraftsManager() {
                 <span className="text-green-600">✅ {bulkProgress.succeeded}</span>
                 <span className="text-red-600">❌ {bulkProgress.failed}</span>
                 <span>⏭ {bulkProgress.skipped}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Bulk image progress bar */}
+          {bulkImageRunning && bulkImageProgress && (
+            <div className="mb-3 p-3 rounded-lg border bg-muted/50 space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="font-medium">
+                  🖼️ Creating images {bulkImageProgress.current}/{bulkImageProgress.total} — <span className="text-muted-foreground">{bulkImageProgress.currentTitle}</span>
+                </span>
+                <Button
+                  size="sm" variant="ghost"
+                  className="h-6 text-xs text-destructive hover:text-destructive"
+                  onClick={() => { bulkImageCancelRef.current = true; }}
+                >
+                  <X className="h-3 w-3 mr-1" /> Cancel
+                </Button>
+              </div>
+              <Progress value={(bulkImageProgress.current / bulkImageProgress.total) * 100} className="h-2" />
+              <div className="flex gap-3 text-xs text-muted-foreground">
+                <span className="text-green-600">✅ {bulkImageProgress.succeeded}</span>
+                <span className="text-red-600">❌ {bulkImageProgress.failed}</span>
+                <span>⏭ {bulkImageProgress.skipped}</span>
               </div>
             </div>
           )}
@@ -652,10 +810,28 @@ export function FirecrawlDraftsManager() {
                         <TableCell className="text-right">
                           <div className="flex items-center gap-1 justify-end">
                             <Button
+                              size="sm" variant="outline"
+                              disabled={!!busyRows[draft.id] || hasExistingImage(draft)}
+                              onClick={() => createImage(draft.id)}
+                              title={hasExistingImage(draft) ? 'Image already exists' : 'Generate cover image'}
+                              className="gap-1"
+                            >
+                              {busyRows[draft.id] === 'ai-cover-image' ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : hasExistingImage(draft) ? (
+                                <CheckCircle className="h-3 w-3 text-green-500" />
+                              ) : (
+                                <Image className="h-3 w-3" />
+                              )}
+                              <span className="hidden sm:inline text-xs">
+                                {hasExistingImage(draft) ? 'Has Image' : 'Image'}
+                              </span>
+                            </Button>
+                            <Button
                               size="sm" variant="default"
                               disabled={!!busyRows[draft.id]}
                               onClick={() => runAiAction(draft.id, 'ai-run-all')}
-                              title="Run All AI Steps"
+                              title="Run All AI Steps (text only)"
                               className="gap-1"
                             >
                               {busyRows[draft.id] === 'ai-run-all' ? (

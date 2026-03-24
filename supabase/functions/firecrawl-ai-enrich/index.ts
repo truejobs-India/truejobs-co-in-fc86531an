@@ -835,8 +835,9 @@ async function handleAiCoverImage(draftId: string, client: any, apiKey: string, 
 // ============ 8. AI Run All ============
 
 async function handleAiRunAll(draftId: string, client: any, apiKey: string, aiModel?: string, imageModel?: string) {
+  // Image steps removed from Run All — use dedicated Create Image action instead
   const steps = [
-    'ai-clean', 'ai-enrich', 'ai-find-links', 'ai-fix-missing', 'ai-seo', 'ai-cover-prompt', 'ai-cover-image',
+    'ai-clean', 'ai-enrich', 'ai-find-links', 'ai-fix-missing', 'ai-seo',
   ];
   const handlers: Record<string, Function> = {
     'ai-clean': handleAiClean,
@@ -844,8 +845,6 @@ async function handleAiRunAll(draftId: string, client: any, apiKey: string, aiMo
     'ai-find-links': handleAiFindLinks,
     'ai-fix-missing': handleAiFixMissing,
     'ai-seo': handleAiSeo,
-    'ai-cover-prompt': handleAiCoverPrompt,
-    'ai-cover-image': handleAiCoverImage,
   };
 
   const results: Array<{ step: string; success: boolean; error?: string }> = [];

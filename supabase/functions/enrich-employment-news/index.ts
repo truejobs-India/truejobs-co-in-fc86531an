@@ -292,13 +292,15 @@ function tryParseJSON(text: string): any {
     return JSON.parse(text);
   } catch { /* fall through */ }
 
-  // Attempt 2: strip markdown fences
-  let cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+  // Attempt 1b: strip <think>...</think> reasoning blocks (Gemini 2.5+)
+  let cleaned = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+  // Also strip markdown fences
+  cleaned = cleaned.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
   try {
     return JSON.parse(cleaned);
   } catch { /* fall through */ }
 
-  // Attempt 3: extract JSON between first { and last }
+  // Attempt 2: extract JSON between first { and last }
   const firstBrace = cleaned.indexOf('{');
   const lastBrace = cleaned.lastIndexOf('}');
   if (firstBrace >= 0 && lastBrace > firstBrace) {
@@ -306,19 +308,27 @@ function tryParseJSON(text: string): any {
     try {
       return JSON.parse(extracted);
     } catch { /* fall through */ }
+
+    // Attempt 2b: remove control characters and try again
+    const sanitized = extracted.replace(/[\x00-\x1F\x7F]/g, (ch) => ch === '\n' || ch === '\r' || ch === '\t' ? ch : '');
+    try {
+      return JSON.parse(sanitized);
+    } catch { /* fall through */ }
   }
 
-  // Attempt 4: truncate at last valid }
-  if (cleaned.trimStart().startsWith("{") && cleaned.length >= 200) {
-    const lb = cleaned.lastIndexOf("}");
-    if (lb > 0) {
+  // Attempt 3: truncate at last valid } and try progressively
+  if (firstBrace >= 0) {
+    const jsonCandidate = cleaned.substring(firstBrace);
+    let pos = jsonCandidate.lastIndexOf('}');
+    while (pos > 0) {
       try {
-        return JSON.parse(cleaned.substring(0, lb + 1));
-      } catch { /* fall through */ }
+        return JSON.parse(jsonCandidate.substring(0, pos + 1));
+      } catch { /* try shorter */ }
+      pos = jsonCandidate.lastIndexOf('}', pos - 1);
     }
   }
 
-  throw new Error(`JSON parse failed after all recovery attempts (response length: ${text.length} chars)`);
+  throw new Error(`JSON parse failed after all recovery attempts (response length: ${text.length} chars, first 200: ${text.substring(0, 200)})`);
 }
 
 // Smart field auto-generation for missing non-critical fields

@@ -87,15 +87,15 @@ export function SEOCacheManager() {
     }
   }, [toast, refresh]);
 
-  const handleRebuildAll = async () => {
+  const handleRebuildAll = async (force = false) => {
     setIsRebuilding(true);
     try {
       const { data, error } = await supabase.functions.invoke('seo-cache-rebuild', {
-        body: { mode: 'full', trigger: 'admin-ui' },
+        body: { mode: 'full', trigger: 'admin-ui', ...(force ? { force: true } : {}) },
       });
       if (error) throw error;
       toast({
-        title: 'Full Rebuild Complete',
+        title: force ? 'Force Rebuild Complete' : 'Full Rebuild Complete',
         description: `Rebuilt: ${data?.rebuilt ?? 0}, Skipped: ${data?.skipped ?? 0}, Failed: ${data?.failed ?? 0}`,
       });
       refresh();

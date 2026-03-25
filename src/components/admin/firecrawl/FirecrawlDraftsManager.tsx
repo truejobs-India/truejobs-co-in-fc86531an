@@ -975,20 +975,26 @@ export function FirecrawlDraftsManager() {
                           <div className="flex items-center gap-1 justify-end">
                             <Button
                               size="sm" variant="outline"
-                              disabled={!!busyRows[draft.id] || hasExistingImage(draft)}
-                              onClick={() => createImage(draft.id)}
-                              title={hasExistingImage(draft) ? 'Image already exists' : 'Generate cover image'}
+                              disabled={!!busyRows[draft.id] || (!hasExistingImage(draft) && false)}
+                              onClick={() => {
+                                if (hasExistingImage(draft)) {
+                                  setPreviewImage({ url: draft.cover_image_url!, title: draft.title || 'Untitled' });
+                                } else {
+                                  createImage(draft.id);
+                                }
+                              }}
+                              title={hasExistingImage(draft) ? 'Click to preview cover image' : 'Generate cover image'}
                               className="gap-1"
                             >
                               {busyRows[draft.id] === 'ai-cover-image' ? (
                                 <Loader2 className="h-3 w-3 animate-spin" />
                               ) : hasExistingImage(draft) ? (
-                                <CheckCircle className="h-3 w-3 text-green-500" />
+                                <Eye className="h-3 w-3 text-green-500" />
                               ) : (
                                 <Image className="h-3 w-3" />
                               )}
                               <span className="hidden sm:inline text-xs">
-                                {hasExistingImage(draft) ? 'Has Image' : 'Image'}
+                                {hasExistingImage(draft) ? 'View' : 'Image'}
                               </span>
                             </Button>
                             <Button

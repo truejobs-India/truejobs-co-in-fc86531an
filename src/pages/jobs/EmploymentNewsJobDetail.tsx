@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { SEO } from '@/components/SEO';
+import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { supabase } from '@/integrations/supabase/client';
 import { ChevronLeft, MapPin, Calendar, Users, IndianRupee, ExternalLink, Briefcase } from 'lucide-react';
 import DOMPurify from 'dompurify';

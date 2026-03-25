@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback } from 'react';
 import { Layout } from '@/components/layout/Layout';
+import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { SEO } from '@/components/SEO';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -360,6 +361,7 @@ export default function PdfTools() {
 
   return (
     <Layout>
+      <AdPlaceholder variant="banner" />
       <SEO
         title="Free PDF Tools Online | Merge, Compress, Convert"
         description="Merge, compress, and convert PDFs for free. Create PDFs from images. 100% browser-based — no files uploaded to any server. Safe and private."

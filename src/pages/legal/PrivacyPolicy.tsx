@@ -1,10 +1,12 @@
 import { Layout } from '@/components/layout/Layout';
+import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { SEO } from '@/components/SEO';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 export default function PrivacyPolicy() {
   return (
     <Layout>
+      <AdPlaceholder variant="banner" />
       <SEO 
         title="Privacy Policy - TrueJobs | Data Protection & Cookie Policy" 
         description="TrueJobs Privacy Policy. Learn how we collect, use, store, and protect your information on our independent government job information portal. Includes cookie policy, Google AdSense disclosures, and your data rights."

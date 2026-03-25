@@ -258,7 +258,7 @@ export default function Signup() {
   // OTP Verification Step
   if (step === 'otp') {
     return (
-      <Layout noAds>
+      <Layout>
         <div className={cn(
           "min-h-[calc(100vh-4rem)] relative overflow-hidden",
           isEmployer 
@@ -386,7 +386,7 @@ export default function Signup() {
 
   // Main Signup Step - Premium Two-Column Design
   return (
-    <Layout noAds>
+    <Layout>
       <div className={cn(
         "min-h-[calc(100vh-4rem)] relative overflow-hidden",
         isEmployer 

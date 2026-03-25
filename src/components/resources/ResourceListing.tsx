@@ -4,6 +4,7 @@ import { Layout } from '@/components/layout/Layout';
 import { supabase } from '@/integrations/supabase/client';
 import { ResourceSEO } from '@/components/resources/ResourceSEO';
 import { ResourceCard } from '@/components/resources/ResourceCard';
+import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -116,6 +117,7 @@ export function ResourceListing({ resourceType, pageTitle, metaTitle, metaDescri
         </nav>
 
         <h1 className="text-3xl font-bold text-foreground mb-2">{pageTitle}</h1>
+        <AdPlaceholder variant="banner" />
         <p className="text-muted-foreground mb-6">
           Download free PDF resources for government exam preparation. All materials are verified and up-to-date.
         </p>

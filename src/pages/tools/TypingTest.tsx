@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Layout } from '@/components/layout/Layout';
+import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { SEO } from '@/components/SEO';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -190,6 +191,7 @@ export default function TypingTest() {
 
   return (
     <Layout>
+      <AdPlaceholder variant="banner" />
       <SEO
         title="Typing Test for Govt Exams | SSC IBPS Railway"
         description="Practice typing speed for SSC CHSL, SSC CGL, IBPS Clerk, Railway exams. Check your WPM and accuracy against official requirements. Free online typing test."

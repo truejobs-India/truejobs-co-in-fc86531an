@@ -1,5 +1,6 @@
 import { Helmet } from 'react-helmet-async';
 import { Layout } from '@/components/layout/Layout';
+import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Download, FileText, BookOpen, ClipboardCheck, GraduationCap, Briefcase } from 'lucide-react';
@@ -211,6 +212,7 @@ export default function OutreachAssets() {
 
   return (
     <Layout>
+      <AdPlaceholder variant="banner" />
       <Helmet>
         <title>Free Government Exam Guides & Study Material | TrueJobs</title>
         <meta name="description" content="Download free PDF guides for SSC, Railway, Banking, UPSC, and Defence exam preparation. Study plans, salary handbooks, and career roadmaps by TrueJobs." />

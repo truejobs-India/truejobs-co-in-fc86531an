@@ -23,10 +23,10 @@ const AD_CLIENT = 'ca-pub-7353331010234724';
 // Each variant gets a unique slot ID for reporting granularity.
 // Replace these with real slot IDs from AdSense dashboard when available.
 const SLOT_IDS: Record<AdPlaceholderProps['variant'], string> = {
-  banner: '1234567890',
-  sidebar: '2345678901',
-  'in-content': '3456789012',
-  footer: '4567890123',
+  banner: '6502762618',
+  sidebar: '5672896678',
+  'in-content': '9228297609',
+  footer: '7728214373',
 };
 
 const variantConfig = {

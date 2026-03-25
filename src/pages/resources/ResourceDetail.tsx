@@ -4,6 +4,7 @@ import { Layout } from '@/components/layout/Layout';
 import { supabase } from '@/integrations/supabase/client';
 import { ResourceSEO } from '@/components/resources/ResourceSEO';
 import { RelatedResources } from '@/components/resources/RelatedResources';
+import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
@@ -131,6 +132,8 @@ export default function ResourceDetail() {
           <span className="text-foreground line-clamp-1">{resource.title}</span>
         </nav>
 
+        <AdPlaceholder variant="banner" />
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Main content */}
           <div className="lg:col-span-2 space-y-8">
@@ -185,6 +188,8 @@ export default function ResourceDetail() {
               />
             )}
 
+            <AdPlaceholder variant="in-content" />
+
             {/* FAQ */}
             {faqItems.length > 0 && (
               <section>
@@ -209,6 +214,7 @@ export default function ResourceDetail() {
 
           {/* Sidebar */}
           <aside className="space-y-6">
+            <AdPlaceholder variant="sidebar" className="hidden lg:block" />
             <div className="rounded-lg overflow-hidden border border-border">
               <img
                 src={coverSrc}

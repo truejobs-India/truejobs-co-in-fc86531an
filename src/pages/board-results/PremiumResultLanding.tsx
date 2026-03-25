@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Calendar, Clock, ExternalLink, Tag, BookOpen, AlertCircle } from 'lucide-react';
 import { BoardResultAlertCTA } from '@/components/board-results/BoardResultAlertCTA';
 import { GovtDisclaimer } from '@/pages/seo/components/GovtDisclaimer';
+import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { Link } from 'react-router-dom';
 
 interface PremiumResultLandingProps {
@@ -47,6 +48,7 @@ export function PremiumResultLanding({ page }: PremiumResultLandingProps) {
 
   return (
     <article className="container mx-auto max-w-4xl px-4 py-8">
+      <AdPlaceholder variant="banner" />
       {/* Breadcrumb */}
       <nav className="text-sm text-muted-foreground mb-6">
         <Link to="/" className="hover:text-primary">Home</Link>
@@ -184,6 +186,7 @@ export function PremiumResultLanding({ page }: PremiumResultLandingProps) {
       {/* Second CTA after "How to check" section */}
       {contentParts.part2 && (
         <>
+          <AdPlaceholder variant="in-content" />
           <BoardResultAlertCTA
             variant="soft"
             context={page.board_name || page.title}

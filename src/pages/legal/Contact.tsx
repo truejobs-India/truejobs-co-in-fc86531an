@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Layout } from '@/components/layout/Layout';
+import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { SEO } from '@/components/SEO';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -129,6 +130,7 @@ export default function Contact() {
 
   return (
     <Layout>
+      <AdPlaceholder variant="banner" />
       <SEO 
         title="Contact Us - TrueJobs | Get Help & Support" 
         description="Contact TrueJobs for job search help, employer services, technical support, or grievance redressal. Reach us via email or our contact form. Response within 24-48 hours."

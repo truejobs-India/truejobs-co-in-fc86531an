@@ -1,10 +1,12 @@
 import { Layout } from '@/components/layout/Layout';
+import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { SEO } from '@/components/SEO';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 export default function Disclaimer() {
   return (
     <Layout>
+      <AdPlaceholder variant="banner" />
       <SEO 
         title="Disclaimer - TrueJobs | Legal Notices & Content Attribution" 
         description="Read the TrueJobs disclaimer. TrueJobs is an independent informational portal with no government affiliation. Covers content sourcing, verification responsibility, advertising, and limitation of liability."

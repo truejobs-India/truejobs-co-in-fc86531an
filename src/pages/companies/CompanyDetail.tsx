@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { SEO } from '@/components/SEO';
 import { Layout } from '@/components/layout/Layout';
+import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -167,6 +168,8 @@ export default function CompanyDetail() {
         url={`/companies/${slug}`}
         structuredData={companySchema}
       />
+      {/* Top Banner Ad */}
+      <AdPlaceholder variant="banner" />
       {/* Header */}
       <div className="bg-muted/30 py-8 border-b">
         <div className="container mx-auto px-4">
@@ -233,9 +236,11 @@ export default function CompanyDetail() {
       </div>
 
       <div className="container mx-auto px-4 py-8">
+        <AdPlaceholder variant="in-content" />
         <div className="grid lg:grid-cols-3 gap-8">
           {/* Sidebar */}
           <div className="lg:col-span-1 space-y-6">
+            <AdPlaceholder variant="sidebar" className="hidden lg:block" />
             {company.description && (
               <Card>
                 <CardContent className="p-6">

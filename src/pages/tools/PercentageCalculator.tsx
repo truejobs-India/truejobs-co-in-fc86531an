@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Layout } from '@/components/layout/Layout';
+import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { SEO } from '@/components/SEO';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -84,6 +85,7 @@ export default function PercentageCalculator() {
 
   return (
     <Layout>
+      <AdPlaceholder variant="banner" />
       <SEO
         title="Percentage & CGPA Calculator | TrueJobs"
         description="Calculate percentage from marks or convert CGPA to percentage for government exam eligibility. Supports 10-point, 7-point, and 4-point scales."

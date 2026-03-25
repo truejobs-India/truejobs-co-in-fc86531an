@@ -226,7 +226,7 @@ export default function CompanyProfile() {
 
   if (isLoading) {
     return (
-      <Layout noAds>
+      <Layout>
         <div className="container mx-auto px-4 py-8 flex justify-center">
           <Loader2 className="h-8 w-8 animate-spin" />
         </div>
@@ -235,7 +235,7 @@ export default function CompanyProfile() {
   }
 
   return (
-    <Layout noAds>
+    <Layout>
       <SEO title="Company Profile" noindex />
       <div className="container mx-auto px-4 py-8 max-w-3xl">
         <div className="flex items-center justify-between mb-8">

@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback } from 'react';
 import { Layout } from '@/components/layout/Layout';
+import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { SEO } from '@/components/SEO';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -209,6 +210,7 @@ export default function ImageResizer() {
 
   return (
     <Layout>
+      <AdPlaceholder variant="banner" />
       <SEO
         title="Free Image Resizer Online | Resize & Convert"
         description="Resize images online for free. Convert between JPG, PNG, WebP. Preset sizes for social media, print, and web. 100% browser-based, no server upload."

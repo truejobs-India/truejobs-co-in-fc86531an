@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { Layout } from '@/components/layout/Layout';
+import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { SEO } from '@/components/SEO';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -268,6 +269,7 @@ function ToolCardGrid({ tools }: { tools: ToolCard[] }) {
 export default function Tools() {
   return (
     <Layout>
+      <AdPlaceholder variant="banner" />
       <SEO
         title="Free Government Job & Resume Tools | TrueJobs"
         description="Free AI-powered resume tools, government salary calculator, age calculator, and percentage converter. Prepare for SSC, UPSC, IBPS, Railway exams with our utility tools."

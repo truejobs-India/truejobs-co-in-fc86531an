@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { SEO } from '@/components/SEO';
+import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { supabase } from '@/integrations/supabase/client';
 import { ChevronLeft, MapPin, Calendar, Users, IndianRupee, ExternalLink, Briefcase } from 'lucide-react';
 import DOMPurify from 'dompurify';
@@ -88,6 +89,8 @@ export default function EmploymentNewsJobDetail() {
         <Link to="/jobs/employment-news" className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-4">
           <ChevronLeft className="h-4 w-4 mr-1" /> Back to Employment News Jobs
         </Link>
+
+        <AdPlaceholder variant="banner" />
 
         <Card>
           <CardContent className="p-6 sm:p-8">
@@ -186,6 +189,8 @@ export default function EmploymentNewsJobDetail() {
                 </div>
               )}
             </div>
+
+            <AdPlaceholder variant="in-content" />
 
             {/* FAQ Section */}
             {sanitizedFaqHtml && (

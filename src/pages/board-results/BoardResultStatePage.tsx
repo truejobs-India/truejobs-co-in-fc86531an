@@ -5,6 +5,7 @@
 import { useParams, Link } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { Layout } from '@/components/layout/Layout';
+import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { supabase } from '@/integrations/supabase/client';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
@@ -54,7 +55,8 @@ export default function BoardResultStatePage() {
       });
   }, [state, stateDisplay]);
 
-  if (loading) return <Layout><div className="container mx-auto p-8"><Skeleton className="h-96 w-full" /></div></Layout>;
+  if (loading) return <Layout>
+      <AdPlaceholder variant="banner" /><div className="container mx-auto p-8"><Skeleton className="h-96 w-full" /></div></Layout>;
   if (!state || boards.length === 0) return <NotFound />;
 
   const siteUrl = 'https://truejobs.co.in';

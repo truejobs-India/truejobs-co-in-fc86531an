@@ -58,7 +58,7 @@ export default function Offline() {
   }
 
   return (
-    <Layout noAds>
+    <Layout>
       <div className="container mx-auto px-4 py-16">
         {/* Offline Message */}
         <div className="max-w-2xl mx-auto text-center mb-12">

@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { Layout } from '@/components/layout/Layout';
+import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { SEO } from '@/components/SEO';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -96,6 +97,7 @@ export default function ExamCalendar() {
 
   return (
     <Layout>
+      <AdPlaceholder variant="banner" />
       <SEO
         title="Government Exam Calendar 2026 | Upcoming Exam Dates & Schedule"
         description="View the complete government exam calendar for 2026. Track application dates, exam schedules, admit cards & results for SSC, UPSC, IBPS, Railway exams."

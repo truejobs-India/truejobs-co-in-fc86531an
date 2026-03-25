@@ -1,10 +1,12 @@
 import { Layout } from '@/components/layout/Layout';
+import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { SEO } from '@/components/SEO';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 export default function EditorialPolicy() {
   return (
     <Layout>
+      <AdPlaceholder variant="banner" />
       <SEO
         title="Editorial Policy – TrueJobs"
         description="Learn about TrueJobs editorial standards, sourcing approach, review practices, correction principles, and publishing values for government job notifications and career content."

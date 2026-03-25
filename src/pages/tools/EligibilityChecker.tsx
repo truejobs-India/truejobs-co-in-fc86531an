@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { Layout } from '@/components/layout/Layout';
+import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { SEO } from '@/components/SEO';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -130,6 +131,7 @@ export default function EligibilityChecker() {
 
   return (
     <Layout>
+      <AdPlaceholder variant="banner" />
       <SEO
         title="Government Exam Eligibility Checker 2026 | Check Age & Qualification"
         description="Check your eligibility for SSC, UPSC, IBPS, Railway & state government exams. Enter DOB, qualification & category to find matching exams instantly."

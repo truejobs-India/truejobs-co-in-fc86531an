@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { format, differenceInYears, differenceInMonths, differenceInDays, addYears, addMonths } from 'date-fns';
 import { Layout } from '@/components/layout/Layout';
+import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { SEO } from '@/components/SEO';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -94,6 +95,7 @@ export default function AgeCalculator() {
 
   return (
     <Layout>
+      <AdPlaceholder variant="banner" />
       <SEO
         title="Govt Job Age Calculator | Check Eligibility"
         description="Calculate your exact age for government exams like SSC, UPSC, Railway, Banking. Check category-wise age relaxation and eligibility instantly."

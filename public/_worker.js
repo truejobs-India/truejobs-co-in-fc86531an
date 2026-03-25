@@ -1,10 +1,24 @@
-// ── Configuration ────────────────────────────────────────────────────
+// ── Standalone Cloudflare Worker for TrueJobs ────────────────────────
+// Proxies Lovable origin for assets/SPA shell.
+// Intercepts SEO routes to merge cached HTML fragments from Supabase.
+// Source of truth: this repo. Deploy to CF dashboard or via Wrangler.
 
-const SUPABASE_URL = 'https://riktrtfgpnrqiwatppcq.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJpa3RydGZncG5ycWl3YXRwcGNxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg5MzA2NjEsImV4cCI6MjA4NDUwNjY2MX0.CAVN3HBsibvQuj_0FPNMKJ7d3cKo3kKR77aoXFH6uFQ';
+// ── Configuration (env bindings override these fallbacks) ────────────
+
+const FALLBACK_SUPABASE_URL = 'https://riktrtfgpnrqiwatppcq.supabase.co';
+const FALLBACK_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJpa3RydGZncG5ycWl3YXRwcGNxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg5MzA2NjEsImV4cCI6MjA4NDUwNjY2MX0.CAVN3HBsibvQuj_0FPNMKJ7d3cKo3kKR77aoXFH6uFQ';
+const FALLBACK_LOVABLE_ORIGIN = 'https://truejobs-co-in.lovable.app';
+
+function getConfig(env) {
+  return {
+    SUPABASE_URL: (env && env.SUPABASE_URL) || FALLBACK_SUPABASE_URL,
+    SUPABASE_ANON_KEY: (env && env.SUPABASE_ANON_KEY) || FALLBACK_SUPABASE_ANON_KEY,
+    LOVABLE_ORIGIN: (env && env.LOVABLE_ORIGIN) || FALLBACK_LOVABLE_ORIGIN,
+  };
+}
 
 // ── Sitemap routing ─────────────────────────────────────────────────
-// Maps static sitemap file paths to the dynamic-sitemap edge function
+
 const SITEMAP_ROUTES = {
   '/sitemap.xml': 'index',
   '/sitemap-pages.xml': 'pages',
@@ -14,7 +28,8 @@ const SITEMAP_ROUTES = {
   '/sitemap-resources.xml': 'resources',
 };
 
-// SEO route patterns — match pathname (without query/hash)
+// ── SEO route patterns ──────────────────────────────────────────────
+
 const SEO_ROUTE_PATTERNS = [
   /^\/$/,
   /^\/jobs$/,
@@ -55,12 +70,13 @@ const SEO_ROUTE_PATTERNS = [
   /^\/today-govt-jobs$/,
 ];
 
-// Private routes — never intercept
+// Private routes — never intercept for SEO
 const PRIVATE_PREFIXES = [
   '/login', '/signup', '/phone-signup', '/forgot-password',
   '/dashboard', '/profile', '/employer', '/admin',
   '/enrol-now', '/thankyou', '/offline',
   '/tools/resume-builder', '/tools/resume-checker',
+  '/auth/callback',
 ];
 
 function isSEORoute(pathname) {
@@ -82,7 +98,7 @@ function mergeHTML(originHTML, headHtml, bodyHtml) {
 
   let originHead = headMatch[1];
 
-  // Remove SEO-replaceable tags from original head (will be replaced by headHtml)
+  // Remove SEO-replaceable tags from original head
   originHead = originHead
     .replace(/<title[^>]*>[\s\S]*?<\/title>/gi, '')
     .replace(/<meta[^>]+name=["']description["'][^>]*\/?>/gi, '')
@@ -115,22 +131,72 @@ ${bodyScripts.join('\n')}
 </html>`;
 }
 
-// ── Worker handler (Cloudflare Pages Advanced Mode) ──────────────────
+// ── Helper: fetch SPA shell from Lovable origin ─────────────────────
+
+async function fetchSpaShell(cfg) {
+  const res = await fetch(cfg.LOVABLE_ORIGIN + '/', {
+    headers: { 'User-Agent': 'TrueJobs-Worker/2.0' },
+    cf: { cacheTtl: 120 },
+  });
+  return res;
+}
+
+// ── Helper: proxy request to Lovable origin ─────────────────────────
+
+async function proxyToOrigin(request, cfg) {
+  const url = new URL(request.url);
+  const targetUrl = cfg.LOVABLE_ORIGIN + url.pathname + url.search;
+  return fetch(targetUrl, {
+    method: request.method,
+    headers: request.headers,
+    body: request.method !== 'GET' && request.method !== 'HEAD' ? request.body : undefined,
+    redirect: 'follow',
+  });
+}
+
+// ── Service worker file patterns ────────────────────────────────────
+
+function isServiceWorkerFile(pathname) {
+  return pathname === '/sw.js' || pathname.startsWith('/workbox-');
+}
+
+// ── Uncommon static files with long cache ───────────────────────────
+
+const LONG_CACHE_STATICS = [
+  '/robots.txt', '/ads.txt', '/favicon.ico', '/favicon.png',
+  '/pwa-icon.png', '/og-image.png', '/manifest.webmanifest',
+];
+
+// ── Worker handler (Standalone Mode) ────────────────────────────────
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const pathname = url.pathname;
+    const cfg = getConfig(env);
 
-    // ── Sitemap routing: proxy to dynamic-sitemap edge function ──
+    // ── 1. WWW redirect → apex ──────────────────────────────────
+    if (url.hostname === 'www.truejobs.co.in') {
+      return Response.redirect(
+        `https://truejobs.co.in${pathname}${url.search}`,
+        301
+      );
+    }
+
+    // ── 2. Non-GET → proxy to origin (pass through) ─────────────
+    if (request.method !== 'GET') {
+      return proxyToOrigin(request, cfg);
+    }
+
+    // ── 3. Sitemap routing → Supabase dynamic-sitemap ───────────
     const sitemapType = SITEMAP_ROUTES[pathname];
-    if (sitemapType && request.method === 'GET') {
+    if (sitemapType) {
       try {
         const sitemapRes = await fetch(
-          `${SUPABASE_URL}/functions/v1/dynamic-sitemap?type=${sitemapType}`,
+          `${cfg.SUPABASE_URL}/functions/v1/dynamic-sitemap?type=${sitemapType}`,
           {
             headers: {
-              'apikey': SUPABASE_ANON_KEY,
+              'apikey': cfg.SUPABASE_ANON_KEY,
               'Content-Type': 'application/json',
             },
           }
@@ -149,11 +215,13 @@ export default {
       } catch (err) {
         console.error('Sitemap proxy error:', err);
       }
-      // Fallback: serve static sitemap.xml if edge function fails
+      // Fallback: /sitemap.xml → proxy static file from origin
       if (pathname === '/sitemap.xml') {
-        return env.ASSETS.fetch(request);
+        return fetch(cfg.LOVABLE_ORIGIN + '/sitemap.xml', {
+          headers: { 'User-Agent': 'TrueJobs-Worker/2.0' },
+        });
       }
-      // For sub-sitemaps with no static fallback, return minimal valid XML
+      // Sub-sitemaps: return minimal valid XML
       return new Response(`<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url><loc>https://truejobs.co.in/</loc></url>
@@ -163,71 +231,140 @@ export default {
       });
     }
 
-    // Static assets — serve directly via Pages asset binding
+    // ── 4. Service worker files → proxy with no-cache ───────────
+    if (isServiceWorkerFile(pathname)) {
+      const swRes = await fetch(cfg.LOVABLE_ORIGIN + pathname, {
+        headers: { 'User-Agent': 'TrueJobs-Worker/2.0' },
+      });
+      const swHeaders = new Headers(swRes.headers);
+      swHeaders.set('Cache-Control', 'no-cache, max-age=0');
+      return new Response(swRes.body, {
+        status: swRes.status,
+        headers: swHeaders,
+      });
+    }
+
+    // ── 5. Static files with extensions → proxy to origin ───────
     if (/\.\w{2,5}$/.test(pathname)) {
-      return env.ASSETS.fetch(request);
+      const assetRes = await fetch(cfg.LOVABLE_ORIGIN + pathname + url.search, {
+        headers: { 'User-Agent': 'TrueJobs-Worker/2.0' },
+      });
+      // Long-cache static files get explicit headers
+      if (LONG_CACHE_STATICS.includes(pathname)) {
+        const headers = new Headers(assetRes.headers);
+        headers.set('Cache-Control', 'public, max-age=3600, s-maxage=86400');
+        return new Response(assetRes.body, {
+          status: assetRes.status,
+          headers,
+        });
+      }
+      // Hashed assets (/assets/*) — pass through origin headers (immutable)
+      return assetRes;
     }
 
-    // Non-GET or non-SEO route — serve SPA shell
-    if (request.method !== 'GET' || !isSEORoute(pathname)) {
-      // SPA fallback: serve index.html for all non-asset navigation
-      const assetRes = await env.ASSETS.fetch(request);
-      if (assetRes.ok) return assetRes;
-      // Fallback to index.html for SPA routes
-      return env.ASSETS.fetch(new Request(new URL('/', url), request));
-    }
+    // ── 6. Private/auth routes → SPA shell ──────────────────────
+    // (Also caught by step 8 catch-all, but explicit for clarity)
 
-    const slug = extractSlug(pathname);
+    // ── 7. SEO routes → merge cached HTML with SPA shell ────────
+    if (isSEORoute(pathname)) {
+      const slug = extractSlug(pathname);
 
-    try {
-      // Parallel fetch: cached fragments + origin index.html
-      const [cacheRes, originRes] = await Promise.all([
-        fetch(`${SUPABASE_URL}/functions/v1/serve-public-page`, {
-          method: 'POST',
+      try {
+        const [cacheRes, originRes] = await Promise.all([
+          fetch(`${cfg.SUPABASE_URL}/functions/v1/serve-public-page`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': cfg.SUPABASE_ANON_KEY,
+            },
+            body: JSON.stringify({ slug }),
+          }),
+          fetchSpaShell(cfg),
+        ]);
+
+        // Cache miss or error → return SPA shell
+        if (!cacheRes.ok || cacheRes.status === 404) {
+          const shellHtml = await originRes.text();
+          return new Response(shellHtml, {
+            status: 200,
+            headers: {
+              'Content-Type': 'text/html; charset=utf-8',
+              'Cache-Control': 'public, max-age=60, s-maxage=120',
+            },
+          });
+        }
+
+        const { head_html, body_html } = await cacheRes.json();
+        const originHTML = await originRes.text();
+
+        if (!head_html || !body_html) {
+          return new Response(originHTML, {
+            status: 200,
+            headers: {
+              'Content-Type': 'text/html; charset=utf-8',
+              'Cache-Control': 'public, max-age=60, s-maxage=120',
+            },
+          });
+        }
+
+        const merged = mergeHTML(originHTML, head_html, body_html);
+        if (!merged) {
+          return new Response(originHTML, {
+            status: 200,
+            headers: {
+              'Content-Type': 'text/html; charset=utf-8',
+              'Cache-Control': 'public, max-age=60, s-maxage=120',
+            },
+          });
+        }
+
+        return new Response(merged, {
+          status: 200,
           headers: {
-            'Content-Type': 'application/json',
-            'apikey': SUPABASE_ANON_KEY,
+            'Content-Type': 'text/html; charset=utf-8',
+            'Cache-Control': 'public, max-age=300, s-maxage=3600',
+            'X-Rendered-By': 'sfc-worker',
           },
-          body: JSON.stringify({ slug }),
-        }),
-        env.ASSETS.fetch(new Request(new URL('/', url), request)),
-      ]);
-
-      // Cache miss or error → fall through to SPA
-      if (!cacheRes.ok || cacheRes.status === 404) {
-        return originRes;
-      }
-
-      const { head_html, body_html } = await cacheRes.json();
-      const originHTML = await originRes.text();
-
-      if (!head_html || !body_html) {
-        return new Response(originHTML, {
-          status: 200,
-          headers: { 'Content-Type': 'text/html; charset=utf-8' },
         });
+      } catch (err) {
+        console.error('SFC Worker SEO error:', err);
+        // On any error, serve SPA shell
+        try {
+          const fallbackRes = await fetchSpaShell(cfg);
+          const fallbackHtml = await fallbackRes.text();
+          return new Response(fallbackHtml, {
+            status: 200,
+            headers: {
+              'Content-Type': 'text/html; charset=utf-8',
+              'Cache-Control': 'public, max-age=60, s-maxage=120',
+            },
+          });
+        } catch (shellErr) {
+          return new Response('Service temporarily unavailable', {
+            status: 502,
+            headers: { 'Retry-After': '30' },
+          });
+        }
       }
+    }
 
-      const merged = mergeHTML(originHTML, head_html, body_html);
-      if (!merged) {
-        return new Response(originHTML, {
-          status: 200,
-          headers: { 'Content-Type': 'text/html; charset=utf-8' },
-        });
-      }
-
-      return new Response(merged, {
+    // ── 8. Catch-all → SPA shell (React Router handles routing) ─
+    try {
+      const shellRes = await fetchSpaShell(cfg);
+      const shellHtml = await shellRes.text();
+      return new Response(shellHtml, {
         status: 200,
         headers: {
           'Content-Type': 'text/html; charset=utf-8',
-          'Cache-Control': 'public, max-age=300, s-maxage=3600',
-          'X-Rendered-By': 'sfc-worker',
+          'Cache-Control': 'public, max-age=60, s-maxage=120',
         },
       });
     } catch (err) {
-      console.error('SFC Worker error:', err);
-      // On any error, serve SPA shell
-      return env.ASSETS.fetch(new Request(new URL('/', url), request));
+      console.error('SPA shell fetch error:', err);
+      return new Response('Service temporarily unavailable', {
+        status: 502,
+        headers: { 'Retry-After': '30' },
+      });
     }
   },
 };

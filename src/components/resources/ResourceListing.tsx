@@ -4,6 +4,7 @@ import { Layout } from '@/components/layout/Layout';
 import { supabase } from '@/integrations/supabase/client';
 import { ResourceSEO } from '@/components/resources/ResourceSEO';
 import { ResourceCard } from '@/components/resources/ResourceCard';
+import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';

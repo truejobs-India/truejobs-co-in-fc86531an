@@ -188,6 +188,8 @@ export default function ResourceDetail() {
               />
             )}
 
+            <AdPlaceholder variant="in-content" />
+
             {/* FAQ */}
             {faqItems.length > 0 && (
               <section>

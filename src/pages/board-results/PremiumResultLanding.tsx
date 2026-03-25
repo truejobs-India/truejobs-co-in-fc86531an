@@ -48,6 +48,7 @@ export function PremiumResultLanding({ page }: PremiumResultLandingProps) {
 
   return (
     <article className="container mx-auto max-w-4xl px-4 py-8">
+      <AdPlaceholder variant="banner" />
       {/* Breadcrumb */}
       <nav className="text-sm text-muted-foreground mb-6">
         <Link to="/" className="hover:text-primary">Home</Link>

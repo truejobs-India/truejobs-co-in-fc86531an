@@ -1,78 +1,90 @@
 
 
-## Implementation Plan: Migrate `_worker.js` to Standalone Worker Mode
+# Audit Report & Fix Plan: Google AdSense on TrueJobs
 
-### Summary
-Rewrite `public/_worker.js` from Cloudflare Pages Advanced Mode (using `env.ASSETS.fetch`) to a standalone Cloudflare Worker that proxies the Lovable published origin (`https://truejobs-co-in.lovable.app`) for all non-SEO traffic, while preserving the existing Supabase SEO cache merge system. Update documentation to match.
+## Audit Findings
+
+### Finding 1: AdSense script IS preserved during Worker merge — CONFIRMED SAFE
+
+The `mergeHTML()` function in `public/_worker.js` (line 95-130) only strips SEO meta tags (title, description, OG, twitter, canonical, robots, fragment). The AdSense `<script>` block in `index.html` (lines 50-58) is an inline script, not a meta/link/title tag. It survives the merge into `originHead`. **No issue here.**
+
+### Finding 2: Cached `head_html` fragments do NOT contain AdSense — BY DESIGN, NOT A BUG
+
+Both `seo-cache-rebuild` and `build-seo-cache` generate `head_html` containing only SEO tags (title, meta, OG, twitter, canonical, schema, CSS). They do NOT inject AdSense. This is correct because the Worker's merge logic preserves the origin shell's global scripts (including AdSense) and appends the cached `head_html` on top. The AdSense script comes from the origin `index.html`, not from the cache. **No issue here.**
+
+### Finding 3: `/blog/:slug` is MISSING from `SEO_ROUTE_PATTERNS` — CRITICAL BUG
+
+The Worker pattern list has `/blog$` but NOT `/blog/[slug]`. When a user directly visits `https://truejobs.co.in/blog/nic-scientist-b-2026-...`, the Worker falls through to the catch-all (step 8), serving a bare SPA shell with an empty `<div id="root"></div>`. AdSense Auto Ads scans this empty shell and finds no content to place ads against.
+
+Also missing: `/companies/:slug`, `/employment-news/:slug`, `/blog/category/:slug`.
+
+### Finding 4: `AdPlaceholder` is a FAKE empty div — CRITICAL BUG
+
+The component (line 80-84) renders `<div class="ad-slot ad-slot-banner ...">` — a plain div with no `<ins class="adsbygoogle">`, no `data-ad-client`, no `adsbygoogle.push()`. Google AdSense completely ignores these elements. Manual ad placements on blog posts, job pages, and all other templates are purely cosmetic.
+
+### Finding 5: 13+ public pages incorrectly use `noAds` — REVENUE LOSS
+
+These public monetizable pages pass `noAds` to Layout, blocking all ads:
+- `FeeCalculator`, `SalaryCalculator`, `PhotoResizer`, `OutreachAssets`, `Tools`, `ResumeChecker`, `PdfTools`, `ExamCalendar`, `TypingTest`, `PercentageCalculator`, `ImageResizer`, `EligibilityChecker`, `AgeCalculator`, `ResumeBuilder`
+
+Only these should have `noAds`: `AdminDashboard`, `Login`, `Signup`, `PhoneSignup`, `ForgotPassword`, `EnrolNow`, `NotFound`, `Offline`.
+
+### Finding 6: Admin exclusion is correct
+
+`/admin` is in `PRIVATE_PREFIXES` and uses `startsWith`, so `/admin` and `/admin/*` are excluded from SEO rendering. `AdminDashboard.tsx` uses `<Layout noAds>`. The AdSense `<ins>` component will check `NoAdsContext` and return null. Safe.
+
+---
+
+## Implementation Plan
+
+### Step 1: Add missing route patterns to `public/_worker.js`
+
+Add these patterns to `SEO_ROUTE_PATTERNS`:
+```
+/^\/blog\/[a-z0-9-]+$/           — individual blog posts
+/^\/blog\/category\/[a-z0-9-]+$/ — blog category pages
+/^\/companies\/[a-z0-9-]+$/      — company detail pages
+/^\/employment-news\/[a-z0-9-]+$/ — employment news detail
+```
+
+This ensures the Worker merges cached SEO HTML (with content) for these routes, giving AdSense scannable content on first load.
+
+### Step 2: Replace `AdPlaceholder` with real AdSense component
+
+Replace the fake div with a production-safe component that:
+- Renders `<ins class="adsbygoogle">` with `data-ad-client="ca-pub-7353331010234724"`
+- Uses distinct `data-ad-slot` values per variant (banner, sidebar, in-content, footer)
+- Calls `(adsbygoogle = window.adsbygoogle || []).push({})` once per mount using a ref guard
+- Returns null when `NoAdsContext` is true (admin pages)
+- Guards against window undefined
+- Reserves space with `min-height` to reduce CLS
+- Only activates on production domain (`truejobs.co.in`)
+
+### Step 3: Remove `noAds` from public tool pages
+
+Remove `noAds` prop from all public tool/resource pages:
+- `FeeCalculator.tsx`, `SalaryCalculator.tsx`, `PhotoResizer.tsx`, `OutreachAssets.tsx`, `Tools.tsx`, `ResumeChecker.tsx`, `PdfTools.tsx`, `ExamCalendar.tsx`, `TypingTest.tsx`, `PercentageCalculator.tsx`, `ImageResizer.tsx`, `EligibilityChecker.tsx`, `AgeCalculator.tsx`, `ResumeBuilder.tsx`
+
+Keep `noAds` on: `AdminDashboard`, `Login`, `Signup`, `PhoneSignup`, `ForgotPassword`, `EnrolNow`, `NotFound`, `Offline`.
 
 ### Files Changed
 
-**1. `public/_worker.js`** — Full rewrite
-
-Key changes:
-- **Remove** all `env.ASSETS.fetch()` calls (6 occurrences)
-- **Add** `LOVABLE_ORIGIN` constant (`https://truejobs-co-in.lovable.app`)
-- **Read** `SUPABASE_URL`, `SUPABASE_ANON_KEY` from `env` bindings (with hardcoded fallbacks for safety during transition)
-- **Add** www-to-apex redirect as the very first check
-- **Add** explicit service worker no-cache handling for `/sw.js` and `/workbox-*.js`
-- **Add** `cf: { cacheTtl: 120 }` on SPA shell origin fetches for edge resilience
-- **Add** `Cache-Control: public, max-age=3600, s-maxage=86400` on proxied static files like `robots.txt`, `manifest.webmanifest`, `favicon.ico`
-- **Keep** all SEO route patterns, private prefixes, `isSEORoute()`, `extractSlug()`, `mergeHTML()`, sitemap routing — unchanged
-- **Keep** the exact same SEO merged HTML cache headers (`max-age=300, s-maxage=3600`)
-
-New request flow in the Worker:
-```text
-1. www redirect → 301 to apex
-2. Non-GET → proxy to LOVABLE_ORIGIN (pass through)
-3. Sitemaps → proxy to Supabase dynamic-sitemap (fallback: LOVABLE_ORIGIN/sitemap.xml or minimal XML)
-4. /sw.js, /workbox-*.js → proxy to LOVABLE_ORIGIN with no-cache headers
-5. Files with extensions → proxy to LOVABLE_ORIGIN (pass through origin headers for hashed assets)
-6. Private/auth routes → proxy LOVABLE_ORIGIN/ (SPA shell, short cache)
-7. SEO routes → parallel fetch: Supabase fragments + LOVABLE_ORIGIN/ shell → mergeHTML
-8. Catch-all → proxy LOVABLE_ORIGIN/ (SPA shell)
-```
-
-Helper function added: `fetchSpaShell(env)` — centralized SPA shell fetch with `cf: { cacheTtl: 120 }` and short `Cache-Control`.
-
-Proxy function added: `proxyToOrigin(request, env)` — forwards request to `LOVABLE_ORIGIN + pathname + search` preserving method/headers.
-
-**2. `docs/cloudflare-worker-sfc.md`** — Full rewrite
-
-Updated to document:
-- Standalone Worker architecture (not Pages)
-- Lovable origin as upstream asset server
-- Env bindings required: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `LOVABLE_ORIGIN`
-- Worker route setup: `truejobs.co.in/*` and `www.truejobs.co.in/*`
-- Cache TTLs for each content type
-- Deployment procedure (paste into CF dashboard or use Wrangler CLI)
-- Pre-cutover checklist
-- Post-cutover verification checklist
-- Rollback steps
-- Secrets needed in Supabase for cache purge: `CLOUDFLARE_ZONE_ID`, `CLOUDFLARE_API_TOKEN`
-
-### No changes to
-- Any Supabase edge functions
-- Any React components or routes
-- `index.html`, `robots.txt`, `manifest.webmanifest`, `sw.ts`
-- `AuthContext.tsx` (custom domain detection already works)
-- Any database tables or RLS policies
-- `supabase/config.toml`
-- `.env`
-
-### Technical Details
-
-**Worker env bindings** (configured in Cloudflare dashboard after deployment):
-| Binding | Type | Value |
-|---|---|---|
-| `SUPABASE_URL` | Secret | `https://riktrtfgpnrqiwatppcq.supabase.co` |
-| `SUPABASE_ANON_KEY` | Secret | The anon key |
-| `LOVABLE_ORIGIN` | Variable | `https://truejobs-co-in.lovable.app` |
-
-**Supabase secrets to add** (for cache purge to work):
-| Secret | Purpose |
+| File | Change |
 |---|---|
-| `CLOUDFLARE_ZONE_ID` | Zone ID from CF dashboard for cache purge API |
-| `CLOUDFLARE_API_TOKEN` | CF API token with Cache Purge permission |
+| `public/_worker.js` | Add 4 route patterns to `SEO_ROUTE_PATTERNS` |
+| `src/components/ads/AdPlaceholder.tsx` | Replace fake div with real `<ins class="adsbygoogle">` component |
+| 14 tool page files | Remove `noAds` from `<Layout>` |
 
-**Homepage fallback**: If `serve-public-page` returns 404 or error for slug `""`, the Worker serves the raw SPA shell from Lovable origin. The `index.html` already contains valid homepage meta tags, so bots get reasonable SEO signals and users get a fully functional React-rendered homepage.
+### What stays unchanged
+- `index.html` AdSense Auto Ads script — preserved as-is
+- `mergeHTML` logic — already correct, preserves global scripts
+- Admin exclusion — already correct
+- Edge functions — no changes needed
+- Cached `head_html`/`body_html` — correct by design (AdSense comes from origin shell, not cache)
+
+### Ad-eligibility rule (single source of truth)
+- **Ads allowed**: All pages EXCEPT `/admin` and `/admin/*`
+- Enforced by: `NoAdsContext` in Layout (only `AdminDashboard` and auth/utility pages set `noAds`)
+- AdSense component checks `NoAdsContext` and returns null when true
+- Worker excludes `/admin` via `PRIVATE_PREFIXES`
 

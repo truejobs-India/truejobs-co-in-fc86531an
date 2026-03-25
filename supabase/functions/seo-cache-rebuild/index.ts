@@ -424,7 +424,7 @@ async function handleQueueMode(db: any, triggerSource: string, startTime: number
 
 // ── Slugs Mode ───────────────────────────────────────────────────────
 
-async function handleSlugsMode(db: any, slugs: string[], triggerSource: string, startTime: number) {
+async function handleSlugsMode(db: any, slugs: string[], triggerSource: string, startTime: number, forceRebuild = false) {
   let rebuilt = 0, skipped = 0, failed = 0;
   const urlsToPurge: string[] = [];
 

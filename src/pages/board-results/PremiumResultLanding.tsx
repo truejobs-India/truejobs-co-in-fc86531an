@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Calendar, Clock, ExternalLink, Tag, BookOpen, AlertCircle } from 'lucide-react';
 import { BoardResultAlertCTA } from '@/components/board-results/BoardResultAlertCTA';
 import { GovtDisclaimer } from '@/pages/seo/components/GovtDisclaimer';
+import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { Link } from 'react-router-dom';
 
 interface PremiumResultLandingProps {

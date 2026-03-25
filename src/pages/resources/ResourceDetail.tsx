@@ -132,6 +132,8 @@ export default function ResourceDetail() {
           <span className="text-foreground line-clamp-1">{resource.title}</span>
         </nav>
 
+        <AdPlaceholder variant="banner" />
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Main content */}
           <div className="lg:col-span-2 space-y-8">

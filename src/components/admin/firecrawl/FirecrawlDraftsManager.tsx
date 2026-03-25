@@ -19,6 +19,7 @@ import {
   AlertTriangle, ExternalLink, Copy, ShieldCheck, ShieldAlert, Eye,
   ThumbsUp, Undo2, CircleDot, Circle, Ban, X, Trash2,
 } from 'lucide-react';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { FirecrawlSourcesManager } from './FirecrawlSourcesManager';
 import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSelector';
 import { SEO_FIX_MODEL_VALUES } from '@/lib/aiModels';
@@ -184,6 +185,9 @@ export function FirecrawlDraftsManager() {
   const [bulkFixFieldsRunning, setBulkFixFieldsRunning] = useState(false);
   const [bulkFixFieldsProgress, setBulkFixFieldsProgress] = useState<BulkProgress | null>(null);
   const bulkFixFieldsCancelRef = useRef(false);
+
+  // Image preview state
+  const [previewImage, setPreviewImage] = useState<{ url: string; title: string } | null>(null);
 
   const fetchDrafts = useCallback(async () => {
     setLoading(true);
@@ -971,20 +975,26 @@ export function FirecrawlDraftsManager() {
                           <div className="flex items-center gap-1 justify-end">
                             <Button
                               size="sm" variant="outline"
-                              disabled={!!busyRows[draft.id] || hasExistingImage(draft)}
-                              onClick={() => createImage(draft.id)}
-                              title={hasExistingImage(draft) ? 'Image already exists' : 'Generate cover image'}
+                              disabled={!!busyRows[draft.id] || (!hasExistingImage(draft) && false)}
+                              onClick={() => {
+                                if (hasExistingImage(draft)) {
+                                  setPreviewImage({ url: draft.cover_image_url!, title: draft.title || 'Untitled' });
+                                } else {
+                                  createImage(draft.id);
+                                }
+                              }}
+                              title={hasExistingImage(draft) ? 'Click to preview cover image' : 'Generate cover image'}
                               className="gap-1"
                             >
                               {busyRows[draft.id] === 'ai-cover-image' ? (
                                 <Loader2 className="h-3 w-3 animate-spin" />
                               ) : hasExistingImage(draft) ? (
-                                <CheckCircle className="h-3 w-3 text-green-500" />
+                                <Eye className="h-3 w-3 text-green-500" />
                               ) : (
                                 <Image className="h-3 w-3" />
                               )}
                               <span className="hidden sm:inline text-xs">
-                                {hasExistingImage(draft) ? 'Has Image' : 'Image'}
+                                {hasExistingImage(draft) ? 'View' : 'Image'}
                               </span>
                             </Button>
                             <Button
@@ -1071,6 +1081,20 @@ export function FirecrawlDraftsManager() {
           )}
         </CardContent>
       </Card>
+
+      {/* Cover Image Preview Dialog */}
+      <Dialog open={!!previewImage} onOpenChange={(open) => !open && setPreviewImage(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogTitle className="text-sm font-medium line-clamp-1">{previewImage?.title}</DialogTitle>
+          {previewImage && (
+            <img
+              src={previewImage.url}
+              alt={previewImage.title}
+              className="w-full rounded-lg object-contain max-h-[70vh]"
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

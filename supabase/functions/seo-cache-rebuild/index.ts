@@ -565,7 +565,7 @@ async function handlePurgeAllCF(db: any, triggerSource: string, startTime: numbe
 
 // ── Single Slug Rebuild ──────────────────────────────────────────────
 
-async function rebuildSingleSlug(db: any, slug: string, pageType: string): Promise<'rebuilt' | 'skipped' | 'failed'> {
+async function rebuildSingleSlug(db: any, slug: string, pageType: string, forceRebuild = false): Promise<'rebuilt' | 'skipped' | 'failed'> {
   // Try to build page data from DB sources
   let pageData: PageData | null = null;
 

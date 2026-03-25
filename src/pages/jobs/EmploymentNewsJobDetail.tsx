@@ -190,6 +190,8 @@ export default function EmploymentNewsJobDetail() {
               )}
             </div>
 
+            <AdPlaceholder variant="in-content" />
+
             {/* FAQ Section */}
             {sanitizedFaqHtml && (
               <div className="mt-8 border-t pt-6">

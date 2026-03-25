@@ -15,7 +15,7 @@ const NotFound = () => {
   }, [location.pathname]);
 
   return (
-    <Layout noAds>
+    <Layout>
       <SEO 
         title="Page Not Found" 
         description="The page you're looking for doesn't exist. Browse jobs, read career tips, or return to the homepage."

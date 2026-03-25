@@ -5,7 +5,7 @@ import { CheckCircle2, Briefcase } from 'lucide-react';
 
 export default function ThankYou() {
   return (
-    <Layout noAds>
+    <Layout>
       <SEO 
         title="Thank You - Jobs Campaign | TrueJobs" 
         description="Thank you for enrolling in our jobs campaign."

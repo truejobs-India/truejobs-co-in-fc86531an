@@ -19,6 +19,7 @@ export function Layout({ children, hideFooter = false, noAds = false }: LayoutPr
       <div className="min-h-screen flex flex-col">
         <Navbar />
         <main className="flex-1">{children}</main>
+        <AdPlaceholder variant="footer" />
         {!hideFooter && <Footer />}
         <JobSearchBot />
         <StickyMobileCTA />

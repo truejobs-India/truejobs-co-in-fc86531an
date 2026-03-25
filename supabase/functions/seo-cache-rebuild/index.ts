@@ -313,6 +313,8 @@ Deno.serve(async (req) => {
     const mode: string = body.mode || 'queue';
     const triggerSource = body.trigger || auth.source;
 
+    const forceRebuild: boolean = body.force === true;
+
     if (mode === 'queue') {
       return await handleQueueMode(db, triggerSource, startTime);
     } else if (mode === 'slugs') {
@@ -320,9 +322,9 @@ Deno.serve(async (req) => {
       if (slugs.length === 0) {
         return jsonResponse({ error: 'No slugs provided' }, 400);
       }
-      return await handleSlugsMode(db, slugs, triggerSource, startTime);
+      return await handleSlugsMode(db, slugs, triggerSource, startTime, forceRebuild);
     } else if (mode === 'full') {
-      return await handleFullMode(db, triggerSource, startTime);
+      return await handleFullMode(db, triggerSource, startTime, forceRebuild);
     } else if (mode === 'purge-all-cf') {
       return await handlePurgeAllCF(db, triggerSource, startTime);
     }

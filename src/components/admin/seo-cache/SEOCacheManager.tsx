@@ -169,7 +169,33 @@ export function SEOCacheManager() {
               </AlertDialogContent>
             </AlertDialog>
 
-            {/* Purge All CF — type-to-confirm */}
+            {/* Force Rebuild — bypasses hash check */}
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button size="sm" variant="outline" disabled={isRebuilding} className="gap-1 h-8 border-orange-300 text-orange-700 hover:bg-orange-50">
+                  {isRebuilding ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                  Force Rebuild
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>⚡ Force Rebuild All Pages?</AlertDialogTitle>
+                  <AlertDialogDescription className="space-y-2">
+                    <p>This will <strong>regenerate ALL</strong> cached HTML for DB-sourced pages, <strong>ignoring content hash</strong> — even unchanged pages will be rewritten.</p>
+                    <p className="text-xs text-orange-600 border-l-2 border-orange-300 pl-2 mt-2">
+                      Use this when templates or HTML structure changed but source data hasn't. Takes longer than a normal rebuild.
+                    </p>
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => handleRebuildAll(true)} className="bg-orange-600 hover:bg-orange-700">
+                    Force Rebuild All
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button size="sm" variant="destructive" className="gap-1 h-8">

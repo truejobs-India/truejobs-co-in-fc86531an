@@ -104,6 +104,7 @@ const NAV_DENYLIST = new RegExp(
     '^\\/api\\/',
     '^\\/rest\\/',
     '^\\/functions\\/',
+    '\\.(xml|txt|webmanifest)$',
   ].join('|'),
 );
 

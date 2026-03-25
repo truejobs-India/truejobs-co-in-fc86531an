@@ -462,7 +462,7 @@ async function handleSlugsMode(db: any, slugs: string[], triggerSource: string, 
 
 // ── Full Mode ────────────────────────────────────────────────────────
 
-async function handleFullMode(db: any, triggerSource: string, startTime: number) {
+async function handleFullMode(db: any, triggerSource: string, startTime: number, forceRebuild = false) {
   // Full rebuild means ALL DB-sourced pages only.
   // Inventory-sourced pages are handled by build-seo-cache.
   const [blogRes, examRes, newsRes] = await Promise.all([

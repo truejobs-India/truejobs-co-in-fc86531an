@@ -168,6 +168,8 @@ export default function CompanyDetail() {
         url={`/companies/${slug}`}
         structuredData={companySchema}
       />
+      {/* Top Banner Ad */}
+      <AdPlaceholder variant="banner" />
       {/* Header */}
       <div className="bg-muted/30 py-8 border-b">
         <div className="container mx-auto px-4">

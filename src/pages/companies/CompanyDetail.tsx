@@ -236,9 +236,11 @@ export default function CompanyDetail() {
       </div>
 
       <div className="container mx-auto px-4 py-8">
+        <AdPlaceholder variant="in-content" />
         <div className="grid lg:grid-cols-3 gap-8">
           {/* Sidebar */}
           <div className="lg:col-span-1 space-y-6">
+            <AdPlaceholder variant="sidebar" className="hidden lg:block" />
             {company.description && (
               <Card>
                 <CardContent className="p-6">

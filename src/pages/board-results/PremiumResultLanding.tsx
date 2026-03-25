@@ -186,6 +186,7 @@ export function PremiumResultLanding({ page }: PremiumResultLandingProps) {
       {/* Second CTA after "How to check" section */}
       {contentParts.part2 && (
         <>
+          <AdPlaceholder variant="in-content" />
           <BoardResultAlertCTA
             variant="soft"
             context={page.board_name || page.title}

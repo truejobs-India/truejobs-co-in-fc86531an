@@ -214,6 +214,7 @@ export default function ResourceDetail() {
 
           {/* Sidebar */}
           <aside className="space-y-6">
+            <AdPlaceholder variant="sidebar" className="hidden lg:block" />
             <div className="rounded-lg overflow-hidden border border-border">
               <img
                 src={coverSrc}

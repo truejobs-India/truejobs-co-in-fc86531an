@@ -19,6 +19,7 @@ import {
   AlertTriangle, ExternalLink, Copy, ShieldCheck, ShieldAlert, Eye,
   ThumbsUp, Undo2, CircleDot, Circle, Ban, X, Trash2,
 } from 'lucide-react';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { FirecrawlSourcesManager } from './FirecrawlSourcesManager';
 import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSelector';
 import { SEO_FIX_MODEL_VALUES } from '@/lib/aiModels';

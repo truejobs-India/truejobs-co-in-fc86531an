@@ -90,6 +90,8 @@ export default function EmploymentNewsJobDetail() {
           <ChevronLeft className="h-4 w-4 mr-1" /> Back to Employment News Jobs
         </Link>
 
+        <AdPlaceholder variant="banner" />
+
         <Card>
           <CardContent className="p-6 sm:p-8">
             {/* Header */}

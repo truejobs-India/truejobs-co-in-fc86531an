@@ -1,120 +1,78 @@
 
 
-## Plan: Fix 2 Blockers — OCR Orchestration + Direct AI Model Routing
+## Implementation Plan: Migrate `_worker.js` to Standalone Worker Mode
 
-### Blocker 1: OCR Orchestration Timeout Fix
+### Summary
+Rewrite `public/_worker.js` from Cloudflare Pages Advanced Mode (using `env.ASSETS.fetch`) to a standalone Cloudflare Worker that proxies the Lovable published origin (`https://truejobs-co-in.lovable.app`) for all non-SEO traffic, while preserving the existing Supabase SEO cache merge system. Update documentation to match.
 
-**Problem**: `start-ocr` processes all pages sequentially in one edge function call. Each page involves image download + Azure POST + polling (~30-45s). Any issue >5 pages will timeout.
+### Files Changed
 
-**Fix**: Convert `start-ocr` and `retry-failed` into thin orchestrators. Move the processing loop to the frontend.
+**1. `public/_worker.js`** — Full rewrite
 
-#### Changes
+Key changes:
+- **Remove** all `env.ASSETS.fetch()` calls (6 occurrences)
+- **Add** `LOVABLE_ORIGIN` constant (`https://truejobs-co-in.lovable.app`)
+- **Read** `SUPABASE_URL`, `SUPABASE_ANON_KEY` from `env` bindings (with hardcoded fallbacks for safety during transition)
+- **Add** www-to-apex redirect as the very first check
+- **Add** explicit service worker no-cache handling for `/sw.js` and `/workbox-*.js`
+- **Add** `cf: { cacheTtl: 120 }` on SPA shell origin fetches for edge resilience
+- **Add** `Cache-Control: public, max-age=3600, s-maxage=86400` on proxied static files like `robots.txt`, `manifest.webmanifest`, `favicon.ico`
+- **Keep** all SEO route patterns, private prefixes, `isSEORoute()`, `extractSlug()`, `mergeHTML()`, sitemap routing — unchanged
+- **Keep** the exact same SEO merged HTML cache headers (`max-age=300, s-maxage=3600`)
 
-**`supabase/functions/azure-emp-news-start-ocr/index.ts`** — Full rewrite to thin orchestrator:
-- Validate issue exists and has pending pages
-- Recover stale pages stuck in `processing` for >5 minutes (reset to `pending`)
-- Set issue `ocr_status` to `processing`
-- Return `{ page_ids: string[] }` — the list of pending page IDs
-- Does NOT process any pages itself
-
-**`supabase/functions/azure-emp-news-retry-failed/index.ts`** — Full rewrite to thin reset:
-- Reset all failed pages to `pending` (same as today)
-- Set issue `ocr_status` to `processing`
-- Return `{ page_ids: string[] }` — the reset page IDs
-- Does NOT call `start-ocr` or process pages
-
-**`src/components/admin/emp-news/azure-based-extraction/OcrQueueTab.tsx`** — Add client-side page-by-page loop:
-- `handleStartOcr`: calls `start-ocr` to get `page_ids`, then loops calling `azure-emp-news-process-page` one at a time
-- Real-time progress state: `ocrProgress: { current: number, total: number, completed: number, failed: number } | null`
-- Cancel support: `cancelRef` flag checked between pages to abort the loop
-- After each page call, refresh page list to show live status updates
-- `handleRetryAllFailed`: calls `retry-failed` to get `page_ids`, then same page-by-page loop
-- Spinner + progress bar during processing, "Cancel" button visible during run
-- Individual page retry (`handleRetryPage`) unchanged — already calls `process-page` directly
-
-### Blocker 2: Replace Lovable Gateway with Direct AI Paths Only
-
-**Problem**: `ai-clean-drafts` hardcodes `google/gemini-2.5-flash` via Lovable AI Gateway. Must use only direct API paths and honor the admin-selected model.
-
-**Allowed models** (direct API only — no Lovable Gateway in this workflow):
-
-| Key | Provider | Route |
-|---|---|---|
-| `vertex-flash` | Vertex AI | `gemini-2.5-flash` |
-| `vertex-pro` | Vertex AI | `gemini-2.5-pro` |
-| `vertex-3.1-pro` | Vertex AI | `gemini-3.1-pro-preview` |
-| `vertex-3-flash` | Vertex AI | `gemini-3-flash-preview` |
-| `vertex-3.1-flash-lite` | Vertex AI | `gemini-3.1-flash-lite-preview` |
-| `nova-pro` | Bedrock | via `callBedrockNova` |
-| `nova-premier` | Bedrock | via `callBedrockNova` |
-| `mistral` | Bedrock | via `awsSigV4Fetch` |
-| `sarvam-30b` | Sarvam | direct `api.sarvam.ai` |
-| `sarvam-105b` | Sarvam | direct `api.sarvam.ai` |
-
-#### Changes
-
-**`supabase/functions/azure-emp-news-ai-clean-drafts/index.ts`** — Full rewrite:
-- Remove `LOVABLE_API_KEY` check and all `ai.gateway.lovable.dev` code
-- Accept `aiModel` from request body (required, validated against allowed set)
-- Add `callAI` dispatcher following exact `firecrawl-ai-enrich` pattern:
-  - **Vertex route**: Import `callVertexGemini` from `_shared/vertex-ai.ts`. Append JSON schema to prompt. Parse JSON via `/{[\s\S]*}/` regex.
-  - **Bedrock route** (nova-pro/nova-premier): Import `callBedrockNova` from `_shared/bedrock-nova.ts`. Same JSON-in-prompt. **Preserve `applyNovaHindiSafeguard`** — the existing Hindi Devanagari instruction in `bedrock-nova.ts` fires automatically since `callBedrockNova` calls it internally.
-  - **Bedrock Mistral route**: Import `awsSigV4Fetch` from `_shared/bedrock-nova.ts`. Same Converse API pattern as `firecrawl-ai-enrich`.
-  - **Sarvam route**: Direct `fetch` to `https://api.sarvam.ai/v1/chat/completions` with `SARVAM_API_KEY`. Same JSON-in-prompt pattern.
-  - **No fallback**: If `aiModel` is missing or not in the allowed set, return 400 immediately.
-- Save `ai_model_used: aiModel` in every draft's `ai_cleaned_data` for audit trail
-- Log actual model + provider used per notice
-- 429/rate-limit handling: break the loop, set notice back to `pending`, surface error
-- Keep existing `SYSTEM_PROMPT`, `TOOL_SCHEMA.function.parameters` (used as JSON schema in prompt), `validateDraft`, `isJobRelevant` logic
-
-**`src/components/admin/emp-news/azure-based-extraction/DraftJobsTab.tsx`**:
-- Import `AiModelSelector` and `getLastUsedModel` from `@/components/admin/AiModelSelector`
-- Define allowlist:
-```typescript
-const AZURE_EMP_NEWS_AI_MODELS = [
-  'vertex-flash', 'vertex-pro', 'vertex-3.1-pro', 'vertex-3-flash', 'vertex-3.1-flash-lite',
-  'nova-pro', 'nova-premier', 'mistral',
-  'sarvam-30b', 'sarvam-105b',
-] as const;
+New request flow in the Worker:
+```text
+1. www redirect → 301 to apex
+2. Non-GET → proxy to LOVABLE_ORIGIN (pass through)
+3. Sitemaps → proxy to Supabase dynamic-sitemap (fallback: LOVABLE_ORIGIN/sitemap.xml or minimal XML)
+4. /sw.js, /workbox-*.js → proxy to LOVABLE_ORIGIN with no-cache headers
+5. Files with extensions → proxy to LOVABLE_ORIGIN (pass through origin headers for hashed assets)
+6. Private/auth routes → proxy LOVABLE_ORIGIN/ (SPA shell, short cache)
+7. SEO routes → parallel fetch: Supabase fragments + LOVABLE_ORIGIN/ shell → mergeHTML
+8. Catch-all → proxy LOVABLE_ORIGIN/ (SPA shell)
 ```
-- Add `aiModel` state initialized from `getLastUsedModel('text', 'vertex-flash', AZURE_EMP_NEWS_AI_MODELS)`
-- Render `AiModelSelector` next to "Generate AI Drafts" button with `allowedValues={AZURE_EMP_NEWS_AI_MODELS}` and `capability="text"`
-- Pass `aiModel` in `supabase.functions.invoke('azure-emp-news-ai-clean-drafts', { body: { issue_id, aiModel } })`
 
-### Files Modified
+Helper function added: `fetchSpaShell(env)` — centralized SPA shell fetch with `cf: { cacheTtl: 120 }` and short `Cache-Control`.
 
-| File | Change |
+Proxy function added: `proxyToOrigin(request, env)` — forwards request to `LOVABLE_ORIGIN + pathname + search` preserving method/headers.
+
+**2. `docs/cloudflare-worker-sfc.md`** — Full rewrite
+
+Updated to document:
+- Standalone Worker architecture (not Pages)
+- Lovable origin as upstream asset server
+- Env bindings required: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `LOVABLE_ORIGIN`
+- Worker route setup: `truejobs.co.in/*` and `www.truejobs.co.in/*`
+- Cache TTLs for each content type
+- Deployment procedure (paste into CF dashboard or use Wrangler CLI)
+- Pre-cutover checklist
+- Post-cutover verification checklist
+- Rollback steps
+- Secrets needed in Supabase for cache purge: `CLOUDFLARE_ZONE_ID`, `CLOUDFLARE_API_TOKEN`
+
+### No changes to
+- Any Supabase edge functions
+- Any React components or routes
+- `index.html`, `robots.txt`, `manifest.webmanifest`, `sw.ts`
+- `AuthContext.tsx` (custom domain detection already works)
+- Any database tables or RLS policies
+- `supabase/config.toml`
+- `.env`
+
+### Technical Details
+
+**Worker env bindings** (configured in Cloudflare dashboard after deployment):
+| Binding | Type | Value |
+|---|---|---|
+| `SUPABASE_URL` | Secret | `https://riktrtfgpnrqiwatppcq.supabase.co` |
+| `SUPABASE_ANON_KEY` | Secret | The anon key |
+| `LOVABLE_ORIGIN` | Variable | `https://truejobs-co-in.lovable.app` |
+
+**Supabase secrets to add** (for cache purge to work):
+| Secret | Purpose |
 |---|---|
-| `supabase/functions/azure-emp-news-start-ocr/index.ts` | Rewrite to thin orchestrator |
-| `supabase/functions/azure-emp-news-retry-failed/index.ts` | Rewrite to thin reset + return IDs |
-| `supabase/functions/azure-emp-news-ai-clean-drafts/index.ts` | Remove Gateway, add Vertex/Bedrock/Sarvam dispatcher |
-| `src/components/admin/emp-news/azure-based-extraction/OcrQueueTab.tsx` | Client-side page-by-page loop with progress + cancel |
-| `src/components/admin/emp-news/azure-based-extraction/DraftJobsTab.tsx` | Add AiModelSelector with direct-only allowlist |
+| `CLOUDFLARE_ZONE_ID` | Zone ID from CF dashboard for cache purge API |
+| `CLOUDFLARE_API_TOKEN` | CF API token with Cache Purge permission |
 
-### Files NOT Modified
-- No old Emp News files
-- No `process-page` function (already works correctly)
-- No `retry-page` function (already works correctly)
-- No database migrations
-- No config.toml changes
-- No new edge functions
-- `_shared/bedrock-nova.ts` — unchanged; Nova Hindi safeguard (`applyNovaHindiSafeguard`) is already built into `callBedrockNova` and fires automatically
-
-### Nova Hindi Safeguard Preservation
-The `applyNovaHindiSafeguard` function in `_shared/bedrock-nova.ts` is called internally by `callBedrockNova`. When Employment News text contains Hindi markers (common in government job notices), it automatically prepends Devanagari script instructions. This is preserved without any changes since the new dispatcher calls `callBedrockNova` directly.
-
-### Test Checklist
-- [ ] Start OCR on 10+ page issue — pages process one at a time with live progress
-- [ ] Cancel mid-run — remaining pages stay `pending`
-- [ ] Stale page recovery — page stuck in `processing` >5min gets reset
-- [ ] Retry All Failed resets and processes page by page
-- [ ] Individual page retry still works
-- [ ] Select `vertex-flash` → drafts route through Vertex AI
-- [ ] Select `nova-pro` → drafts route through Bedrock (Hindi safeguard active)
-- [ ] Select `sarvam-30b` → drafts route through Sarvam API
-- [ ] `ai_model_used` saved in `ai_cleaned_data` for each draft
-- [ ] No `ai.gateway.lovable.dev` URL anywhere in the edge function
-- [ ] Gateway-only models (gemini-flash, gpt5, etc.) do not appear in selector
-- [ ] Missing/invalid model returns 400, no silent fallback
-- [ ] Old Emp News system completely unaffected
+**Homepage fallback**: If `serve-public-page` returns 404 or error for slug `""`, the Worker serves the raw SPA shell from Lovable origin. The `index.html` already contains valid homepage meta tags, so bots get reasonable SEO signals and users get a fully functional React-rendered homepage.
 

@@ -313,6 +313,8 @@ Deno.serve(async (req) => {
     const mode: string = body.mode || 'queue';
     const triggerSource = body.trigger || auth.source;
 
+    const forceRebuild: boolean = body.force === true;
+
     if (mode === 'queue') {
       return await handleQueueMode(db, triggerSource, startTime);
     } else if (mode === 'slugs') {
@@ -320,9 +322,9 @@ Deno.serve(async (req) => {
       if (slugs.length === 0) {
         return jsonResponse({ error: 'No slugs provided' }, 400);
       }
-      return await handleSlugsMode(db, slugs, triggerSource, startTime);
+      return await handleSlugsMode(db, slugs, triggerSource, startTime, forceRebuild);
     } else if (mode === 'full') {
-      return await handleFullMode(db, triggerSource, startTime);
+      return await handleFullMode(db, triggerSource, startTime, forceRebuild);
     } else if (mode === 'purge-all-cf') {
       return await handlePurgeAllCF(db, triggerSource, startTime);
     }
@@ -422,13 +424,13 @@ async function handleQueueMode(db: any, triggerSource: string, startTime: number
 
 // ── Slugs Mode ───────────────────────────────────────────────────────
 
-async function handleSlugsMode(db: any, slugs: string[], triggerSource: string, startTime: number) {
+async function handleSlugsMode(db: any, slugs: string[], triggerSource: string, startTime: number, forceRebuild = false) {
   let rebuilt = 0, skipped = 0, failed = 0;
   const urlsToPurge: string[] = [];
 
   for (const slug of slugs) {
     try {
-      const result = await rebuildSingleSlug(db, slug, 'manual');
+      const result = await rebuildSingleSlug(db, slug, 'manual', forceRebuild);
       if (result === 'rebuilt') {
         rebuilt++;
         urlsToPurge.push(`${SITE_URL}/${slug}`);
@@ -460,7 +462,7 @@ async function handleSlugsMode(db: any, slugs: string[], triggerSource: string, 
 
 // ── Full Mode ────────────────────────────────────────────────────────
 
-async function handleFullMode(db: any, triggerSource: string, startTime: number) {
+async function handleFullMode(db: any, triggerSource: string, startTime: number, forceRebuild = false) {
   // Full rebuild means ALL DB-sourced pages only.
   // Inventory-sourced pages are handled by build-seo-cache.
   const [blogRes, examRes, newsRes] = await Promise.all([
@@ -488,7 +490,7 @@ async function handleFullMode(db: any, triggerSource: string, startTime: number)
     const chunk = targets.slice(i, i + concurrency);
     const results = await Promise.all(chunk.map(async (row) => {
       try {
-        const result = await rebuildSingleSlug(db, row.slug, row.page_type);
+        const result = await rebuildSingleSlug(db, row.slug, row.page_type, forceRebuild);
         return { row, result };
       } catch {
         return { row, result: 'failed' as const };
@@ -563,7 +565,7 @@ async function handlePurgeAllCF(db: any, triggerSource: string, startTime: numbe
 
 // ── Single Slug Rebuild ──────────────────────────────────────────────
 
-async function rebuildSingleSlug(db: any, slug: string, pageType: string): Promise<'rebuilt' | 'skipped' | 'failed'> {
+async function rebuildSingleSlug(db: any, slug: string, pageType: string, forceRebuild = false): Promise<'rebuilt' | 'skipped' | 'failed'> {
   // Try to build page data from DB sources
   let pageData: PageData | null = null;
 
@@ -602,7 +604,7 @@ async function rebuildSingleSlug(db: any, slug: string, pageType: string): Promi
     .eq('slug', slug)
     .maybeSingle();
 
-  if (existing?.content_hash === hash) {
+  if (!forceRebuild && existing?.content_hash === hash) {
     return 'skipped';
   }
 

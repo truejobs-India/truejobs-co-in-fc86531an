@@ -210,6 +210,7 @@ export default function ImageResizer() {
 
   return (
     <Layout>
+      <AdPlaceholder variant="banner" />
       <SEO
         title="Free Image Resizer Online | Resize & Convert"
         description="Resize images online for free. Convert between JPG, PNG, WebP. Preset sizes for social media, print, and web. 100% browser-based, no server upload."

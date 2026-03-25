@@ -131,6 +131,7 @@ export default function EligibilityChecker() {
 
   return (
     <Layout>
+      <AdPlaceholder variant="banner" />
       <SEO
         title="Government Exam Eligibility Checker 2026 | Check Age & Qualification"
         description="Check your eligibility for SSC, UPSC, IBPS, Railway & state government exams. Enter DOB, qualification & category to find matching exams instantly."

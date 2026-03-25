@@ -269,6 +269,7 @@ function ToolCardGrid({ tools }: { tools: ToolCard[] }) {
 export default function Tools() {
   return (
     <Layout>
+      <AdPlaceholder variant="banner" />
       <SEO
         title="Free Government Job & Resume Tools | TrueJobs"
         description="Free AI-powered resume tools, government salary calculator, age calculator, and percentage converter. Prepare for SSC, UPSC, IBPS, Railway exams with our utility tools."

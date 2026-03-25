@@ -95,6 +95,7 @@ export default function AgeCalculator() {
 
   return (
     <Layout>
+      <AdPlaceholder variant="banner" />
       <SEO
         title="Govt Job Age Calculator | Check Eligibility"
         description="Calculate your exact age for government exams like SSC, UPSC, Railway, Banking. Check category-wise age relaxation and eligibility instantly."

@@ -339,6 +339,7 @@ export default function ResumeChecker() {
 
   return (
     <Layout>
+      <AdPlaceholder variant="banner" />
       <SEO 
         title="AI Resume Checker & Improver | TrueJobs"
         description="Upload your resume and get AI-powered improvement suggestions. Optimize for ATS and stand out to recruiters."

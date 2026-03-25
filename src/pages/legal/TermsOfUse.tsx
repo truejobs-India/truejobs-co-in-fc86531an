@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 export default function TermsOfUse() {
   return (
     <Layout>
+      <AdPlaceholder variant="banner" />
       <SEO 
         title="Terms of Use - TrueJobs | Terms & Conditions" 
         description="Read the Terms of Use governing your access to TrueJobs, an independent government job information portal. Covers user responsibilities, no government affiliation, verification obligations, and dispute resolution."

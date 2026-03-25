@@ -485,6 +485,7 @@ export default function ResumeBuilder() {
 
   return (
     <Layout>
+      <AdPlaceholder variant="banner" />
       <SEO 
         title="AI Resume Builder | TrueJobs"
         description="Create a professional resume from scratch using AI. Fill in your details and get an ATS-optimized resume in minutes."

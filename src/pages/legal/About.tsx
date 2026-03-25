@@ -86,6 +86,7 @@ export default function About() {
 
   return (
     <Layout>
+      <AdPlaceholder variant="banner" />
       <SEO 
         title="About Us - TrueJobs | India's AI-Powered Job Portal" 
         description="TrueJobs is India's AI-powered job portal connecting talented professionals with leading companies. Learn about our mission, services, team, and how we're transforming hiring in India."

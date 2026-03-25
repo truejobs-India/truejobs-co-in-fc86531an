@@ -130,6 +130,7 @@ export default function Contact() {
 
   return (
     <Layout>
+      <AdPlaceholder variant="banner" />
       <SEO 
         title="Contact Us - TrueJobs | Get Help & Support" 
         description="Contact TrueJobs for job search help, employer services, technical support, or grievance redressal. Reach us via email or our contact form. Response within 24-48 hours."

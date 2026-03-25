@@ -191,6 +191,7 @@ export default function TypingTest() {
 
   return (
     <Layout>
+      <AdPlaceholder variant="banner" />
       <SEO
         title="Typing Test for Govt Exams | SSC IBPS Railway"
         description="Practice typing speed for SSC CHSL, SSC CGL, IBPS Clerk, Railway exams. Check your WPM and accuracy against official requirements. Free online typing test."

@@ -85,6 +85,7 @@ export default function PercentageCalculator() {
 
   return (
     <Layout>
+      <AdPlaceholder variant="banner" />
       <SEO
         title="Percentage & CGPA Calculator | TrueJobs"
         description="Calculate percentage from marks or convert CGPA to percentage for government exam eligibility. Supports 10-point, 7-point, and 4-point scales."

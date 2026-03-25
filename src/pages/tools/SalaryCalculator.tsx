@@ -122,6 +122,7 @@ export default function SalaryCalculator() {
 
   return (
     <Layout>
+      <AdPlaceholder variant="banner" />
       <SEO
         title="7th CPC Salary Calculator | Govt Pay"
         description="Calculate your government salary under the 7th Pay Commission. Get detailed breakdown of DA, HRA, TA, NPS deduction, and estimated tax for all 18 pay levels."

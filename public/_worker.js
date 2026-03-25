@@ -189,8 +189,10 @@ export default {
       );
     }
 
-    // ── 2. Non-GET → proxy to origin (pass through) ─────────────
-    if (request.method !== 'GET') {
+    // ── 2. Non-GET/HEAD → proxy to origin (pass through) ──────
+    // HEAD must follow the same routing as GET so sitemaps/static
+    // files return correct status codes (e.g. Google Search Console).
+    if (request.method !== 'GET' && request.method !== 'HEAD') {
       return proxyToOrigin(request, cfg);
     }
 

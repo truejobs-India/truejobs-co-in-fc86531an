@@ -160,7 +160,7 @@ export default function EmployerDashboard() {
 
   if (isLoading) {
     return (
-      <Layout noAds>
+      <Layout>
         <div className="container mx-auto px-4 py-8">
           <Skeleton className="h-8 w-64 mb-8" />
           <div className="grid md:grid-cols-4 gap-6 mb-8">
@@ -174,7 +174,7 @@ export default function EmployerDashboard() {
 
   if (!company) {
     return (
-      <Layout noAds>
+      <Layout>
         <div className="container mx-auto px-4 py-16 text-center">
           <Building2 className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
           <h1 className="text-2xl font-bold mb-2">Set Up Your Company</h1>
@@ -200,7 +200,7 @@ export default function EmployerDashboard() {
   ];
 
   return (
-    <Layout noAds>
+    <Layout>
       <SEO title="Employer Dashboard" noindex />
       <div className="flex min-h-[calc(100vh-4rem)]">
         {/* Sidebar */}

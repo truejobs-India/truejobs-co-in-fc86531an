@@ -224,7 +224,7 @@ export default function Login() {
   ];
 
   return (
-    <Layout noAds>
+    <Layout>
       <div className={cn(
         "min-h-[calc(100vh-4rem)] relative overflow-hidden",
         isEmployer 

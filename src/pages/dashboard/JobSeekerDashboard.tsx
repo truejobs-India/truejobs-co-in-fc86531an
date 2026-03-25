@@ -150,7 +150,7 @@ export default function JobSeekerDashboard() {
 
   if (isLoading) {
     return (
-      <Layout noAds>
+      <Layout>
         <div className="min-h-screen bg-gradient-hero">
           <div className="container mx-auto px-4 py-8">
             <Skeleton className="h-8 w-64 mb-8" />
@@ -167,7 +167,7 @@ export default function JobSeekerDashboard() {
   }
 
   return (
-    <Layout noAds>
+    <Layout>
       <div className="min-h-screen bg-gradient-hero relative overflow-hidden">
         {/* Premium background effects */}
         <div className="absolute inset-0 pointer-events-none">

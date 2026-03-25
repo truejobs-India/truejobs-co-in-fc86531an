@@ -490,7 +490,7 @@ async function handleFullMode(db: any, triggerSource: string, startTime: number,
     const chunk = targets.slice(i, i + concurrency);
     const results = await Promise.all(chunk.map(async (row) => {
       try {
-        const result = await rebuildSingleSlug(db, row.slug, row.page_type);
+        const result = await rebuildSingleSlug(db, row.slug, row.page_type, forceRebuild);
         return { row, result };
       } catch {
         return { row, result: 'failed' as const };

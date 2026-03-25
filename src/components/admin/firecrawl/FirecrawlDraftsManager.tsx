@@ -1081,6 +1081,20 @@ export function FirecrawlDraftsManager() {
           )}
         </CardContent>
       </Card>
+
+      {/* Cover Image Preview Dialog */}
+      <Dialog open={!!previewImage} onOpenChange={(open) => !open && setPreviewImage(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogTitle className="text-sm font-medium line-clamp-1">{previewImage?.title}</DialogTitle>
+          {previewImage && (
+            <img
+              src={previewImage.url}
+              alt={previewImage.title}
+              className="w-full rounded-lg object-contain max-h-[70vh]"
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

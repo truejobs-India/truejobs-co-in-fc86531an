@@ -164,7 +164,7 @@ export function SEOCacheManager() {
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                   <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleRebuildAll}>Rebuild All</AlertDialogAction>
+                  <AlertDialogAction onClick={() => handleRebuildAll(false)}>Rebuild All</AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>

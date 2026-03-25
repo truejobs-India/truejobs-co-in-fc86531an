@@ -604,7 +604,7 @@ async function rebuildSingleSlug(db: any, slug: string, pageType: string, forceR
     .eq('slug', slug)
     .maybeSingle();
 
-  if (existing?.content_hash === hash) {
+  if (!forceRebuild && existing?.content_hash === hash) {
     return 'skipped';
   }
 

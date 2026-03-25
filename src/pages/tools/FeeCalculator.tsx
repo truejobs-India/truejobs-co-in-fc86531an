@@ -58,7 +58,7 @@ export default function FeeCalculator() {
   };
 
   return (
-    <Layout noAds>
+    <Layout>
       <SEO
         title="Government Exam Fee Calculator 2026 | Category-Wise Application Fees"
         description="Check category-wise application fees for SSC, UPSC, IBPS, Railway & state government exams. See fees for General, OBC, SC, ST & female candidates."

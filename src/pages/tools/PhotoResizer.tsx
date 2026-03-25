@@ -198,7 +198,7 @@ export default function PhotoResizer() {
   };
 
   return (
-    <Layout noAds>
+    <Layout>
       <SEO
         title="Photo Resizer for Govt Exams | SSC IBPS UPSC"
         description="Resize your photo and signature for SSC, IBPS, UPSC, Railway exam applications. Free online tool with exact pixel presets. 100% browser-based, no upload to server."

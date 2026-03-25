@@ -34,7 +34,11 @@ const SEO_ROUTE_PATTERNS = [
   /^\/$/,
   /^\/jobs$/,
   /^\/blog$/,
+  /^\/blog\/[a-z0-9][a-z0-9-]*$/,
+  /^\/blog\/category\/[a-z0-9][a-z0-9-]*$/,
   /^\/companies$/,
+  /^\/companies\/[a-z0-9][a-z0-9-]*$/,
+  /^\/employment-news\/[a-z0-9][a-z0-9-]*$/,
   /^\/tools$/,
   /^\/aboutus$/,
   /^\/contactus$/,
@@ -68,6 +72,8 @@ const SEO_ROUTE_PATTERNS = [
   /^\/government-[a-z-]+$/,
   /^\/private-jobs$/,
   /^\/today-govt-jobs$/,
+  /^\/sarkari-jobs$/,
+  /^\/sarkari-result$/,
 ];
 
 // Private routes — never intercept for SEO

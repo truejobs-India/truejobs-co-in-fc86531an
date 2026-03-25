@@ -359,7 +359,7 @@ export default function PdfTools() {
   };
 
   return (
-    <Layout noAds>
+    <Layout>
       <SEO
         title="Free PDF Tools Online | Merge, Compress, Convert"
         description="Merge, compress, and convert PDFs for free. Create PDFs from images. 100% browser-based — no files uploaded to any server. Safe and private."

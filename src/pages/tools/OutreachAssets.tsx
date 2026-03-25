@@ -210,7 +210,7 @@ export default function OutreachAssets() {
   };
 
   return (
-    <Layout noAds>
+    <Layout>
       <Helmet>
         <title>Free Government Exam Guides & Study Material | TrueJobs</title>
         <meta name="description" content="Download free PDF guides for SSC, Railway, Banking, UPSC, and Defence exam preparation. Study plans, salary handbooks, and career roadmaps by TrueJobs." />

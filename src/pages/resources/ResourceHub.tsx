@@ -1,6 +1,7 @@
 import { useParams } from 'react-router-dom';
 import { useState, useEffect, useCallback } from 'react';
 import { Layout } from '@/components/layout/Layout';
+import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { supabase } from '@/integrations/supabase/client';
 import { ResourceSEO } from '@/components/resources/ResourceSEO';
 import { ResourceCard } from '@/components/resources/ResourceCard';
@@ -76,6 +77,7 @@ export default function ResourceHub({ resourceType: propType }: ResourceHubProps
   if (!hubConfig) {
     return (
       <Layout>
+      <AdPlaceholder variant="banner" />
         <div className="container mx-auto px-4 py-16 text-center">
           <h1 className="text-2xl font-bold text-foreground mb-4">Hub Not Found</h1>
           <p className="text-muted-foreground mb-6">This category page doesn't exist.</p>

@@ -1,6 +1,7 @@
 import { Helmet } from 'react-helmet-async';
 import { Link, useParams, Navigate } from 'react-router-dom';
 import { Layout } from '@/components/layout/Layout';
+import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { Button } from '@/components/ui/button';
 import { MapPin, Briefcase, TrendingUp, Users, CheckCircle, Building2, Home } from 'lucide-react';
 import { NEAR_ME_PAGES, NearMePageConfig } from './nearMeData';
@@ -68,6 +69,7 @@ export default function NearMeJobPage() {
 
   return (
     <Layout>
+      <AdPlaceholder variant="banner" />
       <Helmet>
         <title>{cfg.title}</title>
         <meta name="description" content={cfg.metaDescription} />

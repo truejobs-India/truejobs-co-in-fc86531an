@@ -1,6 +1,7 @@
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { Layout } from '@/components/layout/Layout';
+import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { supabase } from '@/integrations/supabase/client';
 import { ResourceSEO } from '@/components/resources/ResourceSEO';
 import { ResourceSubscribeCTA } from '@/components/resources/ResourceSubscribeCTA';
@@ -85,6 +86,7 @@ export default function ResourceDownload() {
   if (loading || !resource) {
     return (
       <Layout>
+      <AdPlaceholder variant="banner" />
         <div className="container mx-auto px-4 py-16">
           <div className="animate-pulse space-y-4 max-w-2xl mx-auto">
             <div className="h-8 bg-muted rounded w-3/4" />

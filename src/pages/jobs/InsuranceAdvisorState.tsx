@@ -1,6 +1,7 @@
 import { Helmet } from 'react-helmet-async';
 import { Link, Navigate } from 'react-router-dom';
 import { Layout } from '@/components/layout/Layout';
+import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { Button } from '@/components/ui/button';
 import { MapPin, Briefcase, TrendingUp, Users, CheckCircle, Building2 } from 'lucide-react';
 import { INSURANCE_STATES, getCitiesByState } from './cityData';
@@ -89,6 +90,7 @@ export default function InsuranceAdvisorState() {
 
   return (
     <Layout>
+      <AdPlaceholder variant="banner" />
       <Helmet>
         <title>{`Insurance Advisor Jobs in ${stateName} | Work with Top Insurance Companies – TrueJobs`}</title>
         <meta name="description" content={`Apply for Insurance Advisor and Insurance Consultant jobs in ${stateName}. Work with top MNC insurance companies. Freshers welcome. High earning potential. Apply now on TrueJobs.`} />

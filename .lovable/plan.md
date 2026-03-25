@@ -1,90 +1,83 @@
 
 
-# Audit Report & Fix Plan: Google AdSense on TrueJobs
+# Fix: Machine-Readable Endpoints Returning HTML Instead of XML/Text
 
-## Audit Findings
+## Root Cause
 
-### Finding 1: AdSense script IS preserved during Worker merge — CONFIRMED SAFE
+The **service worker** (`src/sw.ts`) is the culprit. When a user or crawler navigates to `/sitemap.xml`, the browser sends a navigation request (`request.mode === 'navigate'`). The service worker's `NavigationRoute` matches it — the denylist has no exclusion for `.xml` or `.txt` files — and serves the cached `/index.html` app shell. React Router then renders `NotFound`, producing an HTML 404 page.
 
-The `mergeHTML()` function in `public/_worker.js` (line 95-130) only strips SEO meta tags (title, description, OG, twitter, canonical, robots, fragment). The AdSense `<script>` block in `index.html` (lines 50-58) is an inline script, not a meta/link/title tag. It survives the merge into `originHead`. **No issue here.**
+The Cloudflare Worker (`public/_worker.js`) handles these endpoints correctly in production, but the service worker intercepts the request **before** the network response from the CF Worker can arrive, because the NavigationRoute uses a precached `/index.html` fallback.
 
-### Finding 2: Cached `head_html` fragments do NOT contain AdSense — BY DESIGN, NOT A BUG
+## Fix (single file change)
 
-Both `seo-cache-rebuild` and `build-seo-cache` generate `head_html` containing only SEO tags (title, meta, OG, twitter, canonical, schema, CSS). They do NOT inject AdSense. This is correct because the Worker's merge logic preserves the origin shell's global scripts (including AdSense) and appends the cached `head_html` on top. The AdSense script comes from the origin `index.html`, not from the cache. **No issue here.**
+### `src/sw.ts` — Add machine-readable file extensions to the navigation denylist
 
-### Finding 3: `/blog/:slug` is MISSING from `SEO_ROUTE_PATTERNS` — CRITICAL BUG
+Add regex patterns to `NAV_DENYLIST` so the service worker **never** serves the app shell for `.xml`, `.txt`, or `.webmanifest` navigation requests. These requests will pass through to the network (CF Worker in production, or origin static files), returning the correct content type.
 
-The Worker pattern list has `/blog$` but NOT `/blog/[slug]`. When a user directly visits `https://truejobs.co.in/blog/nic-scientist-b-2026-...`, the Worker falls through to the catch-all (step 8), serving a bare SPA shell with an empty `<div id="root"></div>`. AdSense Auto Ads scans this empty shell and finds no content to place ads against.
-
-Also missing: `/companies/:slug`, `/employment-news/:slug`, `/blog/category/:slug`.
-
-### Finding 4: `AdPlaceholder` is a FAKE empty div — CRITICAL BUG
-
-The component (line 80-84) renders `<div class="ad-slot ad-slot-banner ...">` — a plain div with no `<ins class="adsbygoogle">`, no `data-ad-client`, no `adsbygoogle.push()`. Google AdSense completely ignores these elements. Manual ad placements on blog posts, job pages, and all other templates are purely cosmetic.
-
-### Finding 5: 13+ public pages incorrectly use `noAds` — REVENUE LOSS
-
-These public monetizable pages pass `noAds` to Layout, blocking all ads:
-- `FeeCalculator`, `SalaryCalculator`, `PhotoResizer`, `OutreachAssets`, `Tools`, `ResumeChecker`, `PdfTools`, `ExamCalendar`, `TypingTest`, `PercentageCalculator`, `ImageResizer`, `EligibilityChecker`, `AgeCalculator`, `ResumeBuilder`
-
-Only these should have `noAds`: `AdminDashboard`, `Login`, `Signup`, `PhoneSignup`, `ForgotPassword`, `EnrolNow`, `NotFound`, `Offline`.
-
-### Finding 6: Admin exclusion is correct
-
-`/admin` is in `PRIVATE_PREFIXES` and uses `startsWith`, so `/admin` and `/admin/*` are excluded from SEO rendering. `AdminDashboard.tsx` uses `<Layout noAds>`. The AdSense `<ins>` component will check `NoAdsContext` and return null. Safe.
-
----
-
-## Implementation Plan
-
-### Step 1: Add missing route patterns to `public/_worker.js`
-
-Add these patterns to `SEO_ROUTE_PATTERNS`:
+Patterns to add:
 ```
-/^\/blog\/[a-z0-9-]+$/           — individual blog posts
-/^\/blog\/category\/[a-z0-9-]+$/ — blog category pages
-/^\/companies\/[a-z0-9-]+$/      — company detail pages
-/^\/employment-news\/[a-z0-9-]+$/ — employment news detail
+'\\.(xml|txt|webmanifest)$'
 ```
 
-This ensures the Worker merges cached SEO HTML (with content) for these routes, giving AdSense scannable content on first load.
+This covers:
+- `/sitemap.xml`, `/sitemap-pages.xml`, `/sitemap-jobs.xml`, etc.
+- `/robots.txt`
+- `/ads.txt`
+- `/manifest.webmanifest`
+- Any future `.xml` or `.txt` endpoint
 
-### Step 2: Replace `AdPlaceholder` with real AdSense component
+### No other files change
 
-Replace the fake div with a production-safe component that:
-- Renders `<ins class="adsbygoogle">` with `data-ad-client="ca-pub-7353331010234724"`
-- Uses distinct `data-ad-slot` values per variant (banner, sidebar, in-content, footer)
-- Calls `(adsbygoogle = window.adsbygoogle || []).push({})` once per mount using a ref guard
-- Returns null when `NoAdsContext` is true (admin pages)
-- Guards against window undefined
-- Reserves space with `min-height` to reduce CLS
-- Only activates on production domain (`truejobs.co.in`)
+- `public/_worker.js` — already handles sitemaps (step 3), robots/ads.txt (step 5) correctly
+- `src/App.tsx` — no route changes needed; the SW fix prevents React from ever seeing these URLs
+- Ad policy — completely untouched
+- Layout/templates — completely untouched
+- `noAds` logic — completely untouched
 
-### Step 3: Remove `noAds` from public tool pages
+## Exact edit
 
-Remove `noAds` prop from all public tool/resource pages:
-- `FeeCalculator.tsx`, `SalaryCalculator.tsx`, `PhotoResizer.tsx`, `OutreachAssets.tsx`, `Tools.tsx`, `ResumeChecker.tsx`, `PdfTools.tsx`, `ExamCalendar.tsx`, `TypingTest.tsx`, `PercentageCalculator.tsx`, `ImageResizer.tsx`, `EligibilityChecker.tsx`, `AgeCalculator.tsx`, `ResumeBuilder.tsx`
+In `src/sw.ts`, line 91-108, add one line to the `NAV_DENYLIST` regex array:
 
-Keep `noAds` on: `AdminDashboard`, `Login`, `Signup`, `PhoneSignup`, `ForgotPassword`, `EnrolNow`, `NotFound`, `Offline`.
+```typescript
+const NAV_DENYLIST = new RegExp(
+  [
+    '^\\/admin',
+    '^\\/dashboard',
+    '^\\/employer',
+    '^\\/login',
+    '^\\/signup',
+    '^\\/phone-signup',
+    '^\\/forgot-password',
+    '^\\/profile',
+    '^\\/enrol-now',
+    '^\\/tools\\/',
+    '^\\/auth\\/',
+    '^\\/api\\/',
+    '^\\/rest\\/',
+    '^\\/functions\\/',
+    '\\.(xml|txt|webmanifest)$',   // ← NEW: machine-readable endpoints
+  ].join('|'),
+);
+```
 
-### Files Changed
+## Verification checklist
+
+| Endpoint | Expected result | Mechanism |
+|---|---|---|
+| `/sitemap.xml` | XML sitemap index | SW skips → CF Worker step 3 → Supabase `dynamic-sitemap` |
+| `/sitemap-jobs.xml` | XML sitemap | SW skips → CF Worker step 3 |
+| `/robots.txt` | Plain text | SW skips → CF Worker step 5 → origin static file |
+| `/ads.txt` | Plain text | SW skips → CF Worker step 5 → origin static file |
+| `/manifest.webmanifest` | JSON manifest | SW skips → CF Worker step 5 → origin static file |
+| Homepage `/` | Normal HTML with ads | Unchanged |
+| `/admin` | Ad-free admin page | Unchanged |
+| All other pages | Normal with ads | Unchanged |
+
+## Files changed
 
 | File | Change |
 |---|---|
-| `public/_worker.js` | Add 4 route patterns to `SEO_ROUTE_PATTERNS` |
-| `src/components/ads/AdPlaceholder.tsx` | Replace fake div with real `<ins class="adsbygoogle">` component |
-| 14 tool page files | Remove `noAds` from `<Layout>` |
+| `src/sw.ts` | Add 1 regex pattern to `NAV_DENYLIST` |
 
-### What stays unchanged
-- `index.html` AdSense Auto Ads script — preserved as-is
-- `mergeHTML` logic — already correct, preserves global scripts
-- Admin exclusion — already correct
-- Edge functions — no changes needed
-- Cached `head_html`/`body_html` — correct by design (AdSense comes from origin shell, not cache)
-
-### Ad-eligibility rule (single source of truth)
-- **Ads allowed**: All pages EXCEPT `/admin` and `/admin/*`
-- Enforced by: `NoAdsContext` in Layout (only `AdminDashboard` and auth/utility pages set `noAds`)
-- AdSense component checks `NoAdsContext` and returns null when true
-- Worker excludes `/admin` via `PRIVATE_PREFIXES`
+**Total: 1 file, 1 line added.**
 

@@ -117,6 +117,7 @@ export function ResourceListing({ resourceType, pageTitle, metaTitle, metaDescri
         </nav>
 
         <h1 className="text-3xl font-bold text-foreground mb-2">{pageTitle}</h1>
+        <AdPlaceholder variant="banner" />
         <p className="text-muted-foreground mb-6">
           Download free PDF resources for government exam preparation. All materials are verified and up-to-date.
         </p>

@@ -3,6 +3,7 @@ import { Navbar } from './Navbar';
 import { Footer } from './Footer';
 import { JobSearchBot } from '@/components/chat/JobSearchBot';
 import { StickyMobileCTA } from '@/components/conversion/StickyMobileCTA';
+import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 
 export const NoAdsContext = createContext(false);
 

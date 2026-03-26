@@ -183,8 +183,52 @@ interface BulkResult {
   warning?: string;
 }
 
+type FieldFixCandidate = Pick<
+  DraftJob,
+  | 'id'
+  | 'title'
+  | 'status'
+  | 'dedup_status'
+  | 'fields_missing'
+  | 'organization_name'
+  | 'post_name'
+  | 'location'
+  | 'state'
+  | 'city'
+  | 'category'
+  | 'department'
+  | 'qualification'
+  | 'application_mode'
+  | 'official_apply_url'
+  | 'official_notification_url'
+  | 'ai_fix_missing_at'
+>;
+
+const hasValue = (value: string | null | undefined) => (value?.trim().length ?? 0) > 0;
+
+const draftNeedsFieldFix = (draft: FieldFixCandidate) => {
+  if (!(draft.status === 'draft' || draft.status === 'enriched')) return false;
+  if (draft.dedup_status === 'duplicate') return false;
+
+  return (
+    (draft.fields_missing?.length || 0) > 0 ||
+    !hasValue(draft.title) ||
+    !hasValue(draft.organization_name) ||
+    !hasValue(draft.post_name) ||
+    !hasValue(draft.location) ||
+    !hasValue(draft.state) ||
+    !hasValue(draft.city) ||
+    !hasValue(draft.category) ||
+    !hasValue(draft.department) ||
+    !hasValue(draft.qualification) ||
+    !hasValue(draft.application_mode) ||
+    (!hasValue(draft.official_apply_url) && !hasValue(draft.official_notification_url))
+  );
+};
+
 export function FirecrawlDraftsManager() {
   const [drafts, setDrafts] = useState<DraftJob[]>([]);
+  const [fieldFixCandidates, setFieldFixCandidates] = useState<FieldFixCandidate[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyRows, setBusyRows] = useState<Record<string, string>>({});
   const [activeFilter, setActiveFilter] = useState<FilterTab>('all');
@@ -221,6 +265,32 @@ export function FirecrawlDraftsManager() {
   const [publishValidation, setPublishValidation] = useState<{ draft: DraftJob; errors: string[]; warnings: string[] } | null>(null);
   const [publishing, setPublishing] = useState(false);
 
+  const fetchFieldFixCandidates = useCallback(async (): Promise<FieldFixCandidate[]> => {
+    const pageSize = 1000;
+    let from = 0;
+    const rows: FieldFixCandidate[] = [];
+
+    while (true) {
+      const { data, error } = await supabase
+        .from('firecrawl_draft_jobs')
+        .select('id, title, status, dedup_status, fields_missing, organization_name, post_name, location, state, city, category, department, qualification, application_mode, official_apply_url, official_notification_url, ai_fix_missing_at')
+        .in('status', ['draft', 'enriched'])
+        .neq('dedup_status', 'duplicate')
+        .order('created_at', { ascending: false })
+        .range(from, from + pageSize - 1);
+
+      if (error) throw error;
+
+      const batch = ((data as unknown as FieldFixCandidate[]) || []).filter(draftNeedsFieldFix);
+      rows.push(...batch);
+
+      if (!data || data.length < pageSize) break;
+      from += pageSize;
+    }
+
+    return rows;
+  }, []);
+
   const fetchDrafts = useCallback(async () => {
     setLoading(true);
     let query = supabase
@@ -237,14 +307,29 @@ export function FirecrawlDraftsManager() {
     else if (activeFilter === 'duplicate') query = query.eq('dedup_status', 'duplicate');
     else if (activeFilter === 'rejected') query = query.eq('status', 'rejected');
 
-    const { data, error } = await query;
+    const [{ data, error }, fieldFixResult] = await Promise.all([
+      query,
+      fetchFieldFixCandidates().then(
+        (result) => ({ data: result, error: null as Error | null }),
+        (error) => ({ data: [] as FieldFixCandidate[], error: error as Error })
+      ),
+    ]);
+
     if (error) {
       toast({ title: 'Error loading drafts', description: error.message, variant: 'destructive' });
     } else {
       setDrafts((data as unknown as DraftJob[]) || []);
     }
+
+    if (fieldFixResult.error) {
+      toast({ title: 'Error loading field-fix counts', description: fieldFixResult.error.message, variant: 'destructive' });
+      setFieldFixCandidates([]);
+    } else {
+      setFieldFixCandidates(fieldFixResult.data);
+    }
+
     setLoading(false);
-  }, [activeFilter]);
+  }, [activeFilter, fetchFieldFixCandidates]);
 
   useEffect(() => { fetchDrafts(); }, [fetchDrafts]);
 
@@ -544,14 +629,8 @@ export function FirecrawlDraftsManager() {
 
   // Drafts with missing fields
   const getDraftsNeedingFieldFix = useCallback(() => {
-    return drafts.filter(d =>
-      (d.status === 'draft' || d.status === 'enriched') &&
-      d.dedup_status !== 'duplicate' &&
-      (d.fields_missing?.length || 0) > 0 &&
-      !d.ai_fix_missing_at &&
-      !busyRows[d.id]
-    );
-  }, [drafts, busyRows]);
+    return fieldFixCandidates.filter(d => !busyRows[d.id]);
+  }, [fieldFixCandidates, busyRows]);
 
   const fixFieldsEligibleCount = getDraftsNeedingFieldFix().length;
 

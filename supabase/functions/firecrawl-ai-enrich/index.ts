@@ -95,7 +95,7 @@ Deno.serve(async (req) => {
     const imageModel = (body.imageModel as string) || '';
 
     if (!action) return json({ error: 'Missing action' }, 400);
-    if (!draftId && action !== 'ai-run-all-batch') return json({ error: 'Missing draft_id' }, 400);
+    if (!draftId && action !== 'ai-run-all-batch' && action !== 'govt-auto-publish-batch') return json({ error: 'Missing draft_id' }, 400);
 
     // Auth check
     const authHeader = req.headers.get('Authorization');

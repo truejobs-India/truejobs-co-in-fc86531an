@@ -84,6 +84,27 @@ interface DraftJob {
   tp_clean_status: string;
   tp_cleaned_at: string | null;
   tp_contamination_count: number;
+  // Government-specific fields (Phase 3)
+  advertisement_number: string | null;
+  last_date_for_fee: string | null;
+  correction_window: string | null;
+  admit_card_date: string | null;
+  result_date: string | null;
+  age_relaxation: string | null;
+  how_to_apply: string | null;
+  important_instructions: string | null;
+  eligibility_summary: string | null;
+  application_fee_details: string | null;
+  selection_process_details: string | null;
+  vacancy_details: string | null;
+  important_dates_json: any | null;
+  official_links_json: any | null;
+  field_confidence: any | null;
+  field_evidence: any | null;
+  source_type_tag: string | null;
+  publish_readiness: string | null;
+  ai_govt_extract_at: string | null;
+  ai_govt_enrich_at: string | null;
 }
 
 type AiAction = 'ai-clean' | 'ai-enrich' | 'ai-find-links' | 'ai-fix-missing' | 'ai-seo' | 'ai-cover-prompt' | 'ai-cover-image' | 'ai-run-all' | 'ai-fix-fields' | 'rollback-ai-action';
@@ -105,6 +126,8 @@ const AI_STEP_MAP: { action: string; label: string; tsField: keyof DraftJob }[] 
   { action: 'ai-fix-missing', label: 'Fix', tsField: 'ai_fix_missing_at' },
   { action: 'ai-seo', label: 'SEO', tsField: 'ai_seo_at' },
   { action: 'ai-cover-prompt', label: 'Prompt', tsField: 'ai_cover_prompt_at' },
+  { action: 'ai-govt-extract', label: 'GovtExt', tsField: 'ai_govt_extract_at' },
+  { action: 'ai-govt-enrich', label: 'GovtSEO', tsField: 'ai_govt_enrich_at' },
 ];
 
 type StepState = 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
@@ -169,7 +192,7 @@ const STEP_ICONS: Record<StepState, typeof Circle> = {
   skipped: Ban,
 };
 
-type FilterTab = 'all' | 'draft' | 'enriched' | 'reviewed' | 'approved' | 'promoted' | 'duplicate' | 'rejected';
+type FilterTab = 'all' | 'draft' | 'enriched' | 'reviewed' | 'approved' | 'promoted' | 'duplicate' | 'rejected' | 'govt-all' | 'govt-ready' | 'govt-review' | 'govt-incomplete' | 'govt-retry' | 'govt-no-dates' | 'govt-no-links' | 'govt-low-conf';
 
 interface BulkProgress {
   total: number;
@@ -377,7 +400,7 @@ export function FirecrawlDraftsManager() {
     setLoading(true);
     let query = supabase
       .from('firecrawl_draft_jobs')
-      .select('id, title, organization_name, post_name, state, extraction_confidence, status, fields_extracted, fields_missing, ai_clean_at, ai_enrich_at, ai_links_at, ai_fix_missing_at, ai_seo_at, ai_cover_prompt_at, ai_cover_image_at, ai_enrichment_log, seo_title, cover_image_url, official_notification_url, official_link_confidence, source_name, source_bucket, dedup_status, dedup_reason, dedup_match_ids, created_at, updated_at, location, salary, qualification, age_limit, application_mode, last_date_of_application, total_vacancies, description_summary, intro_text, meta_description, official_apply_url, slug_suggestion, faq_suggestions, category, department, pay_scale, selection_process, closing_date, opening_date, exam_date, job_role, city, normalized_title, tp_clean_status, tp_cleaned_at, tp_contamination_count')
+      .select('id, title, organization_name, post_name, state, extraction_confidence, status, fields_extracted, fields_missing, ai_clean_at, ai_enrich_at, ai_links_at, ai_fix_missing_at, ai_seo_at, ai_cover_prompt_at, ai_cover_image_at, ai_enrichment_log, seo_title, cover_image_url, official_notification_url, official_link_confidence, source_name, source_bucket, dedup_status, dedup_reason, dedup_match_ids, created_at, updated_at, location, salary, qualification, age_limit, application_mode, last_date_of_application, total_vacancies, description_summary, intro_text, meta_description, official_apply_url, slug_suggestion, faq_suggestions, category, department, pay_scale, selection_process, closing_date, opening_date, exam_date, job_role, city, normalized_title, tp_clean_status, tp_cleaned_at, tp_contamination_count, advertisement_number, last_date_for_fee, correction_window, admit_card_date, result_date, age_relaxation, how_to_apply, important_instructions, eligibility_summary, application_fee_details, selection_process_details, vacancy_details, important_dates_json, official_links_json, field_confidence, field_evidence, source_type_tag, publish_readiness, ai_govt_extract_at, ai_govt_enrich_at')
       .order('created_at', { ascending: false })
       .limit(100);
 
@@ -388,6 +411,14 @@ export function FirecrawlDraftsManager() {
     else if (activeFilter === 'promoted') query = query.eq('status', 'promoted');
     else if (activeFilter === 'duplicate') query = query.eq('dedup_status', 'duplicate');
     else if (activeFilter === 'rejected') query = query.eq('status', 'rejected');
+    else if (activeFilter === 'govt-all') query = query.eq('source_type_tag', 'government');
+    else if (activeFilter === 'govt-ready') query = query.eq('source_type_tag', 'government').eq('publish_readiness', 'ready');
+    else if (activeFilter === 'govt-review') query = query.eq('source_type_tag', 'government').eq('publish_readiness', 'review_needed');
+    else if (activeFilter === 'govt-incomplete') query = query.eq('source_type_tag', 'government').eq('publish_readiness', 'incomplete');
+    else if (activeFilter === 'govt-retry') query = query.eq('source_type_tag', 'government').eq('publish_readiness', 'retry');
+    else if (activeFilter === 'govt-no-dates') query = query.eq('source_type_tag', 'government').is('closing_date', null).is('last_date_of_application', null);
+    else if (activeFilter === 'govt-no-links') query = query.eq('source_type_tag', 'government').is('official_apply_url', null).is('official_notification_url', null);
+    else if (activeFilter === 'govt-low-conf') query = query.eq('source_type_tag', 'government').not('field_confidence', 'eq', '{}');
 
     const [{ data, error }, fieldFixResult, bulkRunResult, imageResult] = await Promise.all([
       query,
@@ -947,7 +978,7 @@ export function FirecrawlDraftsManager() {
     }
   };
 
-  const filterTabs: { key: FilterTab; label: string }[] = [
+  const filterTabs: { key: FilterTab; label: string; group?: string }[] = [
     { key: 'all', label: 'All' },
     { key: 'draft', label: 'Draft' },
     { key: 'enriched', label: 'Enriched' },
@@ -956,6 +987,14 @@ export function FirecrawlDraftsManager() {
     { key: 'promoted', label: 'Published' },
     { key: 'duplicate', label: 'Duplicates' },
     { key: 'rejected', label: 'Rejected' },
+    { key: 'govt-all', label: 'Govt All', group: 'govt' },
+    { key: 'govt-ready', label: 'Ready', group: 'govt' },
+    { key: 'govt-review', label: 'Review', group: 'govt' },
+    { key: 'govt-incomplete', label: 'Incomplete', group: 'govt' },
+    { key: 'govt-retry', label: 'Retry', group: 'govt' },
+    { key: 'govt-no-dates', label: 'No Dates', group: 'govt' },
+    { key: 'govt-no-links', label: 'No Links', group: 'govt' },
+    { key: 'govt-low-conf', label: 'Low Conf', group: 'govt' },
   ];
 
   const eligibleCount = getEligibleDrafts().length;
@@ -1122,8 +1161,21 @@ export function FirecrawlDraftsManager() {
         </CardHeader>
         <CardContent>
           {/* Filter tabs */}
-          <div className="flex gap-1 mb-3">
-            {filterTabs.map(tab => (
+          <div className="flex flex-wrap gap-1 mb-3">
+            {filterTabs.filter(t => !t.group).map(tab => (
+              <Button
+                key={tab.key}
+                variant={activeFilter === tab.key ? 'default' : 'ghost'}
+                size="sm"
+                className="text-xs h-7"
+                onClick={() => setActiveFilter(tab.key)}
+              >
+                {tab.label}
+              </Button>
+            ))}
+            <span className="border-l mx-1" />
+            <span className="text-[10px] text-muted-foreground self-center font-medium mr-0.5">Govt:</span>
+            {filterTabs.filter(t => t.group === 'govt').map(tab => (
               <Button
                 key={tab.key}
                 variant={activeFilter === tab.key ? 'default' : 'ghost'}

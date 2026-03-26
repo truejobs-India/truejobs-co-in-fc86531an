@@ -394,7 +394,7 @@ export function FirecrawlDraftsManager() {
   // ── Bulk Create Images ──
   const getDraftsNeedingImages = useCallback(() => {
     return drafts.filter(d =>
-      d.status === 'draft' &&
+      (d.status === 'draft' || d.status === 'enriched') &&
       d.dedup_status !== 'duplicate' &&
       !hasExistingImage(d) &&
       !busyRows[d.id]

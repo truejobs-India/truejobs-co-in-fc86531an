@@ -411,6 +411,25 @@ export function GovtSourcesManager() {
     }
   };
 
+  /* ─── Bulk toggle all sources ─── */
+  const bulkToggleAll = async (enable: boolean) => {
+    if (sources.length === 0) return;
+    setBulkToggling(true);
+    const ids = sources.map(s => s.id);
+    const { error } = await supabase
+      .from('firecrawl_sources')
+      .update({ is_enabled: enable, updated_at: new Date().toISOString() })
+      .eq('source_type', 'government')
+      .in('id', ids);
+    if (error) {
+      toast({ title: 'Bulk toggle failed', description: error.message, variant: 'destructive' });
+    } else {
+      setSources(prev => prev.map(s => ({ ...s, is_enabled: enable })));
+      toast({ title: enable ? 'All sources enabled' : 'All sources disabled' });
+    }
+    setBulkToggling(false);
+  };
+
   /* ─── Counts ─── */
   const enabledCount = sources.filter(s => s.is_enabled).length;
   const totalItems = sources.reduce((sum, s) => sum + s.total_items_found, 0);

@@ -492,24 +492,42 @@ export function FirecrawlDraftsManager() {
       }
 
       setBusyRows(prev => ({ ...prev, [draft.id]: 'ai-cover-image' }));
-      try {
-        // Generate prompt first
-        await supabase.functions.invoke('firecrawl-ai-enrich', {
-          body: { action: 'ai-cover-prompt', draft_id: draft.id, aiModel: selectedModel },
-        });
-        // Generate image
-        const { data, error } = await supabase.functions.invoke('firecrawl-ai-enrich', {
-          body: { action: 'ai-cover-image', draft_id: draft.id, imageModel: selectedImageModel },
-        });
-        if (error) throw new Error(error.message);
-        if (data?.error) throw new Error(data.error);
-        progress.succeeded++;
-      } catch {
-        progress.failed++;
-      } finally {
-        setBusyRows(prev => { const n = { ...prev }; delete n[draft.id]; return n; });
+      let attempt = 0;
+      let done = false;
+      while (attempt < 3 && !done) {
+        attempt++;
+        try {
+          // Generate prompt first
+          await supabase.functions.invoke('firecrawl-ai-enrich', {
+            body: { action: 'ai-cover-prompt', draft_id: draft.id, aiModel: selectedModel },
+          });
+          // Generate image
+          const { data, error } = await supabase.functions.invoke('firecrawl-ai-enrich', {
+            body: { action: 'ai-cover-image', draft_id: draft.id, imageModel: selectedImageModel },
+          });
+          if (error) throw new Error(error.message);
+          if (data?.error) {
+            if (data.error.toLowerCase().includes('rate limit') && attempt < 3) {
+              await new Promise(r => setTimeout(r, attempt * 15000));
+              continue;
+            }
+            throw new Error(data.error);
+          }
+          progress.succeeded++;
+          done = true;
+        } catch (e: any) {
+          if (e.message?.toLowerCase().includes('rate limit') && attempt < 3) {
+            await new Promise(r => setTimeout(r, attempt * 15000));
+            continue;
+          }
+          progress.failed++;
+          done = true;
+        }
       }
+      setBusyRows(prev => { const n = { ...prev }; delete n[draft.id]; return n; });
       setBulkImageProgress({ ...progress });
+      // Throttle between rows
+      if (i < eligible.length - 1) await new Promise(r => setTimeout(r, 5000));
     }
 
     setBulkImageRunning(false);

@@ -477,7 +477,7 @@ export function FirecrawlDraftsManager() {
   // Drafts with missing fields
   const getDraftsNeedingFieldFix = useCallback(() => {
     return drafts.filter(d =>
-      d.status === 'draft' &&
+      (d.status === 'draft' || d.status === 'enriched') &&
       d.dedup_status !== 'duplicate' &&
       (d.fields_missing?.length || 0) > 0 &&
       !busyRows[d.id]

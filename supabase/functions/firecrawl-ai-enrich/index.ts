@@ -987,23 +987,28 @@ async function handleAiCoverImage(draftId: string, client: any, apiKey: string, 
 // ============ 8. AI Run All ============
 
 async function handleAiRunAll(draftId: string, client: any, apiKey: string, aiModel?: string, imageModel?: string) {
-  // Image steps removed from Run All — use dedicated Create Image action instead
-  const steps = [
-    'ai-clean', 'ai-enrich', 'ai-find-links', 'ai-fix-missing', 'ai-seo',
-  ];
+  // Check if this is a government draft — route to govt-specific pipeline
+  const draft = await fetchDraft(draftId, client);
+  const isGovt = draft.source_type_tag === 'government';
+
+  const steps = isGovt
+    ? ['ai-govt-extract', 'ai-find-links', 'ai-fix-missing', 'ai-govt-enrich', 'ai-cover-prompt']
+    : ['ai-clean', 'ai-enrich', 'ai-find-links', 'ai-fix-missing', 'ai-seo'];
+
   const handlers: Record<string, Function> = {
     'ai-clean': handleAiClean,
     'ai-enrich': handleAiEnrich,
     'ai-find-links': handleAiFindLinks,
     'ai-fix-missing': handleAiFixMissing,
     'ai-seo': handleAiSeo,
+    'ai-govt-extract': handleAiGovtExtract,
+    'ai-govt-enrich': handleAiGovtEnrich,
   };
 
   const results: Array<{ step: string; success: boolean; error?: string }> = [];
 
   for (const step of steps) {
     try {
-      // Pass imageModel for image step, aiModel for all text steps
       const modelArg = step === 'ai-cover-image' ? imageModel : aiModel;
       const resp = await handlers[step](draftId, client, apiKey, modelArg);
       const body = await resp.json();
@@ -1018,7 +1023,6 @@ async function handleAiRunAll(draftId: string, client: any, apiKey: string, aiMo
   // Persist failed/skipped step entries into ai_enrichment_log
   const failedSteps = results.filter(r => !r.success);
   if (failedSteps.length > 0) {
-    // Draft may have been deleted mid-run (e.g. by purge duplicates) — skip logging if so
     const { data: latestDraft } = await client.from('firecrawl_draft_jobs').select('ai_enrichment_log').eq('id', draftId).maybeSingle();
     if (latestDraft) {
       let log = latestDraft.ai_enrichment_log || [];
@@ -1035,19 +1039,23 @@ async function handleAiRunAll(draftId: string, client: any, apiKey: string, aiMo
     }
   }
 
-  // Recalculate fields — skip if draft was deleted mid-run
+  // Recalculate fields
   let fieldCounts = { fields_extracted: 0, fields_missing: [] as string[] };
   try { fieldCounts = await recalculateFieldCounts(draftId, client); } catch { /* draft gone */ }
 
   const successCount = results.filter(r => r.success).length;
 
-  // Update status to 'enriched' if at least one step succeeded, so it's no longer eligible for bulk re-run
+  // Update status to 'enriched' + calculate publish_readiness for govt
   if (successCount > 0) {
     try {
-      await client.from('firecrawl_draft_jobs').update({
+      const updatePayload: Record<string, unknown> = {
         status: 'enriched',
         updated_at: new Date().toISOString(),
-      }).eq('id', draftId).eq('status', 'draft'); // only upgrade from draft
+      };
+      if (isGovt) {
+        updatePayload.publish_readiness = await calculatePublishReadiness(draftId, client);
+      }
+      await client.from('firecrawl_draft_jobs').update(updatePayload).eq('id', draftId).eq('status', 'draft');
     } catch { /* draft gone */ }
   }
   return json({

@@ -335,6 +335,10 @@ function appendLog(existing: any[], action: string, result: Record<string, unkno
   return [...(existing || []), { action, at: new Date().toISOString(), status: 'success', ...result }];
 }
 
+function appendCustomLog(existing: any[], action: string, status: 'success' | 'failed' | 'skipped', result: Record<string, unknown>) {
+  return [...(existing || []), { action, at: new Date().toISOString(), status, ...result }];
+}
+
 /** Build old_values snapshot for fields that will change */
 function snapshotOldValues(draft: any, fieldsToUpdate: Record<string, unknown>): Record<string, unknown> {
   const old: Record<string, unknown> = {};
@@ -343,6 +347,46 @@ function snapshotOldValues(draft: any, fieldsToUpdate: Record<string, unknown>):
     if (draft[key] !== undefined) old[key] = draft[key];
   }
   return old;
+}
+
+function getOfficialDomainScore(url: string, keywords: string[]): number {
+  try {
+    const parsed = new URL(url);
+    const lowerUrl = url.toLowerCase();
+    const hostname = parsed.hostname.toLowerCase();
+    const pathname = parsed.pathname.toLowerCase();
+
+    const officialDomain = hostname.includes('.gov.') || hostname.includes('.nic.') || hostname.endsWith('.org.in') || hostname.endsWith('.ac.in');
+    if (!officialDomain || isAggregatorUrl(url)) return -1;
+
+    let score = 0;
+    if (pathname && pathname !== '/') score += 2;
+    if (keywords.some((keyword) => lowerUrl.includes(keyword))) score += 3;
+    if (pathname.endsWith('.pdf')) score += 2;
+    if (lowerUrl.includes('recruit') || lowerUrl.includes('career') || lowerUrl.includes('apply')) score += 1;
+    return score;
+  } catch {
+    return -1;
+  }
+}
+
+function findBestOfficialUrlFromRawLinks(rawLinks: string[] | null | undefined, keywords: string[]): string | null {
+  const candidates = (rawLinks || [])
+    .map((value) => value?.trim())
+    .filter((value): value is string => !!value && /^https?:\/\//i.test(value));
+
+  let bestUrl: string | null = null;
+  let bestScore = -1;
+
+  for (const url of candidates) {
+    const score = getOfficialDomainScore(url, keywords);
+    if (score > bestScore) {
+      bestScore = score;
+      bestUrl = url;
+    }
+  }
+
+  return bestScore >= 0 ? bestUrl : null;
 }
 
 // ============ 1. AI Clean ============
@@ -988,18 +1032,41 @@ async function handleAiFixFields(draftId: string, client: any, apiKey: string, a
     return json({ success: true, action: 'ai-fix-fields', message: 'No missing fields', fixed: [], fields_extracted: fieldCounts.fields_extracted, fields_missing: fieldCounts.fields_missing });
   }
 
+  const fallbackValues: Record<string, unknown> = {};
+  if (missingFields.includes('official_notification_url')) {
+    const notificationUrl = findBestOfficialUrlFromRawLinks(draft.raw_links_found, ['notification', 'advt', 'advertisement', 'pdf']);
+    if (notificationUrl) fallbackValues.official_notification_url = notificationUrl;
+  }
+  if (missingFields.includes('official_apply_url')) {
+    const applyUrl = findBestOfficialUrlFromRawLinks(draft.raw_links_found, ['apply', 'registration', 'application', 'recruit']);
+    if (applyUrl) fallbackValues.official_apply_url = applyUrl;
+  }
+  if (missingFields.includes('official_website_url')) {
+    const websiteUrl = findBestOfficialUrlFromRawLinks(draft.raw_links_found, ['official', 'website', 'home']);
+    if (websiteUrl) fallbackValues.official_website_url = websiteUrl;
+  }
+
   const context = getDraftContext(draft);
   const result = await callAI(
     apiKey,
-    `You are an Indian government jobs data specialist. Fill in missing fields for a job listing based on available context and raw scraped text. Use null if truly unknowable from the available data. Never invent fake data. For URL fields, only provide real government website URLs.`,
-    `These fields are missing: ${missingFields.join(', ')}\n\nExisting data:\n${context}\n\nRaw text (first 5000 chars):\n${(draft.raw_scraped_text || '').substring(0, 5000)}`,
+    `You are an Indian government jobs data specialist. Fill in missing fields for a job listing based on available context, raw scraped text, and known raw links. Use null if truly unknowable from the available data. Never invent fake data.
+- For total_vacancies, return an integer only when explicitly supported by source text.
+- For date fields, return the exact human-readable date text found in source.
+- For URL fields, only return real official organization/government URLs, never aggregator URLs.
+- Do not rewrite already-filled fields.`,
+    `These fields are missing: ${missingFields.join(', ')}\n\nExisting data:\n${context}\n\nKnown raw links:\n${(draft.raw_links_found || []).slice(0, 80).join('\n') || 'None'}\n\nDeterministic link candidates already found:\n${JSON.stringify(fallbackValues, null, 2)}\n\nRaw text (first 7000 chars):\n${(draft.raw_scraped_text || '').substring(0, 7000)}`,
     {
       name: 'fix_all_fields',
       description: 'Return values for all missing fields',
       parameters: {
         type: 'object',
         properties: Object.fromEntries(
-          missingFields.map(f => [f, { type: ['string', 'null'] }])
+          missingFields.map((f) => [
+            f,
+            f === 'total_vacancies'
+              ? { type: ['number', 'string', 'null'] }
+              : { type: ['string', 'null'] },
+          ])
         ),
         required: [],
         additionalProperties: false,
@@ -1008,16 +1075,21 @@ async function handleAiFixFields(draftId: string, client: any, apiKey: string, a
     aiModel,
   );
 
-  const update: Record<string, unknown> = { ai_fix_missing_at: new Date().toISOString() };
+  const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
   const fixed: string[] = [];
 
   for (const f of missingFields) {
-    const val = result[f];
+    const val = result[f] ?? fallbackValues[f];
     if (val && val !== 'null' && val !== 'N/A' && val !== 'NA' && (typeof val === 'string' ? val.trim().length > 1 : true)) {
       // For numeric fields like total_vacancies
       if (f === 'total_vacancies') {
-        const num = parseInt(val, 10);
+        const num = typeof val === 'number' ? val : parseInt(String(val), 10);
         if (!isNaN(num) && num > 0) { update[f] = num; fixed.push(f); }
+      } else if ((f === 'official_notification_url' || f === 'official_apply_url' || f === 'official_website_url') && typeof val === 'string') {
+        if (!isAggregatorUrl(val) && getOfficialDomainScore(val, []) >= 0) {
+          update[f] = val;
+          fixed.push(f);
+        }
       } else {
         update[f] = val;
         fixed.push(f);
@@ -1026,9 +1098,25 @@ async function handleAiFixFields(draftId: string, client: any, apiKey: string, a
   }
 
   const oldValues = snapshotOldValues(draft, update);
-  update.ai_enrichment_log = appendLog(draft.ai_enrichment_log, 'ai-fix-fields', {
-    targeted: missingFields, fixed, old_values: oldValues,
-  });
+  const noChanges = fixed.length === 0;
+
+  if (noChanges) {
+    update.ai_enrichment_log = appendCustomLog(draft.ai_enrichment_log, 'ai-fix-fields', 'skipped', {
+      targeted: missingFields,
+      fixed,
+      reason: 'No new values could be derived from raw text or raw links',
+      fallback_candidates: fallbackValues,
+      old_values: oldValues,
+    });
+  } else {
+    update.ai_fix_missing_at = new Date().toISOString();
+    update.ai_enrichment_log = appendCustomLog(draft.ai_enrichment_log, 'ai-fix-fields', 'success', {
+      targeted: missingFields,
+      fixed,
+      fallback_candidates: fallbackValues,
+      old_values: oldValues,
+    });
+  }
 
   await client.from('firecrawl_draft_jobs').update(update).eq('id', draftId);
 
@@ -1040,6 +1128,8 @@ async function handleAiFixFields(draftId: string, client: any, apiKey: string, a
     action: 'ai-fix-fields',
     targeted: missingFields,
     fixed,
+    no_changes: noChanges,
+    message: noChanges ? 'No fixable values found from current source data' : `Fixed ${fixed.length} field(s)`,
     fields_extracted: fieldCounts.fields_extracted,
     fields_missing: fieldCounts.fields_missing,
   });

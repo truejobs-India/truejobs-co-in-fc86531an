@@ -1,179 +1,207 @@
 
 
-# Phase 3: AI Extraction, Enrichment, Missing Field Completion, and SEO Fixing
+# Phase 4: Validation, Auto-Publish, Retry Queues, and Production Hardening
 
 ## Summary
 
-Government-sourced drafts already flow into `firecrawl_draft_jobs` (Phase 2). The existing `firecrawl-ai-enrich` edge function already handles ai-clean, ai-enrich, ai-find-links, ai-fix-missing, ai-seo, and ai-run-all for all drafts. Phase 3 adds:
+Add an auto-publish pipeline for government drafts that validates, publishes eligible jobs through the existing `employment_news_jobs` flow, and routes failures into retry/review queues. Extend both the edge function and UI with new bulk actions and status tracking.
 
-1. A **government-specific deep AI extraction** action that uses multi-source context (listing + detail + PDF) for richer initial field extraction
-2. **Extended field coverage** for government job specifics (advt number, fee dates, admit card date, age relaxation, etc.)
-3. **Confidence scoring per critical field** with evidence snippets
-4. **Retry logic** for low-confidence drafts
-5. **Government Draft Jobs filter tabs** in the existing drafts manager
-6. **Quality gates** preventing fabricated data from being saved
+## Database Changes
 
-## Architecture Approach
+**Migration: Extend `publish_readiness` validation + add auto-publish tracking**
 
-- Extend the existing `firecrawl-ai-enrich` edge function with new government-specific actions — no new edge functions
-- Add new columns to `firecrawl_draft_jobs` via migration for government-specific fields
-- Add filter tabs to existing `FirecrawlDraftsManager.tsx`
-- Reuse the existing `callAI` multi-model dispatcher, tool-calling patterns, admin protection, and enrichment log
-
-## Database Migration
+The existing `validate_firecrawl_draft_jobs_fields` trigger does NOT validate `publish_readiness` — it's a free-text column. No trigger changes needed for new values.
 
 Add columns to `firecrawl_draft_jobs`:
-
 ```sql
--- Government-specific fields
-ALTER TABLE firecrawl_draft_jobs ADD COLUMN IF NOT EXISTS advertisement_number text;
-ALTER TABLE firecrawl_draft_jobs ADD COLUMN IF NOT EXISTS last_date_for_fee text;
-ALTER TABLE firecrawl_draft_jobs ADD COLUMN IF NOT EXISTS correction_window text;
-ALTER TABLE firecrawl_draft_jobs ADD COLUMN IF NOT EXISTS admit_card_date text;
-ALTER TABLE firecrawl_draft_jobs ADD COLUMN IF NOT EXISTS result_date text;
-ALTER TABLE firecrawl_draft_jobs ADD COLUMN IF NOT EXISTS age_relaxation text;
-ALTER TABLE firecrawl_draft_jobs ADD COLUMN IF NOT EXISTS how_to_apply text;
-ALTER TABLE firecrawl_draft_jobs ADD COLUMN IF NOT EXISTS important_instructions text;
-ALTER TABLE firecrawl_draft_jobs ADD COLUMN IF NOT EXISTS eligibility_summary text;
-ALTER TABLE firecrawl_draft_jobs ADD COLUMN IF NOT EXISTS application_fee_details text;
-ALTER TABLE firecrawl_draft_jobs ADD COLUMN IF NOT EXISTS selection_process_details text;
-ALTER TABLE firecrawl_draft_jobs ADD COLUMN IF NOT EXISTS vacancy_details text;
-ALTER TABLE firecrawl_draft_jobs ADD COLUMN IF NOT EXISTS important_dates_json jsonb DEFAULT '{}';
-ALTER TABLE firecrawl_draft_jobs ADD COLUMN IF NOT EXISTS official_links_json jsonb DEFAULT '{}';
-
--- Evidence & confidence tracking
-ALTER TABLE firecrawl_draft_jobs ADD COLUMN IF NOT EXISTS field_confidence jsonb DEFAULT '{}';
-ALTER TABLE firecrawl_draft_jobs ADD COLUMN IF NOT EXISTS field_evidence jsonb DEFAULT '{}';
-ALTER TABLE firecrawl_draft_jobs ADD COLUMN IF NOT EXISTS source_type_tag text DEFAULT 'general';
-ALTER TABLE firecrawl_draft_jobs ADD COLUMN IF NOT EXISTS publish_readiness text DEFAULT 'incomplete';
-ALTER TABLE firecrawl_draft_jobs ADD COLUMN IF NOT EXISTS ai_govt_extract_at timestamptz;
-ALTER TABLE firecrawl_draft_jobs ADD COLUMN IF NOT EXISTS ai_govt_enrich_at timestamptz;
+ALTER TABLE firecrawl_draft_jobs ADD COLUMN IF NOT EXISTS auto_publish_eligible boolean DEFAULT false;
+ALTER TABLE firecrawl_draft_jobs ADD COLUMN IF NOT EXISTS auto_published_at timestamptz;
+ALTER TABLE firecrawl_draft_jobs ADD COLUMN IF NOT EXISTS publish_rejection_reasons text[];
+ALTER TABLE firecrawl_draft_jobs ADD COLUMN IF NOT EXISTS promoted_job_id uuid;
+ALTER TABLE firecrawl_draft_jobs ADD COLUMN IF NOT EXISTS retry_count integer DEFAULT 0;
+ALTER TABLE firecrawl_draft_jobs ADD COLUMN IF NOT EXISTS last_retry_at timestamptz;
 ```
 
-## Edge Function Changes: `firecrawl-ai-enrich/index.ts`
+Update `publish_readiness` to support additional values: `ready_to_publish`, `auto_publish_eligible`, `retry_needed`, `failed`, `published`. These are just text values — no constraint exists to update.
 
-### New Action: `ai-govt-extract`
+## Edge Function: `firecrawl-ai-enrich/index.ts`
 
-A government-specific deep extraction that uses the full raw_scraped_text (up to 12K chars) to extract all government job fields via a single comprehensive tool call. This replaces the generic regex-based extraction for government sources with AI-powered extraction.
+### New Action: `govt-validate-publish`
 
-**Prompt design:**
-- System: "You are a meticulous Indian government job data extractor. Extract ONLY what is explicitly stated. Never invent dates, links, vacancies, or eligibility. Use null for anything not clearly mentioned. Attach evidence snippets for critical fields."
-- User: Full raw text + source URL + any existing fields
-- Tool schema: All government-specific fields + confidence scores + evidence snippets
+Validates a single government draft against auto-publish gates:
+1. **Title present** (length > 10)
+2. **Organization present** (length > 2)
+3. **Official source URL** (notification or apply link present, not aggregator)
+4. **No hallucination flags** (field_confidence has no critical field at "low")
+5. **No contamination** (tp_clean_status = 'cleaned')
+6. **No unresolved duplicate** (dedup_status != 'duplicate')
+7. **Content above minimum** (description_summary or intro_text present)
+8. **SEO metadata present** (seo_title, meta_description, slug_suggestion)
+9. **AI enrichment completed** (ai_govt_extract_at or ai_enrich_at present)
 
-**Fields extracted:**
-- title, organization_name, post_name, department, advertisement_number
-- total_vacancies, vacancy_details
-- state, city, location
-- category, application_mode
-- qualification, eligibility_summary, age_limit, age_relaxation
-- salary, pay_scale, application_fee, application_fee_details
-- opening_date, closing_date, last_date_for_fee, correction_window, exam_date, admit_card_date, result_date
-- selection_process, selection_process_details
-- how_to_apply, important_instructions
-- official_notification_url, official_apply_url, official_website_url
-- field_confidence: `{ title: "high", closing_date: "medium", ... }`
-- field_evidence: `{ closing_date: "Last date for submission: 15.07.2026", ... }`
+**Exception path**: Jobs where closing_date is null but official_notification_url is valid → allowed with warning "dates_pending".
 
-**Quality gates:**
-- Dates must match patterns (DD/MM/YYYY, DD.MM.YYYY, etc.) — reject freeform text
-- URLs must start with https:// and pass aggregator blocklist
-- Vacancies must be numeric
-- Evidence snippets required for dates, vacancies, and links — if no evidence, set confidence to "low"
+Returns `{ eligible: boolean, errors: string[], warnings: string[], publish_readiness: string }` and updates `auto_publish_eligible`, `publish_rejection_reasons`, `publish_readiness` on the draft.
 
-### New Action: `ai-govt-enrich`
+### New Action: `govt-auto-publish`
 
-Government-specific SEO content generation that produces structured sections for the published page:
+For a single draft:
+1. Run `govt-validate-publish` internally
+2. If eligible, execute the same publish logic as `executePublish` in the frontend:
+   - Insert into `employment_news_jobs` with all mapped fields
+   - Include government-specific fields (advertisement_number, how_to_apply, eligibility_summary, etc.) in description
+   - Update draft status to `promoted`, set `auto_published_at`, store `promoted_job_id`
+3. If draft already has `promoted_job_id` (re-discovered with better data):
+   - UPDATE the existing `employment_news_jobs` row instead of inserting
+   - Log as "updated_existing" in enrichment log
+4. If not eligible, set `publish_readiness` to appropriate bucket and store rejection reasons
 
-- Clean SEO title (max 60 chars)
-- Meta description (130-155 chars)
-- Slug suggestion
-- Structured intro paragraph
-- Important dates section (HTML table from dates fields)
-- Eligibility section
-- Vacancy breakdown section
-- Application fee section
-- Selection process section
-- How to apply section
-- Official links section
-- 4-6 FAQs grounded in extracted data only
+### New Action: `govt-auto-publish-batch`
 
-**Anti-hallucination rules in prompt:**
-- "Only include dates/links/numbers that appear in the source data"
-- "If a section has no data, omit it entirely — do not generate placeholder content"
-- "Never fabricate FAQ answers — use only verified extracted information"
+Batch version:
+1. Fetch all government drafts where `publish_readiness = 'ready'` AND `status != 'promoted'` AND `tp_clean_status = 'cleaned'`
+2. For each: run `govt-auto-publish` sequentially with 1s delay
+3. Return summary: published count, failed count, skipped count, per-row results
 
-### New Action: `ai-govt-retry`
+### New Action: `govt-retry-failed`
 
-For drafts where `field_confidence` has any critical field at "low" or null:
-1. Re-fetch raw_scraped_text (uses more chars — up to 20K)
-2. Re-run extraction with explicit instruction to focus on missing/low-confidence fields
-3. Merge: only overwrite if new confidence > old confidence
-4. Log retry attempt in `ai_enrichment_log`
+For drafts with `publish_readiness IN ('retry', 'retry_needed', 'incomplete')`:
+1. Re-run `ai-govt-extract` with expanded context (20K chars)
+2. Re-run `ai-fix-missing`
+3. Recalculate `publish_readiness`
+4. Increment `retry_count`, set `last_retry_at`
+5. Max 3 retries per draft — after that, set `publish_readiness = 'failed'`
 
-### Publish Readiness Calculation
+### Updated `handleAiRunAll` for Government Drafts
 
-After any government extraction/enrichment, compute `publish_readiness`:
-- `ready`: title + org + closing_date + (apply_url OR notification_url) present with high/medium confidence
-- `review_needed`: some critical fields at low confidence or missing apply link
-- `incomplete`: title or org missing
-- `retry`: critical fields failed extraction, worth retrying with more context
+After the existing govt pipeline steps complete, automatically:
+1. Run TP Cleaner (call `firecrawl-cleanup-branding` internally or mark as stale)
+2. Calculate `publish_readiness`
+3. Set `auto_publish_eligible` flag
 
-### Updated `ai-run-all` for Government Drafts
+### Updated `calculatePublishReadiness`
 
-When a draft has `source_type_tag = 'government'`, the run-all sequence becomes:
-1. `ai-govt-extract` (instead of ai-clean + ai-enrich)
-2. `ai-find-links`
-3. `ai-fix-missing`
-4. `ai-govt-enrich` (instead of ai-seo)
-5. `ai-cover-prompt`
-6. Calculate `publish_readiness`
+Extend the existing function to support new statuses:
+- `ready_to_publish`: All gates pass including TP cleaned
+- `auto_publish_eligible`: ready_to_publish + no warnings
+- `review_needed`: Some fields at low confidence or missing apply link
+- `retry_needed`: Critical fields failed, retry_count < 3
+- `incomplete`: Title or org missing
+- `failed`: retry_count >= 3, still incomplete
+- `published`: Already promoted
 
-## Frontend Changes: `FirecrawlDraftsManager.tsx`
+## Frontend: `FirecrawlDraftsManager.tsx`
 
 ### Extended Filter Tabs
 
-Add government-specific filter tabs to the existing `FilterTab` type and `filterTabs` array:
-
+Add to existing `FilterTab` type:
 ```
-type FilterTab = ... | 'govt-all' | 'govt-ready' | 'govt-review' | 'govt-incomplete' | 'govt-retry' | 'govt-no-dates' | 'govt-no-links' | 'govt-low-conf';
+'govt-auto-eligible' | 'govt-failed' | 'govt-published'
 ```
 
-New tabs (grouped under a "Govt Filters" label):
-- **Govt All**: `source_type_tag = 'government'`
-- **Ready**: `publish_readiness = 'ready'`
-- **Review**: `publish_readiness = 'review_needed'`
-- **Incomplete**: `publish_readiness = 'incomplete'`
-- **Retry**: `publish_readiness = 'retry'`
-- **No Dates**: government drafts where `closing_date IS NULL`
-- **No Links**: government drafts where `official_apply_url IS NULL AND official_notification_url IS NULL`
-- **Low Conf**: government drafts with any critical field confidence = "low"
+New tabs:
+- **Auto-Eligible**: `auto_publish_eligible = true AND status != 'promoted'`
+- **Failed**: `publish_readiness = 'failed'`
+- **Published**: Government drafts with `status = 'promoted'`
 
-### Government Steps Indicator
+### New Bulk Action Buttons
 
-Add `ai-govt-extract` and `ai-govt-enrich` to the `AI_STEP_MAP` so government-specific steps show green/pending badges in the row.
+Add to the toolbar (visible when govt filter tabs active):
+1. **"Auto Publish Eligible"** — calls `govt-auto-publish-batch`, shows progress
+2. **"Retry Failed"** — calls `govt-retry-failed` for all retry_needed/incomplete drafts
+3. **"Validate All"** — calls `govt-validate-publish` for all government drafts to recalculate readiness
 
-### DraftJob Interface Extension
+### Publish Readiness Badge
 
-Add the new fields to the `DraftJob` TypeScript interface so they're available in the UI.
+Add a visual badge in the table rows showing `publish_readiness` status with color coding:
+- `ready_to_publish` / `auto_publish_eligible`: green
+- `review_needed`: yellow
+- `retry_needed` / `incomplete`: orange
+- `failed`: red
+- `published`: blue
+
+### Batch Report
+
+After auto-publish batch completes, show persistent report (same pattern as TP Cleaner report):
+- Total processed, published, failed, skipped
+- Per-row failure reasons visible on hover
+
+### Government Bulk Pipeline Button
+
+A single "Full Pipeline" button that chains:
+1. Discovery (all enabled govt sources)
+2. Scrape & Extract
+3. AI Enrich (Run All)
+4. TP Clean
+5. Validate & Auto-Publish
+
+Shows progress through each phase.
+
+## Duplicate Update Logic for Published Jobs
+
+In `govt-auto-publish`, before inserting into `employment_news_jobs`:
+1. Check if a job with matching slug or (org_name + post) already exists
+2. If found and draft has `promoted_job_id` → UPDATE existing row
+3. If found by slug match → UPDATE existing row, store `promoted_job_id`
+4. If not found → INSERT new row
+
+## Production Hardening
+
+1. **Batch size limits**: All batch operations process max 50 items per invocation to stay within edge function timeout
+2. **Rate limiting**: 3s delay between AI calls, 1s between publish operations
+3. **Resumability**: Batch operations track progress via `retry_count` and `last_retry_at` — can be re-run safely
+4. **Idempotency**: `govt-auto-publish` checks `promoted_job_id` before inserting — safe to re-run
+5. **Error isolation**: Per-row try/catch — one failure doesn't stop the batch
+6. **Logging**: All publish attempts logged in `ai_enrichment_log` with status, errors, and timestamps
 
 ## File Change Summary
 
 | File | Action | Description |
 |------|--------|-------------|
-| DB migration | Create | Add ~16 columns to `firecrawl_draft_jobs` |
-| `supabase/functions/firecrawl-ai-enrich/index.ts` | Edit | Add `ai-govt-extract`, `ai-govt-enrich`, `ai-govt-retry` actions (~300 lines), update `ai-run-all` routing |
-| `src/components/admin/firecrawl/FirecrawlDraftsManager.tsx` | Edit | Extend DraftJob interface, add govt filter tabs, add govt step badges (~80 lines) |
+| DB migration | Create | Add 6 columns to `firecrawl_draft_jobs` |
+| `supabase/functions/firecrawl-ai-enrich/index.ts` | Edit | Add `govt-validate-publish`, `govt-auto-publish`, `govt-auto-publish-batch`, `govt-retry-failed` actions (~250 lines), update `calculatePublishReadiness` |
+| `src/components/admin/firecrawl/FirecrawlDraftsManager.tsx` | Edit | Add 3 filter tabs, 3 bulk action buttons, publish readiness badge, batch report (~150 lines) |
+| `src/components/admin/firecrawl/GovtSourcesManager.tsx` | Edit | Add "Full Pipeline" button that chains all phases (~40 lines) |
 
-## Regression Checklist
+## Full 4-Phase Regression Checklist
 
-1. Existing ai-clean, ai-enrich, ai-fix-missing, ai-seo, ai-run-all still work for non-govt drafts
-2. Existing filter tabs (all, draft, enriched, reviewed, etc.) unchanged
-3. Government drafts still appear in the main "All" tab
-4. AI step badges still show correctly for non-govt drafts
-5. Bulk Run All still targets draft-status rows correctly
-6. TP Cleaner still works (govt actions set tp_clean_status = 'stale')
-7. Publish gate still enforces TP cleaning
-8. No new edge functions — all integrated into existing `firecrawl-ai-enrich`
-9. `callAI` dispatcher unchanged — same model routing for all actions
+### Phase 1 (Foundation)
+1. Government sources section visible in Firecrawl admin
+2. Bulk import working with URL validation and dedup
+3. Government sources filtered out of regular sources list
+4. Existing Firecrawl sources unaffected
+
+### Phase 2 (Discovery & Extraction)
+5. `discover-govt` uses map API for URL discovery
+6. Page scoring prioritizes recruitment-related URLs
+7. PDF links detected and staged
+8. `govt-scrape-extract` creates drafts in `firecrawl_draft_jobs`
+9. Existing `discover-source` and `scrape-pending` still work
+
+### Phase 3 (AI Enrichment)
+10. `ai-govt-extract` extracts 20+ fields with confidence scoring
+11. `ai-govt-enrich` generates SEO content without hallucination
+12. `ai-govt-retry` re-processes low-confidence fields
+13. Government filter tabs show correct counts
+14. Existing ai-clean/ai-enrich/ai-seo still work for non-govt drafts
+
+### Phase 4 (Auto-Publish & Hardening)
+15. `govt-validate-publish` correctly gates on all required fields
+16. `govt-auto-publish` inserts into `employment_news_jobs` correctly
+17. Duplicate jobs update existing rows instead of creating new ones
+18. Auto-publish batch processes sequentially with progress
+19. Retry logic respects max 3 retries
+20. TP Cleaner gate enforced before publish
+21. Published govt jobs appear on public site
+22. Failed/incomplete items visible in retry queues with reasons
+23. Existing manual publish flow unaffected
+24. Bulk Run All still works for non-govt drafts
+25. All batch operations are resumable and idempotent
+
+### Known Limitations
+- Edge function timeout (~150s) limits batch to ~50 items per invocation — larger batches must be run in multiple rounds
+- AI confidence scoring is only as reliable as the AI model used
+- PDF extraction quality depends on Firecrawl's PDF-to-markdown capability
+- Rate limits from AI providers may slow bulk operations
+- No automated scheduling yet — all runs are admin-triggered
 

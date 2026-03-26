@@ -1385,6 +1385,60 @@ export function FirecrawlDraftsManager() {
             </div>
           )}
 
+          {/* Govt Auto-Publish persistent report */}
+          {govtPublishReport && !govtPublishRunning && (
+            <div className="mb-3 p-3 rounded-lg border bg-muted/30 space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium flex items-center gap-1.5">
+                  <Send className="h-4 w-4" />
+                  Govt Auto-Publish Report — {govtPublishReport.timestamp}
+                </p>
+                <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => setGovtPublishReport(null)}>
+                  Dismiss
+                </Button>
+              </div>
+              <div className="flex gap-4 text-xs">
+                <span className="font-medium">Total: {govtPublishReport.total}</span>
+                <span className="text-green-600">✅ Published: {govtPublishReport.published}</span>
+                <span className="text-red-600">❌ Failed: {govtPublishReport.failed}</span>
+                <span>⏭ Skipped: {govtPublishReport.total - govtPublishReport.published - govtPublishReport.failed}</span>
+              </div>
+              {govtPublishReport.results.filter((r: any) => !r.success).length > 0 && (
+                <div className="text-xs space-y-0.5 mt-1">
+                  <p className="font-medium text-destructive">Failed rows:</p>
+                  {govtPublishReport.results.filter((r: any) => !r.success).map((r: any, i: number) => (
+                    <TooltipProvider key={i}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <p className="text-muted-foreground cursor-help">• {r.draft_id?.slice(0, 8)}... — {(r.errors || []).join(', ') || 'Unknown error'}</p>
+                        </TooltipTrigger>
+                        <TooltipContent side="right" className="max-w-[350px]">
+                          <div className="text-xs space-y-0.5">
+                            <p className="font-medium">Rejection reasons:</p>
+                            {(r.errors || []).map((e: string, j: number) => (
+                              <p key={j}>• {e}</p>
+                            ))}
+                            {(r.warnings || []).length > 0 && (
+                              <>
+                                <p className="font-medium mt-1">Warnings:</p>
+                                {(r.warnings || []).map((w: string, j: number) => (
+                                  <p key={j}>⚠ {w}</p>
+                                ))}
+                              </>
+                            )}
+                          </div>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  ))}
+                </div>
+              )}
+              {govtPublishReport.failed === 0 && govtPublishReport.published > 0 && (
+                <p className="text-xs text-green-600">All eligible drafts published successfully!</p>
+              )}
+            </div>
+          )}
+
           {/* TP Cleaner persistent report */}
           {tpCleanerReport && !tpCleanerRunning && (
             <div className="mb-3 p-3 rounded-lg border bg-muted/30 space-y-2">
@@ -1493,19 +1547,59 @@ export function FirecrawlDraftsManager() {
                         </TableCell>
                         <TableCell className="text-xs">{draft.state || '—'}</TableCell>
                         <TableCell>
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger>
-                                <CircleDot className={`h-4 w-4 ${
-                                  readiness === 'green' ? 'text-green-500' :
-                                  readiness === 'yellow' ? 'text-yellow-500' : 'text-red-500'
-                                }`} />
-                              </TooltipTrigger>
-                              <TooltipContent side="right" className="max-w-[250px]">
-                                <p className="text-xs">{readinessTooltip}</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
+                          {draft.source_type_tag === 'government' && draft.publish_readiness ? (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger>
+                                  <Badge
+                                    variant="outline"
+                                    className={`text-[9px] whitespace-nowrap ${
+                                      draft.publish_readiness === 'published' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200 border-blue-300' :
+                                      draft.publish_readiness === 'ready_to_publish' || draft.publish_readiness === 'ready' ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200 border-green-300' :
+                                      draft.publish_readiness === 'auto_publish_eligible' ? 'bg-green-200 text-green-800 dark:bg-green-800 dark:text-green-100 border-green-400' :
+                                      draft.publish_readiness === 'review_needed' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-200 border-yellow-300' :
+                                      draft.publish_readiness === 'retry_needed' || draft.publish_readiness === 'retry' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-200 border-orange-300' :
+                                      draft.publish_readiness === 'incomplete' ? 'bg-orange-100 text-orange-600 dark:bg-orange-900 dark:text-orange-300 border-orange-300' :
+                                      draft.publish_readiness === 'failed' ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200 border-red-300' :
+                                      'bg-muted text-muted-foreground'
+                                    }`}
+                                  >
+                                    {draft.publish_readiness.replace(/_/g, ' ')}
+                                  </Badge>
+                                </TooltipTrigger>
+                                <TooltipContent side="right" className="max-w-[280px]">
+                                  <div className="text-xs space-y-1">
+                                    <p>{readinessTooltip}</p>
+                                    {draft.publish_rejection_reasons && draft.publish_rejection_reasons.length > 0 && (
+                                      <div className="border-t pt-1 mt-1">
+                                        <p className="font-medium text-destructive">Rejection reasons:</p>
+                                        {draft.publish_rejection_reasons.map((r, i) => (
+                                          <p key={i} className="text-muted-foreground">• {r}</p>
+                                        ))}
+                                      </div>
+                                    )}
+                                    {draft.retry_count > 0 && (
+                                      <p className="text-muted-foreground">Retries: {draft.retry_count}/3</p>
+                                    )}
+                                  </div>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          ) : (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger>
+                                  <CircleDot className={`h-4 w-4 ${
+                                    readiness === 'green' ? 'text-green-500' :
+                                    readiness === 'yellow' ? 'text-yellow-500' : 'text-red-500'
+                                  }`} />
+                                </TooltipTrigger>
+                                <TooltipContent side="right" className="max-w-[250px]">
+                                  <p className="text-xs">{readinessTooltip}</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
                         </TableCell>
                         <TableCell>{confidenceBadge(draft.extraction_confidence)}</TableCell>
                         <TableCell>

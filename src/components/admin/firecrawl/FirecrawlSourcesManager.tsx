@@ -126,7 +126,7 @@ export function FirecrawlSourcesManager({ sourceTypeFilter }: FirecrawlSourcesMa
       setSources((data as any[]) || []);
     }
     setLoading(false);
-  }, []);
+  }, [sourceTypeFilter]);
 
   useEffect(() => { fetchSources(); }, [fetchSources]);
 

@@ -1263,22 +1263,27 @@ export function FirecrawlDraftsManager() {
           </div>
         </CardHeader>
         <CardContent>
-          {/* Filter tabs */}
+          {/* Section selector */}
+          <div className="flex items-center gap-2 mb-2">
+            <Button
+              variant={!isGovtFilter ? 'default' : 'outline'}
+              size="sm" className="text-xs h-7"
+              onClick={() => setActiveFilter('all')}
+            >
+              General Drafts
+            </Button>
+            <Button
+              variant={isGovtFilter ? 'default' : 'outline'}
+              size="sm" className="text-xs h-7"
+              onClick={() => setActiveFilter('govt-all')}
+            >
+              Government Drafts
+            </Button>
+          </div>
+
+          {/* Filter tabs for active section */}
           <div className="flex flex-wrap gap-1 mb-3">
-            {filterTabs.filter(t => !t.group).map(tab => (
-              <Button
-                key={tab.key}
-                variant={activeFilter === tab.key ? 'default' : 'ghost'}
-                size="sm"
-                className="text-xs h-7"
-                onClick={() => setActiveFilter(tab.key)}
-              >
-                {tab.label}
-              </Button>
-            ))}
-            <span className="border-l mx-1" />
-            <span className="text-[10px] text-muted-foreground self-center font-medium mr-0.5">Govt:</span>
-            {filterTabs.filter(t => t.group === 'govt').map(tab => (
+            {filterTabs.filter(t => isGovtFilter ? t.group === 'govt' : !t.group).map(tab => (
               <Button
                 key={tab.key}
                 variant={activeFilter === tab.key ? 'default' : 'ghost'}

@@ -228,8 +228,6 @@ const ACTIONABLE_FIELD_FIX_KEYS = [
 const draftNeedsFieldFix = (draft: FieldFixCandidate) => {
   if (!(draft.status === 'draft' || draft.status === 'enriched')) return false;
   if (draft.dedup_status === 'duplicate') return false;
-  // Skip rows where fix-fields was already attempted — prevents infinite re-processing
-  if (draft.ai_fix_missing_at) return false;
 
   return (
     ACTIONABLE_FIELD_FIX_KEYS.some((field) => !hasValue(draft[field])) ||

@@ -204,6 +204,9 @@ type FieldFixCandidate = Pick<
   | 'ai_fix_missing_at'
 >;
 
+type BulkRunCandidate = Pick<DraftJob, 'id' | 'title' | 'status' | 'dedup_status'>;
+type ImageCandidate = Pick<DraftJob, 'id' | 'title' | 'status' | 'dedup_status' | 'cover_image_url'>;
+
 const hasValue = (value: string | null | undefined) => (value?.trim().length ?? 0) > 0;
 
 const draftNeedsFieldFix = (draft: FieldFixCandidate) => {
@@ -229,6 +232,8 @@ const draftNeedsFieldFix = (draft: FieldFixCandidate) => {
 export function FirecrawlDraftsManager() {
   const [drafts, setDrafts] = useState<DraftJob[]>([]);
   const [fieldFixCandidates, setFieldFixCandidates] = useState<FieldFixCandidate[]>([]);
+  const [bulkRunCandidates, setBulkRunCandidates] = useState<BulkRunCandidate[]>([]);
+  const [imageCandidates, setImageCandidates] = useState<ImageCandidate[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyRows, setBusyRows] = useState<Record<string, string>>({});
   const [activeFilter, setActiveFilter] = useState<FilterTab>('all');
@@ -291,6 +296,47 @@ export function FirecrawlDraftsManager() {
     return rows;
   }, []);
 
+  const fetchBulkRunCandidates = useCallback(async (): Promise<BulkRunCandidate[]> => {
+    const pageSize = 1000;
+    let from = 0;
+    const rows: BulkRunCandidate[] = [];
+    while (true) {
+      const { data, error } = await supabase
+        .from('firecrawl_draft_jobs')
+        .select('id, title, status, dedup_status')
+        .in('status', ['draft', 'enriched'])
+        .neq('dedup_status', 'duplicate')
+        .order('created_at', { ascending: false })
+        .range(from, from + pageSize - 1);
+      if (error) throw error;
+      rows.push(...((data as unknown as BulkRunCandidate[]) || []));
+      if (!data || data.length < pageSize) break;
+      from += pageSize;
+    }
+    return rows;
+  }, []);
+
+  const fetchImageCandidates = useCallback(async (): Promise<ImageCandidate[]> => {
+    const pageSize = 1000;
+    let from = 0;
+    const rows: ImageCandidate[] = [];
+    while (true) {
+      const { data, error } = await supabase
+        .from('firecrawl_draft_jobs')
+        .select('id, title, status, dedup_status, cover_image_url')
+        .in('status', ['draft', 'enriched'])
+        .neq('dedup_status', 'duplicate')
+        .order('created_at', { ascending: false })
+        .range(from, from + pageSize - 1);
+      if (error) throw error;
+      const batch = ((data as unknown as ImageCandidate[]) || []).filter(d => !d.cover_image_url?.trim());
+      rows.push(...batch);
+      if (!data || data.length < pageSize) break;
+      from += pageSize;
+    }
+    return rows;
+  }, []);
+
   const fetchDrafts = useCallback(async () => {
     setLoading(true);
     let query = supabase
@@ -307,11 +353,19 @@ export function FirecrawlDraftsManager() {
     else if (activeFilter === 'duplicate') query = query.eq('dedup_status', 'duplicate');
     else if (activeFilter === 'rejected') query = query.eq('status', 'rejected');
 
-    const [{ data, error }, fieldFixResult] = await Promise.all([
+    const [{ data, error }, fieldFixResult, bulkRunResult, imageResult] = await Promise.all([
       query,
       fetchFieldFixCandidates().then(
         (result) => ({ data: result, error: null as Error | null }),
         (error) => ({ data: [] as FieldFixCandidate[], error: error as Error })
+      ),
+      fetchBulkRunCandidates().then(
+        (result) => ({ data: result, error: null as Error | null }),
+        (error) => ({ data: [] as BulkRunCandidate[], error: error as Error })
+      ),
+      fetchImageCandidates().then(
+        (result) => ({ data: result, error: null as Error | null }),
+        (error) => ({ data: [] as ImageCandidate[], error: error as Error })
       ),
     ]);
 
@@ -328,8 +382,11 @@ export function FirecrawlDraftsManager() {
       setFieldFixCandidates(fieldFixResult.data);
     }
 
+    setBulkRunCandidates(bulkRunResult.data);
+    setImageCandidates(imageResult.data);
+
     setLoading(false);
-  }, [activeFilter, fetchFieldFixCandidates]);
+  }, [activeFilter, fetchFieldFixCandidates, fetchBulkRunCandidates, fetchImageCandidates]);
 
   useEffect(() => { fetchDrafts(); }, [fetchDrafts]);
 
@@ -357,12 +414,8 @@ export function FirecrawlDraftsManager() {
 
   // ── Bulk Run All ──
   const getEligibleDrafts = useCallback(() => {
-    return drafts.filter(d =>
-      (d.status === 'draft' || d.status === 'enriched') &&
-      d.dedup_status !== 'duplicate' &&
-      !busyRows[d.id]
-    );
-  }, [drafts, busyRows]);
+    return bulkRunCandidates.filter(d => !busyRows[d.id]);
+  }, [bulkRunCandidates, busyRows]);
 
   const runBulkAll = async () => {
     const eligible = getEligibleDrafts();
@@ -528,13 +581,8 @@ export function FirecrawlDraftsManager() {
 
   // ── Bulk Create Images ──
   const getDraftsNeedingImages = useCallback(() => {
-    return drafts.filter(d =>
-      (d.status === 'draft' || d.status === 'enriched') &&
-      d.dedup_status !== 'duplicate' &&
-      !hasExistingImage(d) &&
-      !busyRows[d.id]
-    );
-  }, [drafts, busyRows]);
+    return imageCandidates.filter(d => !busyRows[d.id]);
+  }, [imageCandidates, busyRows]);
 
   const runBulkImages = async () => {
     const eligible = getDraftsNeedingImages();

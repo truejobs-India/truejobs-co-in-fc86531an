@@ -561,6 +561,7 @@ async function handleAiEnrich(draftId: string, client: any, apiKey: string, aiMo
     improved, skipped_protected: skipped, old_values: oldValues,
   });
 
+  update.tp_clean_status = 'stale';
   await client.from('firecrawl_draft_jobs').update(update).eq('id', draftId);
   return json({ success: true, action: 'ai-enrich', improved, skipped_protected: skipped });
 }

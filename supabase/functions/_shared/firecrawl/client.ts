@@ -167,7 +167,7 @@ export async function mapUrl(
       limit: options?.limit || 100,
       includeSubdomains: options?.includeSubdomains ?? false,
     }),
-  });
+  }, MAX_RETRIES, MAP_TIMEOUT);
 
   const data = await res.json();
 

@@ -123,7 +123,7 @@ export async function scrapePage(
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(body),
-  });
+  }, MAX_RETRIES, SCRAPE_TIMEOUT);
 
   const data = await res.json();
 

@@ -1052,7 +1052,7 @@ export function FirecrawlDraftsManager() {
                   size="sm"
                 />
               </div>
-              {bulkRunning ? (
+              {!isGovtFilter && (bulkRunning ? (
                 <Button
                   variant="destructive" size="sm"
                   onClick={() => { bulkCancelRef.current = true; }}

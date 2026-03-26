@@ -138,7 +138,7 @@ const STEP_ICONS: Record<StepState, typeof Circle> = {
   skipped: Ban,
 };
 
-type FilterTab = 'all' | 'draft' | 'reviewed' | 'approved' | 'duplicate' | 'rejected';
+type FilterTab = 'all' | 'draft' | 'enriched' | 'reviewed' | 'approved' | 'duplicate' | 'rejected';
 
 interface BulkProgress {
   total: number;
@@ -198,6 +198,7 @@ export function FirecrawlDraftsManager() {
       .limit(100);
 
     if (activeFilter === 'draft') query = query.eq('status', 'draft');
+    else if (activeFilter === 'enriched') query = query.eq('status', 'enriched');
     else if (activeFilter === 'reviewed') query = query.eq('status', 'reviewed');
     else if (activeFilter === 'approved') query = query.eq('status', 'approved');
     else if (activeFilter === 'duplicate') query = query.eq('dedup_status', 'duplicate');
@@ -609,6 +610,7 @@ export function FirecrawlDraftsManager() {
   const filterTabs: { key: FilterTab; label: string }[] = [
     { key: 'all', label: 'All' },
     { key: 'draft', label: 'Draft' },
+    { key: 'enriched', label: 'Enriched' },
     { key: 'reviewed', label: 'Reviewed' },
     { key: 'approved', label: 'Approved' },
     { key: 'duplicate', label: 'Duplicates' },

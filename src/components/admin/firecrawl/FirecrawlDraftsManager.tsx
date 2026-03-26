@@ -215,6 +215,11 @@ export function FirecrawlDraftsManager() {
   // Image preview state
   const [previewImage, setPreviewImage] = useState<{ url: string; title: string } | null>(null);
 
+  // Draft preview & publish state
+  const [previewDraft, setPreviewDraft] = useState<DraftJob | null>(null);
+  const [publishValidation, setPublishValidation] = useState<{ draft: DraftJob; errors: string[]; warnings: string[] } | null>(null);
+  const [publishing, setPublishing] = useState(false);
+
   const fetchDrafts = useCallback(async () => {
     setLoading(true);
     let query = supabase

@@ -180,6 +180,7 @@ interface BulkResult {
   title: string;
   success: boolean;
   error?: string;
+  warning?: string;
 }
 
 export function FirecrawlDraftsManager() {
@@ -600,7 +601,11 @@ export function FirecrawlDraftsManager() {
             }
             throw new Error(data.error);
           }
-          progress.succeeded++;
+          if (data?.no_changes) {
+            progress.skipped++;
+          } else {
+            progress.succeeded++;
+          }
           done = true;
         } catch (e: any) {
           if (e.message?.toLowerCase().includes('rate limit') && attempt < 3) {
@@ -622,7 +627,7 @@ export function FirecrawlDraftsManager() {
     await fetchDrafts();
     toast({
       title: 'Bulk Fix Fields complete',
-      description: `✅ ${progress.succeeded} fixed · ❌ ${progress.failed} failed · ⏭ ${progress.skipped} skipped`,
+      description: `✅ ${progress.succeeded} fixed · ❌ ${progress.failed} failed · ⏭ ${progress.skipped} unchanged`,
     });
   };
 

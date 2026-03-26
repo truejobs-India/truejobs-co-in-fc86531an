@@ -1217,8 +1217,8 @@ export function FirecrawlDraftsManager() {
               No draft jobs found for this filter.
             </p>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
+            <div className="overflow-x-auto w-full">
+              <Table className="min-w-[1400px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead className="min-w-[200px]">Title / Org</TableHead>

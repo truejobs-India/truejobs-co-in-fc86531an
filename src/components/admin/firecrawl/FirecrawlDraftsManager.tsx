@@ -424,6 +424,9 @@ export function FirecrawlDraftsManager() {
     else if (activeFilter === 'govt-no-dates') query = query.eq('source_type_tag', 'government').is('closing_date', null).is('last_date_of_application', null);
     else if (activeFilter === 'govt-no-links') query = query.eq('source_type_tag', 'government').is('official_apply_url', null).is('official_notification_url', null);
     else if (activeFilter === 'govt-low-conf') query = query.eq('source_type_tag', 'government').not('field_confidence', 'eq', '{}');
+    else if (activeFilter === 'govt-auto-eligible') query = query.eq('source_type_tag', 'government').eq('auto_publish_eligible', true).neq('status', 'promoted');
+    else if (activeFilter === 'govt-failed') query = query.eq('source_type_tag', 'government').eq('publish_readiness', 'failed');
+    else if (activeFilter === 'govt-published') query = query.eq('source_type_tag', 'government').eq('status', 'promoted');
 
     const [{ data, error }, fieldFixResult, bulkRunResult, imageResult] = await Promise.all([
       query,

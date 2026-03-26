@@ -944,6 +944,16 @@ async function handleAiRunAll(draftId: string, client: any, apiKey: string, aiMo
   try { fieldCounts = await recalculateFieldCounts(draftId, client); } catch { /* draft gone */ }
 
   const successCount = results.filter(r => r.success).length;
+
+  // Update status to 'enriched' if at least one step succeeded, so it's no longer eligible for bulk re-run
+  if (successCount > 0) {
+    try {
+      await client.from('firecrawl_draft_jobs').update({
+        status: 'enriched',
+        updated_at: new Date().toISOString(),
+      }).eq('id', draftId).eq('status', 'draft'); // only upgrade from draft
+    } catch { /* draft gone */ }
+  }
   return json({
     success: true,
     action: 'ai-run-all',

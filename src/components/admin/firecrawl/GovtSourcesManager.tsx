@@ -429,7 +429,7 @@ export function GovtSourcesManager() {
             <CollapsibleTrigger className="flex items-center gap-2 cursor-pointer hover:opacity-80">
               <Globe className="h-5 w-5 text-green-600" />
               <CardTitle className="text-base">
-                Government Sources ({sources.length})
+                Firecrawl Government Sources ({sources.length})
               </CardTitle>
               {open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
             </CollapsibleTrigger>

@@ -1451,6 +1451,7 @@ async function handleGovtScrapeExtract(
         source_seed_url: source.seed_url,
         source_page_url: source.seed_url,
         source_bucket: 'single_recruitment',
+        source_type_tag: 'government',
         ...extraction.fields,
         extraction_confidence: extraction.confidence,
         fields_extracted: extraction.fields_extracted,

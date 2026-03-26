@@ -87,8 +87,8 @@ interface FirecrawlSourcesManagerProps {
 }
 
 const SOURCE_TYPE_CONFIG: Record<string, { title: string; icon: string; emptyMessage: string }> = {
-  firecrawl_html: { title: 'Private Sources (HTML)', icon: 'globe', emptyMessage: 'No private HTML sources configured.' },
-  firecrawl_sitemap: { title: 'Sitemap Sources', icon: 'file', emptyMessage: 'No sitemap sources configured.' },
+  firecrawl_html: { title: 'Firecrawl Private Sources', icon: 'globe', emptyMessage: 'No private HTML sources configured.' },
+  firecrawl_sitemap: { title: 'Firecrawl Sitemap Sources', icon: 'file', emptyMessage: 'No sitemap sources configured.' },
 };
 
 export function FirecrawlSourcesManager({ sourceTypeFilter }: FirecrawlSourcesManagerProps = {}) {

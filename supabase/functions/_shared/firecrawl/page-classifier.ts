@@ -112,6 +112,36 @@ function countSignals(text: string, signals: (string | RegExp)[]): string[] {
  * Uses URL path + page title (if available).
  * Returns bucket, reasoning, and matched signals.
  */
+/**
+ * Score a government page URL for recruitment relevance.
+ * Higher score = more likely a job page. PDF links get a +2 bonus.
+ */
+export function scoreGovtPage(url: string, title?: string | null): number {
+  const lower = url.toLowerCase() + ' ' + (title || '').toLowerCase();
+  let score = 0;
+
+  // +3: strong recruitment signals
+  const strong = ['recruitment', 'vacancy', 'notification', 'advertisement'];
+  for (const s of strong) { if (lower.includes(s)) score += 3; }
+
+  // +2: moderate signals
+  const moderate = ['careers', 'jobs', 'apply', 'notices', 'walk-in', 'walkin'];
+  for (const s of moderate) { if (lower.includes(s)) score += 2; }
+
+  // +1: weak signals
+  const weak = ['latest', 'updates', 'circular', 'bharti', 'advt', 'openings', 'hiring', 'naukri'];
+  for (const s of weak) { if (lower.includes(s)) score += 1; }
+
+  // -2: navigation/junk
+  const negative = ['sitemap', 'login', 'about', 'contact', 'privacy', 'rss', 'feed', 'disclaimer', 'terms'];
+  for (const s of negative) { if (lower.includes(s)) score -= 2; }
+
+  // PDF bonus
+  if (url.toLowerCase().endsWith('.pdf')) score += 2;
+
+  return score;
+}
+
 export function classifyPage(
   url: string,
   pageTitle?: string | null

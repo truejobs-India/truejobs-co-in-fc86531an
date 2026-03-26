@@ -248,7 +248,7 @@ export function GovtSourcesManager() {
     }
   };
 
-  /* ─── Bulk run all ─── */
+  /* ─── Bulk run all (client-side iteration with stop support) ─── */
   const runBatchAll = async (phase: 'discover' | 'scrape-extract' | 'full') => {
     setBatchRunning(true);
     setBatchPhase(phase);
@@ -258,22 +258,57 @@ export function GovtSourcesManager() {
     const enabledSources = sources.filter(s => s.is_enabled);
     setBatchProgress({ current: 0, total: enabledSources.length });
 
-    try {
-      const result = await invokeFirecrawl('govt-run-all', { phase });
-      setBatchReport({
-        phase,
-        total_sources: result?.total_sources ?? 0,
-        results: result?.results ?? [],
-        completed_at: new Date().toISOString(),
-      });
-      toast({ title: `Batch ${phase} completed`, description: `${result?.total_sources ?? 0} sources processed` });
-      fetchSources();
-    } catch (err: any) {
-      toast({ title: 'Batch run failed', description: err.message, variant: 'destructive' });
-    } finally {
-      setBatchRunning(false);
-      setBatchPhase('');
+    const results: BatchReport['results'] = [];
+
+    for (let i = 0; i < enabledSources.length; i++) {
+      if (stopRequestedRef.current) {
+        toast({ title: `Batch ${phase} stopped`, description: `Stopped after ${i} of ${enabledSources.length} sources` });
+        break;
+      }
+
+      const source = enabledSources[i];
+      setBatchProgress({ current: i + 1, total: enabledSources.length });
+      setBusySources(prev => ({ ...prev, [source.id]: phase === 'discover' ? 'discovering' : phase === 'scrape-extract' ? 'scraping' : 'pipeline' }));
+
+      const entry: BatchReport['results'][number] = { source_id: source.id, source_name: source.source_name };
+
+      try {
+        if (phase === 'discover' || phase === 'full') {
+          const discResult = await invokeFirecrawl('discover-govt', { source_id: source.id });
+          entry.discover = { success: true, stats: discResult?.stats };
+        }
+        if (phase === 'scrape-extract' || phase === 'full') {
+          if (stopRequestedRef.current) { results.push(entry); break; }
+          const seResult = await invokeFirecrawl('govt-scrape-extract', { source_id: source.id });
+          entry.scrape_extract = { success: true, scraped: seResult?.scraped ?? 0, extracted: seResult?.extracted ?? 0, failed: seResult?.failed ?? 0 };
+        }
+      } catch (err: any) {
+        entry.error = err.message;
+        if (phase === 'discover' || phase === 'full') entry.discover = { success: false, error: err.message };
+        if (phase === 'scrape-extract' || phase === 'full') entry.scrape_extract = entry.scrape_extract || { success: false, error: err.message };
+      } finally {
+        setBusySources(prev => { const n = { ...prev }; delete n[source.id]; return n; });
+      }
+
+      results.push(entry);
     }
+
+    setBatchReport({
+      phase: stopRequestedRef.current ? `${phase} (stopped)` : phase,
+      total_sources: results.length,
+      results,
+      completed_at: new Date().toISOString(),
+    });
+    toast({ title: `Batch ${phase} ${stopRequestedRef.current ? 'stopped' : 'completed'}`, description: `${results.length} sources processed` });
+    fetchSources();
+    setBatchRunning(false);
+    setBatchPhase('');
+  };
+
+  /* ─── Stop batch ─── */
+  const stopBatch = () => {
+    stopRequestedRef.current = true;
+    toast({ title: 'Stop requested', description: 'Will stop after current source completes' });
   };
 
   /* ─── Retry failed sources ─── */

@@ -726,6 +726,7 @@ export function FirecrawlDraftsManager() {
     { key: 'enriched', label: 'Enriched' },
     { key: 'reviewed', label: 'Reviewed' },
     { key: 'approved', label: 'Approved' },
+    { key: 'promoted', label: 'Published' },
     { key: 'duplicate', label: 'Duplicates' },
     { key: 'rejected', label: 'Rejected' },
   ];

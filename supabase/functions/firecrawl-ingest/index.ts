@@ -748,7 +748,7 @@ async function handleExtractItem(
       item.page_url
     );
 
-    const draftData = {
+    const rawDraftData: Record<string, unknown> = {
       staged_item_id: stagedItemId,
       firecrawl_source_id: item.firecrawl_source_id,
       source_name: source?.source_name || null,
@@ -766,6 +766,17 @@ async function handleExtractItem(
       extracted_raw_fields: extraction.raw_fields,
       cleaning_log: cleanResult.cleaningLog,
       status: 'draft',
+    };
+
+    // Auto-sanitize third-party branding from extracted fields
+    const sanitizeResult = sanitizeDraftFields(rawDraftData);
+    const draftData = {
+      ...rawDraftData,
+      ...sanitizeResult.sanitizedFields,
+      tp_clean_status: sanitizeResult.totalTraces > 0 ? 'pending' : 'cleaned',
+      tp_cleaned_at: sanitizeResult.totalTraces === 0 ? new Date().toISOString() : null,
+      tp_contamination_count: sanitizeResult.totalTraces,
+      tp_clean_log: sanitizeResult.totalTraces > 0 ? [{ action: 'auto-ingest', traces: sanitizeResult.traceDetails.slice(0, 30) }] : [],
     };
 
     const { data: draft, error: draftError } = await client

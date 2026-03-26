@@ -1161,8 +1161,21 @@ export function FirecrawlDraftsManager() {
         </CardHeader>
         <CardContent>
           {/* Filter tabs */}
-          <div className="flex gap-1 mb-3">
-            {filterTabs.map(tab => (
+          <div className="flex flex-wrap gap-1 mb-3">
+            {filterTabs.filter(t => !t.group).map(tab => (
+              <Button
+                key={tab.key}
+                variant={activeFilter === tab.key ? 'default' : 'ghost'}
+                size="sm"
+                className="text-xs h-7"
+                onClick={() => setActiveFilter(tab.key)}
+              >
+                {tab.label}
+              </Button>
+            ))}
+            <span className="border-l mx-1" />
+            <span className="text-[10px] text-muted-foreground self-center font-medium mr-0.5">Govt:</span>
+            {filterTabs.filter(t => t.group === 'govt').map(tab => (
               <Button
                 key={tab.key}
                 variant={activeFilter === tab.key ? 'default' : 'ghost'}

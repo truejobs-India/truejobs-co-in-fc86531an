@@ -1070,6 +1070,389 @@ async function handleAiRunAll(draftId: string, client: any, apiKey: string, aiMo
   });
 }
 
+// ============ GOVT: AI Deep Extract ============
+
+async function handleAiGovtExtract(draftId: string, client: any, apiKey: string, aiModel?: string) {
+  const draft = await fetchDraft(draftId, client);
+  const guard = checkStatusGuard(draft, 'ai-govt-extract');
+  if (guard) return json({ error: guard }, 400);
+
+  const protectedFields = getProtectedFields(draft);
+  const rawText = (draft.raw_scraped_text || '').substring(0, 12000);
+  const context = getDraftContext(draft);
+
+  const result = await callAI(
+    apiKey,
+    `You are a meticulous Indian government job data extractor. Extract ONLY what is explicitly stated in the source text. NEVER invent dates, links, vacancies, or eligibility criteria. Use null for anything not clearly mentioned.
+
+CRITICAL RULES:
+- Dates MUST match patterns like DD/MM/YYYY, DD.MM.YYYY, DD-MM-YYYY, or human-readable "15 July 2026". Reject freeform date text.
+- URLs MUST start with http:// or https://. Never return aggregator site URLs.
+- Vacancies MUST be numeric integers.
+- For each critical field (dates, vacancies, links), provide an evidence_snippet — the exact text from the source that supports the value.
+- If no evidence exists, set field to null and confidence to "low".
+- Return field_confidence as an object mapping field names to "high"/"medium"/"low".`,
+    `Extract all government job fields from this content.
+
+Existing data:\n${context}
+
+Source URL: ${draft.source_page_url || draft.source_url || 'unknown'}
+
+Raw scraped text:\n${rawText}`,
+    {
+      name: 'govt_extract_fields',
+      description: 'Extract comprehensive government job fields with confidence and evidence',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: ['string', 'null'] },
+          organization_name: { type: ['string', 'null'] },
+          post_name: { type: ['string', 'null'] },
+          department: { type: ['string', 'null'] },
+          advertisement_number: { type: ['string', 'null'] },
+          total_vacancies: { type: ['number', 'null'] },
+          vacancy_details: { type: ['string', 'null'] },
+          state: { type: ['string', 'null'] },
+          city: { type: ['string', 'null'] },
+          location: { type: ['string', 'null'] },
+          category: { type: ['string', 'null'] },
+          application_mode: { type: ['string', 'null'] },
+          qualification: { type: ['string', 'null'] },
+          eligibility_summary: { type: ['string', 'null'] },
+          age_limit: { type: ['string', 'null'] },
+          age_relaxation: { type: ['string', 'null'] },
+          salary: { type: ['string', 'null'] },
+          pay_scale: { type: ['string', 'null'] },
+          application_fee: { type: ['string', 'null'] },
+          application_fee_details: { type: ['string', 'null'] },
+          opening_date: { type: ['string', 'null'] },
+          closing_date: { type: ['string', 'null'] },
+          last_date_of_application: { type: ['string', 'null'] },
+          last_date_for_fee: { type: ['string', 'null'] },
+          correction_window: { type: ['string', 'null'] },
+          exam_date: { type: ['string', 'null'] },
+          admit_card_date: { type: ['string', 'null'] },
+          result_date: { type: ['string', 'null'] },
+          selection_process: { type: ['string', 'null'] },
+          selection_process_details: { type: ['string', 'null'] },
+          how_to_apply: { type: ['string', 'null'] },
+          important_instructions: { type: ['string', 'null'] },
+          official_notification_url: { type: ['string', 'null'] },
+          official_apply_url: { type: ['string', 'null'] },
+          official_website_url: { type: ['string', 'null'] },
+          field_confidence: {
+            type: 'object',
+            description: 'Map of field name to confidence level (high/medium/low)',
+          },
+          field_evidence: {
+            type: 'object',
+            description: 'Map of critical field name to exact evidence snippet from source text',
+          },
+        },
+        required: ['field_confidence', 'field_evidence'],
+        additionalProperties: false,
+      },
+    },
+    aiModel,
+  );
+
+  // Build update, respecting admin-protected fields
+  const govtFields = [
+    'title', 'organization_name', 'post_name', 'department', 'advertisement_number',
+    'vacancy_details', 'state', 'city', 'location', 'category', 'application_mode',
+    'qualification', 'eligibility_summary', 'age_limit', 'age_relaxation',
+    'salary', 'pay_scale', 'application_fee', 'application_fee_details',
+    'opening_date', 'closing_date', 'last_date_of_application', 'last_date_for_fee',
+    'correction_window', 'exam_date', 'admit_card_date', 'result_date',
+    'selection_process', 'selection_process_details', 'how_to_apply', 'important_instructions',
+  ];
+
+  const update: Record<string, unknown> = {
+    ai_govt_extract_at: new Date().toISOString(),
+    source_type_tag: 'government',
+  };
+  const improved: string[] = [];
+  const skipped: string[] = [];
+
+  for (const f of govtFields) {
+    if (protectedFields.has(f)) { skipped.push(f); continue; }
+    const newVal = result[f];
+    if (newVal !== null && newVal !== undefined && newVal !== 'null') {
+      // Validate URLs
+      if (f.includes('url') && typeof newVal === 'string') {
+        if (!/^https?:\/\//i.test(newVal) || isAggregatorUrl(newVal)) continue;
+      }
+      // Validate vacancies
+      if (f === 'total_vacancies' && typeof newVal === 'number' && newVal > 0) {
+        update.total_vacancies = newVal;
+        improved.push(f);
+        continue;
+      }
+      if (typeof newVal === 'string' && newVal.trim().length > 0) {
+        update[f] = newVal.trim();
+        improved.push(f);
+      }
+    }
+  }
+
+  // URL fields
+  for (const urlField of ['official_notification_url', 'official_apply_url', 'official_website_url']) {
+    if (protectedFields.has(urlField)) continue;
+    const val = result[urlField];
+    if (val && typeof val === 'string' && /^https?:\/\//i.test(val) && !isAggregatorUrl(val)) {
+      if (!draft[urlField]) { // Only fill if empty
+        update[urlField] = val;
+        improved.push(urlField);
+      }
+    }
+  }
+
+  // Store confidence and evidence
+  update.field_confidence = result.field_confidence || {};
+  update.field_evidence = result.field_evidence || {};
+
+  // Build important_dates_json from extracted date fields
+  const datesJson: Record<string, string> = {};
+  const dateFields = ['opening_date', 'closing_date', 'last_date_of_application', 'last_date_for_fee', 'correction_window', 'exam_date', 'admit_card_date', 'result_date'];
+  for (const df of dateFields) {
+    const val = update[df] || draft[df];
+    if (val && typeof val === 'string') datesJson[df] = val;
+  }
+  update.important_dates_json = datesJson;
+
+  // Build official_links_json
+  const linksJson: Record<string, string> = {};
+  for (const lf of ['official_notification_url', 'official_apply_url', 'official_website_url']) {
+    const val = update[lf] || draft[lf];
+    if (val && typeof val === 'string') linksJson[lf] = val;
+  }
+  update.official_links_json = linksJson;
+
+  const oldValues = snapshotOldValues(draft, update);
+  update.ai_enrichment_log = appendLog(draft.ai_enrichment_log, 'ai-govt-extract', {
+    improved, skipped_protected: skipped, old_values: oldValues,
+    confidence_summary: result.field_confidence,
+  });
+  update.tp_clean_status = 'stale';
+
+  await client.from('firecrawl_draft_jobs').update(update).eq('id', draftId);
+  await recalculateFieldCounts(draftId, client);
+
+  // Calculate publish readiness
+  const readiness = await calculatePublishReadiness(draftId, client);
+  await client.from('firecrawl_draft_jobs').update({ publish_readiness: readiness }).eq('id', draftId);
+
+  return json({ success: true, action: 'ai-govt-extract', improved, skipped_protected: skipped, publish_readiness: readiness });
+}
+
+// ============ GOVT: AI SEO Enrich ============
+
+async function handleAiGovtEnrich(draftId: string, client: any, apiKey: string, aiModel?: string) {
+  const draft = await fetchDraft(draftId, client);
+  const protectedFields = getProtectedFields(draft);
+  const context = getDraftContext(draft);
+
+  // Build dates and links context from stored JSON
+  const datesCtx = draft.important_dates_json ? JSON.stringify(draft.important_dates_json) : 'No dates available';
+  const linksCtx = draft.official_links_json ? JSON.stringify(draft.official_links_json) : 'No links available';
+
+  const result = await callAI(
+    apiKey,
+    `You generate SEO metadata and structured content sections for Indian government job notification pages.
+
+ANTI-HALLUCINATION RULES:
+- Only include dates/links/numbers that appear in the provided source data
+- If a section has no data, OMIT it entirely — do not generate placeholder content
+- Never fabricate FAQ answers — use only verified extracted information
+- Never invent application fees, eligibility criteria, or selection process details
+- Keep content factual, useful, concise, and not stuffed with spammy SEO`,
+    `Generate a comprehensive SEO package for this government job notification:
+
+${context}
+
+Advertisement Number: ${draft.advertisement_number || 'N/A'}
+Eligibility: ${draft.eligibility_summary || draft.qualification || 'N/A'}
+Age Limit: ${draft.age_limit || 'N/A'}
+Age Relaxation: ${draft.age_relaxation || 'N/A'}
+Application Fee: ${draft.application_fee_details || draft.application_fee || 'N/A'}
+Selection Process: ${draft.selection_process_details || draft.selection_process || 'N/A'}
+How to Apply: ${draft.how_to_apply || 'N/A'}
+Important Dates: ${datesCtx}
+Official Links: ${linksCtx}
+Vacancy Details: ${draft.vacancy_details || 'N/A'}`,
+    {
+      name: 'govt_seo_enrich',
+      description: 'Return SEO title, meta, slug, intro, structured sections, and FAQs for govt job page',
+      parameters: {
+        type: 'object',
+        properties: {
+          seo_title: { type: 'string', description: 'SEO title under 60 chars' },
+          meta_description: { type: 'string', description: 'Meta description 130-155 chars' },
+          slug_suggestion: { type: 'string', description: 'URL slug suggestion' },
+          intro_text: { type: 'string', description: '2-3 sentence intro paragraph grounded in source data' },
+          description_summary: { type: 'string', description: 'Comprehensive job description summary (3-5 paragraphs) covering key details' },
+          faq_suggestions: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                question: { type: 'string' },
+                answer: { type: 'string' },
+              },
+              required: ['question', 'answer'],
+            },
+            description: '4-6 FAQ items grounded in extracted data only',
+          },
+        },
+        required: ['seo_title', 'meta_description', 'slug_suggestion', 'intro_text', 'faq_suggestions'],
+        additionalProperties: false,
+      },
+    },
+    aiModel,
+  );
+
+  const update: Record<string, unknown> = { ai_govt_enrich_at: new Date().toISOString() };
+
+  if (!protectedFields.has('seo_title')) update.seo_title = result.seo_title;
+  if (!protectedFields.has('meta_description')) update.meta_description = result.meta_description;
+  if (!protectedFields.has('slug_suggestion')) update.slug_suggestion = result.slug_suggestion;
+  if (!protectedFields.has('intro_text')) update.intro_text = result.intro_text;
+  if (result.description_summary && !protectedFields.has('description_summary')) {
+    update.description_summary = result.description_summary;
+  }
+  update.faq_suggestions = result.faq_suggestions || [];
+
+  const oldValues = snapshotOldValues(draft, update);
+  update.ai_enrichment_log = appendLog(draft.ai_enrichment_log, 'ai-govt-enrich', {
+    seo_title_len: result.seo_title?.length,
+    meta_desc_len: result.meta_description?.length,
+    faq_count: result.faq_suggestions?.length,
+    old_values: oldValues,
+  });
+  update.tp_clean_status = 'stale';
+
+  await client.from('firecrawl_draft_jobs').update(update).eq('id', draftId);
+
+  // Recalculate publish readiness
+  const readiness = await calculatePublishReadiness(draftId, client);
+  await client.from('firecrawl_draft_jobs').update({ publish_readiness: readiness }).eq('id', draftId);
+
+  return json({ success: true, action: 'ai-govt-enrich', ...result, publish_readiness: readiness });
+}
+
+// ============ GOVT: AI Retry Low-Confidence ============
+
+async function handleAiGovtRetry(draftId: string, client: any, apiKey: string, aiModel?: string) {
+  const draft = await fetchDraft(draftId, client);
+  if (draft.source_type_tag !== 'government') {
+    return json({ error: 'ai-govt-retry is only for government drafts' }, 400);
+  }
+
+  const confidence = (draft.field_confidence || {}) as Record<string, string>;
+  const criticalFields = ['title', 'organization_name', 'closing_date', 'official_apply_url', 'official_notification_url', 'total_vacancies'];
+  const lowFields = criticalFields.filter(f => !confidence[f] || confidence[f] === 'low' || !draft[f]);
+
+  if (lowFields.length === 0) {
+    return json({ success: true, action: 'ai-govt-retry', message: 'No low-confidence critical fields to retry', retried: [] });
+  }
+
+  const rawText = (draft.raw_scraped_text || '').substring(0, 20000);
+  const context = getDraftContext(draft);
+
+  const result = await callAI(
+    apiKey,
+    `You are retrying extraction for specific low-confidence fields in an Indian government job listing. Focus ONLY on the requested fields. Use the extended raw text to find values missed in the first pass. Return null if still not findable. Provide evidence snippets.`,
+    `Retry extraction for these low-confidence fields: ${lowFields.join(', ')}
+
+Existing data:\n${context}
+
+Extended raw text (up to 20K chars):\n${rawText}`,
+    {
+      name: 'govt_retry_extract',
+      description: 'Return improved values for low-confidence fields',
+      parameters: {
+        type: 'object',
+        properties: Object.fromEntries(
+          lowFields.map(f => [f, f === 'total_vacancies' ? { type: ['number', 'null'] } : { type: ['string', 'null'] }])
+        ),
+        required: [],
+        additionalProperties: false,
+      },
+    },
+    aiModel,
+  );
+
+  const update: Record<string, unknown> = {};
+  const retried: string[] = [];
+
+  for (const f of lowFields) {
+    const newVal = result[f];
+    if (newVal !== null && newVal !== undefined && newVal !== 'null') {
+      if (f === 'total_vacancies' && typeof newVal === 'number' && newVal > 0) {
+        update[f] = newVal;
+        retried.push(f);
+      } else if (typeof newVal === 'string' && newVal.trim().length > 0) {
+        if (f.includes('url')) {
+          if (/^https?:\/\//i.test(newVal) && !isAggregatorUrl(newVal)) {
+            update[f] = newVal.trim();
+            retried.push(f);
+          }
+        } else {
+          update[f] = newVal.trim();
+          retried.push(f);
+        }
+      }
+    }
+  }
+
+  // Update confidence for retried fields
+  const newConfidence = { ...confidence };
+  for (const f of retried) {
+    newConfidence[f] = 'medium'; // Upgraded from low
+  }
+  update.field_confidence = newConfidence;
+
+  update.ai_enrichment_log = appendLog(draft.ai_enrichment_log, 'ai-govt-retry', {
+    targeted: lowFields, retried, upgraded_confidence: retried,
+  });
+
+  if (Object.keys(update).length > 2) { // more than just log + confidence
+    update.tp_clean_status = 'stale';
+  }
+
+  await client.from('firecrawl_draft_jobs').update(update).eq('id', draftId);
+  await recalculateFieldCounts(draftId, client);
+
+  const readiness = await calculatePublishReadiness(draftId, client);
+  await client.from('firecrawl_draft_jobs').update({ publish_readiness: readiness }).eq('id', draftId);
+
+  return json({ success: true, action: 'ai-govt-retry', targeted: lowFields, retried, publish_readiness: readiness });
+}
+
+// ============ GOVT: Publish Readiness Calculator ============
+
+async function calculatePublishReadiness(draftId: string, client: any): Promise<string> {
+  const draft = await fetchDraft(draftId, client);
+  const confidence = (draft.field_confidence || {}) as Record<string, string>;
+
+  const hasTitle = !!(draft.title && draft.title.trim().length > 5);
+  const hasOrg = !!(draft.organization_name && draft.organization_name.trim().length > 2);
+  const hasClosingDate = !!(draft.closing_date || draft.last_date_of_application);
+  const hasLink = !!(draft.official_apply_url || draft.official_notification_url);
+
+  if (!hasTitle || !hasOrg) return 'incomplete';
+
+  const criticalLow = ['title', 'organization_name', 'closing_date'].some(f => confidence[f] === 'low');
+  if (criticalLow) return 'retry';
+
+  if (hasClosingDate && hasLink) {
+    const allMediumOrHigh = ['title', 'organization_name'].every(f => !confidence[f] || confidence[f] !== 'low');
+    if (allMediumOrHigh) return 'ready';
+  }
+
+  return 'review_needed';
+}
+
 // ============ 9b. AI Fix Fields (comprehensive field fill + recalculate) ============
 
 async function handleAiFixFields(draftId: string, client: any, apiKey: string, aiModel?: string) {

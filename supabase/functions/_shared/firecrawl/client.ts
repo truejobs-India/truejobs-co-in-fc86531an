@@ -6,8 +6,10 @@
 
 const FIRECRAWL_API_BASE = 'https://api.firecrawl.dev/v1';
 const DEFAULT_TIMEOUT = 30_000; // 30 seconds
+const MAP_TIMEOUT = 60_000; // 60 seconds — map/discover needs more time for slow govt sites
+const SCRAPE_TIMEOUT = 45_000; // 45 seconds for scraping
 const MAX_RETRIES = 2;
-const RETRY_DELAY_MS = 2_000;
+const RETRY_DELAY_MS = 3_000;
 
 export interface FirecrawlScrapeOptions {
   formats?: ('markdown' | 'html' | 'links')[];

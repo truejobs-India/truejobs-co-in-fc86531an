@@ -17,7 +17,7 @@ import {
   RefreshCw, Loader2, MoreHorizontal, Sparkles, Wrench, Link2,
   Search, Image, FileText, Zap, CheckCircle, XCircle,
   AlertTriangle, ExternalLink, Copy, ShieldCheck, ShieldAlert, Eye,
-  ThumbsUp, Undo2, CircleDot, Circle, Ban, X, Trash2, Send,
+  ThumbsUp, Undo2, CircleDot, Circle, Ban, X, Trash2, Send, RotateCcw,
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';

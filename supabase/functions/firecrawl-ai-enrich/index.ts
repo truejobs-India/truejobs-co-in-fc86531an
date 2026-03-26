@@ -1437,17 +1437,36 @@ Extended raw text (up to 20K chars):\n${rawText}`,
 
 async function calculatePublishReadiness(draftId: string, client: any): Promise<string> {
   const draft = await fetchDraft(draftId, client);
-  const confidence = (draft.field_confidence || {}) as Record<string, string>;
 
-  const hasTitle = !!(draft.title && draft.title.trim().length > 5);
+  // Already promoted
+  if (draft.status === 'promoted') return 'published';
+
+  const confidence = (draft.field_confidence || {}) as Record<string, string>;
+  const hasTitle = !!(draft.title && draft.title.trim().length > 10);
   const hasOrg = !!(draft.organization_name && draft.organization_name.trim().length > 2);
   const hasClosingDate = !!(draft.closing_date || draft.last_date_of_application);
   const hasLink = !!(draft.official_apply_url || draft.official_notification_url);
+  const hasSeo = !!(draft.seo_title && draft.meta_description && draft.slug_suggestion);
+  const hasContent = !!(draft.description_summary || draft.intro_text);
+  const isCleaned = draft.tp_clean_status === 'cleaned';
+  const noDup = draft.dedup_status !== 'duplicate';
+  const aiDone = !!(draft.ai_govt_extract_at || draft.ai_enrich_at);
 
   if (!hasTitle || !hasOrg) return 'incomplete';
 
+  // Check for retry exhaustion
+  const retryCount = draft.retry_count || 0;
   const criticalLow = ['title', 'organization_name', 'closing_date'].some(f => confidence[f] === 'low');
-  if (criticalLow) return 'retry';
+
+  if (criticalLow && retryCount >= 3) return 'failed';
+  if (criticalLow) return 'retry_needed';
+
+  // Full gates for auto-publish
+  if (hasTitle && hasOrg && hasLink && hasSeo && hasContent && isCleaned && noDup && aiDone) {
+    if (hasClosingDate) return 'ready_to_publish';
+    // Exception path: notification exists but dates pending
+    if (draft.official_notification_url) return 'review_needed';
+  }
 
   if (hasClosingDate && hasLink) {
     const allMediumOrHigh = ['title', 'organization_name'].every(f => !confidence[f] || confidence[f] !== 'low');

@@ -1068,28 +1068,47 @@ export function FirecrawlDraftsManager() {
               {/* Bulk Third Party Cleaner */}
               <Button
                 variant="outline" size="sm"
-                disabled={loading || bulkRunning}
+                disabled={loading || bulkRunning || tpCleanerRunning}
                 onClick={async () => {
                   const uncleaned = drafts.filter(d => d.tp_clean_status !== 'cleaned' && d.status !== 'promoted' && d.status !== 'rejected');
                   if (uncleaned.length === 0) {
                     toast({ title: 'All clean', description: 'No rows need third-party cleaning.' });
                     return;
                   }
+                  setTpCleanerRunning(true);
+                  setTpCleanerReport(null);
                   toast({ title: 'TP Cleaner', description: `Cleaning ${uncleaned.length} rows...` });
                   try {
                     const { data, error } = await supabase.functions.invoke('firecrawl-cleanup-branding', {
                       body: { action: 'clean-batch', draft_ids: uncleaned.map(d => d.id) },
                     });
                     if (error) throw error;
-                    toast({ title: 'TP Cleaner Done', description: `Cleaned: ${data?.cleaned || 0}, Failed: ${data?.failed || 0}` });
+                    const cleaned = data?.cleaned || 0;
+                    const failed = data?.failed || 0;
+                    const failedRows = (data?.failed_details || []).map((d: any) => d?.title || d?.id || 'Unknown');
+                    setTpCleanerReport({
+                      cleaned,
+                      failed,
+                      total: uncleaned.length,
+                      failedRows,
+                      timestamp: new Date().toLocaleString(),
+                    });
                     await fetchDrafts();
                   } catch (e: any) {
-                    toast({ title: 'TP Cleaner failed', description: e.message, variant: 'destructive' });
+                    setTpCleanerReport({
+                      cleaned: 0,
+                      failed: uncleaned.length,
+                      total: uncleaned.length,
+                      failedRows: [e.message],
+                      timestamp: new Date().toLocaleString(),
+                    });
+                  } finally {
+                    setTpCleanerRunning(false);
                   }
                 }}
                 title={`Run Third Party Cleaner on all uncleaned rows`}
               >
-                <ShieldCheck className="h-3.5 w-3.5 mr-1.5" />
+                {tpCleanerRunning ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5 mr-1.5" />}
                 TP Cleaner{(() => { const c = drafts.filter(d => d.tp_clean_status !== 'cleaned' && d.status !== 'promoted' && d.status !== 'rejected').length; return c > 0 ? ` (${c})` : ''; })()}
               </Button>
               <Button variant="outline" size="sm" onClick={fetchDrafts} disabled={loading}>

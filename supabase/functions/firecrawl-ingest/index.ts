@@ -13,7 +13,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { scrapePage, mapUrl, generateContentHash } from '../_shared/firecrawl/client.ts';
 import { normalizeUrl, filterAndClassifyUrls, type UrlFilterConfig } from '../_shared/firecrawl/url-filter.ts';
-import { classifyPage, type PageBucket } from '../_shared/firecrawl/page-classifier.ts';
+import { classifyPage, scoreGovtPage, type PageBucket } from '../_shared/firecrawl/page-classifier.ts';
 import { cleanScrapedContent } from '../_shared/firecrawl/content-cleaner.ts';
 import { extractFields } from '../_shared/firecrawl/field-extractor.ts';
 import { checkDuplicate, type DedupCandidate } from '../_shared/firecrawl/dedup.ts';

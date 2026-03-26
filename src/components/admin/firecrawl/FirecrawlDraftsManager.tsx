@@ -1229,7 +1229,7 @@ export function FirecrawlDraftsManager() {
                     <TableHead>Fields</TableHead>
                     <TableHead className="text-center min-w-[280px]">AI Steps</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead className="text-right min-w-[340px]">Actions</TableHead>
+                    <TableHead className="text-right min-w-[340px] sticky right-0 bg-background z-10 shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.1)]">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1354,7 +1354,7 @@ export function FirecrawlDraftsManager() {
                             {draft.status}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-right whitespace-nowrap">
+                        <TableCell className="text-right whitespace-nowrap sticky right-0 bg-background z-10 shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.1)]">
                           <div className="flex items-center gap-0.5 justify-end">
                             {/* Third Party Cleaner — row-level */}
                             <Button

@@ -561,11 +561,41 @@ export function GovtSourcesManager() {
             </div>
           </div>
 
-          {/* Batch progress */}
+          {/* Batch progress with stop + details */}
           {batchRunning && (
-            <div className="flex items-center gap-2 mt-2 p-2 bg-muted rounded text-xs">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              <span>Running {batchPhase} on {enabledCount} sources...</span>
+            <div className="mt-2 p-3 bg-muted rounded space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-xs">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                  <span className="font-medium">
+                    {batchPhase === 'discover' ? 'Discovering' : batchPhase === 'scrape-extract' ? 'Scraping' : batchPhase === 'retry' ? 'Retrying' : 'Full Pipeline'}
+                  </span>
+                  <span className="text-muted-foreground">
+                    Source {batchProgress.current} of {batchProgress.total}
+                  </span>
+                  {(() => {
+                    const currentSource = sources.filter(s => Object.keys(busySources).includes(s.id))[0];
+                    return currentSource ? (
+                      <span className="text-muted-foreground">— {currentSource.source_name}</span>
+                    ) : null;
+                  })()}
+                </div>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  className="h-6 text-[10px] px-2"
+                  onClick={stopBatch}
+                  disabled={stopRequestedRef.current}
+                >
+                  <StopCircle className="h-3 w-3 mr-1" />
+                  {stopRequestedRef.current ? 'Stopping...' : 'Stop'}
+                </Button>
+              </div>
+              <Progress value={batchProgress.total > 0 ? (batchProgress.current / batchProgress.total) * 100 : 0} className="h-1.5" />
+              <div className="flex justify-between text-[10px] text-muted-foreground">
+                <span>{Math.round(batchProgress.total > 0 ? (batchProgress.current / batchProgress.total) * 100 : 0)}% complete</span>
+                <span>{batchProgress.total - batchProgress.current} remaining</span>
+              </div>
             </div>
           )}
         </CardHeader>

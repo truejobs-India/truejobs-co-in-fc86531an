@@ -82,7 +82,16 @@ interface BatchReport {
   type?: 'discovery' | 'scrape-extract';
 }
 
-export function FirecrawlSourcesManager() {
+interface FirecrawlSourcesManagerProps {
+  sourceTypeFilter?: string;
+}
+
+const SOURCE_TYPE_CONFIG: Record<string, { title: string; icon: string; emptyMessage: string }> = {
+  firecrawl_html: { title: 'Private Sources (HTML)', icon: 'globe', emptyMessage: 'No private HTML sources configured.' },
+  firecrawl_sitemap: { title: 'Sitemap Sources', icon: 'file', emptyMessage: 'No sitemap sources configured.' },
+};
+
+export function FirecrawlSourcesManager({ sourceTypeFilter }: FirecrawlSourcesManagerProps = {}) {
   const [sources, setSources] = useState<FirecrawlSource[]>([]);
   const [loading, setLoading] = useState(true);
   const [busySources, setBusySources] = useState<Record<string, string>>({});
@@ -99,10 +108,15 @@ export function FirecrawlSourcesManager() {
 
   const fetchSources = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabase
+    let q = supabase
       .from('firecrawl_sources')
-      .select('*')
-      .neq('source_type', 'government')
+      .select('*');
+    if (sourceTypeFilter) {
+      q = q.eq('source_type', sourceTypeFilter);
+    } else {
+      q = q.neq('source_type', 'government');
+    }
+    const { data, error } = await q
       .order('priority')
       .order('source_name');
 
@@ -112,7 +126,7 @@ export function FirecrawlSourcesManager() {
       setSources((data as any[]) || []);
     }
     setLoading(false);
-  }, []);
+  }, [sourceTypeFilter]);
 
   useEffect(() => { fetchSources(); }, [fetchSources]);
 
@@ -454,8 +468,9 @@ export function FirecrawlSourcesManager() {
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-3">
         <CardTitle className="text-lg flex items-center gap-2">
-          <Globe className="h-5 w-5" />
-          Firecrawl Sources
+          {sourceTypeFilter === 'firecrawl_sitemap' ? <FileText className="h-5 w-5" /> : <Globe className="h-5 w-5" />}
+          {sourceTypeFilter ? SOURCE_TYPE_CONFIG[sourceTypeFilter]?.title || 'Firecrawl Sources' : 'Firecrawl Sources'}
+          <Badge variant="secondary" className="text-xs">{sources.length}</Badge>
         </CardTitle>
         <div className="flex items-center gap-2">
           {!runAllActive ? (
@@ -597,7 +612,9 @@ export function FirecrawlSourcesManager() {
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
         ) : sources.length === 0 ? (
-          <p className="text-center py-6 text-muted-foreground text-sm">No Firecrawl sources configured.</p>
+          <p className="text-center py-6 text-muted-foreground text-sm">
+            {sourceTypeFilter ? SOURCE_TYPE_CONFIG[sourceTypeFilter]?.emptyMessage || 'No sources found.' : 'No Firecrawl sources configured.'}
+          </p>
         ) : (
           <div className="space-y-2">
             {sources.map(source => {

@@ -415,13 +415,14 @@ export function FirecrawlDraftsManager() {
       .order('created_at', { ascending: false })
       .limit(100);
 
-    if (activeFilter === 'draft') query = query.eq('status', 'draft');
-    else if (activeFilter === 'enriched') query = query.eq('status', 'enriched');
-    else if (activeFilter === 'reviewed') query = query.eq('status', 'reviewed');
-    else if (activeFilter === 'approved') query = query.eq('status', 'approved');
-    else if (activeFilter === 'promoted') query = query.eq('status', 'promoted');
-    else if (activeFilter === 'duplicate') query = query.eq('dedup_status', 'duplicate');
-    else if (activeFilter === 'rejected') query = query.eq('status', 'rejected');
+    if (activeFilter === 'all') query = query.or('source_type_tag.neq.government,source_type_tag.is.null');
+    else if (activeFilter === 'draft') query = query.eq('status', 'draft').or('source_type_tag.neq.government,source_type_tag.is.null');
+    else if (activeFilter === 'enriched') query = query.eq('status', 'enriched').or('source_type_tag.neq.government,source_type_tag.is.null');
+    else if (activeFilter === 'reviewed') query = query.eq('status', 'reviewed').or('source_type_tag.neq.government,source_type_tag.is.null');
+    else if (activeFilter === 'approved') query = query.eq('status', 'approved').or('source_type_tag.neq.government,source_type_tag.is.null');
+    else if (activeFilter === 'promoted') query = query.eq('status', 'promoted').or('source_type_tag.neq.government,source_type_tag.is.null');
+    else if (activeFilter === 'duplicate') query = query.eq('dedup_status', 'duplicate').or('source_type_tag.neq.government,source_type_tag.is.null');
+    else if (activeFilter === 'rejected') query = query.eq('status', 'rejected').or('source_type_tag.neq.government,source_type_tag.is.null');
     else if (activeFilter === 'govt-all') query = query.eq('source_type_tag', 'government');
     else if (activeFilter === 'govt-ready') query = query.eq('source_type_tag', 'government').eq('publish_readiness', 'ready');
     else if (activeFilter === 'govt-review') query = query.eq('source_type_tag', 'government').eq('publish_readiness', 'review_needed');
@@ -1016,9 +1017,12 @@ export function FirecrawlDraftsManager() {
 
   const eligibleCount = getEligibleDrafts().length;
 
+  const isGovtFilter = activeFilter.startsWith('govt-');
+
   return (
     <div className="space-y-4">
-      <FirecrawlSourcesManager />
+      <FirecrawlSourcesManager sourceTypeFilter="firecrawl_html" />
+      <FirecrawlSourcesManager sourceTypeFilter="firecrawl_sitemap" />
       <GovtSourcesManager />
 
       <Card>
@@ -1026,7 +1030,7 @@ export function FirecrawlDraftsManager() {
           <div className="flex flex-col gap-2">
             <CardTitle className="text-lg flex items-center gap-2">
               <Sparkles className="h-5 w-5" />
-              Firecrawl Draft Jobs
+              {isGovtFilter ? 'Government Draft Jobs' : 'General Draft Jobs'}
             </CardTitle>
             <div className="flex flex-wrap items-center gap-2">
               <div className="flex items-center gap-1.5">
@@ -1048,26 +1052,28 @@ export function FirecrawlDraftsManager() {
                   size="sm"
                 />
               </div>
-              {bulkRunning ? (
-                <Button
-                  variant="destructive" size="sm"
-                  onClick={() => { bulkCancelRef.current = true; }}
-                  title="Stop bulk Run All processing"
-                >
-                  <X className="h-3.5 w-3.5 mr-1.5" />
-                  Stop Run All
-                </Button>
-              ) : (
-                <Button
-                  variant="default" size="sm"
-                  onClick={runBulkAll}
-                  disabled={eligibleCount === 0 || loading}
-                  title={`Run all AI steps on ${eligibleCount} eligible draft rows`}
-                >
-                  <Zap className="h-3.5 w-3.5 mr-1.5" />
-                  Bulk Run All{eligibleCount > 0 ? ` (${eligibleCount})` : ''}
-                </Button>
-              )}
+              {!isGovtFilter && (
+                <>
+                  {bulkRunning ? (
+                    <Button
+                      variant="destructive" size="sm"
+                      onClick={() => { bulkCancelRef.current = true; }}
+                      title="Stop bulk Run All processing"
+                    >
+                      <X className="h-3.5 w-3.5 mr-1.5" />
+                      Stop Run All
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="default" size="sm"
+                      onClick={runBulkAll}
+                      disabled={eligibleCount === 0 || loading}
+                      title={`Run all AI steps on ${eligibleCount} eligible draft rows`}
+                    >
+                      <Zap className="h-3.5 w-3.5 mr-1.5" />
+                      Bulk Run All{eligibleCount > 0 ? ` (${eligibleCount})` : ''}
+                    </Button>
+                  )}
               {bulkImageRunning ? (
                 <Button
                   variant="destructive" size="sm"
@@ -1169,8 +1175,10 @@ export function FirecrawlDraftsManager() {
                 {tpCleanerRunning ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5 mr-1.5" />}
                 TP Cleaner{(() => { const c = drafts.filter(d => d.tp_clean_status !== 'cleaned' && d.status !== 'promoted' && d.status !== 'rejected').length; return c > 0 ? ` (${c})` : ''; })()}
               </Button>
+                </>
+              )}
               {/* Govt Bulk Actions */}
-              {activeFilter.startsWith('govt-') && (
+              {isGovtFilter && (
                 <>
                   <Button
                     variant="default" size="sm"
@@ -1260,22 +1268,27 @@ export function FirecrawlDraftsManager() {
           </div>
         </CardHeader>
         <CardContent>
-          {/* Filter tabs */}
+          {/* Section selector */}
+          <div className="flex items-center gap-2 mb-2">
+            <Button
+              variant={!isGovtFilter ? 'default' : 'outline'}
+              size="sm" className="text-xs h-7"
+              onClick={() => setActiveFilter('all')}
+            >
+              General Drafts
+            </Button>
+            <Button
+              variant={isGovtFilter ? 'default' : 'outline'}
+              size="sm" className="text-xs h-7"
+              onClick={() => setActiveFilter('govt-all')}
+            >
+              Government Drafts
+            </Button>
+          </div>
+
+          {/* Filter tabs for active section */}
           <div className="flex flex-wrap gap-1 mb-3">
-            {filterTabs.filter(t => !t.group).map(tab => (
-              <Button
-                key={tab.key}
-                variant={activeFilter === tab.key ? 'default' : 'ghost'}
-                size="sm"
-                className="text-xs h-7"
-                onClick={() => setActiveFilter(tab.key)}
-              >
-                {tab.label}
-              </Button>
-            ))}
-            <span className="border-l mx-1" />
-            <span className="text-[10px] text-muted-foreground self-center font-medium mr-0.5">Govt:</span>
-            {filterTabs.filter(t => t.group === 'govt').map(tab => (
+            {filterTabs.filter(t => isGovtFilter ? t.group === 'govt' : !t.group).map(tab => (
               <Button
                 key={tab.key}
                 variant={activeFilter === tab.key ? 'default' : 'ghost'}

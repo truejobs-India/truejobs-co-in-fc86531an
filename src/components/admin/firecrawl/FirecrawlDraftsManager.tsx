@@ -1385,6 +1385,60 @@ export function FirecrawlDraftsManager() {
             </div>
           )}
 
+          {/* Govt Auto-Publish persistent report */}
+          {govtPublishReport && !govtPublishRunning && (
+            <div className="mb-3 p-3 rounded-lg border bg-muted/30 space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium flex items-center gap-1.5">
+                  <Send className="h-4 w-4" />
+                  Govt Auto-Publish Report — {govtPublishReport.timestamp}
+                </p>
+                <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => setGovtPublishReport(null)}>
+                  Dismiss
+                </Button>
+              </div>
+              <div className="flex gap-4 text-xs">
+                <span className="font-medium">Total: {govtPublishReport.total}</span>
+                <span className="text-green-600">✅ Published: {govtPublishReport.published}</span>
+                <span className="text-red-600">❌ Failed: {govtPublishReport.failed}</span>
+                <span>⏭ Skipped: {govtPublishReport.total - govtPublishReport.published - govtPublishReport.failed}</span>
+              </div>
+              {govtPublishReport.results.filter((r: any) => !r.success).length > 0 && (
+                <div className="text-xs space-y-0.5 mt-1">
+                  <p className="font-medium text-destructive">Failed rows:</p>
+                  {govtPublishReport.results.filter((r: any) => !r.success).map((r: any, i: number) => (
+                    <TooltipProvider key={i}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <p className="text-muted-foreground cursor-help">• {r.draft_id?.slice(0, 8)}... — {(r.errors || []).join(', ') || 'Unknown error'}</p>
+                        </TooltipTrigger>
+                        <TooltipContent side="right" className="max-w-[350px]">
+                          <div className="text-xs space-y-0.5">
+                            <p className="font-medium">Rejection reasons:</p>
+                            {(r.errors || []).map((e: string, j: number) => (
+                              <p key={j}>• {e}</p>
+                            ))}
+                            {(r.warnings || []).length > 0 && (
+                              <>
+                                <p className="font-medium mt-1">Warnings:</p>
+                                {(r.warnings || []).map((w: string, j: number) => (
+                                  <p key={j}>⚠ {w}</p>
+                                ))}
+                              </>
+                            )}
+                          </div>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  ))}
+                </div>
+              )}
+              {govtPublishReport.failed === 0 && govtPublishReport.published > 0 && (
+                <p className="text-xs text-green-600">All eligible drafts published successfully!</p>
+              )}
+            </div>
+          )}
+
           {/* TP Cleaner persistent report */}
           {tpCleanerReport && !tpCleanerRunning && (
             <div className="mb-3 p-3 rounded-lg border bg-muted/30 space-y-2">

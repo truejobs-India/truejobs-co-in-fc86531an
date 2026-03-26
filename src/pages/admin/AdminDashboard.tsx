@@ -180,7 +180,7 @@ function AdminDashboardInner() {
 
   return (
     <Layout noAds>
-      <div className="container mx-auto py-8 px-4">
+      <div className="w-full max-w-none py-8 px-4 xl:px-6 2xl:px-8">
         {/* Persistent Admin Messages */}
         <AdminMessageLog
           messages={messages}

@@ -710,6 +710,7 @@ async function handleAiFixMissing(draftId: string, client: any, apiKey: string, 
     targeted: weakFields, fixed, old_values: oldValues,
   });
 
+  update.tp_clean_status = 'stale';
   await client.from('firecrawl_draft_jobs').update(update).eq('id', draftId);
   return json({ success: true, action: 'ai-fix-missing', targeted: weakFields, fixed });
 }

@@ -1008,7 +1008,7 @@ async function handleAiFixFields(draftId: string, client: any, apiKey: string, a
     aiModel,
   );
 
-  const update: Record<string, unknown> = {};
+  const update: Record<string, unknown> = { ai_fix_missing_at: new Date().toISOString() };
   const fixed: string[] = [];
 
   for (const f of missingFields) {

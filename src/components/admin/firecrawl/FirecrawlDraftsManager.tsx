@@ -609,6 +609,7 @@ export function FirecrawlDraftsManager() {
   const filterTabs: { key: FilterTab; label: string }[] = [
     { key: 'all', label: 'All' },
     { key: 'draft', label: 'Draft' },
+    { key: 'enriched', label: 'Enriched' },
     { key: 'reviewed', label: 'Reviewed' },
     { key: 'approved', label: 'Approved' },
     { key: 'duplicate', label: 'Duplicates' },

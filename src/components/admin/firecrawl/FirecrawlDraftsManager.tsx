@@ -620,6 +620,88 @@ export function FirecrawlDraftsManager() {
     }
   };
 
+  // ── Publish Validation & Execution ──
+  const validateForPublish = (draft: DraftJob) => {
+    const errors: string[] = [];
+    const warnings: string[] = [];
+    if (!draft.title || draft.title.length < 10) errors.push('Title is missing or too short');
+    if (!draft.organization_name) errors.push('Organization name is missing');
+    if (!draft.post_name && !draft.total_vacancies) errors.push('Post name or vacancies required');
+    if (draft.extraction_confidence === 'none') errors.push('Extraction confidence is "none"');
+    if (draft.dedup_status === 'duplicate') errors.push('Row is flagged as duplicate');
+    if (!draft.ai_clean_at) errors.push('AI Clean step not completed');
+    if (!draft.ai_enrich_at) errors.push('AI Enrich step not completed');
+    if (!draft.ai_seo_at) errors.push('SEO metadata not generated');
+    if (!draft.seo_title) errors.push('SEO title not generated');
+    if (!draft.meta_description) errors.push('Meta description not generated');
+    if (!draft.slug_suggestion) errors.push('URL slug not generated');
+    if (!draft.cover_image_url) warnings.push('Cover image not generated');
+    if (draft.status !== 'approved' && draft.status !== 'enriched' && draft.status !== 'reviewed') {
+      warnings.push(`Status is "${draft.status}" — typically rows are approved before publishing`);
+    }
+    if (!draft.official_notification_url && !draft.official_apply_url) warnings.push('No official links found');
+    if (!draft.last_date_of_application && !draft.closing_date) warnings.push('Last date of application is missing');
+    if (draft.extraction_confidence === 'low') warnings.push('Extraction confidence is low');
+    if ((draft.fields_missing?.length || 0) > 3) warnings.push(`${draft.fields_missing.length} fields still missing`);
+    return { errors, warnings };
+  };
+
+  const handlePublishClick = (draft: DraftJob) => {
+    const { errors, warnings } = validateForPublish(draft);
+    setPublishValidation({ draft, errors, warnings });
+  };
+
+  const executePublish = async (draft: DraftJob) => {
+    setPublishing(true);
+    try {
+      const slug = draft.slug_suggestion || draft.normalized_title || draft.title?.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || `job-${draft.id.slice(0, 8)}`;
+      const { error } = await supabase
+        .from('employment_news_jobs')
+        .insert({
+          org_name: draft.organization_name,
+          post: draft.post_name || draft.title,
+          enriched_title: draft.seo_title || draft.title,
+          enriched_description: draft.intro_text || draft.description_summary || '',
+          description: draft.description_summary || draft.intro_text || '',
+          meta_title: draft.seo_title,
+          meta_description: draft.meta_description,
+          slug,
+          state: draft.state,
+          location: draft.location || draft.city,
+          salary: draft.salary || draft.pay_scale,
+          qualification: draft.qualification,
+          age_limit: draft.age_limit,
+          application_mode: draft.application_mode,
+          last_date: draft.last_date_of_application || draft.closing_date,
+          total_vacancies: draft.total_vacancies,
+          apply_link: draft.official_apply_url || draft.official_notification_url,
+          faq_html: draft.faq_suggestions ? (() => {
+            try {
+              const faqs = Array.isArray(draft.faq_suggestions) ? draft.faq_suggestions : [];
+              return faqs.map((f: any) => `<div><h3>${f.question || f.q || ''}</h3><p>${f.answer || f.a || ''}</p></div>`).join('');
+            } catch { return null; }
+          })() : null,
+          keywords: draft.category ? [draft.category] : null,
+          job_category: draft.category,
+          source: 'firecrawl',
+          status: 'published',
+          published_at: new Date().toISOString(),
+        } as any);
+      if (error) throw new Error(error.message);
+      await supabase
+        .from('firecrawl_draft_jobs')
+        .update({ status: 'promoted' } as any)
+        .eq('id', draft.id);
+      toast({ title: 'Published!', description: `"${draft.title}" is now live on TrueJobs.` });
+      setPublishValidation(null);
+      await fetchDrafts();
+    } catch (e: any) {
+      toast({ title: 'Publish failed', description: e.message, variant: 'destructive' });
+    } finally {
+      setPublishing(false);
+    }
+  };
+
   const confidenceBadge = (conf: string) => {
     const map: Record<string, string> = {
       high: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',

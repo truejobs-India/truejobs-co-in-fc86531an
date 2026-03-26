@@ -1304,6 +1304,35 @@ export function FirecrawlDraftsManager() {
                         </TableCell>
                         <TableCell className="text-right whitespace-nowrap">
                           <div className="flex items-center gap-0.5 justify-end">
+                            {/* Third Party Cleaner — row-level */}
+                            <Button
+                              size="sm" variant="outline"
+                              disabled={!!busyRows[draft.id] || draft.tp_clean_status === 'cleaned'}
+                              onClick={async () => {
+                                setBusyRows(prev => ({ ...prev, [draft.id]: 'tp-clean' as any }));
+                                try {
+                                  const { data, error } = await supabase.functions.invoke('firecrawl-cleanup-branding', {
+                                    body: { action: 'clean-single', draft_id: draft.id },
+                                  });
+                                  if (error) throw error;
+                                  toast({ title: 'TP Cleaner', description: `${data?.status === 'cleaned' ? '✅ Cleaned' : '⚠️ ' + data?.status} — ${data?.traces_found || 0} traces found` });
+                                  await fetchDrafts();
+                                } catch (e: any) {
+                                  toast({ title: 'TP Cleaner failed', description: e.message, variant: 'destructive' });
+                                } finally {
+                                  setBusyRows(prev => { const n = { ...prev }; delete n[draft.id]; return n; });
+                                }
+                              }}
+                              title={draft.tp_clean_status === 'cleaned' ? 'Already cleaned' : 'Run Third Party Cleaner'}
+                              className="gap-0.5 h-7 px-2"
+                            >
+                              {busyRows[draft.id] === 'tp-clean' ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <ShieldCheck className="h-3 w-3" />
+                              )}
+                              <span className="text-[10px]">Clean</span>
+                            </Button>
                             <Button
                               size="sm" variant="outline"
                               onClick={() => setPreviewDraft(draft)}

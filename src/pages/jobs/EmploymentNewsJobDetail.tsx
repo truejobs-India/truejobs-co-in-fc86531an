@@ -216,7 +216,7 @@ export default function EmploymentNewsJobDetail() {
 
             {/* Source */}
             <p className="text-xs text-muted-foreground mt-8">
-              Source: {job.source} | Published on TrueJobs
+              Published on TrueJobs
             </p>
           </CardContent>
         </Card>

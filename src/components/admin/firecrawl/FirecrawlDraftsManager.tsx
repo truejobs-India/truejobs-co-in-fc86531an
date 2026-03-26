@@ -208,23 +208,25 @@ type BulkRunCandidate = Pick<DraftJob, 'id' | 'title' | 'status' | 'dedup_status
 type ImageCandidate = Pick<DraftJob, 'id' | 'title' | 'status' | 'dedup_status' | 'cover_image_url'>;
 
 const hasValue = (value: string | null | undefined) => (value?.trim().length ?? 0) > 0;
+const ACTIONABLE_FIELD_FIX_KEYS = [
+  'title',
+  'organization_name',
+  'post_name',
+  'location',
+  'state',
+  'city',
+  'category',
+  'department',
+  'qualification',
+  'application_mode',
+] as const;
 
 const draftNeedsFieldFix = (draft: FieldFixCandidate) => {
   if (!(draft.status === 'draft' || draft.status === 'enriched')) return false;
   if (draft.dedup_status === 'duplicate') return false;
 
   return (
-    (draft.fields_missing?.length || 0) > 0 ||
-    !hasValue(draft.title) ||
-    !hasValue(draft.organization_name) ||
-    !hasValue(draft.post_name) ||
-    !hasValue(draft.location) ||
-    !hasValue(draft.state) ||
-    !hasValue(draft.city) ||
-    !hasValue(draft.category) ||
-    !hasValue(draft.department) ||
-    !hasValue(draft.qualification) ||
-    !hasValue(draft.application_mode) ||
+    ACTIONABLE_FIELD_FIX_KEYS.some((field) => !hasValue(draft[field])) ||
     (!hasValue(draft.official_apply_url) && !hasValue(draft.official_notification_url))
   );
 };
@@ -685,7 +687,7 @@ export function FirecrawlDraftsManager() {
   const runBulkFixFields = async () => {
     const eligible = getDraftsNeedingFieldFix();
     if (eligible.length === 0) {
-      toast({ title: 'No rows need field fixes', description: 'All eligible rows have complete fields.' });
+      toast({ title: 'No rows need field fixes', description: 'All eligible rows already have the required actionable fields.' });
       return;
     }
     const confirmed = window.confirm(

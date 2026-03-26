@@ -1217,19 +1217,19 @@ export function FirecrawlDraftsManager() {
               No draft jobs found for this filter.
             </p>
           ) : (
-            <div className="overflow-x-auto w-full">
-              <Table className="min-w-[1400px]">
+            <div className="w-full overflow-x-auto rounded-lg">
+              <Table className="min-w-[1720px] table-auto">
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="min-w-[200px]">Title / Org</TableHead>
-                    <TableHead>State</TableHead>
-                    <TableHead>Ready</TableHead>
-                    <TableHead>Confidence</TableHead>
-                    <TableHead>Dedup</TableHead>
-                    <TableHead>Fields</TableHead>
-                    <TableHead className="text-center min-w-[280px]">AI Steps</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right min-w-[340px] sticky right-0 bg-background z-10 shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.1)]">Actions</TableHead>
+                    <TableHead className="min-w-[220px]">Title / Org</TableHead>
+                    <TableHead className="min-w-[72px]">State</TableHead>
+                    <TableHead className="min-w-[72px]">Ready</TableHead>
+                    <TableHead className="min-w-[96px]">Confidence</TableHead>
+                    <TableHead className="min-w-[130px]">Dedup</TableHead>
+                    <TableHead className="min-w-[120px]">Fields</TableHead>
+                    <TableHead className="text-center min-w-[340px]">AI Steps</TableHead>
+                    <TableHead className="min-w-[90px]">Status</TableHead>
+                    <TableHead className="text-right min-w-[360px] sticky right-0 bg-background z-10 shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.1)]">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>

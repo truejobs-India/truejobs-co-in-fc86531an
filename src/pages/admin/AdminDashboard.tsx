@@ -415,7 +415,7 @@ function AdminDashboardInner() {
                 <SitewideSeoAudit />
               </TabsContent>
 
-              <TabsContent value="firecrawl">
+              <TabsContent value="firecrawl" className="w-full max-w-none">
                 <FirecrawlDraftsManager />
               </TabsContent>
             </Tabs>

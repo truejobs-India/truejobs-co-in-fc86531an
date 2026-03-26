@@ -1057,7 +1057,9 @@ async function handleAiRunAll(draftId: string, client: any, apiKey: string, aiMo
         updated_at: new Date().toISOString(),
       };
       if (isGovt) {
-        updatePayload.publish_readiness = await calculatePublishReadiness(draftId, client);
+        const readiness = await calculatePublishReadiness(draftId, client);
+        updatePayload.publish_readiness = readiness;
+        updatePayload.auto_publish_eligible = (readiness === 'ready_to_publish' || readiness === 'ready');
       }
       await client.from('firecrawl_draft_jobs').update(updatePayload).eq('id', draftId).eq('status', 'draft');
     } catch { /* draft gone */ }

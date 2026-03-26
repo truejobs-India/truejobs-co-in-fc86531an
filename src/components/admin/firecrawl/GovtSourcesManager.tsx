@@ -62,7 +62,7 @@ interface BatchReport {
     source_id: string;
     source_name: string;
     discover?: { success: boolean; stats?: any; error?: string };
-    scrape_extract?: { success: boolean; scraped?: number; extracted?: number; failed?: number; error?: string };
+    scrape_extract?: { success: boolean; scraped?: number; extracted?: number; failed?: number; error?: string; stats?: { pdfFollowUps?: number; unchangedSkips?: number; weakExtractions?: number; strongExtractions?: number; domainCooldowns?: number } };
     error?: string;
   }[];
   completed_at: string;
@@ -281,7 +281,10 @@ export function GovtSourcesManager() {
         if (phase === 'scrape-extract' || phase === 'full') {
           if (stopRequestedRef.current) { results.push(entry); break; }
           const seResult = await invokeFirecrawl('govt-scrape-extract', { source_id: source.id });
-          entry.scrape_extract = { success: true, scraped: seResult?.scraped ?? 0, extracted: seResult?.extracted ?? 0, failed: seResult?.failed ?? 0 };
+          entry.scrape_extract = {
+            success: true, scraped: seResult?.scraped ?? 0, extracted: seResult?.extracted ?? 0, failed: seResult?.failed ?? 0,
+            stats: { pdfFollowUps: seResult?.pdfFollowUps ?? 0, unchangedSkips: seResult?.unchangedSkips ?? 0, weakExtractions: seResult?.weakExtractions ?? 0, strongExtractions: seResult?.strongExtractions ?? 0, domainCooldowns: seResult?.domainCooldowns ?? 0 },
+          };
         }
       } catch (err: any) {
         entry.error = err.message;

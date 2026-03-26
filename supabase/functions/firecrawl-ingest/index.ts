@@ -4,8 +4,12 @@
  * Supports:
  *   - test-source, list-sources, run-source, discover-source, source-stats
  *   - extract-item, extract-batch
+ *   - scrape-pending
  *   - dedup-drafts (cross-source: firecrawl + rss_items + employment_news_jobs + jobs)
+ *   - purge-high-duplicates
  *   - validate-for-approval
+ *   - discover-govt, govt-scrape-extract, govt-run-all
+ *   - recovery-pass (multi-pass extraction for weak drafts)
  *
  * Completely isolated from Source 1 (rss-ingest) and Source 2 (Employment News).
  */
@@ -24,8 +28,93 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-/** Max detail pages to scrape per discover run (cost control) */
-const MAX_DETAIL_SCRAPES_PER_RUN = 5;
+// ============ Source-type-aware limits ============
+const LIMITS = {
+  private: { maxDetailScrapes: 10, discoverMaxUrls: 300, extractBatchMax: 30 },
+  government: { maxDetailScrapes: 15, discoverMaxUrls: 500, extractBatchMax: 30 },
+  sitemap: { maxDetailScrapes: 8, discoverMaxUrls: 400, extractBatchMax: 30 },
+};
+
+/** Hard cap: never scrape more than this many detail pages in one discover run */
+const HARD_SCRAPE_CAP = 25;
+
+/** Recovery pass: max drafts to attempt per invocation */
+const RECOVERY_MAX_PER_RUN = 10;
+
+// ============ Domain Throttling ============
+const domainLastFetch = new Map<string, number>();
+const domainFailCount = new Map<string, number>();
+const DOMAIN_MIN_INTERVAL_MS = 2000;
+const DOMAIN_COOLDOWN_THRESHOLD = 3;
+const DOMAIN_COOLDOWN_MS = 30_000;
+
+function extractDomainFromUrl(url: string): string {
+  try { return new URL(url).hostname; } catch { return 'unknown'; }
+}
+
+function getDomainThrottleDelay(url: string): number {
+  const domain = extractDomainFromUrl(url);
+  const now = Date.now();
+
+  // Check cooldown
+  const fails = domainFailCount.get(domain) || 0;
+  if (fails >= DOMAIN_COOLDOWN_THRESHOLD) {
+    const lastFetch = domainLastFetch.get(domain) || 0;
+    const elapsed = now - lastFetch;
+    if (elapsed < DOMAIN_COOLDOWN_MS) {
+      return DOMAIN_COOLDOWN_MS - elapsed;
+    }
+    // Cooldown expired, reset
+    domainFailCount.set(domain, 0);
+  }
+
+  // Normal throttle
+  const lastFetch = domainLastFetch.get(domain) || 0;
+  const elapsed = now - lastFetch;
+  if (elapsed < DOMAIN_MIN_INTERVAL_MS) {
+    return DOMAIN_MIN_INTERVAL_MS - elapsed;
+  }
+  return 0;
+}
+
+function recordDomainSuccess(url: string): void {
+  const domain = extractDomainFromUrl(url);
+  domainLastFetch.set(domain, Date.now());
+  domainFailCount.set(domain, 0);
+}
+
+function recordDomainFailure(url: string): boolean {
+  const domain = extractDomainFromUrl(url);
+  domainLastFetch.set(domain, Date.now());
+  const count = (domainFailCount.get(domain) || 0) + 1;
+  domainFailCount.set(domain, count);
+  if (count >= DOMAIN_COOLDOWN_THRESHOLD) {
+    console.warn(`[domain-throttle] Domain ${domain} hit cooldown (${count} consecutive failures)`);
+    return true; // in cooldown
+  }
+  return false;
+}
+
+async function throttledScrapePage(url: string, options?: Parameters<typeof scrapePage>[1]) {
+  const delay = getDomainThrottleDelay(url);
+  if (delay > 0) {
+    console.log(`[domain-throttle] Waiting ${delay}ms before scraping ${extractDomainFromUrl(url)}`);
+    await new Promise(r => setTimeout(r, delay));
+  }
+  const result = await scrapePage(url, options);
+  if (result.success) {
+    recordDomainSuccess(url);
+  } else {
+    recordDomainFailure(url);
+  }
+  return result;
+}
+
+function getSourceLimits(sourceType: string) {
+  if (sourceType === 'government') return LIMITS.government;
+  if (sourceType === 'firecrawl_sitemap') return LIMITS.sitemap;
+  return LIMITS.private;
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -75,6 +164,8 @@ Deno.serve(async (req) => {
         return await handleGovtScrapeExtract(body, adminClient);
       case 'govt-run-all':
         return await handleGovtRunAll(body, adminClient);
+      case 'recovery-pass':
+        return await handleRecoveryPass(body, adminClient);
       default:
         return jsonResponse({ error: `Unknown action: ${action}` }, 400);
     }
@@ -145,7 +236,7 @@ async function handleTestSource(
 
   console.log(`[firecrawl-ingest] test-source: ${seedUrl}`);
 
-  const scrapeResult = await scrapePage(seedUrl, { formats: ['markdown', 'links'], onlyMainContent: true });
+  const scrapeResult = await throttledScrapePage(seedUrl, { formats: ['markdown', 'links'], onlyMainContent: true });
 
   if (!scrapeResult.success) {
     return jsonResponse({ success: false, error: scrapeResult.error, mode: 'scrape' });
@@ -210,7 +301,7 @@ async function handleRunSource(
   const runId = run?.id;
 
   try {
-    const scrapeResult = await scrapePage(source.seed_url, { formats: ['markdown', 'links'], onlyMainContent: true });
+    const scrapeResult = await throttledScrapePage(source.seed_url, { formats: ['markdown', 'links'], onlyMainContent: true });
 
     if (!scrapeResult.success) {
       const errMsg = scrapeResult.error || 'Scrape failed';
@@ -276,12 +367,14 @@ async function handleDiscoverSource(
   const { data: source } = await client.from('firecrawl_sources').select('*').eq('id', sourceId).single();
   if (!source) return jsonResponse({ error: 'Source not found' }, 404);
 
+  const limits = getSourceLimits(source.source_type);
   const maxDetailScrapes = Math.min(
-    (body.max_detail_scrapes as number) || MAX_DETAIL_SCRAPES_PER_RUN,
-    source.max_pages_per_run || 10
+    (body.max_detail_scrapes as number) || limits.maxDetailScrapes,
+    source.max_pages_per_run || 15,
+    HARD_SCRAPE_CAP
   );
 
-  console.log(`[firecrawl-ingest] discover-source: ${source.source_name} (max_detail: ${maxDetailScrapes})`);
+  console.log(`[firecrawl-ingest] discover-source: ${source.source_name} (type=${source.source_type}, max_detail: ${maxDetailScrapes})`);
 
   const { data: run } = await client
     .from('firecrawl_fetch_runs')
@@ -297,11 +390,13 @@ async function handleDiscoverSource(
     staged: 0,
     duplicateUrls: 0,
     errors: 0,
+    domainCooldowns: 0,
+    detailPageFollowUps: 0,
     bucketCounts: {} as Record<string, number>,
   };
 
   try {
-    const seedResult = await scrapePage(source.seed_url, { formats: ['markdown', 'links'], onlyMainContent: true });
+    const seedResult = await throttledScrapePage(source.seed_url, { formats: ['markdown', 'links'], onlyMainContent: true });
 
     if (!seedResult.success) {
       const errMsg = seedResult.error || 'Seed page scrape failed';
@@ -331,7 +426,7 @@ async function handleDiscoverSource(
       allowedDomains: source.allowed_domains || [],
       allowedUrlPatterns: source.allowed_url_patterns || [],
       blockedUrlPatterns: source.blocked_url_patterns || [],
-      maxUrls: 200,
+      maxUrls: limits.discoverMaxUrls,
     };
 
     const filtered = filterAndClassifyUrls(discoveredLinks, filterConfig, existingNormalized);
@@ -404,13 +499,29 @@ async function handleDiscoverSource(
     const detailResults: any[] = [];
 
     for (const candidate of recruitmentCandidates) {
+      // Hard cap check
+      if (stats.pagesScraped >= HARD_SCRAPE_CAP) {
+        console.log(`[firecrawl-ingest] Hard scrape cap reached (${HARD_SCRAPE_CAP}), stopping detail scraping`);
+        break;
+      }
+
+      // Domain cooldown check
+      const domain = extractDomainFromUrl(candidate.normalized);
+      const fails = domainFailCount.get(domain) || 0;
+      if (fails >= DOMAIN_COOLDOWN_THRESHOLD) {
+        stats.domainCooldowns++;
+        detailResults.push({ url: candidate.normalized, error: 'Domain in cooldown' });
+        continue;
+      }
+
       try {
-        const detailResult = await scrapePage(candidate.normalized, {
+        const detailResult = await throttledScrapePage(candidate.normalized, {
           formats: ['markdown', 'links'],
           onlyMainContent: true,
         });
 
         stats.pagesScraped++;
+        stats.detailPageFollowUps++;
 
         if (detailResult.success && detailResult.markdown) {
           const contentHash = await generateContentHash(detailResult.markdown);
@@ -508,7 +619,6 @@ async function handleSourceStats(
 
   if (!source) return jsonResponse({ error: 'Source not found' }, 404);
 
-  // Staged items breakdown
   const { data: stagedData } = await client
     .from('firecrawl_staged_items')
     .select('bucket, status, extraction_status, extracted_markdown')
@@ -538,7 +648,6 @@ async function handleSourceStats(
     if (item.status === 'duplicate') duplicateStaged++;
   }
 
-  // Draft job counts
   const { data: drafts } = await client
     .from('firecrawl_draft_jobs')
     .select('id, extraction_confidence, status, dedup_status')
@@ -556,7 +665,6 @@ async function handleSourceStats(
     duplicate: draftItems.filter((d: any) => d.dedup_status === 'duplicate').length,
   };
 
-  // Recent runs
   const { data: recentRuns } = await client
     .from('firecrawl_fetch_runs')
     .select('id, run_mode, status, started_at, finished_at, pages_fetched, items_found, items_new, items_skipped, pages_accepted, pages_rejected, bucket_counts, error_log')
@@ -564,7 +672,6 @@ async function handleSourceStats(
     .order('started_at', { ascending: false })
     .limit(5);
 
-  // Timestamps for last scrape / last extract
   const { data: lastScrapeRun } = await client
     .from('firecrawl_fetch_runs')
     .select('finished_at')
@@ -573,7 +680,6 @@ async function handleSourceStats(
     .order('finished_at', { ascending: false })
     .limit(1);
 
-  // Last extract time from draft jobs
   const { data: lastDraft } = await client
     .from('firecrawl_draft_jobs')
     .select('created_at')
@@ -611,13 +717,12 @@ async function handleScrapePending(
 
   const maxItems = Math.min(Math.max((body.max_items as number) || 20, 1), 50);
 
-  const { data: source } = await client.from('firecrawl_sources').select('id, source_name').eq('id', sourceId).single();
+  const { data: source } = await client.from('firecrawl_sources').select('id, source_name, source_type').eq('id', sourceId).single();
   if (!source) return jsonResponse({ error: 'Source not found' }, 404);
 
-  // Find eligible staged rows: single_recruitment, no markdown, pending
   const { data: items, error } = await client
     .from('firecrawl_staged_items')
-    .select('id, page_url, url_normalized')
+    .select('id, page_url, url_normalized, content_hash')
     .eq('firecrawl_source_id', sourceId)
     .eq('bucket', 'single_recruitment')
     .eq('status', 'staged')
@@ -633,7 +738,6 @@ async function handleScrapePending(
 
   console.log(`[firecrawl-ingest] scrape-pending: ${items.length} items for ${source.source_name}`);
 
-  // Create audit run
   const { data: run } = await client
     .from('firecrawl_fetch_runs')
     .insert({ firecrawl_source_id: sourceId, run_mode: 'manual_admin', status: 'running' })
@@ -643,11 +747,22 @@ async function handleScrapePending(
   let scrapedCount = 0;
   let failedCount = 0;
   let skippedCount = 0;
+  let unchangedSkips = 0;
+  let domainCooldowns = 0;
   const results: { url: string; status: string; title?: string; contentLength?: number; error?: string }[] = [];
 
   for (const item of items) {
+    // Domain cooldown check
+    const domain = extractDomainFromUrl(item.page_url);
+    const fails = domainFailCount.get(domain) || 0;
+    if (fails >= DOMAIN_COOLDOWN_THRESHOLD) {
+      domainCooldowns++;
+      results.push({ url: item.page_url, status: 'domain_cooldown' });
+      continue;
+    }
+
     try {
-      const scrapeResult = await scrapePage(item.page_url, {
+      const scrapeResult = await throttledScrapePage(item.page_url, {
         formats: ['markdown', 'links'],
         onlyMainContent: true,
       });
@@ -660,7 +775,14 @@ async function handleScrapePending(
 
       const contentHash = await generateContentHash(scrapeResult.markdown);
 
-      // Refine classification with title
+      // Content-hash skip: if unchanged, skip re-extraction
+      if (item.content_hash && item.content_hash === contentHash) {
+        unchangedSkips++;
+        skippedCount++;
+        results.push({ url: item.page_url, status: 'unchanged_skip' });
+        continue;
+      }
+
       const refined = classifyPage(item.page_url, scrapeResult.metadata?.title);
 
       await client
@@ -690,7 +812,6 @@ async function handleScrapePending(
     }
   }
 
-  // Finalize audit run
   const runStatus = failedCount > 0 && scrapedCount > 0 ? 'partial' : failedCount > 0 ? 'error' : 'success';
   if (runId) await finalizeRun(client, runId, runStatus, {
     pagesFetched: scrapedCount + failedCount,
@@ -706,6 +827,8 @@ async function handleScrapePending(
     scraped: scrapedCount,
     failed: failedCount,
     skipped: skippedCount,
+    unchangedSkips,
+    domainCooldowns,
     results,
   });
 }
@@ -779,7 +902,6 @@ async function handleExtractItem(
       status: 'draft',
     };
 
-    // Auto-sanitize third-party branding from extracted fields
     const sanitizeResult = sanitizeDraftFields(rawDraftData);
     const draftData = {
       ...rawDraftData,
@@ -831,7 +953,9 @@ async function handleExtractBatch(
   const sourceId = body.source_id as string;
   if (!sourceId) return jsonResponse({ error: 'source_id required' }, 400);
 
-  const maxItems = Math.min((body.max_items as number) || 10, 20);
+  const { data: source } = await client.from('firecrawl_sources').select('source_type').eq('id', sourceId).single();
+  const limits = getSourceLimits(source?.source_type || 'firecrawl_html');
+  const maxItems = Math.min((body.max_items as number) || 10, limits.extractBatchMax);
 
   const { data: items, error } = await client
     .from('firecrawl_staged_items')
@@ -923,7 +1047,6 @@ async function handleExtractItemInternal(
         status: 'draft',
     };
 
-    // Auto-sanitize third-party branding
     const batchSanitize = sanitizeDraftFields(rawBatchData);
     const batchDraftData = {
       ...rawBatchData,
@@ -966,7 +1089,6 @@ async function handleDedupDrafts(
 ) {
   console.log('[firecrawl-ingest] dedup-drafts: running cross-source dedup');
 
-  // 1. Fetch all firecrawl draft candidates
   const { data: allDrafts, error } = await client
     .from('firecrawl_draft_jobs')
     .select('id, normalized_title, organization_name, official_notification_url, official_apply_url, last_date_of_application, total_vacancies, dedup_status')
@@ -988,7 +1110,6 @@ async function handleDedupDrafts(
     total_vacancies: d.total_vacancies,
   }));
 
-  // 2. Build cross-source candidates from rss_items (Source 1)
   const { data: rssItems } = await client
     .from('rss_items')
     .select('id, item_title, canonical_link')
@@ -1009,7 +1130,6 @@ async function handleDedupDrafts(
     });
   }
 
-  // 3. Build cross-source candidates from employment_news_jobs (Source 2)
   const { data: enJobs } = await client
     .from('employment_news_jobs')
     .select('id, org_name, post, last_date, vacancies, apply_link')
@@ -1031,7 +1151,6 @@ async function handleDedupDrafts(
     });
   }
 
-  // 4. Combine all candidates (firecrawl + cross-source)
   const allCandidates = [...candidates, ...crossSourceCandidates];
 
   let duplicatesFound = 0;
@@ -1053,7 +1172,6 @@ async function handleDedupDrafts(
     const result = checkDuplicate(target, allCandidates);
     checked++;
 
-    // Annotate cross-source matches
     let reason = result.reason;
     const crossMatches = result.matchedIds.filter(id => id.startsWith('rss:') || id.startsWith('en:'));
     if (crossMatches.length > 0) {
@@ -1083,8 +1201,6 @@ async function handleDedupDrafts(
 }
 
 // ============ purge-high-duplicates ============
-// Re-runs the dedup scoring on ALL draft/reviewed rows, groups them by match,
-// keeps the earliest row, and hard-deletes only high-confidence (≥5 score) duplicates.
 
 async function handlePurgeHighDuplicates(
   body: Record<string, unknown>,
@@ -1092,7 +1208,6 @@ async function handlePurgeHighDuplicates(
 ) {
   console.log('[firecrawl-ingest] purge-high-duplicates: starting');
 
-  // 1. Fetch all firecrawl draft candidates (draft + reviewed)
   const { data: allDrafts, error } = await client
     .from('firecrawl_draft_jobs')
     .select('id, normalized_title, organization_name, official_notification_url, official_apply_url, last_date_of_application, total_vacancies, created_at')
@@ -1114,12 +1229,11 @@ async function handlePurgeHighDuplicates(
     total_vacancies: d.total_vacancies,
   }));
 
-  // 2. For each draft, check against all others and track high-confidence matches
   const idsToDelete = new Set<string>();
   const idsToKeep = new Set<string>();
 
   for (const draft of allDrafts) {
-    if (idsToDelete.has(draft.id)) continue; // already marked for deletion
+    if (idsToDelete.has(draft.id)) continue;
 
     const target: DedupCandidate = {
       id: draft.id,
@@ -1134,10 +1248,8 @@ async function handlePurgeHighDuplicates(
     const result = checkDuplicate(target, candidates);
 
     if (result.isDuplicate && result.confidence === 'high') {
-      // Keep the current (earliest due to ordering) and delete its matches
       idsToKeep.add(draft.id);
       for (const matchId of result.matchedIds) {
-        // Only delete firecrawl drafts, not cross-source refs
         if (!matchId.startsWith('rss:') && !matchId.startsWith('en:') && !idsToKeep.has(matchId)) {
           idsToDelete.add(matchId);
         }
@@ -1145,11 +1257,9 @@ async function handlePurgeHighDuplicates(
     }
   }
 
-  // 3. Hard-delete the duplicates
   let deleted = 0;
   if (idsToDelete.size > 0) {
     const deleteArr = Array.from(idsToDelete);
-    // Delete in batches of 50
     for (let i = 0; i < deleteArr.length; i += 50) {
       const batch = deleteArr.slice(i, i + 50);
       const { error: delErr } = await client
@@ -1192,7 +1302,6 @@ async function handleValidateForApproval(
   const errors: string[] = [];
   const warnings: string[] = [];
 
-  // Mandatory checks
   if (!draft.title || draft.title.length < 10) errors.push('Title missing or too short (<10 chars)');
   if (!draft.organization_name) errors.push('Organization name is missing');
   if (!draft.post_name && !draft.total_vacancies) errors.push('Either post_name or total_vacancies must exist');
@@ -1201,7 +1310,6 @@ async function handleValidateForApproval(
   if (draft.extraction_confidence === 'low') warnings.push('Extraction confidence is "low" — review carefully');
   if (draft.dedup_status === 'duplicate') errors.push('Draft is flagged as duplicate — resolve before approving');
 
-  // Recommended checks
   if (!draft.official_notification_url && !draft.official_apply_url) {
     warnings.push('No official links found — recommended before publishing');
   }
@@ -1256,10 +1364,11 @@ async function handleDiscoverGovt(
   const stats = { linksDiscovered: 0, scored: 0, staged: 0, duplicateUrls: 0, pdfLinks: 0, errors: 0, bucketCounts: {} as Record<string, number> };
 
   try {
-    // Use map for government sources (cheap, returns many URLs)
     let discoveredLinks: string[] = [];
     if (source.crawl_mode === 'map') {
-      const mapResult = await mapUrl(source.seed_url, { limit: Math.min(maxPages * 5, 500), includeSubdomains: false });
+      // Aggressive: up to maxPages*10, cap 2000
+      const mapLimit = Math.min(maxPages * 10, 2000);
+      const mapResult = await mapUrl(source.seed_url, { limit: mapLimit, includeSubdomains: false });
       if (!mapResult.success) {
         const errMsg = mapResult.error || 'Map failed';
         if (runId) await finalizeRun(client, runId, 'error', { errorLog: errMsg });
@@ -1268,7 +1377,7 @@ async function handleDiscoverGovt(
       }
       discoveredLinks = mapResult.links || [];
     } else {
-      const scrapeResult = await scrapePage(source.seed_url, { formats: ['markdown', 'links'], onlyMainContent: true });
+      const scrapeResult = await throttledScrapePage(source.seed_url, { formats: ['markdown', 'links'], onlyMainContent: true });
       if (!scrapeResult.success) {
         const errMsg = scrapeResult.error || 'Scrape failed';
         if (runId) await finalizeRun(client, runId, 'error', { errorLog: errMsg });
@@ -1280,7 +1389,6 @@ async function handleDiscoverGovt(
 
     stats.linksDiscovered = discoveredLinks.length;
 
-    // Get existing staged URLs for dedup
     const { data: existingItems } = await client
       .from('firecrawl_staged_items')
       .select('url_normalized')
@@ -1288,10 +1396,8 @@ async function handleDiscoverGovt(
       .not('url_normalized', 'is', null);
     const existingNormalized = new Set<string>((existingItems || []).map((i: any) => i.url_normalized).filter(Boolean));
 
-    // Domain filtering
     const allowedDomains = source.allowed_domains || [];
 
-    // Score and sort all links
     const scored: { url: string; normalized: string; score: number; isPdf: boolean }[] = [];
     for (const link of discoveredLinks) {
       const norm = normalizeUrl(link);
@@ -1309,11 +1415,9 @@ async function handleDiscoverGovt(
 
     stats.scored = scored.length;
 
-    // Sort by score descending, take top maxPages
     scored.sort((a, b) => b.score - a.score);
     const candidates = scored.slice(0, maxPages);
 
-    // Stage all candidates
     for (const candidate of candidates) {
       const classification = classifyPage(candidate.normalized, null);
       const bucket = candidate.isPdf ? 'single_recruitment' : classification.bucket;
@@ -1383,10 +1487,9 @@ async function handleGovtScrapeExtract(
   const { data: source } = await client.from('firecrawl_sources').select('*').eq('id', sourceId).single();
   if (!source) return jsonResponse({ error: 'Source not found' }, 404);
 
-  // Find staged items that need scraping (single_recruitment, no markdown)
   const { data: items, error } = await client
     .from('firecrawl_staged_items')
-    .select('id, page_url, url_normalized, govt_discovery_meta')
+    .select('id, page_url, url_normalized, govt_discovery_meta, content_hash')
     .eq('firecrawl_source_id', sourceId)
     .eq('bucket', 'single_recruitment')
     .eq('status', 'staged')
@@ -1403,12 +1506,21 @@ async function handleGovtScrapeExtract(
   console.log(`[firecrawl-ingest] govt-scrape-extract: ${items.length} items for ${source.source_name}`);
 
   let scraped = 0, extracted = 0, failed = 0;
+  let pdfFollowUps = 0, unchangedSkips = 0, weakExtractions = 0, strongExtractions = 0, domainCooldowns = 0;
   const results: any[] = [];
 
   for (const item of items) {
+    // Domain cooldown check
+    const domain = extractDomainFromUrl(item.page_url);
+    const fails = domainFailCount.get(domain) || 0;
+    if (fails >= DOMAIN_COOLDOWN_THRESHOLD) {
+      domainCooldowns++;
+      results.push({ url: item.page_url, status: 'domain_cooldown' });
+      continue;
+    }
+
     try {
-      // Scrape the page (Firecrawl handles PDFs natively)
-      const scrapeResult = await scrapePage(item.page_url, {
+      const scrapeResult = await throttledScrapePage(item.page_url, {
         formats: ['markdown', 'links'],
         onlyMainContent: true,
       });
@@ -1422,7 +1534,13 @@ async function handleGovtScrapeExtract(
       scraped++;
       const contentHash = await generateContentHash(scrapeResult.markdown);
 
-      // Update staged item with scraped content
+      // Content-hash skip
+      if (item.content_hash && item.content_hash === contentHash) {
+        unchangedSkips++;
+        results.push({ url: item.page_url, status: 'unchanged_skip' });
+        continue;
+      }
+
       await client.from('firecrawl_staged_items').update({
         page_title: scrapeResult.metadata?.title || null,
         extracted_markdown: scrapeResult.markdown.substring(0, 100_000),
@@ -1431,10 +1549,50 @@ async function handleGovtScrapeExtract(
         metadata: scrapeResult.metadata || {},
       }).eq('id', item.id);
 
-      // Now extract fields
-      const cleanResult = cleanScrapedContent(scrapeResult.markdown);
+      // Extract fields
+      let markdown = scrapeResult.markdown;
+      let links = scrapeResult.links || [];
+      const cleanResult = cleanScrapedContent(markdown);
       const linkInfos = cleanResult.extractedLinks.map(l => ({ text: l.text, url: l.url, context: l.context }));
-      const extraction = extractFields(cleanResult.cleanedText, linkInfos, scrapeResult.metadata?.title, item.page_url);
+      let extraction = extractFields(cleanResult.cleanedText, linkInfos, scrapeResult.metadata?.title, item.page_url);
+
+      // PDF follow-up: if extraction is weak and links contain PDFs from same domain
+      if (extraction.confidence === 'low' && links.length > 0) {
+        const sourceDomain = extractDomainFromUrl(item.page_url);
+        const pdfLinks = links.filter(l => {
+          const lLower = l.toLowerCase();
+          return lLower.endsWith('.pdf') && extractDomainFromUrl(l) === sourceDomain;
+        });
+
+        if (pdfLinks.length > 0) {
+          // Score PDFs and pick the best one
+          const bestPdf = pdfLinks
+            .map(l => ({ url: l, score: scoreGovtPage(l) }))
+            .sort((a, b) => b.score - a.score)[0];
+
+          console.log(`[govt-scrape-extract] PDF follow-up for ${item.page_url}: trying ${bestPdf.url}`);
+
+          const pdfResult = await throttledScrapePage(bestPdf.url, { formats: ['markdown'], onlyMainContent: true });
+          if (pdfResult.success && pdfResult.markdown) {
+            pdfFollowUps++;
+            const mergedText = markdown + '\n\n--- PDF CONTENT ---\n\n' + pdfResult.markdown;
+            const mergedClean = cleanScrapedContent(mergedText);
+            const mergedLinkInfos = mergedClean.extractedLinks.map(l => ({ text: l.text, url: l.url, context: l.context }));
+            const mergedExtraction = extractFields(mergedClean.cleanedText, mergedLinkInfos, scrapeResult.metadata?.title, item.page_url);
+
+            // Use merged extraction only if it improved
+            if (mergedExtraction.fields_extracted > extraction.fields_extracted) {
+              extraction = mergedExtraction;
+              markdown = mergedText;
+              console.log(`[govt-scrape-extract] PDF follow-up improved extraction: ${extraction.fields_extracted} fields (was ${extraction.fields_extracted})`);
+            }
+          }
+        }
+      }
+
+      // Track extraction quality
+      if (extraction.confidence === 'high' || extraction.confidence === 'medium') strongExtractions++;
+      else weakExtractions++;
 
       // Check if extraction produced a valid job
       if (!extraction.fields.title && !extraction.fields.organization_name && !extraction.fields.post_name) {
@@ -1457,7 +1615,7 @@ async function handleGovtScrapeExtract(
         fields_extracted: extraction.fields_extracted,
         fields_missing: extraction.fields_missing,
         extraction_warnings: extraction.warnings,
-        raw_scraped_text: scrapeResult.markdown.substring(0, 200_000),
+        raw_scraped_text: markdown.substring(0, 200_000),
         raw_links_found: (scrapeResult.links || []).slice(0, 500),
         extracted_raw_fields: extraction.raw_fields,
         cleaning_log: cleanResult.cleaningLog,
@@ -1490,15 +1648,27 @@ async function handleGovtScrapeExtract(
         results.push({ url: item.page_url, status: 'extracted', draft_id: draft.id, confidence: extraction.confidence });
       }
 
-      // Rate limit: 1 second between scrapes
-      await new Promise(r => setTimeout(r, 1000));
+      // Rate limit: 2 seconds between govt scrapes
+      await new Promise(r => setTimeout(r, 2000));
     } catch (e) {
       failed++;
       results.push({ url: item.page_url, status: 'error', error: e instanceof Error ? e.message : String(e) });
     }
   }
 
-  return jsonResponse({ success: true, total: items.length, scraped, extracted, failed, results });
+  return jsonResponse({
+    success: true,
+    total: items.length,
+    scraped,
+    extracted,
+    failed,
+    pdfFollowUps,
+    unchangedSkips,
+    weakExtractions,
+    strongExtractions,
+    domainCooldowns,
+    results,
+  });
 }
 
 // ============ govt-run-all ============
@@ -1507,10 +1677,9 @@ async function handleGovtRunAll(
   body: Record<string, unknown>,
   client: ReturnType<typeof createClient>
 ) {
-  const phase = (body.phase as string) || 'full'; // 'discover' | 'scrape-extract' | 'full'
+  const phase = (body.phase as string) || 'full';
   const sourceIds = body.source_ids as string[] | undefined;
 
-  // Fetch target sources
   let query = client.from('firecrawl_sources').select('id, source_name').eq('source_type', 'government').eq('is_enabled', true);
   if (sourceIds && sourceIds.length > 0) {
     query = client.from('firecrawl_sources').select('id, source_name').eq('source_type', 'government').in('id', sourceIds);
@@ -1529,18 +1698,22 @@ async function handleGovtRunAll(
     const srcResult: any = { source_id: src.id, source_name: src.source_name };
 
     try {
-      // Phase: discover
       if (phase === 'discover' || phase === 'full') {
         const discoverResp = await handleDiscoverGovt({ source_id: src.id }, client);
         const discoverData = await discoverResp.json();
         srcResult.discover = { success: discoverData.success, stats: discoverData.stats, error: discoverData.error };
       }
 
-      // Phase: scrape-extract
       if (phase === 'scrape-extract' || phase === 'full') {
         const seResp = await handleGovtScrapeExtract({ source_id: src.id, max_items: 20 }, client);
         const seData = await seResp.json();
-        srcResult.scrape_extract = { success: seData.success, scraped: seData.scraped, extracted: seData.extracted, failed: seData.failed, error: seData.error };
+        srcResult.scrape_extract = {
+          success: seData.success, scraped: seData.scraped, extracted: seData.extracted, failed: seData.failed,
+          pdfFollowUps: seData.pdfFollowUps, unchangedSkips: seData.unchangedSkips,
+          weakExtractions: seData.weakExtractions, strongExtractions: seData.strongExtractions,
+          domainCooldowns: seData.domainCooldowns,
+          error: seData.error,
+        };
       }
     } catch (e) {
       srcResult.error = e instanceof Error ? e.message : String(e);
@@ -1548,8 +1721,8 @@ async function handleGovtRunAll(
 
     perSourceResults.push(srcResult);
 
-    // 2-second delay between sources
-    await new Promise(r => setTimeout(r, 2000));
+    // 3-second delay between govt sources
+    await new Promise(r => setTimeout(r, 3000));
   }
 
   return jsonResponse({
@@ -1557,6 +1730,130 @@ async function handleGovtRunAll(
     phase,
     total_sources: sources.length,
     results: perSourceResults,
+  });
+}
+
+// ============ recovery-pass ============
+
+async function handleRecoveryPass(
+  body: Record<string, unknown>,
+  client: ReturnType<typeof createClient>
+) {
+  const sourceTypeTag = (body.source_type_tag as string) || null;
+  const maxAttempts = Math.min((body.max_items as number) || RECOVERY_MAX_PER_RUN, RECOVERY_MAX_PER_RUN);
+
+  console.log(`[firecrawl-ingest] recovery-pass: max=${maxAttempts}, source_type_tag=${sourceTypeTag || 'all'}`);
+
+  // Find weak drafts that haven't been recovery-attempted
+  let query = client
+    .from('firecrawl_draft_jobs')
+    .select('id, raw_scraped_text, raw_links_found, source_url, extraction_confidence, fields_extracted, firecrawl_source_id')
+    .in('extraction_confidence', ['low', 'none'])
+    .lt('fields_extracted', 8)
+    .is('recovery_attempted_at', null)
+    .in('status', ['draft', 'reviewed'])
+    .order('created_at', { ascending: true })
+    .limit(maxAttempts);
+
+  if (sourceTypeTag) {
+    query = query.eq('source_type_tag', sourceTypeTag);
+  }
+
+  const { data: weakDrafts, error } = await query;
+  if (error) return jsonResponse({ error: error.message }, 500);
+  if (!weakDrafts || weakDrafts.length === 0) {
+    return jsonResponse({ success: true, message: 'No weak drafts to recover', attempted: 0, improved: 0 });
+  }
+
+  let attempted = 0;
+  let improved = 0;
+  let pdfFollowUps = 0;
+  let detailFollowUps = 0;
+  const results: any[] = [];
+
+  for (const draft of weakDrafts) {
+    attempted++;
+    const links = (draft.raw_links_found as string[]) || [];
+
+    // Find best recovery candidate from links
+    const recruitmentPatterns = ['/notification/', '/pdf/', '/detail/', '/recruitment/', '/vacancy/', '/career/', '/circular/', '/notice/'];
+    const sourceDomain = extractDomainFromUrl(draft.source_url || '');
+
+    const recoveryLinks = links
+      .filter(l => {
+        const lLower = l.toLowerCase();
+        const linkDomain = extractDomainFromUrl(l);
+        // Same domain or PDF from any domain
+        return (linkDomain === sourceDomain || lLower.endsWith('.pdf')) &&
+          (recruitmentPatterns.some(p => lLower.includes(p)) || lLower.endsWith('.pdf'));
+      })
+      .map(l => ({ url: l, score: scoreGovtPage(l), isPdf: l.toLowerCase().endsWith('.pdf') }))
+      .sort((a, b) => b.score - a.score);
+
+    if (recoveryLinks.length === 0) {
+      // Mark as attempted so we don't retry
+      await client.from('firecrawl_draft_jobs').update({ recovery_attempted_at: new Date().toISOString() }).eq('id', draft.id);
+      results.push({ draft_id: draft.id, status: 'no_recovery_links' });
+      continue;
+    }
+
+    const bestLink = recoveryLinks[0];
+    const isPdf = bestLink.isPdf;
+
+    try {
+      const scrapeResult = await throttledScrapePage(bestLink.url, { formats: ['markdown'], onlyMainContent: true });
+      if (!scrapeResult.success || !scrapeResult.markdown) {
+        await client.from('firecrawl_draft_jobs').update({ recovery_attempted_at: new Date().toISOString() }).eq('id', draft.id);
+        results.push({ draft_id: draft.id, status: 'scrape_failed', url: bestLink.url });
+        continue;
+      }
+
+      if (isPdf) pdfFollowUps++;
+      else detailFollowUps++;
+
+      // Merge original text with recovery content
+      const originalText = (draft.raw_scraped_text as string) || '';
+      const mergedText = originalText + '\n\n--- RECOVERY CONTENT ---\n\n' + scrapeResult.markdown;
+
+      const mergedClean = cleanScrapedContent(mergedText);
+      const mergedLinkInfos = mergedClean.extractedLinks.map(l => ({ text: l.text, url: l.url, context: l.context }));
+      const newExtraction = extractFields(mergedClean.cleanedText, mergedLinkInfos, null, draft.source_url || '');
+
+      // Only update if improvement
+      if (newExtraction.fields_extracted > (draft.fields_extracted || 0)) {
+        improved++;
+        await client.from('firecrawl_draft_jobs').update({
+          ...newExtraction.fields,
+          extraction_confidence: newExtraction.confidence,
+          fields_extracted: newExtraction.fields_extracted,
+          fields_missing: newExtraction.fields_missing,
+          extraction_warnings: [...(newExtraction.warnings || []), `Recovery improved from ${draft.fields_extracted} to ${newExtraction.fields_extracted} fields via ${isPdf ? 'PDF' : 'detail page'}`],
+          raw_scraped_text: mergedText.substring(0, 200_000),
+          recovery_attempted_at: new Date().toISOString(),
+        }).eq('id', draft.id);
+
+        results.push({
+          draft_id: draft.id, status: 'improved',
+          from_fields: draft.fields_extracted, to_fields: newExtraction.fields_extracted,
+          recovery_url: bestLink.url, type: isPdf ? 'pdf' : 'detail',
+        });
+      } else {
+        await client.from('firecrawl_draft_jobs').update({ recovery_attempted_at: new Date().toISOString() }).eq('id', draft.id);
+        results.push({ draft_id: draft.id, status: 'no_improvement', url: bestLink.url });
+      }
+    } catch (e) {
+      await client.from('firecrawl_draft_jobs').update({ recovery_attempted_at: new Date().toISOString() }).eq('id', draft.id);
+      results.push({ draft_id: draft.id, status: 'error', error: e instanceof Error ? e.message : String(e) });
+    }
+  }
+
+  return jsonResponse({
+    success: true,
+    attempted,
+    improved,
+    pdfFollowUps,
+    detailFollowUps,
+    results,
   });
 }
 

@@ -1,0 +1,1 @@
+ALTER TABLE public.firecrawl_draft_jobs ADD COLUMN IF NOT EXISTS recovery_attempted_at timestamptz;

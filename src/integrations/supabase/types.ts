@@ -1799,6 +1799,7 @@ export type Database = {
           qualification: string | null
           raw_links_found: string[] | null
           raw_scraped_text: string | null
+          recovery_attempted_at: string | null
           result_date: string | null
           retry_count: number | null
           reviewed_at: string | null
@@ -1901,6 +1902,7 @@ export type Database = {
           qualification?: string | null
           raw_links_found?: string[] | null
           raw_scraped_text?: string | null
+          recovery_attempted_at?: string | null
           result_date?: string | null
           retry_count?: number | null
           reviewed_at?: string | null
@@ -2003,6 +2005,7 @@ export type Database = {
           qualification?: string | null
           raw_links_found?: string[] | null
           raw_scraped_text?: string | null
+          recovery_attempted_at?: string | null
           result_date?: string | null
           retry_count?: number | null
           reviewed_at?: string | null

@@ -105,10 +105,14 @@ const REJECT_URL_SIGNALS = [
   'privacy-policy', 'terms-and-conditions', 'disclaimer',
   'about-us', 'contact-us', 'sitemap',
   'login', 'register', 'signup', 'cart', 'checkout',
-  '.pdf', '.jpg', '.png', '.gif', '.zip',
+  // Removed .pdf from reject — PDFs are often recruitment notices
+  '.jpg', '.png', '.gif', '.zip',
   'whatsapp', 'telegram', 'facebook.com', 'twitter.com',
   'youtube.com', 'instagram.com', 'linkedin.com',
   'play.google.com', 'apps.apple.com',
+  // New reject signals — noise pages
+  '/archive/', '/archives/', '/wp-json/', '/feed/',
+  '/rss/', '/amp/', '/print/', '.xml',
 ];
 
 // ============ Accept Signals (URL-level) ============
@@ -122,6 +126,11 @@ const ACCEPT_URL_SIGNALS = [
   'sarkari-naukri', 'sarkari_naukri', 'sarkarinaukri',
   'bharti', 'naukri', 'rojgar', 'nokri',
   'openings', 'hiring', 'career',
+  // New accept signals — aggressive discovery
+  'careers', 'engagement', 'opportunity', 'circular',
+  'notice', 'tender', 'deputation', 'contractual',
+  'apprentice', 'detailed-notification', 'detailed_notification',
+  '.pdf', // PDFs are now accepted — often official recruitment notices
 ];
 
 // ============ Main Filter Pipeline ============

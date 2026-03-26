@@ -126,6 +126,8 @@ const AI_STEP_MAP: { action: string; label: string; tsField: keyof DraftJob }[] 
   { action: 'ai-fix-missing', label: 'Fix', tsField: 'ai_fix_missing_at' },
   { action: 'ai-seo', label: 'SEO', tsField: 'ai_seo_at' },
   { action: 'ai-cover-prompt', label: 'Prompt', tsField: 'ai_cover_prompt_at' },
+  { action: 'ai-govt-extract', label: 'GovtExt', tsField: 'ai_govt_extract_at' },
+  { action: 'ai-govt-enrich', label: 'GovtSEO', tsField: 'ai_govt_enrich_at' },
 ];
 
 type StepState = 'pending' | 'running' | 'completed' | 'failed' | 'skipped';

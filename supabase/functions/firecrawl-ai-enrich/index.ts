@@ -485,6 +485,7 @@ async function handleAiClean(draftId: string, client: any, apiKey: string, aiMod
     changes: result.changes_made, skipped_protected: skipped, old_values: oldValues,
   });
 
+  update.tp_clean_status = 'stale';
   await client.from('firecrawl_draft_jobs').update(update).eq('id', draftId);
   return json({ success: true, action: 'ai-clean', changes: result.changes_made, skipped_protected: skipped });
 }
@@ -560,6 +561,7 @@ async function handleAiEnrich(draftId: string, client: any, apiKey: string, aiMo
     improved, skipped_protected: skipped, old_values: oldValues,
   });
 
+  update.tp_clean_status = 'stale';
   await client.from('firecrawl_draft_jobs').update(update).eq('id', draftId);
   return json({ success: true, action: 'ai-enrich', improved, skipped_protected: skipped });
 }
@@ -708,6 +710,7 @@ async function handleAiFixMissing(draftId: string, client: any, apiKey: string, 
     targeted: weakFields, fixed, old_values: oldValues,
   });
 
+  update.tp_clean_status = 'stale';
   await client.from('firecrawl_draft_jobs').update(update).eq('id', draftId);
   return json({ success: true, action: 'ai-fix-missing', targeted: weakFields, fixed });
 }
@@ -775,6 +778,7 @@ Rules:
     old_values: oldValues,
   });
 
+  update.tp_clean_status = 'stale';
   await client.from('firecrawl_draft_jobs').update(update).eq('id', draftId);
   return json({ success: true, action: 'ai-seo', ...result });
 }

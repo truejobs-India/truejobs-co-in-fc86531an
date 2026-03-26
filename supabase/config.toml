@@ -131,3 +131,6 @@ verify_jwt = false
 
 [functions.azure-emp-news-publish-drafts]
 verify_jwt = false
+
+[functions.firecrawl-cleanup-branding]
+verify_jwt = false

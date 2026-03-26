@@ -212,7 +212,7 @@ export function FirecrawlDraftPreviewDialog({ draft, open, onClose }: Props) {
             </div>
 
             <p className="text-xs text-muted-foreground mt-8">
-              Source: {draft.source_name || 'Firecrawl'} | Preview on TrueJobs
+              Published on TrueJobs
             </p>
           </CardContent>
         </Card>

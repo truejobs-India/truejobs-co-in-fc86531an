@@ -79,6 +79,10 @@ interface DraftJob {
   job_role: string | null;
   city: string | null;
   normalized_title: string | null;
+  // Third Party Cleaner tracking
+  tp_clean_status: string;
+  tp_cleaned_at: string | null;
+  tp_contamination_count: number;
 }
 
 type AiAction = 'ai-clean' | 'ai-enrich' | 'ai-find-links' | 'ai-fix-missing' | 'ai-seo' | 'ai-cover-prompt' | 'ai-cover-image' | 'ai-run-all' | 'ai-fix-fields' | 'rollback-ai-action';
@@ -343,7 +347,7 @@ export function FirecrawlDraftsManager() {
     setLoading(true);
     let query = supabase
       .from('firecrawl_draft_jobs')
-      .select('id, title, organization_name, post_name, state, extraction_confidence, status, fields_extracted, fields_missing, ai_clean_at, ai_enrich_at, ai_links_at, ai_fix_missing_at, ai_seo_at, ai_cover_prompt_at, ai_cover_image_at, ai_enrichment_log, seo_title, cover_image_url, official_notification_url, official_link_confidence, source_name, source_bucket, dedup_status, dedup_reason, dedup_match_ids, created_at, updated_at, location, salary, qualification, age_limit, application_mode, last_date_of_application, total_vacancies, description_summary, intro_text, meta_description, official_apply_url, slug_suggestion, faq_suggestions, category, department, pay_scale, selection_process, closing_date, opening_date, exam_date, job_role, city, normalized_title')
+      .select('id, title, organization_name, post_name, state, extraction_confidence, status, fields_extracted, fields_missing, ai_clean_at, ai_enrich_at, ai_links_at, ai_fix_missing_at, ai_seo_at, ai_cover_prompt_at, ai_cover_image_at, ai_enrichment_log, seo_title, cover_image_url, official_notification_url, official_link_confidence, source_name, source_bucket, dedup_status, dedup_reason, dedup_match_ids, created_at, updated_at, location, salary, qualification, age_limit, application_mode, last_date_of_application, total_vacancies, description_summary, intro_text, meta_description, official_apply_url, slug_suggestion, faq_suggestions, category, department, pay_scale, selection_process, closing_date, opening_date, exam_date, job_role, city, normalized_title, tp_clean_status, tp_cleaned_at, tp_contamination_count')
       .order('created_at', { ascending: false })
       .limit(100);
 
@@ -818,6 +822,10 @@ export function FirecrawlDraftsManager() {
     if (!draft.post_name && !draft.total_vacancies) errors.push('Post name or vacancies required');
     if (draft.extraction_confidence === 'none') errors.push('Extraction confidence is "none"');
     if (draft.dedup_status === 'duplicate') errors.push('Row is flagged as duplicate');
+    // Third Party Cleaner gate — MUST be first-class blocker
+    if ((draft as any).tp_clean_status !== 'cleaned') {
+      errors.push('First Run the Third Party Cleaner');
+    }
     if (!draft.ai_clean_at) errors.push('AI Clean step not completed');
     if (!draft.ai_enrich_at) errors.push('AI Enrich step not completed');
     if (!draft.ai_seo_at) errors.push('SEO metadata not generated');
@@ -872,7 +880,7 @@ export function FirecrawlDraftsManager() {
           })() : null,
           keywords: draft.category ? [draft.category] : null,
           job_category: draft.category,
-          source: 'firecrawl',
+          source: 'TrueJobs',
           status: 'published',
           published_at: new Date().toISOString(),
         } as any);
@@ -1027,6 +1035,33 @@ export function FirecrawlDraftsManager() {
               >
                 {purging ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Trash2 className="h-3.5 w-3.5 mr-1.5" />}
                 Purge Duplicates
+              </Button>
+              {/* Bulk Third Party Cleaner */}
+              <Button
+                variant="outline" size="sm"
+                disabled={loading || bulkRunning}
+                onClick={async () => {
+                  const uncleaned = drafts.filter(d => d.tp_clean_status !== 'cleaned' && d.status !== 'promoted' && d.status !== 'rejected');
+                  if (uncleaned.length === 0) {
+                    toast({ title: 'All clean', description: 'No rows need third-party cleaning.' });
+                    return;
+                  }
+                  toast({ title: 'TP Cleaner', description: `Cleaning ${uncleaned.length} rows...` });
+                  try {
+                    const { data, error } = await supabase.functions.invoke('firecrawl-cleanup-branding', {
+                      body: { action: 'clean-batch', draft_ids: uncleaned.map(d => d.id) },
+                    });
+                    if (error) throw error;
+                    toast({ title: 'TP Cleaner Done', description: `Cleaned: ${data?.cleaned || 0}, Failed: ${data?.failed || 0}` });
+                    await fetchDrafts();
+                  } catch (e: any) {
+                    toast({ title: 'TP Cleaner failed', description: e.message, variant: 'destructive' });
+                  }
+                }}
+                title={`Run Third Party Cleaner on all uncleaned rows`}
+              >
+                <ShieldCheck className="h-3.5 w-3.5 mr-1.5" />
+                TP Cleaner{(() => { const c = drafts.filter(d => d.tp_clean_status !== 'cleaned' && d.status !== 'promoted' && d.status !== 'rejected').length; return c > 0 ? ` (${c})` : ''; })()}
               </Button>
               <Button variant="outline" size="sm" onClick={fetchDrafts} disabled={loading}>
                 <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
@@ -1199,10 +1234,27 @@ export function FirecrawlDraftsManager() {
                             <p className="font-medium text-sm line-clamp-1">{draft.title || 'Untitled'}</p>
                             <p className="text-xs text-muted-foreground line-clamp-1">{draft.organization_name || draft.post_name || '—'}</p>
                             <div className="flex items-center gap-1">
-                              <span className="text-[10px] text-muted-foreground">{draft.source_name}</span>
+                              <span className="text-[10px] text-muted-foreground italic">src: {draft.source_name}</span>
                               {draft.source_bucket && (
                                 <Badge variant="outline" className="text-[9px]">{draft.source_bucket}</Badge>
                               )}
+                              {/* TP Clean Status Badge */}
+                              <Badge
+                                variant="outline"
+                                className={`text-[9px] ${
+                                  draft.tp_clean_status === 'cleaned' ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200' :
+                                  draft.tp_clean_status === 'failed' ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200' :
+                                  draft.tp_clean_status === 'stale' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-200' :
+                                  'bg-muted text-muted-foreground'
+                                }`}
+                              >
+                                {draft.tp_clean_status === 'cleaned' ? <ShieldCheck className="h-2.5 w-2.5 mr-0.5" /> :
+                                 draft.tp_clean_status === 'failed' ? <XCircle className="h-2.5 w-2.5 mr-0.5" /> :
+                                 draft.tp_clean_status === 'stale' ? <AlertTriangle className="h-2.5 w-2.5 mr-0.5" /> :
+                                 <Circle className="h-2.5 w-2.5 mr-0.5" />}
+                                TP:{draft.tp_clean_status}
+                                {draft.tp_contamination_count > 0 && ` (${draft.tp_contamination_count})`}
+                              </Badge>
                             </div>
                           </div>
                         </TableCell>
@@ -1279,6 +1331,35 @@ export function FirecrawlDraftsManager() {
                         </TableCell>
                         <TableCell className="text-right whitespace-nowrap">
                           <div className="flex items-center gap-0.5 justify-end">
+                            {/* Third Party Cleaner — row-level */}
+                            <Button
+                              size="sm" variant="outline"
+                              disabled={!!busyRows[draft.id] || draft.tp_clean_status === 'cleaned'}
+                              onClick={async () => {
+                                setBusyRows(prev => ({ ...prev, [draft.id]: 'tp-clean' as any }));
+                                try {
+                                  const { data, error } = await supabase.functions.invoke('firecrawl-cleanup-branding', {
+                                    body: { action: 'clean-single', draft_id: draft.id },
+                                  });
+                                  if (error) throw error;
+                                  toast({ title: 'TP Cleaner', description: `${data?.status === 'cleaned' ? '✅ Cleaned' : '⚠️ ' + data?.status} — ${data?.traces_found || 0} traces found` });
+                                  await fetchDrafts();
+                                } catch (e: any) {
+                                  toast({ title: 'TP Cleaner failed', description: e.message, variant: 'destructive' });
+                                } finally {
+                                  setBusyRows(prev => { const n = { ...prev }; delete n[draft.id]; return n; });
+                                }
+                              }}
+                              title={draft.tp_clean_status === 'cleaned' ? 'Already cleaned' : 'Run Third Party Cleaner'}
+                              className="gap-0.5 h-7 px-2"
+                            >
+                              {busyRows[draft.id] === 'tp-clean' ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <ShieldCheck className="h-3 w-3" />
+                              )}
+                              <span className="text-[10px]">Clean</span>
+                            </Button>
                             <Button
                               size="sm" variant="outline"
                               onClick={() => setPreviewDraft(draft)}

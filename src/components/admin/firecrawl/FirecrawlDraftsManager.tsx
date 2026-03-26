@@ -1207,10 +1207,27 @@ export function FirecrawlDraftsManager() {
                             <p className="font-medium text-sm line-clamp-1">{draft.title || 'Untitled'}</p>
                             <p className="text-xs text-muted-foreground line-clamp-1">{draft.organization_name || draft.post_name || '—'}</p>
                             <div className="flex items-center gap-1">
-                              <span className="text-[10px] text-muted-foreground">{draft.source_name}</span>
+                              <span className="text-[10px] text-muted-foreground italic">src: {draft.source_name}</span>
                               {draft.source_bucket && (
                                 <Badge variant="outline" className="text-[9px]">{draft.source_bucket}</Badge>
                               )}
+                              {/* TP Clean Status Badge */}
+                              <Badge
+                                variant="outline"
+                                className={`text-[9px] ${
+                                  draft.tp_clean_status === 'cleaned' ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200' :
+                                  draft.tp_clean_status === 'failed' ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200' :
+                                  draft.tp_clean_status === 'stale' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-200' :
+                                  'bg-muted text-muted-foreground'
+                                }`}
+                              >
+                                {draft.tp_clean_status === 'cleaned' ? <ShieldCheck className="h-2.5 w-2.5 mr-0.5" /> :
+                                 draft.tp_clean_status === 'failed' ? <XCircle className="h-2.5 w-2.5 mr-0.5" /> :
+                                 draft.tp_clean_status === 'stale' ? <AlertTriangle className="h-2.5 w-2.5 mr-0.5" /> :
+                                 <Circle className="h-2.5 w-2.5 mr-0.5" />}
+                                TP:{draft.tp_clean_status}
+                                {draft.tp_contamination_count > 0 && ` (${draft.tp_contamination_count})`}
+                              </Badge>
                             </div>
                           </div>
                         </TableCell>

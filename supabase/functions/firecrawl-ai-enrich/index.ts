@@ -1146,8 +1146,11 @@ CRITICAL RULES:
         const num = typeof val === 'number' ? val : parseInt(String(val), 10);
         if (!isNaN(num) && num > 0) { update[f] = num; fixed.push(f); }
       } else if ((f === 'official_notification_url' || f === 'official_apply_url' || f === 'official_website_url') && typeof val === 'string') {
-        if (!isAggregatorUrl(val) && getOfficialDomainScore(val, []) >= 0) {
-          update[f] = val;
+        // Accept any valid URL that is NOT an aggregator domain
+        // Previously this required .gov.in/.nic.in/.org.in/.ac.in which rejected legitimate org sites like sbi.co.in
+        const trimmedUrl = val.trim();
+        if (trimmedUrl && /^https?:\/\//i.test(trimmedUrl) && !isAggregatorUrl(trimmedUrl)) {
+          update[f] = trimmedUrl;
           fixed.push(f);
         }
       } else {

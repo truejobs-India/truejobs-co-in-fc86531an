@@ -887,9 +887,7 @@ async function handleExtractItemInternal(
     const linkInfos = cleanResult.extractedLinks.map(l => ({ text: l.text, url: l.url, context: l.context }));
     const extraction = extractFields(cleanResult.cleanedText, linkInfos, item.page_title, item.page_url);
 
-    const { data: draft, error: draftError } = await client
-      .from('firecrawl_draft_jobs')
-      .upsert({
+    const rawBatchData: Record<string, unknown> = {
         staged_item_id: stagedItemId,
         firecrawl_source_id: item.firecrawl_source_id,
         source_name: source?.source_name || null,
@@ -907,7 +905,22 @@ async function handleExtractItemInternal(
         extracted_raw_fields: extraction.raw_fields,
         cleaning_log: cleanResult.cleaningLog,
         status: 'draft',
-      }, { onConflict: 'staged_item_id' })
+    };
+
+    // Auto-sanitize third-party branding
+    const batchSanitize = sanitizeDraftFields(rawBatchData);
+    const batchDraftData = {
+      ...rawBatchData,
+      ...batchSanitize.sanitizedFields,
+      tp_clean_status: batchSanitize.totalTraces > 0 ? 'pending' : 'cleaned',
+      tp_cleaned_at: batchSanitize.totalTraces === 0 ? new Date().toISOString() : null,
+      tp_contamination_count: batchSanitize.totalTraces,
+      tp_clean_log: batchSanitize.totalTraces > 0 ? [{ action: 'auto-ingest-batch', traces: batchSanitize.traceDetails.slice(0, 30) }] : [],
+    };
+
+    const { data: draft, error: draftError } = await client
+      .from('firecrawl_draft_jobs')
+      .upsert(batchDraftData, { onConflict: 'staged_item_id' })
       .select('id')
       .single();
 

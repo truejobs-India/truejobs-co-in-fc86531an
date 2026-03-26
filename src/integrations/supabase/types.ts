@@ -1794,6 +1794,10 @@ export type Database = {
           status: string
           title: string | null
           total_vacancies: number | null
+          tp_clean_log: Json
+          tp_clean_status: string
+          tp_cleaned_at: string | null
+          tp_contamination_count: number
           updated_at: string
         }
         Insert: {
@@ -1866,6 +1870,10 @@ export type Database = {
           status?: string
           title?: string | null
           total_vacancies?: number | null
+          tp_clean_log?: Json
+          tp_clean_status?: string
+          tp_cleaned_at?: string | null
+          tp_contamination_count?: number
           updated_at?: string
         }
         Update: {
@@ -1938,6 +1946,10 @@ export type Database = {
           status?: string
           title?: string | null
           total_vacancies?: number | null
+          tp_clean_log?: Json
+          tp_clean_status?: string
+          tp_cleaned_at?: string | null
+          tp_contamination_count?: number
           updated_at?: string
         }
         Relationships: [

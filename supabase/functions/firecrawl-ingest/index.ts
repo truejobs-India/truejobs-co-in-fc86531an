@@ -1222,6 +1222,333 @@ async function handleValidateForApproval(
   });
 }
 
+// ============ discover-govt ============
+
+async function handleDiscoverGovt(
+  body: Record<string, unknown>,
+  client: ReturnType<typeof createClient>
+) {
+  const sourceId = body.source_id as string;
+  if (!sourceId) return jsonResponse({ error: 'source_id required' }, 400);
+
+  const { data: source } = await client.from('firecrawl_sources').select('*').eq('id', sourceId).single();
+  if (!source) return jsonResponse({ error: 'Source not found' }, 404);
+
+  const maxPages = source.max_pages_per_run || 50;
+  console.log(`[firecrawl-ingest] discover-govt: ${source.source_name} (max: ${maxPages})`);
+
+  const { data: run } = await client
+    .from('firecrawl_fetch_runs')
+    .insert({ firecrawl_source_id: source.id, run_mode: 'manual_admin', status: 'running' })
+    .select('id').single();
+  const runId = run?.id;
+
+  const stats = { linksDiscovered: 0, scored: 0, staged: 0, duplicateUrls: 0, pdfLinks: 0, errors: 0, bucketCounts: {} as Record<string, number> };
+
+  try {
+    // Use map for government sources (cheap, returns many URLs)
+    let discoveredLinks: string[] = [];
+    if (source.crawl_mode === 'map') {
+      const mapResult = await mapUrl(source.seed_url, { limit: Math.min(maxPages * 5, 500), includeSubdomains: false });
+      if (!mapResult.success) {
+        const errMsg = mapResult.error || 'Map failed';
+        if (runId) await finalizeRun(client, runId, 'error', { errorLog: errMsg });
+        await updateSourceAfterFetch(client, source.id, errMsg);
+        return jsonResponse({ success: false, error: errMsg });
+      }
+      discoveredLinks = mapResult.links || [];
+    } else {
+      const scrapeResult = await scrapePage(source.seed_url, { formats: ['markdown', 'links'], onlyMainContent: true });
+      if (!scrapeResult.success) {
+        const errMsg = scrapeResult.error || 'Scrape failed';
+        if (runId) await finalizeRun(client, runId, 'error', { errorLog: errMsg });
+        await updateSourceAfterFetch(client, source.id, errMsg);
+        return jsonResponse({ success: false, error: errMsg });
+      }
+      discoveredLinks = scrapeResult.links || [];
+    }
+
+    stats.linksDiscovered = discoveredLinks.length;
+
+    // Get existing staged URLs for dedup
+    const { data: existingItems } = await client
+      .from('firecrawl_staged_items')
+      .select('url_normalized')
+      .eq('firecrawl_source_id', source.id)
+      .not('url_normalized', 'is', null);
+    const existingNormalized = new Set<string>((existingItems || []).map((i: any) => i.url_normalized).filter(Boolean));
+
+    // Domain filtering
+    const allowedDomains = source.allowed_domains || [];
+
+    // Score and sort all links
+    const scored: { url: string; normalized: string; score: number; isPdf: boolean }[] = [];
+    for (const link of discoveredLinks) {
+      const norm = normalizeUrl(link);
+      if (!norm) continue;
+      if (existingNormalized.has(norm)) { stats.duplicateUrls++; continue; }
+      if (!isDomainAllowed(norm, allowedDomains)) continue;
+
+      const isPdf = norm.toLowerCase().endsWith('.pdf');
+      const score = scoreGovtPage(norm);
+      if (score > 0 || isPdf) {
+        scored.push({ url: link, normalized: norm, score, isPdf });
+        if (isPdf) stats.pdfLinks++;
+      }
+    }
+
+    stats.scored = scored.length;
+
+    // Sort by score descending, take top maxPages
+    scored.sort((a, b) => b.score - a.score);
+    const candidates = scored.slice(0, maxPages);
+
+    // Stage all candidates
+    for (const candidate of candidates) {
+      const classification = classifyPage(candidate.normalized, null);
+      const bucket = candidate.isPdf ? 'single_recruitment' : classification.bucket;
+      stats.bucketCounts[bucket] = (stats.bucketCounts[bucket] || 0) + 1;
+
+      try {
+        const { error: insertError } = await client
+          .from('firecrawl_staged_items')
+          .insert({
+            firecrawl_source_id: source.id,
+            fetch_run_id: runId,
+            page_url: candidate.url,
+            url_normalized: candidate.normalized,
+            page_title: null,
+            extracted_markdown: null,
+            extracted_links: [],
+            metadata: { govt_score: candidate.score },
+            content_hash: null,
+            status: 'staged',
+            bucket,
+            classification_reason: candidate.isPdf ? 'PDF notice link' : classification.reason,
+            classification_signals: candidate.isPdf ? ['pdf'] : classification.signals,
+            discovered_from_url: source.seed_url,
+            govt_discovery_meta: { is_pdf: candidate.isPdf, govt_score: candidate.score },
+          });
+
+        if (insertError) {
+          if (insertError.code === '23505') stats.duplicateUrls++;
+          else { console.error('[discover-govt] Insert error:', insertError.message); stats.errors++; }
+        } else {
+          stats.staged++;
+          existingNormalized.add(candidate.normalized);
+        }
+      } catch (e) {
+        stats.errors++;
+      }
+    }
+
+    const runStatus = stats.errors > 0 ? 'partial' : 'success';
+    if (runId) await finalizeRun(client, runId, runStatus, {
+      pagesFetched: 1, itemsFound: stats.linksDiscovered, itemsNew: stats.staged,
+      itemsSkipped: stats.duplicateUrls, bucketCounts: stats.bucketCounts,
+      errorLog: stats.errors > 0 ? `${stats.errors} errors` : null,
+    });
+    await updateSourceAfterFetch(client, source.id, null, stats.staged);
+
+    return jsonResponse({ success: true, stats });
+  } catch (e) {
+    const errMsg = e instanceof Error ? e.message : String(e);
+    if (runId) await finalizeRun(client, runId, 'error', { errorLog: errMsg });
+    await updateSourceAfterFetch(client, source.id, errMsg);
+    return jsonResponse({ success: false, error: errMsg }, 500);
+  }
+}
+
+// ============ govt-scrape-extract ============
+
+async function handleGovtScrapeExtract(
+  body: Record<string, unknown>,
+  client: ReturnType<typeof createClient>
+) {
+  const sourceId = body.source_id as string;
+  if (!sourceId) return jsonResponse({ error: 'source_id required' }, 400);
+
+  const maxItems = Math.min(Math.max((body.max_items as number) || 20, 1), 50);
+
+  const { data: source } = await client.from('firecrawl_sources').select('*').eq('id', sourceId).single();
+  if (!source) return jsonResponse({ error: 'Source not found' }, 404);
+
+  // Find staged items that need scraping (single_recruitment, no markdown)
+  const { data: items, error } = await client
+    .from('firecrawl_staged_items')
+    .select('id, page_url, url_normalized, govt_discovery_meta')
+    .eq('firecrawl_source_id', sourceId)
+    .eq('bucket', 'single_recruitment')
+    .eq('status', 'staged')
+    .eq('extraction_status', 'pending')
+    .is('extracted_markdown', null)
+    .order('created_at', { ascending: true })
+    .limit(maxItems);
+
+  if (error) return jsonResponse({ error: error.message }, 500);
+  if (!items || items.length === 0) {
+    return jsonResponse({ success: true, message: 'No pending items', scraped: 0, extracted: 0 });
+  }
+
+  console.log(`[firecrawl-ingest] govt-scrape-extract: ${items.length} items for ${source.source_name}`);
+
+  let scraped = 0, extracted = 0, failed = 0;
+  const results: any[] = [];
+
+  for (const item of items) {
+    try {
+      // Scrape the page (Firecrawl handles PDFs natively)
+      const scrapeResult = await scrapePage(item.page_url, {
+        formats: ['markdown', 'links'],
+        onlyMainContent: true,
+      });
+
+      if (!scrapeResult.success || !scrapeResult.markdown) {
+        failed++;
+        results.push({ url: item.page_url, status: 'scrape_failed', error: scrapeResult.error });
+        continue;
+      }
+
+      scraped++;
+      const contentHash = await generateContentHash(scrapeResult.markdown);
+
+      // Update staged item with scraped content
+      await client.from('firecrawl_staged_items').update({
+        page_title: scrapeResult.metadata?.title || null,
+        extracted_markdown: scrapeResult.markdown.substring(0, 100_000),
+        extracted_links: scrapeResult.links?.slice(0, 200) || [],
+        content_hash: contentHash,
+        metadata: scrapeResult.metadata || {},
+      }).eq('id', item.id);
+
+      // Now extract fields
+      const cleanResult = cleanScrapedContent(scrapeResult.markdown);
+      const linkInfos = cleanResult.extractedLinks.map(l => ({ text: l.text, url: l.url, context: l.context }));
+      const extraction = extractFields(cleanResult.cleanedText, linkInfos, scrapeResult.metadata?.title, item.page_url);
+
+      // Check if extraction produced a valid job
+      if (!extraction.fields.title && !extraction.fields.organization_name && !extraction.fields.post_name) {
+        await client.from('firecrawl_staged_items').update({ extraction_status: 'skipped' }).eq('id', item.id);
+        results.push({ url: item.page_url, status: 'skipped', reason: 'No job data extracted' });
+        continue;
+      }
+
+      const rawDraft: Record<string, unknown> = {
+        staged_item_id: item.id,
+        firecrawl_source_id: source.id,
+        source_name: (source.govt_meta as any)?.domain_label || source.source_name || null,
+        source_url: item.page_url,
+        source_seed_url: source.seed_url,
+        source_page_url: source.seed_url,
+        source_bucket: 'single_recruitment',
+        ...extraction.fields,
+        extraction_confidence: extraction.confidence,
+        fields_extracted: extraction.fields_extracted,
+        fields_missing: extraction.fields_missing,
+        extraction_warnings: extraction.warnings,
+        raw_scraped_text: scrapeResult.markdown.substring(0, 200_000),
+        raw_links_found: (scrapeResult.links || []).slice(0, 500),
+        extracted_raw_fields: extraction.raw_fields,
+        cleaning_log: cleanResult.cleaningLog,
+        status: 'draft',
+      };
+
+      const sanitizeResult = sanitizeDraftFields(rawDraft);
+      const draftData = {
+        ...rawDraft,
+        ...sanitizeResult.sanitizedFields,
+        tp_clean_status: sanitizeResult.totalTraces > 0 ? 'pending' : 'cleaned',
+        tp_cleaned_at: sanitizeResult.totalTraces === 0 ? new Date().toISOString() : null,
+        tp_contamination_count: sanitizeResult.totalTraces,
+        tp_clean_log: sanitizeResult.totalTraces > 0 ? [{ action: 'govt-auto', traces: sanitizeResult.traceDetails.slice(0, 30) }] : [],
+      };
+
+      const { data: draft, error: draftError } = await client
+        .from('firecrawl_draft_jobs')
+        .upsert(draftData, { onConflict: 'staged_item_id' })
+        .select('id')
+        .single();
+
+      if (draftError) {
+        await client.from('firecrawl_staged_items').update({ extraction_status: 'failed' }).eq('id', item.id);
+        failed++;
+        results.push({ url: item.page_url, status: 'extract_failed', error: draftError.message });
+      } else {
+        await client.from('firecrawl_staged_items').update({ extraction_status: 'extracted' }).eq('id', item.id);
+        extracted++;
+        results.push({ url: item.page_url, status: 'extracted', draft_id: draft.id, confidence: extraction.confidence });
+      }
+
+      // Rate limit: 1 second between scrapes
+      await new Promise(r => setTimeout(r, 1000));
+    } catch (e) {
+      failed++;
+      results.push({ url: item.page_url, status: 'error', error: e instanceof Error ? e.message : String(e) });
+    }
+  }
+
+  return jsonResponse({ success: true, total: items.length, scraped, extracted, failed, results });
+}
+
+// ============ govt-run-all ============
+
+async function handleGovtRunAll(
+  body: Record<string, unknown>,
+  client: ReturnType<typeof createClient>
+) {
+  const phase = (body.phase as string) || 'full'; // 'discover' | 'scrape-extract' | 'full'
+  const sourceIds = body.source_ids as string[] | undefined;
+
+  // Fetch target sources
+  let query = client.from('firecrawl_sources').select('id, source_name').eq('source_type', 'government').eq('is_enabled', true);
+  if (sourceIds && sourceIds.length > 0) {
+    query = client.from('firecrawl_sources').select('id, source_name').eq('source_type', 'government').in('id', sourceIds);
+  }
+  const { data: sources, error } = await query;
+  if (error) return jsonResponse({ error: error.message }, 500);
+  if (!sources || sources.length === 0) {
+    return jsonResponse({ success: true, message: 'No enabled government sources found', results: [] });
+  }
+
+  console.log(`[firecrawl-ingest] govt-run-all: ${sources.length} sources, phase=${phase}`);
+
+  const perSourceResults: any[] = [];
+
+  for (const src of sources) {
+    const srcResult: any = { source_id: src.id, source_name: src.source_name };
+
+    try {
+      // Phase: discover
+      if (phase === 'discover' || phase === 'full') {
+        const discoverResp = await handleDiscoverGovt({ source_id: src.id }, client);
+        const discoverData = await discoverResp.json();
+        srcResult.discover = { success: discoverData.success, stats: discoverData.stats, error: discoverData.error };
+      }
+
+      // Phase: scrape-extract
+      if (phase === 'scrape-extract' || phase === 'full') {
+        const seResp = await handleGovtScrapeExtract({ source_id: src.id, max_items: 20 }, client);
+        const seData = await seResp.json();
+        srcResult.scrape_extract = { success: seData.success, scraped: seData.scraped, extracted: seData.extracted, failed: seData.failed, error: seData.error };
+      }
+    } catch (e) {
+      srcResult.error = e instanceof Error ? e.message : String(e);
+    }
+
+    perSourceResults.push(srcResult);
+
+    // 2-second delay between sources
+    await new Promise(r => setTimeout(r, 2000));
+  }
+
+  return jsonResponse({
+    success: true,
+    phase,
+    total_sources: sources.length,
+    results: perSourceResults,
+  });
+}
+
 // ============ Helpers ============
 
 async function finalizeRun(

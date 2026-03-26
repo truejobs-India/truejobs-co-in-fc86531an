@@ -8,8 +8,11 @@ const FIRECRAWL_API_BASE = 'https://api.firecrawl.dev/v1';
 const DEFAULT_TIMEOUT = 30_000; // 30 seconds
 const MAP_TIMEOUT = 60_000; // 60 seconds — map/discover needs more time for slow govt sites
 const SCRAPE_TIMEOUT = 45_000; // 45 seconds for scraping
-const MAX_RETRIES = 2;
+const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 3_000;
+
+/** Non-retryable status codes — fail immediately */
+const NON_RETRYABLE_STATUSES = new Set([400, 401, 402, 403, 404, 422]);
 
 export interface FirecrawlScrapeOptions {
   formats?: ('markdown' | 'html' | 'links')[];
@@ -51,6 +54,10 @@ function getApiKey(): string {
   return key;
 }
 
+function extractDomainForLog(url: string): string {
+  try { return new URL(url).hostname; } catch { return url.substring(0, 50); }
+}
+
 async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -65,19 +72,29 @@ async function fetchWithRetry(
   url: string,
   init: RequestInit,
   retries: number = MAX_RETRIES,
-  timeoutMs: number = DEFAULT_TIMEOUT
+  timeoutMs: number = DEFAULT_TIMEOUT,
+  logDomain?: string
 ): Promise<Response> {
   let lastError: Error | null = null;
+  const domain = logDomain || 'unknown';
   for (let attempt = 1; attempt <= retries + 1; attempt++) {
     try {
       const res = await fetchWithTimeout(url, init, timeoutMs);
+
+      // Non-retryable errors — fail immediately
+      if (NON_RETRYABLE_STATUSES.has(res.status)) {
+        const body = await res.text().catch(() => '');
+        throw new Error(`Firecrawl API HTTP ${res.status} (non-retryable, domain=${domain}): ${body.substring(0, 300)}`);
+      }
+
       // Retry on 429 (rate limit) and 5xx
       if (res.status === 429 || res.status >= 500) {
         const body = await res.text().catch(() => '');
         lastError = new Error(`Firecrawl API HTTP ${res.status}: ${body.substring(0, 300)}`);
         if (attempt <= retries) {
-          console.warn(`[firecrawl-client] Attempt ${attempt} failed (${res.status}), retrying in ${RETRY_DELAY_MS}ms...`);
-          await new Promise(r => setTimeout(r, RETRY_DELAY_MS * attempt));
+          const backoffMs = RETRY_DELAY_MS * Math.pow(2, attempt - 1); // exponential: 3s, 6s, 12s
+          console.warn(`[firecrawl-client] domain=${domain} attempt ${attempt}/${retries+1} failed (${res.status}), retrying in ${backoffMs}ms...`);
+          await new Promise(r => setTimeout(r, backoffMs));
           continue;
         }
         throw lastError;
@@ -86,11 +103,14 @@ async function fetchWithRetry(
     } catch (e) {
       lastError = e instanceof Error ? e : new Error(String(e));
       if (lastError.message.includes('abort')) {
-        lastError = new Error(`Firecrawl request timeout (${timeoutMs}ms)`);
+        lastError = new Error(`Firecrawl request timeout (${timeoutMs}ms) for domain=${domain}`);
       }
+      // Non-retryable errors thrown above should not be retried
+      if (lastError.message.includes('non-retryable')) throw lastError;
       if (attempt <= retries) {
-        console.warn(`[firecrawl-client] Attempt ${attempt} error: ${lastError.message}, retrying...`);
-        await new Promise(r => setTimeout(r, RETRY_DELAY_MS * attempt));
+        const backoffMs = RETRY_DELAY_MS * Math.pow(2, attempt - 1);
+        console.warn(`[firecrawl-client] domain=${domain} attempt ${attempt}/${retries+1} error: ${lastError.message}, retrying in ${backoffMs}ms...`);
+        await new Promise(r => setTimeout(r, backoffMs));
         continue;
       }
     }
@@ -106,6 +126,7 @@ export async function scrapePage(
   options?: FirecrawlScrapeOptions
 ): Promise<FirecrawlScrapeResult> {
   const apiKey = getApiKey();
+  const domain = extractDomainForLog(url);
 
   const body = {
     url: url.trim(),
@@ -123,13 +144,13 @@ export async function scrapePage(
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(body),
-  }, MAX_RETRIES, SCRAPE_TIMEOUT);
+  }, MAX_RETRIES, SCRAPE_TIMEOUT, domain);
 
   const data = await res.json();
 
   if (!res.ok || !data.success) {
     const errMsg = data.error || `HTTP ${res.status}`;
-    console.error(`[firecrawl-client] Scrape failed: ${errMsg}`);
+    console.error(`[firecrawl-client] Scrape failed (domain=${domain}): ${errMsg}`);
     return { success: false, error: errMsg };
   }
 
@@ -152,6 +173,7 @@ export async function mapUrl(
   options?: FirecrawlMapOptions
 ): Promise<FirecrawlMapResult> {
   const apiKey = getApiKey();
+  const domain = extractDomainForLog(url);
 
   console.log(`[firecrawl-client] Mapping: ${url}`);
 
@@ -167,7 +189,7 @@ export async function mapUrl(
       limit: options?.limit || 100,
       includeSubdomains: options?.includeSubdomains ?? false,
     }),
-  }, MAX_RETRIES, MAP_TIMEOUT);
+  }, MAX_RETRIES, MAP_TIMEOUT, domain);
 
   const data = await res.json();
 

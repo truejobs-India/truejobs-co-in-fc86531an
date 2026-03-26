@@ -36,6 +36,9 @@ const SINGLE_RECRUITMENT_SIGNALS = [
   'application-fee', 'application_fee', 'how-to-apply',
   'important-dates', 'important_dates', 'eligibility',
   'qualification', 'pay-scale', 'pay_scale', 'salary',
+  // Aggressive new signals
+  'career', 'careers', 'circular', 'notice', 'engagement',
+  'opportunity', 'deputation', 'apprentice',
 ];
 
 const COLLECTION_ROUNDUP_SIGNALS = [
@@ -83,6 +86,7 @@ const TITLE_SINGLE_RECRUITMENT = [
   'recruitment', 'vacancy', 'notification', 'bharti',
   'apply online', 'walk-in', 'walk in', 'advt',
   'hiring', 'posts', 'openings',
+  'circular', 'engagement', 'deputation',
   /\d+\s*(posts?|vacancies|seats|positions)/i,
 ];
 
@@ -91,6 +95,11 @@ const TITLE_COLLECTION = [
   'job list', 'all jobs', 'new jobs', 'today',
   /jobs?\s*\d{4}/i, // e.g. "Jobs 2026"
 ];
+
+// ============ Stale year penalties ============
+
+const STALE_YEAR_PATTERNS = ['/2020/', '/2021/', '/2022/'];
+const STALE_PATH_PATTERNS = ['/archive', '/old/'];
 
 // ============ Classifier ============
 
@@ -108,40 +117,56 @@ function countSignals(text: string, signals: (string | RegExp)[]): string[] {
 }
 
 /**
- * Classify a discovered page into a bucket.
- * Uses URL path + page title (if available).
- * Returns bucket, reasoning, and matched signals.
- */
-/**
  * Score a government page URL for recruitment relevance.
- * Higher score = more likely a job page. PDF links get a +2 bonus.
+ * Higher score = more likely a job page.
+ * Source-type-aware: government pages get extra scoring depth.
  */
 export function scoreGovtPage(url: string, title?: string | null): number {
   const lower = url.toLowerCase() + ' ' + (title || '').toLowerCase();
   let score = 0;
 
   // +3: strong recruitment signals
-  const strong = ['recruitment', 'vacancy', 'notification', 'advertisement'];
+  const strong = ['recruitment', 'vacancy', 'notification', 'advertisement', 'career', 'careers', 'circular', 'notice', 'engagement', 'deputation'];
   for (const s of strong) { if (lower.includes(s)) score += 3; }
 
   // +2: moderate signals
-  const moderate = ['careers', 'jobs', 'apply', 'notices', 'walk-in', 'walkin'];
+  const moderate = ['jobs', 'apply', 'notices', 'walk-in', 'walkin', 'opportunity', 'tender', 'contractual', 'apprentice', 'detailed'];
   for (const s of moderate) { if (lower.includes(s)) score += 2; }
 
   // +1: weak signals
-  const weak = ['latest', 'updates', 'circular', 'bharti', 'advt', 'openings', 'hiring', 'naukri'];
+  const weak = ['latest', 'updates', 'bharti', 'advt', 'openings', 'hiring', 'naukri', 'document', 'order', 'office-memorandum'];
   for (const s of weak) { if (lower.includes(s)) score += 1; }
 
   // -2: navigation/junk
   const negative = ['sitemap', 'login', 'about', 'contact', 'privacy', 'rss', 'feed', 'disclaimer', 'terms'];
   for (const s of negative) { if (lower.includes(s)) score -= 2; }
 
-  // PDF bonus
-  if (url.toLowerCase().endsWith('.pdf')) score += 2;
+  // PDF bonus: +3 (up from +2)
+  if (url.toLowerCase().endsWith('.pdf')) score += 3;
+
+  // Deep path bonus: +1 for URLs with ≥3 path segments
+  try {
+    const pathname = new URL(url).pathname;
+    const segments = pathname.split('/').filter(Boolean);
+    if (segments.length >= 3) score += 1;
+  } catch { /* ignore */ }
+
+  // Stale year penalty: -1 each
+  for (const pattern of STALE_YEAR_PATTERNS) {
+    if (lower.includes(pattern)) score -= 1;
+  }
+  for (const pattern of STALE_PATH_PATTERNS) {
+    if (lower.includes(pattern)) score -= 1;
+  }
 
   return score;
 }
 
+/**
+ * Classify a discovered page into a bucket.
+ * Uses URL path + page title (if available).
+ * Returns bucket, reasoning, and matched signals.
+ */
 export function classifyPage(
   url: string,
   pageTitle?: string | null

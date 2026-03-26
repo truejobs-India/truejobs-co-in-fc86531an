@@ -53,6 +53,7 @@ const IMAGE_MODEL_REGISTRY: Record<string, ImageModelRoute> = {
   'vertex-pro':           { provider: 'vertex-ai', apiModel: 'gemini-2.5-flash-image', vertexEndpoint: 'gemini' },
   'vertex-3-pro-image':   { provider: 'vertex-ai', apiModel: 'gemini-3-pro-image-preview', vertexEndpoint: 'gemini' },
   'vertex-imagen':        { provider: 'vertex-ai', apiModel: 'imagen-3.0-generate-002', vertexEndpoint: 'imagen' },
+  'vertex-3.1-flash-image': { provider: 'vertex-ai', apiModel: 'gemini-3.1-flash-image-preview', vertexEndpoint: 'gemini' },
 };
 
 // Aggregator domains that must NEVER appear as official links

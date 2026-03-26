@@ -1086,9 +1086,13 @@ CRITICAL RULES:
   const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
   const fixed: string[] = [];
 
+  // Fields where even a single character is a valid value (e.g. state abbreviations)
+  const shortAllowedFields = new Set(['state', 'city', 'category', 'department', 'application_mode', 'location']);
+
   for (const f of missingFields) {
     const val = result[f] ?? fallbackValues[f];
-    if (val && val !== 'null' && val !== 'N/A' && val !== 'NA' && (typeof val === 'string' ? val.trim().length > 1 : true)) {
+    const minLen = shortAllowedFields.has(f) ? 1 : 2;
+    if (val && val !== 'null' && val !== 'N/A' && val !== 'NA' && val !== 'Unknown' && val !== 'Not Available' && (typeof val === 'string' ? val.trim().length >= minLen : true)) {
       // For numeric fields like total_vacancies
       if (f === 'total_vacancies') {
         const num = typeof val === 'number' ? val : parseInt(String(val), 10);
@@ -1099,7 +1103,7 @@ CRITICAL RULES:
           fixed.push(f);
         }
       } else {
-        update[f] = val;
+        update[f] = typeof val === 'string' ? val.trim() : val;
         fixed.push(f);
       }
     }
@@ -1107,6 +1111,9 @@ CRITICAL RULES:
 
   const oldValues = snapshotOldValues(draft, update);
   const noChanges = fixed.length === 0;
+
+  // ALWAYS set ai_fix_missing_at to prevent endless re-processing
+  update.ai_fix_missing_at = new Date().toISOString();
 
   if (noChanges) {
     update.ai_enrichment_log = appendCustomLog(draft.ai_enrichment_log, 'ai-fix-fields', 'skipped', {
@@ -1117,7 +1124,6 @@ CRITICAL RULES:
       old_values: oldValues,
     });
   } else {
-    update.ai_fix_missing_at = new Date().toISOString();
     update.ai_enrichment_log = appendCustomLog(draft.ai_enrichment_log, 'ai-fix-fields', 'success', {
       targeted: missingFields,
       fixed,

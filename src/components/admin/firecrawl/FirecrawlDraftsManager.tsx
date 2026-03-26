@@ -512,6 +512,7 @@ export function FirecrawlDraftsManager() {
       (d.status === 'draft' || d.status === 'enriched') &&
       d.dedup_status !== 'duplicate' &&
       (d.fields_missing?.length || 0) > 0 &&
+      !d.ai_fix_missing_at &&
       !busyRows[d.id]
     );
   }, [drafts, busyRows]);

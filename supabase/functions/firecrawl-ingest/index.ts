@@ -754,6 +754,10 @@ async function handleExtractItem(
       item.page_url
     );
 
+    const resolvedSourceType = source?.source_type;
+    if (!resolvedSourceType) {
+      console.warn(`[firecrawl-ingest] Missing source_type for source ${item.firecrawl_source_id} during single extract — defaulting to firecrawl_html`);
+    }
     const rawDraftData: Record<string, unknown> = {
       staged_item_id: stagedItemId,
       firecrawl_source_id: item.firecrawl_source_id,
@@ -762,6 +766,7 @@ async function handleExtractItem(
       source_seed_url: source?.seed_url || null,
       source_page_url: item.discovered_from_url,
       source_bucket: item.bucket,
+      source_type_tag: resolvedSourceType || 'firecrawl_html',
       ...extraction.fields,
       extraction_confidence: extraction.confidence,
       fields_extracted: extraction.fields_extracted,
@@ -893,6 +898,10 @@ async function handleExtractItemInternal(
     const linkInfos = cleanResult.extractedLinks.map(l => ({ text: l.text, url: l.url, context: l.context }));
     const extraction = extractFields(cleanResult.cleanedText, linkInfos, item.page_title, item.page_url);
 
+    const resolvedBatchSourceType = source?.source_type;
+    if (!resolvedBatchSourceType) {
+      console.warn(`[firecrawl-ingest] Missing source_type for source ${item.firecrawl_source_id} during batch extract — defaulting to firecrawl_html`);
+    }
     const rawBatchData: Record<string, unknown> = {
         staged_item_id: stagedItemId,
         firecrawl_source_id: item.firecrawl_source_id,
@@ -901,6 +910,7 @@ async function handleExtractItemInternal(
         source_seed_url: source?.seed_url || null,
         source_page_url: item.discovered_from_url,
         source_bucket: item.bucket,
+        source_type_tag: resolvedBatchSourceType || 'firecrawl_html',
         ...extraction.fields,
         extraction_confidence: extraction.confidence,
         fields_extracted: extraction.fields_extracted,
@@ -1441,6 +1451,7 @@ async function handleGovtScrapeExtract(
         source_seed_url: source.seed_url,
         source_page_url: source.seed_url,
         source_bucket: 'single_recruitment',
+        source_type_tag: 'government',
         ...extraction.fields,
         extraction_confidence: extraction.confidence,
         fields_extracted: extraction.fields_extracted,

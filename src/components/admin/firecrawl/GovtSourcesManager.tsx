@@ -7,6 +7,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -248,7 +249,7 @@ export function GovtSourcesManager() {
     }
   };
 
-  /* ─── Bulk run all ─── */
+  /* ─── Bulk run all (client-side iteration with stop support) ─── */
   const runBatchAll = async (phase: 'discover' | 'scrape-extract' | 'full') => {
     setBatchRunning(true);
     setBatchPhase(phase);
@@ -258,22 +259,57 @@ export function GovtSourcesManager() {
     const enabledSources = sources.filter(s => s.is_enabled);
     setBatchProgress({ current: 0, total: enabledSources.length });
 
-    try {
-      const result = await invokeFirecrawl('govt-run-all', { phase });
-      setBatchReport({
-        phase,
-        total_sources: result?.total_sources ?? 0,
-        results: result?.results ?? [],
-        completed_at: new Date().toISOString(),
-      });
-      toast({ title: `Batch ${phase} completed`, description: `${result?.total_sources ?? 0} sources processed` });
-      fetchSources();
-    } catch (err: any) {
-      toast({ title: 'Batch run failed', description: err.message, variant: 'destructive' });
-    } finally {
-      setBatchRunning(false);
-      setBatchPhase('');
+    const results: BatchReport['results'] = [];
+
+    for (let i = 0; i < enabledSources.length; i++) {
+      if (stopRequestedRef.current) {
+        toast({ title: `Batch ${phase} stopped`, description: `Stopped after ${i} of ${enabledSources.length} sources` });
+        break;
+      }
+
+      const source = enabledSources[i];
+      setBatchProgress({ current: i + 1, total: enabledSources.length });
+      setBusySources(prev => ({ ...prev, [source.id]: phase === 'discover' ? 'discovering' : phase === 'scrape-extract' ? 'scraping' : 'pipeline' }));
+
+      const entry: BatchReport['results'][number] = { source_id: source.id, source_name: source.source_name };
+
+      try {
+        if (phase === 'discover' || phase === 'full') {
+          const discResult = await invokeFirecrawl('discover-govt', { source_id: source.id });
+          entry.discover = { success: true, stats: discResult?.stats };
+        }
+        if (phase === 'scrape-extract' || phase === 'full') {
+          if (stopRequestedRef.current) { results.push(entry); break; }
+          const seResult = await invokeFirecrawl('govt-scrape-extract', { source_id: source.id });
+          entry.scrape_extract = { success: true, scraped: seResult?.scraped ?? 0, extracted: seResult?.extracted ?? 0, failed: seResult?.failed ?? 0 };
+        }
+      } catch (err: any) {
+        entry.error = err.message;
+        if (phase === 'discover' || phase === 'full') entry.discover = { success: false, error: err.message };
+        if (phase === 'scrape-extract' || phase === 'full') entry.scrape_extract = entry.scrape_extract || { success: false, error: err.message };
+      } finally {
+        setBusySources(prev => { const n = { ...prev }; delete n[source.id]; return n; });
+      }
+
+      results.push(entry);
     }
+
+    setBatchReport({
+      phase: stopRequestedRef.current ? `${phase} (stopped)` : phase,
+      total_sources: results.length,
+      results,
+      completed_at: new Date().toISOString(),
+    });
+    toast({ title: `Batch ${phase} ${stopRequestedRef.current ? 'stopped' : 'completed'}`, description: `${results.length} sources processed` });
+    fetchSources();
+    setBatchRunning(false);
+    setBatchPhase('');
+  };
+
+  /* ─── Stop batch ─── */
+  const stopBatch = () => {
+    stopRequestedRef.current = true;
+    toast({ title: 'Stop requested', description: 'Will stop after current source completes' });
   };
 
   /* ─── Retry failed sources ─── */
@@ -285,25 +321,38 @@ export function GovtSourcesManager() {
     }
     setBatchRunning(true);
     setBatchPhase('retry');
-    try {
-      const result = await invokeFirecrawl('govt-run-all', {
-        phase: 'full',
-        source_ids: failedSources.map(s => s.id),
-      });
-      setBatchReport({
-        phase: 'retry',
-        total_sources: result?.total_sources ?? 0,
-        results: result?.results ?? [],
-        completed_at: new Date().toISOString(),
-      });
-      toast({ title: 'Retry completed' });
-      fetchSources();
-    } catch (err: any) {
-      toast({ title: 'Retry failed', description: err.message, variant: 'destructive' });
-    } finally {
-      setBatchRunning(false);
-      setBatchPhase('');
+    stopRequestedRef.current = false;
+    setBatchReport(null);
+    setBatchProgress({ current: 0, total: failedSources.length });
+
+    const results: BatchReport['results'] = [];
+    for (let i = 0; i < failedSources.length; i++) {
+      if (stopRequestedRef.current) break;
+      const source = failedSources[i];
+      setBatchProgress({ current: i + 1, total: failedSources.length });
+      setBusySources(prev => ({ ...prev, [source.id]: 'pipeline' }));
+
+      const entry: BatchReport['results'][number] = { source_id: source.id, source_name: source.source_name };
+      try {
+        const discResult = await invokeFirecrawl('discover-govt', { source_id: source.id });
+        entry.discover = { success: true, stats: discResult?.stats };
+        if (!stopRequestedRef.current) {
+          const seResult = await invokeFirecrawl('govt-scrape-extract', { source_id: source.id });
+          entry.scrape_extract = { success: true, scraped: seResult?.scraped ?? 0, extracted: seResult?.extracted ?? 0, failed: seResult?.failed ?? 0 };
+        }
+      } catch (err: any) {
+        entry.error = err.message;
+      } finally {
+        setBusySources(prev => { const n = { ...prev }; delete n[source.id]; return n; });
+      }
+      results.push(entry);
     }
+
+    setBatchReport({ phase: 'retry', total_sources: results.length, results, completed_at: new Date().toISOString() });
+    toast({ title: 'Retry completed' });
+    fetchSources();
+    setBatchRunning(false);
+    setBatchPhase('');
   };
 
   /* ─── Parse URLs for bulk import ─── */
@@ -512,11 +561,41 @@ export function GovtSourcesManager() {
             </div>
           </div>
 
-          {/* Batch progress */}
+          {/* Batch progress with stop + details */}
           {batchRunning && (
-            <div className="flex items-center gap-2 mt-2 p-2 bg-muted rounded text-xs">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              <span>Running {batchPhase} on {enabledCount} sources...</span>
+            <div className="mt-2 p-3 bg-muted rounded space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-xs">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                  <span className="font-medium">
+                    {batchPhase === 'discover' ? 'Discovering' : batchPhase === 'scrape-extract' ? 'Scraping' : batchPhase === 'retry' ? 'Retrying' : 'Full Pipeline'}
+                  </span>
+                  <span className="text-muted-foreground">
+                    Source {batchProgress.current} of {batchProgress.total}
+                  </span>
+                  {(() => {
+                    const currentSource = sources.filter(s => Object.keys(busySources).includes(s.id))[0];
+                    return currentSource ? (
+                      <span className="text-muted-foreground">— {currentSource.source_name}</span>
+                    ) : null;
+                  })()}
+                </div>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  className="h-6 text-[10px] px-2"
+                  onClick={stopBatch}
+                  disabled={stopRequestedRef.current}
+                >
+                  <StopCircle className="h-3 w-3 mr-1" />
+                  {stopRequestedRef.current ? 'Stopping...' : 'Stop'}
+                </Button>
+              </div>
+              <Progress value={batchProgress.total > 0 ? (batchProgress.current / batchProgress.total) * 100 : 0} className="h-1.5" />
+              <div className="flex justify-between text-[10px] text-muted-foreground">
+                <span>{Math.round(batchProgress.total > 0 ? (batchProgress.current / batchProgress.total) * 100 : 0)}% complete</span>
+                <span>{batchProgress.total - batchProgress.current} remaining</span>
+              </div>
             </div>
           )}
         </CardHeader>

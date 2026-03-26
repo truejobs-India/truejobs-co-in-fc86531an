@@ -2119,6 +2119,7 @@ export type Database = {
           extraction_status: string
           fetch_run_id: string | null
           firecrawl_source_id: string
+          govt_discovery_meta: Json | null
           id: string
           metadata: Json | null
           page_title: string | null
@@ -2139,6 +2140,7 @@ export type Database = {
           extraction_status?: string
           fetch_run_id?: string | null
           firecrawl_source_id: string
+          govt_discovery_meta?: Json | null
           id?: string
           metadata?: Json | null
           page_title?: string | null
@@ -2159,6 +2161,7 @@ export type Database = {
           extraction_status?: string
           fetch_run_id?: string | null
           firecrawl_source_id?: string
+          govt_discovery_meta?: Json | null
           id?: string
           metadata?: Json | null
           page_title?: string | null

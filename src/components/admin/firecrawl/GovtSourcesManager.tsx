@@ -320,25 +320,38 @@ export function GovtSourcesManager() {
     }
     setBatchRunning(true);
     setBatchPhase('retry');
-    try {
-      const result = await invokeFirecrawl('govt-run-all', {
-        phase: 'full',
-        source_ids: failedSources.map(s => s.id),
-      });
-      setBatchReport({
-        phase: 'retry',
-        total_sources: result?.total_sources ?? 0,
-        results: result?.results ?? [],
-        completed_at: new Date().toISOString(),
-      });
-      toast({ title: 'Retry completed' });
-      fetchSources();
-    } catch (err: any) {
-      toast({ title: 'Retry failed', description: err.message, variant: 'destructive' });
-    } finally {
-      setBatchRunning(false);
-      setBatchPhase('');
+    stopRequestedRef.current = false;
+    setBatchReport(null);
+    setBatchProgress({ current: 0, total: failedSources.length });
+
+    const results: BatchReport['results'] = [];
+    for (let i = 0; i < failedSources.length; i++) {
+      if (stopRequestedRef.current) break;
+      const source = failedSources[i];
+      setBatchProgress({ current: i + 1, total: failedSources.length });
+      setBusySources(prev => ({ ...prev, [source.id]: 'pipeline' }));
+
+      const entry: BatchReport['results'][number] = { source_id: source.id, source_name: source.source_name };
+      try {
+        const discResult = await invokeFirecrawl('discover-govt', { source_id: source.id });
+        entry.discover = { success: true, stats: discResult?.stats };
+        if (!stopRequestedRef.current) {
+          const seResult = await invokeFirecrawl('govt-scrape-extract', { source_id: source.id });
+          entry.scrape_extract = { success: true, scraped: seResult?.scraped ?? 0, extracted: seResult?.extracted ?? 0, failed: seResult?.failed ?? 0 };
+        }
+      } catch (err: any) {
+        entry.error = err.message;
+      } finally {
+        setBusySources(prev => { const n = { ...prev }; delete n[source.id]; return n; });
+      }
+      results.push(entry);
     }
+
+    setBatchReport({ phase: 'retry', total_sources: results.length, results, completed_at: new Date().toISOString() });
+    toast({ title: 'Retry completed' });
+    fetchSources();
+    setBatchRunning(false);
+    setBatchPhase('');
   };
 
   /* ─── Parse URLs for bulk import ─── */

@@ -56,7 +56,6 @@ interface DraftJob {
   dedup_match_ids: string[];
   created_at: string;
   updated_at: string;
-  // Preview/Publish fields
   location: string | null;
   salary: string | null;
   qualification: string | null;
@@ -80,7 +79,6 @@ interface DraftJob {
   job_role: string | null;
   city: string | null;
   normalized_title: string | null;
-  // Third Party Cleaner tracking
   tp_clean_status: string;
   tp_cleaned_at: string | null;
   tp_contamination_count: number;
@@ -105,6 +103,13 @@ interface DraftJob {
   publish_readiness: string | null;
   ai_govt_extract_at: string | null;
   ai_govt_enrich_at: string | null;
+  // Phase 4 fields
+  auto_publish_eligible: boolean;
+  auto_published_at: string | null;
+  publish_rejection_reasons: string[] | null;
+  promoted_job_id: string | null;
+  retry_count: number;
+  last_retry_at: string | null;
 }
 
 type AiAction = 'ai-clean' | 'ai-enrich' | 'ai-find-links' | 'ai-fix-missing' | 'ai-seo' | 'ai-cover-prompt' | 'ai-cover-image' | 'ai-run-all' | 'ai-fix-fields' | 'rollback-ai-action';

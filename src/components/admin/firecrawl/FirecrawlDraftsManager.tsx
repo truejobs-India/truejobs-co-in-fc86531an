@@ -318,23 +318,40 @@ export function FirecrawlDraftsManager() {
       // Set busy state for this row
       setBusyRows(prev => ({ ...prev, [draft.id]: 'ai-run-all' }));
 
-      try {
-        const { data, error } = await supabase.functions.invoke('firecrawl-ai-enrich', {
-          body: { action: 'ai-run-all', draft_id: draft.id, aiModel: selectedModel },
-        });
-        if (error) throw new Error(error.message);
-        if (data?.error) throw new Error(data.error);
-
-        results.push({ id: draft.id, title: draft.title || 'Untitled', success: true });
-        progress.succeeded++;
-      } catch (e: any) {
-        results.push({ id: draft.id, title: draft.title || 'Untitled', success: false, error: e.message });
-        progress.failed++;
-      } finally {
-        setBusyRows(prev => { const n = { ...prev }; delete n[draft.id]; return n; });
+      let attempt = 0;
+      let succeeded = false;
+      while (attempt < 3 && !succeeded) {
+        attempt++;
+        try {
+          const { data, error } = await supabase.functions.invoke('firecrawl-ai-enrich', {
+            body: { action: 'ai-run-all', draft_id: draft.id, aiModel: selectedModel },
+          });
+          if (error) throw new Error(error.message);
+          if (data?.error) {
+            if (data.error.toLowerCase().includes('rate limit') && attempt < 3) {
+              await new Promise(r => setTimeout(r, attempt * 15000));
+              continue;
+            }
+            throw new Error(data.error);
+          }
+          results.push({ id: draft.id, title: draft.title || 'Untitled', success: true });
+          progress.succeeded++;
+          succeeded = true;
+        } catch (e: any) {
+          if (e.message?.toLowerCase().includes('rate limit') && attempt < 3) {
+            await new Promise(r => setTimeout(r, attempt * 15000));
+            continue;
+          }
+          results.push({ id: draft.id, title: draft.title || 'Untitled', success: false, error: e.message });
+          progress.failed++;
+          succeeded = true; // exit loop on non-retryable error
+        }
       }
+      setBusyRows(prev => { const n = { ...prev }; delete n[draft.id]; return n; });
 
       setBulkProgress({ ...progress });
+      // Throttle between rows to avoid rate limits
+      if (i < eligible.length - 1) await new Promise(r => setTimeout(r, 3000));
     }
 
     setBulkResults(results);
@@ -475,24 +492,42 @@ export function FirecrawlDraftsManager() {
       }
 
       setBusyRows(prev => ({ ...prev, [draft.id]: 'ai-cover-image' }));
-      try {
-        // Generate prompt first
-        await supabase.functions.invoke('firecrawl-ai-enrich', {
-          body: { action: 'ai-cover-prompt', draft_id: draft.id, aiModel: selectedModel },
-        });
-        // Generate image
-        const { data, error } = await supabase.functions.invoke('firecrawl-ai-enrich', {
-          body: { action: 'ai-cover-image', draft_id: draft.id, imageModel: selectedImageModel },
-        });
-        if (error) throw new Error(error.message);
-        if (data?.error) throw new Error(data.error);
-        progress.succeeded++;
-      } catch {
-        progress.failed++;
-      } finally {
-        setBusyRows(prev => { const n = { ...prev }; delete n[draft.id]; return n; });
+      let attempt = 0;
+      let done = false;
+      while (attempt < 3 && !done) {
+        attempt++;
+        try {
+          // Generate prompt first
+          await supabase.functions.invoke('firecrawl-ai-enrich', {
+            body: { action: 'ai-cover-prompt', draft_id: draft.id, aiModel: selectedModel },
+          });
+          // Generate image
+          const { data, error } = await supabase.functions.invoke('firecrawl-ai-enrich', {
+            body: { action: 'ai-cover-image', draft_id: draft.id, imageModel: selectedImageModel },
+          });
+          if (error) throw new Error(error.message);
+          if (data?.error) {
+            if (data.error.toLowerCase().includes('rate limit') && attempt < 3) {
+              await new Promise(r => setTimeout(r, attempt * 15000));
+              continue;
+            }
+            throw new Error(data.error);
+          }
+          progress.succeeded++;
+          done = true;
+        } catch (e: any) {
+          if (e.message?.toLowerCase().includes('rate limit') && attempt < 3) {
+            await new Promise(r => setTimeout(r, attempt * 15000));
+            continue;
+          }
+          progress.failed++;
+          done = true;
+        }
       }
+      setBusyRows(prev => { const n = { ...prev }; delete n[draft.id]; return n; });
       setBulkImageProgress({ ...progress });
+      // Throttle between rows
+      if (i < eligible.length - 1) await new Promise(r => setTimeout(r, 5000));
     }
 
     setBulkImageRunning(false);
@@ -549,19 +584,37 @@ export function FirecrawlDraftsManager() {
       setBulkFixFieldsProgress({ ...progress });
 
       setBusyRows(prev => ({ ...prev, [draft.id]: 'ai-fix-fields' }));
-      try {
-        const { data, error } = await supabase.functions.invoke('firecrawl-ai-enrich', {
-          body: { action: 'ai-fix-fields', draft_id: draft.id, aiModel: selectedModel },
-        });
-        if (error) throw new Error(error.message);
-        if (data?.error) throw new Error(data.error);
-        progress.succeeded++;
-      } catch {
-        progress.failed++;
-      } finally {
-        setBusyRows(prev => { const n = { ...prev }; delete n[draft.id]; return n; });
+      let attempt = 0;
+      let done = false;
+      while (attempt < 3 && !done) {
+        attempt++;
+        try {
+          const { data, error } = await supabase.functions.invoke('firecrawl-ai-enrich', {
+            body: { action: 'ai-fix-fields', draft_id: draft.id, aiModel: selectedModel },
+          });
+          if (error) throw new Error(error.message);
+          if (data?.error) {
+            if (data.error.toLowerCase().includes('rate limit') && attempt < 3) {
+              await new Promise(r => setTimeout(r, attempt * 15000));
+              continue;
+            }
+            throw new Error(data.error);
+          }
+          progress.succeeded++;
+          done = true;
+        } catch (e: any) {
+          if (e.message?.toLowerCase().includes('rate limit') && attempt < 3) {
+            await new Promise(r => setTimeout(r, attempt * 15000));
+            continue;
+          }
+          progress.failed++;
+          done = true;
+        }
       }
+      setBusyRows(prev => { const n = { ...prev }; delete n[draft.id]; return n; });
       setBulkFixFieldsProgress({ ...progress });
+      // Throttle between rows
+      if (i < eligible.length - 1) await new Promise(r => setTimeout(r, 3000));
     }
 
     setBulkFixFieldsRunning(false);

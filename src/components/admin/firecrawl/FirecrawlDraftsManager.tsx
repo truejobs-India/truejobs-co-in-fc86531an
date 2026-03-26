@@ -818,6 +818,10 @@ export function FirecrawlDraftsManager() {
     if (!draft.post_name && !draft.total_vacancies) errors.push('Post name or vacancies required');
     if (draft.extraction_confidence === 'none') errors.push('Extraction confidence is "none"');
     if (draft.dedup_status === 'duplicate') errors.push('Row is flagged as duplicate');
+    // Third Party Cleaner gate — MUST be first-class blocker
+    if ((draft as any).tp_clean_status !== 'cleaned') {
+      errors.push('First Run the Third Party Cleaner');
+    }
     if (!draft.ai_clean_at) errors.push('AI Clean step not completed');
     if (!draft.ai_enrich_at) errors.push('AI Enrich step not completed');
     if (!draft.ai_seo_at) errors.push('SEO metadata not generated');

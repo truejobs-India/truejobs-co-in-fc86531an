@@ -95,7 +95,7 @@ Deno.serve(async (req) => {
     const imageModel = (body.imageModel as string) || '';
 
     if (!action) return json({ error: 'Missing action' }, 400);
-    if (!draftId && action !== 'ai-run-all-batch') return json({ error: 'Missing draft_id' }, 400);
+    if (!draftId && action !== 'ai-run-all-batch' && action !== 'govt-auto-publish-batch') return json({ error: 'Missing draft_id' }, 400);
 
     // Auth check
     const authHeader = req.headers.get('Authorization');
@@ -125,6 +125,10 @@ Deno.serve(async (req) => {
       case 'ai-govt-extract': return await handleAiGovtExtract(draftId, client, lovableKey, aiModel);
       case 'ai-govt-enrich': return await handleAiGovtEnrich(draftId, client, lovableKey, aiModel);
       case 'ai-govt-retry': return await handleAiGovtRetry(draftId, client, lovableKey, aiModel);
+      case 'govt-validate-publish': return await handleGovtValidatePublish(draftId, client);
+      case 'govt-auto-publish': return await handleGovtAutoPublish(draftId, client);
+      case 'govt-auto-publish-batch': return await handleGovtAutoPublishBatch(client);
+      case 'govt-retry-failed': return await handleGovtRetryFailed(draftId, client, lovableKey, aiModel);
       case 'rollback-ai-action': return await handleRollbackAiAction(draftId, client);
       default: return json({ error: `Unknown action: ${action}` }, 400);
     }
@@ -1053,7 +1057,9 @@ async function handleAiRunAll(draftId: string, client: any, apiKey: string, aiMo
         updated_at: new Date().toISOString(),
       };
       if (isGovt) {
-        updatePayload.publish_readiness = await calculatePublishReadiness(draftId, client);
+        const readiness = await calculatePublishReadiness(draftId, client);
+        updatePayload.publish_readiness = readiness;
+        updatePayload.auto_publish_eligible = (readiness === 'ready_to_publish' || readiness === 'ready');
       }
       await client.from('firecrawl_draft_jobs').update(updatePayload).eq('id', draftId).eq('status', 'draft');
     } catch { /* draft gone */ }
@@ -1433,17 +1439,36 @@ Extended raw text (up to 20K chars):\n${rawText}`,
 
 async function calculatePublishReadiness(draftId: string, client: any): Promise<string> {
   const draft = await fetchDraft(draftId, client);
-  const confidence = (draft.field_confidence || {}) as Record<string, string>;
 
-  const hasTitle = !!(draft.title && draft.title.trim().length > 5);
+  // Already promoted
+  if (draft.status === 'promoted') return 'published';
+
+  const confidence = (draft.field_confidence || {}) as Record<string, string>;
+  const hasTitle = !!(draft.title && draft.title.trim().length > 10);
   const hasOrg = !!(draft.organization_name && draft.organization_name.trim().length > 2);
   const hasClosingDate = !!(draft.closing_date || draft.last_date_of_application);
   const hasLink = !!(draft.official_apply_url || draft.official_notification_url);
+  const hasSeo = !!(draft.seo_title && draft.meta_description && draft.slug_suggestion);
+  const hasContent = !!(draft.description_summary || draft.intro_text);
+  const isCleaned = draft.tp_clean_status === 'cleaned';
+  const noDup = draft.dedup_status !== 'duplicate';
+  const aiDone = !!(draft.ai_govt_extract_at || draft.ai_enrich_at);
 
   if (!hasTitle || !hasOrg) return 'incomplete';
 
+  // Check for retry exhaustion
+  const retryCount = draft.retry_count || 0;
   const criticalLow = ['title', 'organization_name', 'closing_date'].some(f => confidence[f] === 'low');
-  if (criticalLow) return 'retry';
+
+  if (criticalLow && retryCount >= 3) return 'failed';
+  if (criticalLow) return 'retry_needed';
+
+  // Full gates for auto-publish
+  if (hasTitle && hasOrg && hasLink && hasSeo && hasContent && isCleaned && noDup && aiDone) {
+    if (hasClosingDate) return 'ready_to_publish';
+    // Exception path: notification exists but dates pending
+    if (draft.official_notification_url) return 'review_needed';
+  }
 
   if (hasClosingDate && hasLink) {
     const allMediumOrHigh = ['title', 'organization_name'].every(f => !confidence[f] || confidence[f] !== 'low');
@@ -1637,6 +1662,267 @@ async function handleRollbackAiAction(draftId: string, client: any) {
     rolled_back: lastWithOldValues.action,
     restored_fields: restoredFields,
   });
+}
+
+// ============ GOVT: Validate for Auto-Publish ============
+
+async function handleGovtValidatePublish(draftId: string, client: any) {
+  const draft = await fetchDraft(draftId, client);
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  // Gate 1: Title
+  if (!draft.title || draft.title.trim().length <= 10) errors.push('Title missing or too short (>10 chars)');
+  // Gate 2: Organization
+  if (!draft.organization_name || draft.organization_name.trim().length <= 2) errors.push('Organization name missing');
+  // Gate 3: Official source URL
+  const hasOfficialLink = !!(draft.official_notification_url || draft.official_apply_url);
+  if (!hasOfficialLink) errors.push('No official notification or apply link');
+  else {
+    const link = draft.official_apply_url || draft.official_notification_url;
+    if (link && isAggregatorUrl(link)) errors.push('Official link points to aggregator domain');
+  }
+  // Gate 4: No low-confidence critical fields
+  const confidence = (draft.field_confidence || {}) as Record<string, string>;
+  const lowCritical = ['title', 'organization_name', 'closing_date'].filter(f => confidence[f] === 'low');
+  if (lowCritical.length > 0) errors.push(`Low confidence on: ${lowCritical.join(', ')}`);
+  // Gate 5: TP cleaned
+  if (draft.tp_clean_status !== 'cleaned') errors.push('Third-party cleaner not run');
+  // Gate 6: No unresolved duplicate
+  if (draft.dedup_status === 'duplicate') errors.push('Unresolved duplicate');
+  // Gate 7: Content above minimum
+  if (!draft.description_summary && !draft.intro_text) errors.push('No description or intro text');
+  // Gate 8: SEO metadata
+  if (!draft.seo_title) errors.push('SEO title not generated');
+  if (!draft.meta_description) errors.push('Meta description not generated');
+  if (!draft.slug_suggestion) errors.push('URL slug not generated');
+  // Gate 9: AI enrichment completed
+  if (!draft.ai_govt_extract_at && !draft.ai_enrich_at) errors.push('AI enrichment not completed');
+
+  // Exception path: dates pending but notification is valid
+  if (!draft.closing_date && !draft.last_date_of_application && hasOfficialLink) {
+    warnings.push('dates_pending');
+  }
+  if (!draft.cover_image_url) warnings.push('No cover image');
+
+  const eligible = errors.length === 0;
+  const readiness = eligible
+    ? (warnings.length === 0 ? 'ready_to_publish' : 'review_needed')
+    : (!draft.title || !draft.organization_name ? 'incomplete' : 'review_needed');
+
+  await client.from('firecrawl_draft_jobs').update({
+    auto_publish_eligible: eligible,
+    publish_rejection_reasons: errors.length > 0 ? errors : null,
+    publish_readiness: readiness,
+    updated_at: new Date().toISOString(),
+  }).eq('id', draftId);
+
+  return json({ success: true, action: 'govt-validate-publish', eligible, errors, warnings, publish_readiness: readiness });
+}
+
+// ============ GOVT: Auto-Publish Single ============
+
+async function handleGovtAutoPublish(draftId: string, client: any) {
+  const draft = await fetchDraft(draftId, client);
+
+  // Run validation inline
+  const valResp = await handleGovtValidatePublish(draftId, client);
+  const valBody = await valResp.clone().json();
+
+  if (!valBody.eligible) {
+    return json({
+      success: false, action: 'govt-auto-publish',
+      errors: valBody.errors,
+      publish_readiness: valBody.publish_readiness,
+      message: `Not eligible: ${valBody.errors?.join('; ')}`,
+    });
+  }
+
+  // Build slug
+  const slug = draft.slug_suggestion ||
+    draft.normalized_title ||
+    draft.title?.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') ||
+    `job-${draft.id.slice(0, 8)}`;
+
+  // Build rich description from govt fields
+  const descParts: string[] = [];
+  if (draft.intro_text) descParts.push(draft.intro_text);
+  if (draft.description_summary) descParts.push(draft.description_summary);
+  if (draft.eligibility_summary) descParts.push(`<h3>Eligibility</h3><p>${draft.eligibility_summary}</p>`);
+  if (draft.how_to_apply) descParts.push(`<h3>How to Apply</h3><p>${draft.how_to_apply}</p>`);
+  if (draft.important_instructions) descParts.push(`<h3>Important Instructions</h3><p>${draft.important_instructions}</p>`);
+  const richDescription = descParts.join('\n\n');
+
+  // Build FAQ HTML
+  let faqHtml: string | null = null;
+  if (draft.faq_suggestions && Array.isArray(draft.faq_suggestions) && draft.faq_suggestions.length > 0) {
+    faqHtml = draft.faq_suggestions.map((f: any) =>
+      `<div><h3>${f.question || f.q || ''}</h3><p>${f.answer || f.a || ''}</p></div>`
+    ).join('');
+  }
+
+  const jobData = {
+    org_name: draft.organization_name,
+    post: draft.post_name || draft.title,
+    enriched_title: draft.seo_title || draft.title,
+    enriched_description: richDescription,
+    description: draft.description_summary || draft.intro_text || '',
+    meta_title: draft.seo_title,
+    meta_description: draft.meta_description,
+    slug,
+    state: draft.state,
+    location: draft.location || draft.city,
+    salary: draft.salary || draft.pay_scale,
+    qualification: draft.qualification,
+    age_limit: draft.age_limit,
+    application_mode: draft.application_mode,
+    last_date: draft.last_date_of_application || draft.closing_date,
+    total_vacancies: draft.total_vacancies,
+    apply_link: draft.official_apply_url || draft.official_notification_url,
+    faq_html: faqHtml,
+    keywords: draft.category ? [draft.category] : null,
+    job_category: draft.category,
+    advertisement_number: draft.advertisement_number,
+    source: 'TrueJobs',
+    status: 'published',
+    published_at: new Date().toISOString(),
+  };
+
+  let promotedJobId = draft.promoted_job_id;
+  let action_type = 'inserted';
+
+  try {
+    if (promotedJobId) {
+      // Update existing
+      const { error } = await client.from('employment_news_jobs').update(jobData).eq('id', promotedJobId);
+      if (error) throw new Error(error.message);
+      action_type = 'updated_existing';
+    } else {
+      // Check for slug match
+      const { data: existing } = await client.from('employment_news_jobs').select('id').eq('slug', slug).maybeSingle();
+      if (existing) {
+        const { error } = await client.from('employment_news_jobs').update(jobData).eq('id', existing.id);
+        if (error) throw new Error(error.message);
+        promotedJobId = existing.id;
+        action_type = 'updated_by_slug';
+      } else {
+        const { data: inserted, error } = await client.from('employment_news_jobs').insert(jobData).select('id').single();
+        if (error) throw new Error(error.message);
+        promotedJobId = inserted.id;
+        action_type = 'inserted';
+      }
+    }
+
+    // Update draft
+    await client.from('firecrawl_draft_jobs').update({
+      status: 'promoted',
+      promoted_job_id: promotedJobId,
+      auto_published_at: new Date().toISOString(),
+      publish_readiness: 'published',
+      auto_publish_eligible: false,
+      ai_enrichment_log: appendLog(draft.ai_enrichment_log, 'govt-auto-publish', {
+        promoted_job_id: promotedJobId,
+        action_type,
+        slug,
+      }),
+      updated_at: new Date().toISOString(),
+    }).eq('id', draftId);
+
+    return json({ success: true, action: 'govt-auto-publish', promoted_job_id: promotedJobId, action_type, slug });
+  } catch (e) {
+    const errMsg = e instanceof Error ? e.message : String(e);
+    await client.from('firecrawl_draft_jobs').update({
+      publish_readiness: 'review_needed',
+      ai_enrichment_log: appendCustomLog(draft.ai_enrichment_log, 'govt-auto-publish', 'failed', { error: errMsg }),
+      updated_at: new Date().toISOString(),
+    }).eq('id', draftId);
+    return json({ success: false, action: 'govt-auto-publish', error: errMsg });
+  }
+}
+
+// ============ GOVT: Auto-Publish Batch ============
+
+async function handleGovtAutoPublishBatch(client: any) {
+  const { data: eligibleDrafts, error } = await client
+    .from('firecrawl_draft_jobs')
+    .select('id, title')
+    .eq('source_type_tag', 'government')
+    .eq('tp_clean_status', 'cleaned')
+    .neq('status', 'promoted')
+    .in('publish_readiness', ['ready', 'ready_to_publish'])
+    .order('created_at', { ascending: true })
+    .limit(50);
+
+  if (error) return json({ error: error.message }, 500);
+  if (!eligibleDrafts || eligibleDrafts.length === 0) {
+    return json({ success: true, action: 'govt-auto-publish-batch', published: 0, failed: 0, skipped: 0, message: 'No eligible drafts' });
+  }
+
+  let published = 0, failed = 0;
+  const results: any[] = [];
+
+  for (const draft of eligibleDrafts) {
+    try {
+      const resp = await handleGovtAutoPublish(draft.id, client);
+      const body = await resp.clone().json();
+      if (body.success) {
+        published++;
+        results.push({ id: draft.id, title: draft.title, success: true, action_type: body.action_type });
+      } else {
+        failed++;
+        results.push({ id: draft.id, title: draft.title, success: false, error: body.error || body.message });
+      }
+    } catch (e) {
+      failed++;
+      results.push({ id: draft.id, title: draft.title, success: false, error: e instanceof Error ? e.message : String(e) });
+    }
+    // Rate limit
+    await sleep(1000);
+  }
+
+  return json({ success: true, action: 'govt-auto-publish-batch', published, failed, total: eligibleDrafts.length, results });
+}
+
+// ============ GOVT: Retry Failed ============
+
+async function handleGovtRetryFailed(draftId: string, client: any, apiKey: string, aiModel?: string) {
+  const draft = await fetchDraft(draftId, client);
+  const retryCount = draft.retry_count || 0;
+
+  if (retryCount >= 3) {
+    await client.from('firecrawl_draft_jobs').update({
+      publish_readiness: 'failed',
+      updated_at: new Date().toISOString(),
+    }).eq('id', draftId);
+    return json({ success: false, action: 'govt-retry-failed', error: 'Max retries (3) exceeded', retry_count: retryCount });
+  }
+
+  // Re-run govt extract with expanded context
+  try {
+    const extractResp = await handleAiGovtExtract(draftId, client, apiKey, aiModel);
+    await sleep(2000);
+
+    // Re-run fix missing
+    await handleAiFixMissing(draftId, client, apiKey, aiModel);
+  } catch (e) {
+    // Log but continue
+    console.error(`[govt-retry-failed] Error during re-extraction: ${e}`);
+  }
+
+  // Increment retry count
+  const readiness = await calculatePublishReadiness(draftId, client);
+  await client.from('firecrawl_draft_jobs').update({
+    retry_count: retryCount + 1,
+    last_retry_at: new Date().toISOString(),
+    publish_readiness: readiness,
+    ai_enrichment_log: appendLog(draft.ai_enrichment_log, 'govt-retry-failed', {
+      retry_attempt: retryCount + 1,
+      new_readiness: readiness,
+    }),
+    updated_at: new Date().toISOString(),
+  }).eq('id', draftId);
+
+  return json({ success: true, action: 'govt-retry-failed', retry_count: retryCount + 1, publish_readiness: readiness });
 }
 
 // ============ Helpers ============

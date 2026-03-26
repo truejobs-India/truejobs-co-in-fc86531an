@@ -1743,6 +1743,8 @@ export type Database = {
           application_fee: string | null
           application_fee_details: string | null
           application_mode: string | null
+          auto_publish_eligible: boolean | null
+          auto_published_at: string | null
           canonical_url: string | null
           category: string | null
           city: string | null
@@ -1777,6 +1779,7 @@ export type Database = {
           job_role: string | null
           last_date_for_fee: string | null
           last_date_of_application: string | null
+          last_retry_at: string | null
           location: string | null
           meta_description: string | null
           normalized_title: string | null
@@ -1790,11 +1793,14 @@ export type Database = {
           organization_name: string | null
           pay_scale: string | null
           post_name: string | null
+          promoted_job_id: string | null
           publish_readiness: string | null
+          publish_rejection_reasons: string[] | null
           qualification: string | null
           raw_links_found: string[] | null
           raw_scraped_text: string | null
           result_date: string | null
+          retry_count: number | null
           reviewed_at: string | null
           reviewed_by: string | null
           salary: string | null
@@ -1839,6 +1845,8 @@ export type Database = {
           application_fee?: string | null
           application_fee_details?: string | null
           application_mode?: string | null
+          auto_publish_eligible?: boolean | null
+          auto_published_at?: string | null
           canonical_url?: string | null
           category?: string | null
           city?: string | null
@@ -1873,6 +1881,7 @@ export type Database = {
           job_role?: string | null
           last_date_for_fee?: string | null
           last_date_of_application?: string | null
+          last_retry_at?: string | null
           location?: string | null
           meta_description?: string | null
           normalized_title?: string | null
@@ -1886,11 +1895,14 @@ export type Database = {
           organization_name?: string | null
           pay_scale?: string | null
           post_name?: string | null
+          promoted_job_id?: string | null
           publish_readiness?: string | null
+          publish_rejection_reasons?: string[] | null
           qualification?: string | null
           raw_links_found?: string[] | null
           raw_scraped_text?: string | null
           result_date?: string | null
+          retry_count?: number | null
           reviewed_at?: string | null
           reviewed_by?: string | null
           salary?: string | null
@@ -1935,6 +1947,8 @@ export type Database = {
           application_fee?: string | null
           application_fee_details?: string | null
           application_mode?: string | null
+          auto_publish_eligible?: boolean | null
+          auto_published_at?: string | null
           canonical_url?: string | null
           category?: string | null
           city?: string | null
@@ -1969,6 +1983,7 @@ export type Database = {
           job_role?: string | null
           last_date_for_fee?: string | null
           last_date_of_application?: string | null
+          last_retry_at?: string | null
           location?: string | null
           meta_description?: string | null
           normalized_title?: string | null
@@ -1982,11 +1997,14 @@ export type Database = {
           organization_name?: string | null
           pay_scale?: string | null
           post_name?: string | null
+          promoted_job_id?: string | null
           publish_readiness?: string | null
+          publish_rejection_reasons?: string[] | null
           qualification?: string | null
           raw_links_found?: string[] | null
           raw_scraped_text?: string | null
           result_date?: string | null
+          retry_count?: number | null
           reviewed_at?: string | null
           reviewed_by?: string | null
           salary?: string | null

@@ -17,7 +17,7 @@ import {
   RefreshCw, Loader2, MoreHorizontal, Sparkles, Wrench, Link2,
   Search, Image, FileText, Zap, CheckCircle, XCircle,
   AlertTriangle, ExternalLink, Copy, ShieldCheck, ShieldAlert, Eye,
-  ThumbsUp, Undo2, CircleDot, Circle, Ban, X, Trash2, Send,
+  ThumbsUp, Undo2, CircleDot, Circle, Ban, X, Trash2, Send, RotateCcw,
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
@@ -56,7 +56,6 @@ interface DraftJob {
   dedup_match_ids: string[];
   created_at: string;
   updated_at: string;
-  // Preview/Publish fields
   location: string | null;
   salary: string | null;
   qualification: string | null;
@@ -80,7 +79,6 @@ interface DraftJob {
   job_role: string | null;
   city: string | null;
   normalized_title: string | null;
-  // Third Party Cleaner tracking
   tp_clean_status: string;
   tp_cleaned_at: string | null;
   tp_contamination_count: number;
@@ -105,6 +103,13 @@ interface DraftJob {
   publish_readiness: string | null;
   ai_govt_extract_at: string | null;
   ai_govt_enrich_at: string | null;
+  // Phase 4 fields
+  auto_publish_eligible: boolean;
+  auto_published_at: string | null;
+  publish_rejection_reasons: string[] | null;
+  promoted_job_id: string | null;
+  retry_count: number;
+  last_retry_at: string | null;
 }
 
 type AiAction = 'ai-clean' | 'ai-enrich' | 'ai-find-links' | 'ai-fix-missing' | 'ai-seo' | 'ai-cover-prompt' | 'ai-cover-image' | 'ai-run-all' | 'ai-fix-fields' | 'rollback-ai-action';
@@ -192,7 +197,7 @@ const STEP_ICONS: Record<StepState, typeof Circle> = {
   skipped: Ban,
 };
 
-type FilterTab = 'all' | 'draft' | 'enriched' | 'reviewed' | 'approved' | 'promoted' | 'duplicate' | 'rejected' | 'govt-all' | 'govt-ready' | 'govt-review' | 'govt-incomplete' | 'govt-retry' | 'govt-no-dates' | 'govt-no-links' | 'govt-low-conf';
+type FilterTab = 'all' | 'draft' | 'enriched' | 'reviewed' | 'approved' | 'promoted' | 'duplicate' | 'rejected' | 'govt-all' | 'govt-ready' | 'govt-review' | 'govt-incomplete' | 'govt-retry' | 'govt-no-dates' | 'govt-no-links' | 'govt-low-conf' | 'govt-auto-eligible' | 'govt-failed' | 'govt-published';
 
 interface BulkProgress {
   total: number;
@@ -328,6 +333,12 @@ export function FirecrawlDraftsManager() {
   const [tpCleanerReport, setTpCleanerReport] = useState<{ cleaned: number; failed: number; total: number; failedRows: string[]; timestamp: string } | null>(null);
   const [tpCleanerRunning, setTpCleanerRunning] = useState(false);
 
+  // Govt auto-publish state
+  const [govtPublishRunning, setGovtPublishRunning] = useState(false);
+  const [govtPublishReport, setGovtPublishReport] = useState<{ published: number; failed: number; total: number; results: any[]; timestamp: string } | null>(null);
+  const [govtRetryRunning, setGovtRetryRunning] = useState(false);
+  const [govtValidateRunning, setGovtValidateRunning] = useState(false);
+
   const fetchFieldFixCandidates = useCallback(async (): Promise<FieldFixCandidate[]> => {
     const pageSize = 1000;
     let from = 0;
@@ -400,7 +411,7 @@ export function FirecrawlDraftsManager() {
     setLoading(true);
     let query = supabase
       .from('firecrawl_draft_jobs')
-      .select('id, title, organization_name, post_name, state, extraction_confidence, status, fields_extracted, fields_missing, ai_clean_at, ai_enrich_at, ai_links_at, ai_fix_missing_at, ai_seo_at, ai_cover_prompt_at, ai_cover_image_at, ai_enrichment_log, seo_title, cover_image_url, official_notification_url, official_link_confidence, source_name, source_bucket, dedup_status, dedup_reason, dedup_match_ids, created_at, updated_at, location, salary, qualification, age_limit, application_mode, last_date_of_application, total_vacancies, description_summary, intro_text, meta_description, official_apply_url, slug_suggestion, faq_suggestions, category, department, pay_scale, selection_process, closing_date, opening_date, exam_date, job_role, city, normalized_title, tp_clean_status, tp_cleaned_at, tp_contamination_count, advertisement_number, last_date_for_fee, correction_window, admit_card_date, result_date, age_relaxation, how_to_apply, important_instructions, eligibility_summary, application_fee_details, selection_process_details, vacancy_details, important_dates_json, official_links_json, field_confidence, field_evidence, source_type_tag, publish_readiness, ai_govt_extract_at, ai_govt_enrich_at')
+      .select('id, title, organization_name, post_name, state, extraction_confidence, status, fields_extracted, fields_missing, ai_clean_at, ai_enrich_at, ai_links_at, ai_fix_missing_at, ai_seo_at, ai_cover_prompt_at, ai_cover_image_at, ai_enrichment_log, seo_title, cover_image_url, official_notification_url, official_link_confidence, source_name, source_bucket, dedup_status, dedup_reason, dedup_match_ids, created_at, updated_at, location, salary, qualification, age_limit, application_mode, last_date_of_application, total_vacancies, description_summary, intro_text, meta_description, official_apply_url, slug_suggestion, faq_suggestions, category, department, pay_scale, selection_process, closing_date, opening_date, exam_date, job_role, city, normalized_title, tp_clean_status, tp_cleaned_at, tp_contamination_count, advertisement_number, last_date_for_fee, correction_window, admit_card_date, result_date, age_relaxation, how_to_apply, important_instructions, eligibility_summary, application_fee_details, selection_process_details, vacancy_details, important_dates_json, official_links_json, field_confidence, field_evidence, source_type_tag, publish_readiness, ai_govt_extract_at, ai_govt_enrich_at, auto_publish_eligible, auto_published_at, publish_rejection_reasons, promoted_job_id, retry_count, last_retry_at')
       .order('created_at', { ascending: false })
       .limit(100);
 
@@ -419,6 +430,9 @@ export function FirecrawlDraftsManager() {
     else if (activeFilter === 'govt-no-dates') query = query.eq('source_type_tag', 'government').is('closing_date', null).is('last_date_of_application', null);
     else if (activeFilter === 'govt-no-links') query = query.eq('source_type_tag', 'government').is('official_apply_url', null).is('official_notification_url', null);
     else if (activeFilter === 'govt-low-conf') query = query.eq('source_type_tag', 'government').not('field_confidence', 'eq', '{}');
+    else if (activeFilter === 'govt-auto-eligible') query = query.eq('source_type_tag', 'government').eq('auto_publish_eligible', true).neq('status', 'promoted');
+    else if (activeFilter === 'govt-failed') query = query.eq('source_type_tag', 'government').eq('publish_readiness', 'failed');
+    else if (activeFilter === 'govt-published') query = query.eq('source_type_tag', 'government').eq('status', 'promoted');
 
     const [{ data, error }, fieldFixResult, bulkRunResult, imageResult] = await Promise.all([
       query,
@@ -992,6 +1006,9 @@ export function FirecrawlDraftsManager() {
     { key: 'govt-review', label: 'Review', group: 'govt' },
     { key: 'govt-incomplete', label: 'Incomplete', group: 'govt' },
     { key: 'govt-retry', label: 'Retry', group: 'govt' },
+    { key: 'govt-auto-eligible', label: 'Auto-Eligible', group: 'govt' },
+    { key: 'govt-failed', label: 'Failed', group: 'govt' },
+    { key: 'govt-published', label: 'Published', group: 'govt' },
     { key: 'govt-no-dates', label: 'No Dates', group: 'govt' },
     { key: 'govt-no-links', label: 'No Links', group: 'govt' },
     { key: 'govt-low-conf', label: 'Low Conf', group: 'govt' },
@@ -1152,6 +1169,89 @@ export function FirecrawlDraftsManager() {
                 {tpCleanerRunning ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5 mr-1.5" />}
                 TP Cleaner{(() => { const c = drafts.filter(d => d.tp_clean_status !== 'cleaned' && d.status !== 'promoted' && d.status !== 'rejected').length; return c > 0 ? ` (${c})` : ''; })()}
               </Button>
+              {/* Govt Bulk Actions */}
+              {activeFilter.startsWith('govt-') && (
+                <>
+                  <Button
+                    variant="default" size="sm"
+                    disabled={govtPublishRunning || loading}
+                    onClick={async () => {
+                      setGovtPublishRunning(true);
+                      setGovtPublishReport(null);
+                      try {
+                        const { data, error } = await supabase.functions.invoke('firecrawl-ai-enrich', {
+                          body: { action: 'govt-auto-publish-batch', draft_id: 'batch' },
+                        });
+                        if (error) throw error;
+                        setGovtPublishReport({
+                          published: data?.published || 0,
+                          failed: data?.failed || 0,
+                          total: data?.total || 0,
+                          results: data?.results || [],
+                          timestamp: new Date().toLocaleString(),
+                        });
+                        await fetchDrafts();
+                      } catch (e: any) {
+                        toast({ title: 'Auto-publish failed', description: e.message, variant: 'destructive' });
+                      } finally {
+                        setGovtPublishRunning(false);
+                      }
+                    }}
+                  >
+                    {govtPublishRunning ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Send className="h-3.5 w-3.5 mr-1.5" />}
+                    Auto Publish
+                  </Button>
+                  <Button
+                    variant="outline" size="sm"
+                    disabled={govtRetryRunning || loading}
+                    onClick={async () => {
+                      const retryDrafts = drafts.filter(d => d.source_type_tag === 'government' && ['retry', 'retry_needed', 'incomplete'].includes(d.publish_readiness || '') && (d.retry_count || 0) < 3);
+                      if (retryDrafts.length === 0) { toast({ title: 'No retryable drafts' }); return; }
+                      setGovtRetryRunning(true);
+                      let ok = 0, fail = 0;
+                      for (const d of retryDrafts.slice(0, 20)) {
+                        try {
+                          const { data, error } = await supabase.functions.invoke('firecrawl-ai-enrich', {
+                            body: { action: 'govt-retry-failed', draft_id: d.id, aiModel: selectedModel },
+                          });
+                          if (error || data?.error) fail++; else ok++;
+                        } catch { fail++; }
+                        await new Promise(r => setTimeout(r, 3000));
+                      }
+                      toast({ title: 'Retry complete', description: `✅ ${ok} retried · ❌ ${fail} failed` });
+                      await fetchDrafts();
+                      setGovtRetryRunning(false);
+                    }}
+                  >
+                    {govtRetryRunning ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <RotateCcw className="h-3.5 w-3.5 mr-1.5" />}
+                    Retry Failed
+                  </Button>
+                  <Button
+                    variant="outline" size="sm"
+                    disabled={govtValidateRunning || loading}
+                    onClick={async () => {
+                      const govtDrafts = drafts.filter(d => d.source_type_tag === 'government' && d.status !== 'promoted');
+                      if (govtDrafts.length === 0) { toast({ title: 'No govt drafts to validate' }); return; }
+                      setGovtValidateRunning(true);
+                      let ok = 0;
+                      for (const d of govtDrafts) {
+                        try {
+                          await supabase.functions.invoke('firecrawl-ai-enrich', {
+                            body: { action: 'govt-validate-publish', draft_id: d.id },
+                          });
+                          ok++;
+                        } catch { /* skip */ }
+                      }
+                      toast({ title: 'Validation complete', description: `${ok} drafts validated` });
+                      await fetchDrafts();
+                      setGovtValidateRunning(false);
+                    }}
+                  >
+                    {govtValidateRunning ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <CheckCircle className="h-3.5 w-3.5 mr-1.5" />}
+                    Validate All
+                  </Button>
+                </>
+              )}
               <Button variant="outline" size="sm" onClick={fetchDrafts} disabled={loading}>
                 <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
                 Refresh

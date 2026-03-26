@@ -876,7 +876,7 @@ export function FirecrawlDraftsManager() {
           })() : null,
           keywords: draft.category ? [draft.category] : null,
           job_category: draft.category,
-          source: 'firecrawl',
+          source: 'TrueJobs',
           status: 'published',
           published_at: new Date().toISOString(),
         } as any);

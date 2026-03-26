@@ -208,7 +208,18 @@ type FieldFixCandidate = Pick<
   | 'ai_fix_missing_at'
 >;
 
-type BulkRunCandidate = Pick<DraftJob, 'id' | 'title' | 'status' | 'dedup_status'>;
+type BulkRunCandidate = Pick<
+  DraftJob,
+  | 'id'
+  | 'title'
+  | 'status'
+  | 'dedup_status'
+  | 'ai_clean_at'
+  | 'ai_enrich_at'
+  | 'ai_links_at'
+  | 'ai_fix_missing_at'
+  | 'ai_seo_at'
+>;
 type ImageCandidate = Pick<DraftJob, 'id' | 'title' | 'status' | 'dedup_status' | 'cover_image_url'>;
 
 const hasValue = (value: string | null | undefined) => (value?.trim().length ?? 0) > 0;
@@ -233,6 +244,19 @@ const draftNeedsFieldFix = (draft: FieldFixCandidate) => {
     ACTIONABLE_FIELD_FIX_KEYS.some((field) => !hasValue(draft[field])) ||
     (!hasValue(draft.official_apply_url) && !hasValue(draft.official_notification_url))
   );
+};
+
+const draftNeedsRunAll = (draft: BulkRunCandidate) => {
+  if (draft.status !== 'draft') return false;
+  if (draft.dedup_status === 'duplicate') return false;
+
+  return [
+    draft.ai_clean_at,
+    draft.ai_enrich_at,
+    draft.ai_links_at,
+    draft.ai_fix_missing_at,
+    draft.ai_seo_at,
+  ].some((value) => !value);
 };
 
 export function FirecrawlDraftsManager() {
@@ -309,13 +333,14 @@ export function FirecrawlDraftsManager() {
     while (true) {
       const { data, error } = await supabase
         .from('firecrawl_draft_jobs')
-        .select('id, title, status, dedup_status')
+        .select('id, title, status, dedup_status, ai_clean_at, ai_enrich_at, ai_links_at, ai_fix_missing_at, ai_seo_at')
         .in('status', ['draft', 'enriched'])
         .neq('dedup_status', 'duplicate')
         .order('created_at', { ascending: false })
         .range(from, from + pageSize - 1);
       if (error) throw error;
-      rows.push(...((data as unknown as BulkRunCandidate[]) || []));
+      const batch = ((data as unknown as BulkRunCandidate[]) || []).filter(draftNeedsRunAll);
+      rows.push(...batch);
       if (!data || data.length < pageSize) break;
       from += pageSize;
     }

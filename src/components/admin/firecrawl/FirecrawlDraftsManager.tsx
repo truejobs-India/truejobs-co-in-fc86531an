@@ -20,7 +20,9 @@ import {
   ThumbsUp, Undo2, CircleDot, Circle, Ban, X, Trash2,
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { FirecrawlSourcesManager } from './FirecrawlSourcesManager';
+import { FirecrawlDraftPreviewDialog } from './FirecrawlDraftPreviewDialog';
 import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSelector';
 import { SEO_FIX_MODEL_VALUES } from '@/lib/aiModels';
 

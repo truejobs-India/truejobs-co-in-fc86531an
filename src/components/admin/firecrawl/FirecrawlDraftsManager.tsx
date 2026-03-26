@@ -22,6 +22,7 @@ import {
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { FirecrawlSourcesManager } from './FirecrawlSourcesManager';
+import { GovtSourcesManager } from './GovtSourcesManager';
 import { FirecrawlDraftPreviewDialog } from './FirecrawlDraftPreviewDialog';
 import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSelector';
 import { SEO_FIX_MODEL_VALUES } from '@/lib/aiModels';
@@ -962,6 +963,7 @@ export function FirecrawlDraftsManager() {
   return (
     <div className="space-y-4">
       <FirecrawlSourcesManager />
+      <GovtSourcesManager />
 
       <Card>
         <CardHeader className="pb-3">

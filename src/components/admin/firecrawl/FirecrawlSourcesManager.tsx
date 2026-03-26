@@ -108,10 +108,15 @@ export function FirecrawlSourcesManager({ sourceTypeFilter }: FirecrawlSourcesMa
 
   const fetchSources = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabase
+    let q = supabase
       .from('firecrawl_sources')
-      .select('*')
-      .neq('source_type', 'government')
+      .select('*');
+    if (sourceTypeFilter) {
+      q = q.eq('source_type', sourceTypeFilter);
+    } else {
+      q = q.neq('source_type', 'government');
+    }
+    const { data, error } = await q
       .order('priority')
       .order('source_name');
 

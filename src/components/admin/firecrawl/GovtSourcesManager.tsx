@@ -134,6 +134,7 @@ export function GovtSourcesManager() {
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(true);
   const [busySources, setBusySources] = useState<Record<string, string>>({});
+  const [bulkToggling, setBulkToggling] = useState(false);
 
   // Bulk run state
   const [batchRunning, setBatchRunning] = useState(false);
@@ -410,6 +411,25 @@ export function GovtSourcesManager() {
     }
   };
 
+  /* ─── Bulk toggle all sources ─── */
+  const bulkToggleAll = async (enable: boolean) => {
+    if (sources.length === 0) return;
+    setBulkToggling(true);
+    const ids = sources.map(s => s.id);
+    const { error } = await supabase
+      .from('firecrawl_sources')
+      .update({ is_enabled: enable, updated_at: new Date().toISOString() })
+      .eq('source_type', 'government')
+      .in('id', ids);
+    if (error) {
+      toast({ title: 'Bulk toggle failed', description: error.message, variant: 'destructive' });
+    } else {
+      setSources(prev => prev.map(s => ({ ...s, is_enabled: enable })));
+      toast({ title: enable ? 'All sources enabled' : 'All sources disabled' });
+    }
+    setBulkToggling(false);
+  };
+
   /* ─── Counts ─── */
   const enabledCount = sources.filter(s => s.is_enabled).length;
   const totalItems = sources.reduce((sum, s) => sum + s.total_items_found, 0);
@@ -437,6 +457,18 @@ export function GovtSourcesManager() {
               <Badge variant="outline" className="text-xs">
                 {enabledCount} active · {totalItems} items{failedCount > 0 ? ` · ${failedCount} errors` : ''}
               </Badge>
+              {sources.length > 0 && (
+                <Button
+                  size="sm"
+                  variant={enabledCount === sources.length ? "destructive" : "default"}
+                  className="h-7 text-xs"
+                  disabled={bulkToggling || sources.length === 0}
+                  onClick={() => bulkToggleAll(enabledCount < sources.length)}
+                >
+                  {bulkToggling ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : enabledCount === sources.length ? <Pause className="h-3 w-3 mr-1" /> : <Play className="h-3 w-3 mr-1" />}
+                  {enabledCount === sources.length ? 'Disable All' : 'Enable All'}
+                </Button>
+              )}
               <Button size="sm" variant="outline" onClick={() => setAddOpen(true)} className="h-7 text-xs">
                 <Plus className="h-3 w-3 mr-1" /> Add
               </Button>

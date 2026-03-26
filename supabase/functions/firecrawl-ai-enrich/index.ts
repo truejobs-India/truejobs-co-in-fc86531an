@@ -125,6 +125,10 @@ Deno.serve(async (req) => {
       case 'ai-govt-extract': return await handleAiGovtExtract(draftId, client, lovableKey, aiModel);
       case 'ai-govt-enrich': return await handleAiGovtEnrich(draftId, client, lovableKey, aiModel);
       case 'ai-govt-retry': return await handleAiGovtRetry(draftId, client, lovableKey, aiModel);
+      case 'govt-validate-publish': return await handleGovtValidatePublish(draftId, client);
+      case 'govt-auto-publish': return await handleGovtAutoPublish(draftId, client);
+      case 'govt-auto-publish-batch': return await handleGovtAutoPublishBatch(client);
+      case 'govt-retry-failed': return await handleGovtRetryFailed(draftId, client, lovableKey, aiModel);
       case 'rollback-ai-action': return await handleRollbackAiAction(draftId, client);
       default: return json({ error: `Unknown action: ${action}` }, 400);
     }

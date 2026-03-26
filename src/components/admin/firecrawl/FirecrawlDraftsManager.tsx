@@ -1173,8 +1173,9 @@ export function FirecrawlDraftsManager() {
                 {tpCleanerRunning ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5 mr-1.5" />}
                 TP Cleaner{(() => { const c = drafts.filter(d => d.tp_clean_status !== 'cleaned' && d.status !== 'promoted' && d.status !== 'rejected').length; return c > 0 ? ` (${c})` : ''; })()}
               </Button>
+              )}
               {/* Govt Bulk Actions */}
-              {activeFilter.startsWith('govt-') && (
+              {isGovtFilter && (
                 <>
                   <Button
                     variant="default" size="sm"

@@ -53,6 +53,30 @@ interface DraftJob {
   dedup_match_ids: string[];
   created_at: string;
   updated_at: string;
+  // Preview/Publish fields
+  location: string | null;
+  salary: string | null;
+  qualification: string | null;
+  age_limit: string | null;
+  application_mode: string | null;
+  last_date_of_application: string | null;
+  total_vacancies: number | null;
+  description_summary: string | null;
+  intro_text: string | null;
+  meta_description: string | null;
+  official_apply_url: string | null;
+  slug_suggestion: string | null;
+  faq_suggestions: any | null;
+  category: string | null;
+  department: string | null;
+  pay_scale: string | null;
+  selection_process: string | null;
+  closing_date: string | null;
+  opening_date: string | null;
+  exam_date: string | null;
+  job_role: string | null;
+  city: string | null;
+  normalized_title: string | null;
 }
 
 type AiAction = 'ai-clean' | 'ai-enrich' | 'ai-find-links' | 'ai-fix-missing' | 'ai-seo' | 'ai-cover-prompt' | 'ai-cover-image' | 'ai-run-all' | 'ai-fix-fields' | 'rollback-ai-action';

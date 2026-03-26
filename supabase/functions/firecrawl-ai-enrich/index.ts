@@ -325,6 +325,21 @@ const ALL_TRACKED_FIELDS = [
   'canonical_url', 'description_summary',
 ];
 
+const ACTIONABLE_FIX_FIELDS = [
+  'title',
+  'organization_name',
+  'post_name',
+  'location',
+  'state',
+  'city',
+  'category',
+  'department',
+  'qualification',
+  'application_mode',
+  'official_notification_url',
+  'official_apply_url',
+] as const;
+
 /** Recalculate fields_extracted and fields_missing based on current draft state and persist */
 async function recalculateFieldCounts(draftId: string, client: any): Promise<{ fields_extracted: number; fields_missing: string[] }> {
   const draft = await fetchDraft(draftId, client);
@@ -1046,9 +1061,9 @@ async function handleAiFixFields(draftId: string, client: any, apiKey: string, a
   const draft = await fetchDraft(draftId, client);
   const protectedFields = getProtectedFields(draft);
 
-  // Find ALL empty/missing fields from the tracked list
+  // Only target actionable required fields; optional gaps like exam_date should not trigger bulk field fixing.
   const missingFields: string[] = [];
-  for (const f of ALL_TRACKED_FIELDS) {
+  for (const f of ACTIONABLE_FIX_FIELDS) {
     if (protectedFields.has(f)) continue;
     const val = draft[f];
     if (val === null || val === undefined || (typeof val === 'string' && val.trim().length === 0)) {
@@ -1058,7 +1073,7 @@ async function handleAiFixFields(draftId: string, client: any, apiKey: string, a
 
   if (missingFields.length === 0) {
     const fieldCounts = await recalculateFieldCounts(draftId, client);
-    return json({ success: true, action: 'ai-fix-fields', message: 'No missing fields', fixed: [], fields_extracted: fieldCounts.fields_extracted, fields_missing: fieldCounts.fields_missing });
+    return json({ success: true, action: 'ai-fix-fields', message: 'No actionable missing fields', fixed: [], no_changes: true, fields_extracted: fieldCounts.fields_extracted, fields_missing: fieldCounts.fields_missing });
   }
 
   const fallbackValues: Record<string, unknown> = {};

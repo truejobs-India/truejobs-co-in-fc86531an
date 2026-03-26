@@ -138,7 +138,7 @@ const STEP_ICONS: Record<StepState, typeof Circle> = {
   skipped: Ban,
 };
 
-type FilterTab = 'all' | 'draft' | 'reviewed' | 'approved' | 'duplicate' | 'rejected';
+type FilterTab = 'all' | 'draft' | 'enriched' | 'reviewed' | 'approved' | 'duplicate' | 'rejected';
 
 interface BulkProgress {
   total: number;

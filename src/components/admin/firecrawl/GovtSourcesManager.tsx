@@ -134,6 +134,7 @@ export function GovtSourcesManager() {
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(true);
   const [busySources, setBusySources] = useState<Record<string, string>>({});
+  const [bulkToggling, setBulkToggling] = useState(false);
 
   // Bulk run state
   const [batchRunning, setBatchRunning] = useState(false);

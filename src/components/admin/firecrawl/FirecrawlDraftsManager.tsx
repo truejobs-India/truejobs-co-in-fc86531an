@@ -1081,6 +1081,7 @@ export function FirecrawlDraftsManager() {
                         </TableCell>
                         <TableCell>
                           <Badge variant={
+                            draft.status === 'promoted' ? 'default' :
                             draft.status === 'approved' ? 'default' :
                             draft.status === 'reviewed' ? 'secondary' :
                             draft.status === 'rejected' ? 'destructive' : 'outline'

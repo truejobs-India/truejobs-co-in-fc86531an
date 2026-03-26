@@ -82,7 +82,16 @@ interface BatchReport {
   type?: 'discovery' | 'scrape-extract';
 }
 
-export function FirecrawlSourcesManager() {
+interface FirecrawlSourcesManagerProps {
+  sourceTypeFilter?: string;
+}
+
+const SOURCE_TYPE_CONFIG: Record<string, { title: string; icon: string; emptyMessage: string }> = {
+  firecrawl_html: { title: 'Private Sources (HTML)', icon: 'globe', emptyMessage: 'No private HTML sources configured.' },
+  firecrawl_sitemap: { title: 'Sitemap Sources', icon: 'file', emptyMessage: 'No sitemap sources configured.' },
+};
+
+export function FirecrawlSourcesManager({ sourceTypeFilter }: FirecrawlSourcesManagerProps = {}) {
   const [sources, setSources] = useState<FirecrawlSource[]>([]);
   const [loading, setLoading] = useState(true);
   const [busySources, setBusySources] = useState<Record<string, string>>({});

@@ -457,6 +457,18 @@ export function GovtSourcesManager() {
               <Badge variant="outline" className="text-xs">
                 {enabledCount} active · {totalItems} items{failedCount > 0 ? ` · ${failedCount} errors` : ''}
               </Badge>
+              {sources.length > 0 && (
+                <Button
+                  size="sm"
+                  variant={enabledCount === sources.length ? "destructive" : "default"}
+                  className="h-7 text-xs"
+                  disabled={bulkToggling || sources.length === 0}
+                  onClick={() => bulkToggleAll(enabledCount < sources.length)}
+                >
+                  {bulkToggling ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : enabledCount === sources.length ? <Pause className="h-3 w-3 mr-1" /> : <Play className="h-3 w-3 mr-1" />}
+                  {enabledCount === sources.length ? 'Disable All' : 'Enable All'}
+                </Button>
+              )}
               <Button size="sm" variant="outline" onClick={() => setAddOpen(true)} className="h-7 text-xs">
                 <Plus className="h-3 w-3 mr-1" /> Add
               </Button>

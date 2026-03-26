@@ -333,6 +333,12 @@ export function FirecrawlDraftsManager() {
   const [tpCleanerReport, setTpCleanerReport] = useState<{ cleaned: number; failed: number; total: number; failedRows: string[]; timestamp: string } | null>(null);
   const [tpCleanerRunning, setTpCleanerRunning] = useState(false);
 
+  // Govt auto-publish state
+  const [govtPublishRunning, setGovtPublishRunning] = useState(false);
+  const [govtPublishReport, setGovtPublishReport] = useState<{ published: number; failed: number; total: number; results: any[]; timestamp: string } | null>(null);
+  const [govtRetryRunning, setGovtRetryRunning] = useState(false);
+  const [govtValidateRunning, setGovtValidateRunning] = useState(false);
+
   const fetchFieldFixCandidates = useCallback(async (): Promise<FieldFixCandidate[]> => {
     const pageSize = 1000;
     let from = 0;

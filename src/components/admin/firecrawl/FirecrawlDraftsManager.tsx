@@ -232,6 +232,7 @@ export function FirecrawlDraftsManager() {
     else if (activeFilter === 'enriched') query = query.eq('status', 'enriched');
     else if (activeFilter === 'reviewed') query = query.eq('status', 'reviewed');
     else if (activeFilter === 'approved') query = query.eq('status', 'approved');
+    else if (activeFilter === 'promoted') query = query.eq('status', 'promoted');
     else if (activeFilter === 'duplicate') query = query.eq('dedup_status', 'duplicate');
     else if (activeFilter === 'rejected') query = query.eq('status', 'rejected');
 

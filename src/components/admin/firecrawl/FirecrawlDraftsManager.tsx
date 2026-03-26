@@ -1231,7 +1231,37 @@ export function FirecrawlDraftsManager() {
             </div>
           )}
 
-          {loading ? (
+          {/* TP Cleaner persistent report */}
+          {tpCleanerReport && !tpCleanerRunning && (
+            <div className="mb-3 p-3 rounded-lg border bg-muted/30 space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium flex items-center gap-1.5">
+                  <ShieldCheck className="h-4 w-4" />
+                  TP Cleaner Report — {tpCleanerReport.timestamp}
+                </p>
+                <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => setTpCleanerReport(null)}>
+                  Dismiss
+                </Button>
+              </div>
+              <div className="flex gap-4 text-xs">
+                <span className="font-medium">Total: {tpCleanerReport.total}</span>
+                <span className="text-green-600">✅ Cleaned: {tpCleanerReport.cleaned}</span>
+                <span className="text-red-600">❌ Failed: {tpCleanerReport.failed}</span>
+              </div>
+              {tpCleanerReport.failed > 0 && tpCleanerReport.failedRows.length > 0 && (
+                <div className="text-xs space-y-0.5 mt-1">
+                  <p className="font-medium text-destructive">Failed rows:</p>
+                  {tpCleanerReport.failedRows.map((row, i) => (
+                    <p key={i} className="text-muted-foreground">• {row}</p>
+                  ))}
+                </div>
+              )}
+              {tpCleanerReport.failed === 0 && (
+                <p className="text-xs text-green-600">All rows cleaned successfully — no third-party traces remain.</p>
+              )}
+            </div>
+          )}
+
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>

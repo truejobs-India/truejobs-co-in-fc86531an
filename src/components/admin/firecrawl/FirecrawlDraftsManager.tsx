@@ -17,10 +17,12 @@ import {
   RefreshCw, Loader2, MoreHorizontal, Sparkles, Wrench, Link2,
   Search, Image, FileText, Zap, CheckCircle, XCircle,
   AlertTriangle, ExternalLink, Copy, ShieldCheck, ShieldAlert, Eye,
-  ThumbsUp, Undo2, CircleDot, Circle, Ban, X, Trash2,
+  ThumbsUp, Undo2, CircleDot, Circle, Ban, X, Trash2, Send,
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { FirecrawlSourcesManager } from './FirecrawlSourcesManager';
+import { FirecrawlDraftPreviewDialog } from './FirecrawlDraftPreviewDialog';
 import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSelector';
 import { SEO_FIX_MODEL_VALUES } from '@/lib/aiModels';
 
@@ -53,6 +55,30 @@ interface DraftJob {
   dedup_match_ids: string[];
   created_at: string;
   updated_at: string;
+  // Preview/Publish fields
+  location: string | null;
+  salary: string | null;
+  qualification: string | null;
+  age_limit: string | null;
+  application_mode: string | null;
+  last_date_of_application: string | null;
+  total_vacancies: number | null;
+  description_summary: string | null;
+  intro_text: string | null;
+  meta_description: string | null;
+  official_apply_url: string | null;
+  slug_suggestion: string | null;
+  faq_suggestions: any | null;
+  category: string | null;
+  department: string | null;
+  pay_scale: string | null;
+  selection_process: string | null;
+  closing_date: string | null;
+  opening_date: string | null;
+  exam_date: string | null;
+  job_role: string | null;
+  city: string | null;
+  normalized_title: string | null;
 }
 
 type AiAction = 'ai-clean' | 'ai-enrich' | 'ai-find-links' | 'ai-fix-missing' | 'ai-seo' | 'ai-cover-prompt' | 'ai-cover-image' | 'ai-run-all' | 'ai-fix-fields' | 'rollback-ai-action';
@@ -138,7 +164,7 @@ const STEP_ICONS: Record<StepState, typeof Circle> = {
   skipped: Ban,
 };
 
-type FilterTab = 'all' | 'draft' | 'enriched' | 'reviewed' | 'approved' | 'duplicate' | 'rejected';
+type FilterTab = 'all' | 'draft' | 'enriched' | 'reviewed' | 'approved' | 'promoted' | 'duplicate' | 'rejected';
 
 interface BulkProgress {
   total: number;
@@ -189,11 +215,16 @@ export function FirecrawlDraftsManager() {
   // Image preview state
   const [previewImage, setPreviewImage] = useState<{ url: string; title: string } | null>(null);
 
+  // Draft preview & publish state
+  const [previewDraft, setPreviewDraft] = useState<DraftJob | null>(null);
+  const [publishValidation, setPublishValidation] = useState<{ draft: DraftJob; errors: string[]; warnings: string[] } | null>(null);
+  const [publishing, setPublishing] = useState(false);
+
   const fetchDrafts = useCallback(async () => {
     setLoading(true);
     let query = supabase
       .from('firecrawl_draft_jobs')
-      .select('id, title, organization_name, post_name, state, extraction_confidence, status, fields_extracted, fields_missing, ai_clean_at, ai_enrich_at, ai_links_at, ai_fix_missing_at, ai_seo_at, ai_cover_prompt_at, ai_cover_image_at, ai_enrichment_log, seo_title, cover_image_url, official_notification_url, official_link_confidence, source_name, source_bucket, dedup_status, dedup_reason, dedup_match_ids, created_at, updated_at')
+      .select('id, title, organization_name, post_name, state, extraction_confidence, status, fields_extracted, fields_missing, ai_clean_at, ai_enrich_at, ai_links_at, ai_fix_missing_at, ai_seo_at, ai_cover_prompt_at, ai_cover_image_at, ai_enrichment_log, seo_title, cover_image_url, official_notification_url, official_link_confidence, source_name, source_bucket, dedup_status, dedup_reason, dedup_match_ids, created_at, updated_at, location, salary, qualification, age_limit, application_mode, last_date_of_application, total_vacancies, description_summary, intro_text, meta_description, official_apply_url, slug_suggestion, faq_suggestions, category, department, pay_scale, selection_process, closing_date, opening_date, exam_date, job_role, city, normalized_title')
       .order('created_at', { ascending: false })
       .limit(100);
 
@@ -201,6 +232,7 @@ export function FirecrawlDraftsManager() {
     else if (activeFilter === 'enriched') query = query.eq('status', 'enriched');
     else if (activeFilter === 'reviewed') query = query.eq('status', 'reviewed');
     else if (activeFilter === 'approved') query = query.eq('status', 'approved');
+    else if (activeFilter === 'promoted') query = query.eq('status', 'promoted');
     else if (activeFilter === 'duplicate') query = query.eq('dedup_status', 'duplicate');
     else if (activeFilter === 'rejected') query = query.eq('status', 'rejected');
 
@@ -589,6 +621,88 @@ export function FirecrawlDraftsManager() {
     }
   };
 
+  // ── Publish Validation & Execution ──
+  const validateForPublish = (draft: DraftJob) => {
+    const errors: string[] = [];
+    const warnings: string[] = [];
+    if (!draft.title || draft.title.length < 10) errors.push('Title is missing or too short');
+    if (!draft.organization_name) errors.push('Organization name is missing');
+    if (!draft.post_name && !draft.total_vacancies) errors.push('Post name or vacancies required');
+    if (draft.extraction_confidence === 'none') errors.push('Extraction confidence is "none"');
+    if (draft.dedup_status === 'duplicate') errors.push('Row is flagged as duplicate');
+    if (!draft.ai_clean_at) errors.push('AI Clean step not completed');
+    if (!draft.ai_enrich_at) errors.push('AI Enrich step not completed');
+    if (!draft.ai_seo_at) errors.push('SEO metadata not generated');
+    if (!draft.seo_title) errors.push('SEO title not generated');
+    if (!draft.meta_description) errors.push('Meta description not generated');
+    if (!draft.slug_suggestion) errors.push('URL slug not generated');
+    if (!draft.cover_image_url) warnings.push('Cover image not generated');
+    if (draft.status !== 'approved' && draft.status !== 'enriched' && draft.status !== 'reviewed') {
+      warnings.push(`Status is "${draft.status}" — typically rows are approved before publishing`);
+    }
+    if (!draft.official_notification_url && !draft.official_apply_url) warnings.push('No official links found');
+    if (!draft.last_date_of_application && !draft.closing_date) warnings.push('Last date of application is missing');
+    if (draft.extraction_confidence === 'low') warnings.push('Extraction confidence is low');
+    if ((draft.fields_missing?.length || 0) > 3) warnings.push(`${draft.fields_missing.length} fields still missing`);
+    return { errors, warnings };
+  };
+
+  const handlePublishClick = (draft: DraftJob) => {
+    const { errors, warnings } = validateForPublish(draft);
+    setPublishValidation({ draft, errors, warnings });
+  };
+
+  const executePublish = async (draft: DraftJob) => {
+    setPublishing(true);
+    try {
+      const slug = draft.slug_suggestion || draft.normalized_title || draft.title?.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || `job-${draft.id.slice(0, 8)}`;
+      const { error } = await supabase
+        .from('employment_news_jobs')
+        .insert({
+          org_name: draft.organization_name,
+          post: draft.post_name || draft.title,
+          enriched_title: draft.seo_title || draft.title,
+          enriched_description: draft.intro_text || draft.description_summary || '',
+          description: draft.description_summary || draft.intro_text || '',
+          meta_title: draft.seo_title,
+          meta_description: draft.meta_description,
+          slug,
+          state: draft.state,
+          location: draft.location || draft.city,
+          salary: draft.salary || draft.pay_scale,
+          qualification: draft.qualification,
+          age_limit: draft.age_limit,
+          application_mode: draft.application_mode,
+          last_date: draft.last_date_of_application || draft.closing_date,
+          total_vacancies: draft.total_vacancies,
+          apply_link: draft.official_apply_url || draft.official_notification_url,
+          faq_html: draft.faq_suggestions ? (() => {
+            try {
+              const faqs = Array.isArray(draft.faq_suggestions) ? draft.faq_suggestions : [];
+              return faqs.map((f: any) => `<div><h3>${f.question || f.q || ''}</h3><p>${f.answer || f.a || ''}</p></div>`).join('');
+            } catch { return null; }
+          })() : null,
+          keywords: draft.category ? [draft.category] : null,
+          job_category: draft.category,
+          source: 'firecrawl',
+          status: 'published',
+          published_at: new Date().toISOString(),
+        } as any);
+      if (error) throw new Error(error.message);
+      await supabase
+        .from('firecrawl_draft_jobs')
+        .update({ status: 'promoted' } as any)
+        .eq('id', draft.id);
+      toast({ title: 'Published!', description: `"${draft.title}" is now live on TrueJobs.` });
+      setPublishValidation(null);
+      await fetchDrafts();
+    } catch (e: any) {
+      toast({ title: 'Publish failed', description: e.message, variant: 'destructive' });
+    } finally {
+      setPublishing(false);
+    }
+  };
+
   const confidenceBadge = (conf: string) => {
     const map: Record<string, string> = {
       high: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
@@ -613,6 +727,7 @@ export function FirecrawlDraftsManager() {
     { key: 'enriched', label: 'Enriched' },
     { key: 'reviewed', label: 'Reviewed' },
     { key: 'approved', label: 'Approved' },
+    { key: 'promoted', label: 'Published' },
     { key: 'duplicate', label: 'Duplicates' },
     { key: 'rejected', label: 'Rejected' },
   ];
@@ -966,6 +1081,7 @@ export function FirecrawlDraftsManager() {
                         </TableCell>
                         <TableCell>
                           <Badge variant={
+                            draft.status === 'promoted' ? 'default' :
                             draft.status === 'approved' ? 'default' :
                             draft.status === 'reviewed' ? 'secondary' :
                             draft.status === 'rejected' ? 'destructive' : 'outline'
@@ -975,6 +1091,27 @@ export function FirecrawlDraftsManager() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center gap-1 justify-end">
+                            <Button
+                              size="sm" variant="outline"
+                              onClick={() => setPreviewDraft(draft)}
+                              title="Preview how this job will appear to users"
+                              className="gap-1"
+                            >
+                              <Eye className="h-3 w-3" />
+                              <span className="hidden sm:inline text-xs">Preview</span>
+                            </Button>
+                            <Button
+                              size="sm" variant={draft.status === 'promoted' ? 'secondary' : 'default'}
+                              disabled={!!busyRows[draft.id] || publishing || draft.status === 'promoted'}
+                              onClick={() => handlePublishClick(draft)}
+                              title={draft.status === 'promoted' ? 'Already published' : 'Publish this job to TrueJobs'}
+                              className="gap-1"
+                            >
+                              {publishing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+                              <span className="hidden sm:inline text-xs">
+                                {draft.status === 'promoted' ? 'Live' : 'Publish'}
+                              </span>
+                            </Button>
                             <Button
                               size="sm" variant="outline"
                               disabled={!!busyRows[draft.id] || (!hasExistingImage(draft) && false)}
@@ -1097,6 +1234,70 @@ export function FirecrawlDraftsManager() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Draft Preview Dialog */}
+      <FirecrawlDraftPreviewDialog
+        draft={previewDraft}
+        open={!!previewDraft}
+        onClose={() => setPreviewDraft(null)}
+      />
+
+      {/* Publish Validation Dialog */}
+      <AlertDialog open={!!publishValidation} onOpenChange={(open) => !open && setPublishValidation(null)}>
+        <AlertDialogContent className="max-w-lg">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {publishValidation?.errors.length ? '❌ Cannot Publish Yet' : publishValidation?.warnings.length ? '⚠️ Publish with Warnings?' : '✅ Ready to Publish'}
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p className="text-sm">
+                  <span className="font-medium">{publishValidation?.draft.title || 'Untitled'}</span>
+                  {' — '}{publishValidation?.draft.organization_name || 'Unknown Org'}
+                </p>
+
+                {(publishValidation?.errors.length ?? 0) > 0 && (
+                  <div className="bg-destructive/10 rounded-lg p-3 space-y-1">
+                    <p className="text-sm font-semibold text-destructive">Blocking Issues (must fix):</p>
+                    {publishValidation?.errors.map((e, i) => (
+                      <p key={i} className="text-sm text-destructive flex items-start gap-1.5">
+                        <XCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" /> {e}
+                      </p>
+                    ))}
+                  </div>
+                )}
+
+                {(publishValidation?.warnings.length ?? 0) > 0 && (
+                  <div className="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-3 space-y-1">
+                    <p className="text-sm font-semibold text-yellow-700 dark:text-yellow-400">Warnings (recommended to fix):</p>
+                    {publishValidation?.warnings.map((w, i) => (
+                      <p key={i} className="text-sm text-yellow-600 dark:text-yellow-400 flex items-start gap-1.5">
+                        <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" /> {w}
+                      </p>
+                    ))}
+                  </div>
+                )}
+
+                {publishValidation?.errors.length === 0 && publishValidation?.warnings.length === 0 && (
+                  <p className="text-sm text-muted-foreground">All checks passed. This job is ready to go live!</p>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            {publishValidation && publishValidation.errors.length === 0 && (
+              <AlertDialogAction
+                onClick={() => publishValidation && executePublish(publishValidation.draft)}
+                disabled={publishing}
+              >
+                {publishing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
+                {publishValidation.warnings.length > 0 ? 'Publish Anyway' : 'Publish'}
+              </AlertDialogAction>
+            )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

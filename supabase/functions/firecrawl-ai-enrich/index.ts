@@ -1049,12 +1049,20 @@ async function handleAiFixFields(draftId: string, client: any, apiKey: string, a
   const context = getDraftContext(draft);
   const result = await callAI(
     apiKey,
-    `You are an Indian government jobs data specialist. Fill in missing fields for a job listing based on available context, raw scraped text, and known raw links. Use null if truly unknowable from the available data. Never invent fake data.
-- For total_vacancies, return an integer only when explicitly supported by source text.
-- For date fields, return the exact human-readable date text found in source.
-- For URL fields, only return real official organization/government URLs, never aggregator URLs.
-- Do not rewrite already-filled fields.`,
-    `These fields are missing: ${missingFields.join(', ')}\n\nExisting data:\n${context}\n\nKnown raw links:\n${(draft.raw_links_found || []).slice(0, 80).join('\n') || 'None'}\n\nDeterministic link candidates already found:\n${JSON.stringify(fallbackValues, null, 2)}\n\nRaw text (first 7000 chars):\n${(draft.raw_scraped_text || '').substring(0, 7000)}`,
+    `You are an Indian government jobs data specialist. Fill in missing fields for a job listing based on available context, raw scraped text, and known raw links.
+CRITICAL RULES:
+- Return the BEST possible value for each field. Infer from context when not explicitly stated.
+- For 'state': Infer from organization name, location, or source URL (e.g. "UPPSC" → "Uttar Pradesh", "MPSC" → "Maharashtra", "BPSC" → "Bihar"). Return full state name.
+- For 'city': Infer from location field or organization headquarters if known.
+- For 'category': Use standard categories like "Central Govt", "State Govt", "Banking", "Railway", "Defence", "Teaching", "Police", "PSU", "SSC", "UPSC" based on the organization.
+- For 'department': Infer from organization name (e.g. "Ministry of Defence" → "Defence").
+- For 'application_mode': Default to "Online" if an apply link or website exists.
+- For 'total_vacancies': Return integer only when explicitly stated in source text.
+- For date fields: Return the exact human-readable date text found in source.
+- For URL fields: Only return real official organization/government URLs (.gov.in, .nic.in, .ac.in), never aggregator URLs.
+- Use null ONLY if absolutely unknowable even by inference.
+- Never invent fake data, but DO use reasonable inference from org names, URLs, and context.`,
+    `These fields are missing: ${missingFields.join(', ')}\n\nExisting data:\n${context}\n\nKnown raw links:\n${(draft.raw_links_found || []).slice(0, 80).join('\n') || 'None'}\n\nDeterministic link candidates already found:\n${JSON.stringify(fallbackValues, null, 2)}\n\nRaw text (first 12000 chars):\n${(draft.raw_scraped_text || '').substring(0, 12000)}`,
     {
       name: 'fix_all_fields',
       description: 'Return values for all missing fields',

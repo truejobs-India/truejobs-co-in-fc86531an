@@ -79,6 +79,10 @@ interface DraftJob {
   job_role: string | null;
   city: string | null;
   normalized_title: string | null;
+  // Third Party Cleaner tracking
+  tp_clean_status: string;
+  tp_cleaned_at: string | null;
+  tp_contamination_count: number;
 }
 
 type AiAction = 'ai-clean' | 'ai-enrich' | 'ai-find-links' | 'ai-fix-missing' | 'ai-seo' | 'ai-cover-prompt' | 'ai-cover-image' | 'ai-run-all' | 'ai-fix-fields' | 'rollback-ai-action';

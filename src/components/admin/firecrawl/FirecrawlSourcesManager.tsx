@@ -612,7 +612,9 @@ export function FirecrawlSourcesManager({ sourceTypeFilter }: FirecrawlSourcesMa
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
         ) : sources.length === 0 ? (
-          <p className="text-center py-6 text-muted-foreground text-sm">No Firecrawl sources configured.</p>
+          <p className="text-center py-6 text-muted-foreground text-sm">
+            {sourceTypeFilter ? SOURCE_TYPE_CONFIG[sourceTypeFilter]?.emptyMessage || 'No sources found.' : 'No Firecrawl sources configured.'}
+          </p>
         ) : (
           <div className="space-y-2">
             {sources.map(source => {

@@ -1016,9 +1016,12 @@ export function FirecrawlDraftsManager() {
 
   const eligibleCount = getEligibleDrafts().length;
 
+  const isGovtFilter = activeFilter.startsWith('govt-');
+
   return (
     <div className="space-y-4">
-      <FirecrawlSourcesManager />
+      <FirecrawlSourcesManager sourceTypeFilter="firecrawl_html" />
+      <FirecrawlSourcesManager sourceTypeFilter="firecrawl_sitemap" />
       <GovtSourcesManager />
 
       <Card>
@@ -1026,7 +1029,7 @@ export function FirecrawlDraftsManager() {
           <div className="flex flex-col gap-2">
             <CardTitle className="text-lg flex items-center gap-2">
               <Sparkles className="h-5 w-5" />
-              Firecrawl Draft Jobs
+              {isGovtFilter ? 'Government Draft Jobs' : 'General Draft Jobs'}
             </CardTitle>
             <div className="flex flex-wrap items-center gap-2">
               <div className="flex items-center gap-1.5">

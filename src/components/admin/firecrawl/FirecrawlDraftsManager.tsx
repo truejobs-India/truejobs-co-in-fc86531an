@@ -300,6 +300,10 @@ export function FirecrawlDraftsManager() {
   const [publishValidation, setPublishValidation] = useState<{ draft: DraftJob; errors: string[]; warnings: string[] } | null>(null);
   const [publishing, setPublishing] = useState(false);
 
+  // TP Cleaner persistent report
+  const [tpCleanerReport, setTpCleanerReport] = useState<{ cleaned: number; failed: number; total: number; failedRows: string[]; timestamp: string } | null>(null);
+  const [tpCleanerRunning, setTpCleanerRunning] = useState(false);
+
   const fetchFieldFixCandidates = useCallback(async (): Promise<FieldFixCandidate[]> => {
     const pageSize = 1000;
     let from = 0;
@@ -1064,28 +1068,47 @@ export function FirecrawlDraftsManager() {
               {/* Bulk Third Party Cleaner */}
               <Button
                 variant="outline" size="sm"
-                disabled={loading || bulkRunning}
+                disabled={loading || bulkRunning || tpCleanerRunning}
                 onClick={async () => {
                   const uncleaned = drafts.filter(d => d.tp_clean_status !== 'cleaned' && d.status !== 'promoted' && d.status !== 'rejected');
                   if (uncleaned.length === 0) {
                     toast({ title: 'All clean', description: 'No rows need third-party cleaning.' });
                     return;
                   }
+                  setTpCleanerRunning(true);
+                  setTpCleanerReport(null);
                   toast({ title: 'TP Cleaner', description: `Cleaning ${uncleaned.length} rows...` });
                   try {
                     const { data, error } = await supabase.functions.invoke('firecrawl-cleanup-branding', {
                       body: { action: 'clean-batch', draft_ids: uncleaned.map(d => d.id) },
                     });
                     if (error) throw error;
-                    toast({ title: 'TP Cleaner Done', description: `Cleaned: ${data?.cleaned || 0}, Failed: ${data?.failed || 0}` });
+                    const cleaned = data?.cleaned || 0;
+                    const failed = data?.failed || 0;
+                    const failedRows = (data?.failed_details || []).map((d: any) => d?.title || d?.id || 'Unknown');
+                    setTpCleanerReport({
+                      cleaned,
+                      failed,
+                      total: uncleaned.length,
+                      failedRows,
+                      timestamp: new Date().toLocaleString(),
+                    });
                     await fetchDrafts();
                   } catch (e: any) {
-                    toast({ title: 'TP Cleaner failed', description: e.message, variant: 'destructive' });
+                    setTpCleanerReport({
+                      cleaned: 0,
+                      failed: uncleaned.length,
+                      total: uncleaned.length,
+                      failedRows: [e.message],
+                      timestamp: new Date().toLocaleString(),
+                    });
+                  } finally {
+                    setTpCleanerRunning(false);
                   }
                 }}
                 title={`Run Third Party Cleaner on all uncleaned rows`}
               >
-                <ShieldCheck className="h-3.5 w-3.5 mr-1.5" />
+                {tpCleanerRunning ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5 mr-1.5" />}
                 TP Cleaner{(() => { const c = drafts.filter(d => d.tp_clean_status !== 'cleaned' && d.status !== 'promoted' && d.status !== 'rejected').length; return c > 0 ? ` (${c})` : ''; })()}
               </Button>
               <Button variant="outline" size="sm" onClick={fetchDrafts} disabled={loading}>
@@ -1204,6 +1227,37 @@ export function FirecrawlDraftsManager() {
                     <p key={r.id} className="text-muted-foreground">• {r.title}: {r.error}</p>
                   ))}
                 </div>
+              )}
+            </div>
+          )}
+
+          {/* TP Cleaner persistent report */}
+          {tpCleanerReport && !tpCleanerRunning && (
+            <div className="mb-3 p-3 rounded-lg border bg-muted/30 space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium flex items-center gap-1.5">
+                  <ShieldCheck className="h-4 w-4" />
+                  TP Cleaner Report — {tpCleanerReport.timestamp}
+                </p>
+                <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => setTpCleanerReport(null)}>
+                  Dismiss
+                </Button>
+              </div>
+              <div className="flex gap-4 text-xs">
+                <span className="font-medium">Total: {tpCleanerReport.total}</span>
+                <span className="text-green-600">✅ Cleaned: {tpCleanerReport.cleaned}</span>
+                <span className="text-red-600">❌ Failed: {tpCleanerReport.failed}</span>
+              </div>
+              {tpCleanerReport.failed > 0 && tpCleanerReport.failedRows.length > 0 && (
+                <div className="text-xs space-y-0.5 mt-1">
+                  <p className="font-medium text-destructive">Failed rows:</p>
+                  {tpCleanerReport.failedRows.map((row, i) => (
+                    <p key={i} className="text-muted-foreground">• {row}</p>
+                  ))}
+                </div>
+              )}
+              {tpCleanerReport.failed === 0 && (
+                <p className="text-xs text-green-600">All rows cleaned successfully — no third-party traces remain.</p>
               )}
             </div>
           )}

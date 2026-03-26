@@ -300,6 +300,10 @@ export function FirecrawlDraftsManager() {
   const [publishValidation, setPublishValidation] = useState<{ draft: DraftJob; errors: string[]; warnings: string[] } | null>(null);
   const [publishing, setPublishing] = useState(false);
 
+  // TP Cleaner persistent report
+  const [tpCleanerReport, setTpCleanerReport] = useState<{ cleaned: number; failed: number; total: number; failedRows: string[]; timestamp: string } | null>(null);
+  const [tpCleanerRunning, setTpCleanerRunning] = useState(false);
+
   const fetchFieldFixCandidates = useCallback(async (): Promise<FieldFixCandidate[]> => {
     const pageSize = 1000;
     let from = 0;

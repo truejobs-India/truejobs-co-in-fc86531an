@@ -240,7 +240,7 @@ export function FirecrawlDraftsManager() {
   // ── Bulk Run All ──
   const getEligibleDrafts = useCallback(() => {
     return drafts.filter(d =>
-      d.status === 'draft' &&
+      (d.status === 'draft' || d.status === 'enriched') &&
       d.dedup_status !== 'duplicate' &&
       !busyRows[d.id]
     );

@@ -1167,7 +1167,7 @@ export function FirecrawlDraftsManager() {
                     <TableHead>Fields</TableHead>
                     <TableHead className="text-center min-w-[280px]">AI Steps</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableHead className="text-right min-w-[340px]">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1275,26 +1275,26 @@ export function FirecrawlDraftsManager() {
                             {draft.status}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex items-center gap-1 justify-end">
+                        <TableCell className="text-right whitespace-nowrap">
+                          <div className="flex items-center gap-0.5 justify-end">
                             <Button
                               size="sm" variant="outline"
                               onClick={() => setPreviewDraft(draft)}
                               title="Preview how this job will appear to users"
-                              className="gap-1"
+                              className="gap-0.5 h-7 px-2"
                             >
                               <Eye className="h-3 w-3" />
-                              <span className="hidden sm:inline text-xs">Preview</span>
+                              <span className="text-[10px]">Preview</span>
                             </Button>
                             <Button
                               size="sm" variant={draft.status === 'promoted' ? 'secondary' : 'default'}
                               disabled={!!busyRows[draft.id] || publishing || draft.status === 'promoted'}
                               onClick={() => handlePublishClick(draft)}
                               title={draft.status === 'promoted' ? 'Already published' : 'Publish this job to TrueJobs'}
-                              className="gap-1"
+                              className="gap-0.5 h-7 px-2"
                             >
                               {publishing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
-                              <span className="hidden sm:inline text-xs">
+                              <span className="text-[10px]">
                                 {draft.status === 'promoted' ? 'Live' : 'Publish'}
                               </span>
                             </Button>
@@ -1309,7 +1309,7 @@ export function FirecrawlDraftsManager() {
                                 }
                               }}
                               title={hasExistingImage(draft) ? 'Click to preview cover image' : 'Generate cover image'}
-                              className="gap-1"
+                              className="gap-0.5 h-7 px-2"
                             >
                               {busyRows[draft.id] === 'ai-cover-image' ? (
                                 <Loader2 className="h-3 w-3 animate-spin" />
@@ -1318,7 +1318,7 @@ export function FirecrawlDraftsManager() {
                               ) : (
                                 <Image className="h-3 w-3" />
                               )}
-                              <span className="hidden sm:inline text-xs">
+                              <span className="text-[10px]">
                                 {hasExistingImage(draft) ? 'View' : 'Image'}
                               </span>
                             </Button>
@@ -1327,14 +1327,14 @@ export function FirecrawlDraftsManager() {
                               disabled={!!busyRows[draft.id]}
                               onClick={() => runAiAction(draft.id, 'ai-run-all')}
                               title="Run All AI Steps (text only)"
-                              className="gap-1"
+                              className="gap-0.5 h-7 px-2"
                             >
                               {busyRows[draft.id] === 'ai-run-all' ? (
                                 <Loader2 className="h-3 w-3 animate-spin" />
                               ) : (
                                 <Zap className="h-3 w-3" />
                               )}
-                              <span className="hidden sm:inline text-xs">Run All</span>
+                              <span className="text-[10px]">Run All</span>
                             </Button>
 
                             <DropdownMenu>

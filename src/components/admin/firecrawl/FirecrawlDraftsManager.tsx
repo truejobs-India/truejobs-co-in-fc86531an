@@ -415,13 +415,14 @@ export function FirecrawlDraftsManager() {
       .order('created_at', { ascending: false })
       .limit(100);
 
-    if (activeFilter === 'draft') query = query.eq('status', 'draft');
-    else if (activeFilter === 'enriched') query = query.eq('status', 'enriched');
-    else if (activeFilter === 'reviewed') query = query.eq('status', 'reviewed');
-    else if (activeFilter === 'approved') query = query.eq('status', 'approved');
-    else if (activeFilter === 'promoted') query = query.eq('status', 'promoted');
-    else if (activeFilter === 'duplicate') query = query.eq('dedup_status', 'duplicate');
-    else if (activeFilter === 'rejected') query = query.eq('status', 'rejected');
+    if (activeFilter === 'all') query = query.or('source_type_tag.neq.government,source_type_tag.is.null');
+    else if (activeFilter === 'draft') query = query.eq('status', 'draft').or('source_type_tag.neq.government,source_type_tag.is.null');
+    else if (activeFilter === 'enriched') query = query.eq('status', 'enriched').or('source_type_tag.neq.government,source_type_tag.is.null');
+    else if (activeFilter === 'reviewed') query = query.eq('status', 'reviewed').or('source_type_tag.neq.government,source_type_tag.is.null');
+    else if (activeFilter === 'approved') query = query.eq('status', 'approved').or('source_type_tag.neq.government,source_type_tag.is.null');
+    else if (activeFilter === 'promoted') query = query.eq('status', 'promoted').or('source_type_tag.neq.government,source_type_tag.is.null');
+    else if (activeFilter === 'duplicate') query = query.eq('dedup_status', 'duplicate').or('source_type_tag.neq.government,source_type_tag.is.null');
+    else if (activeFilter === 'rejected') query = query.eq('status', 'rejected').or('source_type_tag.neq.government,source_type_tag.is.null');
     else if (activeFilter === 'govt-all') query = query.eq('source_type_tag', 'government');
     else if (activeFilter === 'govt-ready') query = query.eq('source_type_tag', 'government').eq('publish_readiness', 'ready');
     else if (activeFilter === 'govt-review') query = query.eq('source_type_tag', 'government').eq('publish_readiness', 'review_needed');

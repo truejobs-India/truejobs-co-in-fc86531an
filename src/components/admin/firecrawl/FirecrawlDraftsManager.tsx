@@ -1169,6 +1169,89 @@ export function FirecrawlDraftsManager() {
                 {tpCleanerRunning ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5 mr-1.5" />}
                 TP Cleaner{(() => { const c = drafts.filter(d => d.tp_clean_status !== 'cleaned' && d.status !== 'promoted' && d.status !== 'rejected').length; return c > 0 ? ` (${c})` : ''; })()}
               </Button>
+              {/* Govt Bulk Actions */}
+              {activeFilter.startsWith('govt-') && (
+                <>
+                  <Button
+                    variant="default" size="sm"
+                    disabled={govtPublishRunning || loading}
+                    onClick={async () => {
+                      setGovtPublishRunning(true);
+                      setGovtPublishReport(null);
+                      try {
+                        const { data, error } = await supabase.functions.invoke('firecrawl-ai-enrich', {
+                          body: { action: 'govt-auto-publish-batch', draft_id: 'batch' },
+                        });
+                        if (error) throw error;
+                        setGovtPublishReport({
+                          published: data?.published || 0,
+                          failed: data?.failed || 0,
+                          total: data?.total || 0,
+                          results: data?.results || [],
+                          timestamp: new Date().toLocaleString(),
+                        });
+                        await fetchDrafts();
+                      } catch (e: any) {
+                        toast({ title: 'Auto-publish failed', description: e.message, variant: 'destructive' });
+                      } finally {
+                        setGovtPublishRunning(false);
+                      }
+                    }}
+                  >
+                    {govtPublishRunning ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Send className="h-3.5 w-3.5 mr-1.5" />}
+                    Auto Publish
+                  </Button>
+                  <Button
+                    variant="outline" size="sm"
+                    disabled={govtRetryRunning || loading}
+                    onClick={async () => {
+                      const retryDrafts = drafts.filter(d => d.source_type_tag === 'government' && ['retry', 'retry_needed', 'incomplete'].includes(d.publish_readiness || '') && (d.retry_count || 0) < 3);
+                      if (retryDrafts.length === 0) { toast({ title: 'No retryable drafts' }); return; }
+                      setGovtRetryRunning(true);
+                      let ok = 0, fail = 0;
+                      for (const d of retryDrafts.slice(0, 20)) {
+                        try {
+                          const { data, error } = await supabase.functions.invoke('firecrawl-ai-enrich', {
+                            body: { action: 'govt-retry-failed', draft_id: d.id, aiModel: selectedModel },
+                          });
+                          if (error || data?.error) fail++; else ok++;
+                        } catch { fail++; }
+                        await new Promise(r => setTimeout(r, 3000));
+                      }
+                      toast({ title: 'Retry complete', description: `✅ ${ok} retried · ❌ ${fail} failed` });
+                      await fetchDrafts();
+                      setGovtRetryRunning(false);
+                    }}
+                  >
+                    {govtRetryRunning ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <RotateCcw className="h-3.5 w-3.5 mr-1.5" />}
+                    Retry Failed
+                  </Button>
+                  <Button
+                    variant="outline" size="sm"
+                    disabled={govtValidateRunning || loading}
+                    onClick={async () => {
+                      const govtDrafts = drafts.filter(d => d.source_type_tag === 'government' && d.status !== 'promoted');
+                      if (govtDrafts.length === 0) { toast({ title: 'No govt drafts to validate' }); return; }
+                      setGovtValidateRunning(true);
+                      let ok = 0;
+                      for (const d of govtDrafts) {
+                        try {
+                          await supabase.functions.invoke('firecrawl-ai-enrich', {
+                            body: { action: 'govt-validate-publish', draft_id: d.id },
+                          });
+                          ok++;
+                        } catch { /* skip */ }
+                      }
+                      toast({ title: 'Validation complete', description: `${ok} drafts validated` });
+                      await fetchDrafts();
+                      setGovtValidateRunning(false);
+                    }}
+                  >
+                    {govtValidateRunning ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <CheckCircle className="h-3.5 w-3.5 mr-1.5" />}
+                    Validate All
+                  </Button>
+                </>
+              )}
               <Button variant="outline" size="sm" onClick={fetchDrafts} disabled={loading}>
                 <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
                 Refresh

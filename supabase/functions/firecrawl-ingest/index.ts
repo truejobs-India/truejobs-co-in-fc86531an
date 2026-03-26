@@ -69,6 +69,12 @@ Deno.serve(async (req) => {
         return await handlePurgeHighDuplicates(body, adminClient);
       case 'validate-for-approval':
         return await handleValidateForApproval(body, adminClient);
+      case 'discover-govt':
+        return await handleDiscoverGovt(body, adminClient);
+      case 'govt-scrape-extract':
+        return await handleGovtScrapeExtract(body, adminClient);
+      case 'govt-run-all':
+        return await handleGovtRunAll(body, adminClient);
       default:
         return jsonResponse({ error: `Unknown action: ${action}` }, 400);
     }

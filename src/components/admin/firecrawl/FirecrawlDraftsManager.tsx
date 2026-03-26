@@ -84,6 +84,27 @@ interface DraftJob {
   tp_clean_status: string;
   tp_cleaned_at: string | null;
   tp_contamination_count: number;
+  // Government-specific fields (Phase 3)
+  advertisement_number: string | null;
+  last_date_for_fee: string | null;
+  correction_window: string | null;
+  admit_card_date: string | null;
+  result_date: string | null;
+  age_relaxation: string | null;
+  how_to_apply: string | null;
+  important_instructions: string | null;
+  eligibility_summary: string | null;
+  application_fee_details: string | null;
+  selection_process_details: string | null;
+  vacancy_details: string | null;
+  important_dates_json: any | null;
+  official_links_json: any | null;
+  field_confidence: any | null;
+  field_evidence: any | null;
+  source_type_tag: string | null;
+  publish_readiness: string | null;
+  ai_govt_extract_at: string | null;
+  ai_govt_enrich_at: string | null;
 }
 
 type AiAction = 'ai-clean' | 'ai-enrich' | 'ai-find-links' | 'ai-fix-missing' | 'ai-seo' | 'ai-cover-prompt' | 'ai-cover-image' | 'ai-run-all' | 'ai-fix-fields' | 'rollback-ai-action';

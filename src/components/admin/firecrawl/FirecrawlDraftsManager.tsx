@@ -963,6 +963,7 @@ export function FirecrawlDraftsManager() {
   return (
     <div className="space-y-4">
       <FirecrawlSourcesManager />
+      <GovtSourcesManager />
 
       <Card>
         <CardHeader className="pb-3">

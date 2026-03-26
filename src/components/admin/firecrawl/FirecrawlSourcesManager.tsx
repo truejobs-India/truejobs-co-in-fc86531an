@@ -102,6 +102,7 @@ export function FirecrawlSourcesManager() {
     const { data, error } = await supabase
       .from('firecrawl_sources')
       .select('*')
+      .neq('source_type', 'government')
       .order('priority')
       .order('source_name');
 

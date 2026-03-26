@@ -2041,6 +2041,7 @@ export type Database = {
           created_at: string
           default_bucket: string
           extraction_mode: string
+          govt_meta: Json | null
           id: string
           is_enabled: boolean
           last_error: string | null
@@ -2064,6 +2065,7 @@ export type Database = {
           created_at?: string
           default_bucket?: string
           extraction_mode?: string
+          govt_meta?: Json | null
           id?: string
           is_enabled?: boolean
           last_error?: string | null
@@ -2087,6 +2089,7 @@ export type Database = {
           created_at?: string
           default_bucket?: string
           extraction_mode?: string
+          govt_meta?: Json | null
           id?: string
           is_enabled?: boolean
           last_error?: string | null

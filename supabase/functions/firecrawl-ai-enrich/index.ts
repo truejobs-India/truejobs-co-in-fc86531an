@@ -19,6 +19,7 @@ const corsHeaders = {
 
 const AI_GATEWAY = 'https://ai.gateway.lovable.dev/v1/chat/completions';
 const DEFAULT_MODEL = 'google/gemini-3-flash-preview';
+const TEXT_AI_MAX_RETRIES = 4;
 
 // ── Model routing: maps frontend registry keys to gateway model IDs or provider routes ──
 const GATEWAY_MODEL_MAP: Record<string, string> = {
@@ -126,10 +127,18 @@ Deno.serve(async (req) => {
     }
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Internal error';
+    const normalizedMsg = msg.toLowerCase();
     console.error('[firecrawl-ai-enrich] Error:', e);
     // Return appropriate status codes for known business errors
     if (msg.includes('Draft not found')) return json({ error: msg }, 404);
-    if (msg.includes('429') || msg.includes('RESOURCE_EXHAUSTED') || msg.includes('rate limit')) return json({ error: msg }, 429);
+    if (
+      msg.includes('429') ||
+      msg.includes('RESOURCE_EXHAUSTED') ||
+      normalizedMsg.includes('rate limit') ||
+      normalizedMsg.includes('rate limited')
+    ) {
+      return json({ error: msg }, 429);
+    }
     return json({ error: msg }, 500);
   }
 });
@@ -219,23 +228,43 @@ async function callAI(
     bodyPayload.tool_choice = { type: 'function', function: { name: toolDef.name } };
   }
 
-  const resp = await fetch(AI_GATEWAY, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(bodyPayload),
-  });
+  let data: any = null;
+  let lastRateLimitError: Error | null = null;
 
-  if (!resp.ok) {
+  for (let attempt = 0; attempt < TEXT_AI_MAX_RETRIES; attempt++) {
+    const resp = await fetch(AI_GATEWAY, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(bodyPayload),
+    });
+
+    if (resp.ok) {
+      data = await resp.json();
+      lastRateLimitError = null;
+      break;
+    }
+
     const errText = await resp.text().catch(() => '');
-    if (resp.status === 429) throw new Error('Rate limited — try again shortly');
+    if (resp.status === 429) {
+      const wait = Math.min(3000 * Math.pow(2, attempt), 30000) + Math.random() * 1000;
+      lastRateLimitError = new Error('Rate limited — try again shortly');
+      if (attempt < TEXT_AI_MAX_RETRIES - 1) {
+        console.log(`[firecrawl-ai-enrich] AI Gateway 429, retry ${attempt + 1}/${TEXT_AI_MAX_RETRIES} after ${Math.round(wait)}ms`);
+        await sleep(wait);
+        continue;
+      }
+      break;
+    }
+
     if (resp.status === 402) throw new Error('Credits exhausted — add funds in Settings');
     throw new Error(`AI gateway error ${resp.status}: ${errText.substring(0, 300)}`);
   }
 
-  const data = await resp.json();
+  if (lastRateLimitError) throw lastRateLimitError;
+  if (!data) throw new Error('AI gateway returned no data');
 
   if (toolDef) {
     const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
@@ -1201,4 +1230,8 @@ function json(data: unknown, status = 200) {
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

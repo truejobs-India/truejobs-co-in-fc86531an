@@ -1231,6 +1231,70 @@ export function FirecrawlDraftsManager() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Draft Preview Dialog */}
+      <FirecrawlDraftPreviewDialog
+        draft={previewDraft}
+        open={!!previewDraft}
+        onClose={() => setPreviewDraft(null)}
+      />
+
+      {/* Publish Validation Dialog */}
+      <AlertDialog open={!!publishValidation} onOpenChange={(open) => !open && setPublishValidation(null)}>
+        <AlertDialogContent className="max-w-lg">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {publishValidation?.errors.length ? '❌ Cannot Publish Yet' : publishValidation?.warnings.length ? '⚠️ Publish with Warnings?' : '✅ Ready to Publish'}
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p className="text-sm">
+                  <span className="font-medium">{publishValidation?.draft.title || 'Untitled'}</span>
+                  {' — '}{publishValidation?.draft.organization_name || 'Unknown Org'}
+                </p>
+
+                {(publishValidation?.errors.length ?? 0) > 0 && (
+                  <div className="bg-destructive/10 rounded-lg p-3 space-y-1">
+                    <p className="text-sm font-semibold text-destructive">Blocking Issues (must fix):</p>
+                    {publishValidation?.errors.map((e, i) => (
+                      <p key={i} className="text-sm text-destructive flex items-start gap-1.5">
+                        <XCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" /> {e}
+                      </p>
+                    ))}
+                  </div>
+                )}
+
+                {(publishValidation?.warnings.length ?? 0) > 0 && (
+                  <div className="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-3 space-y-1">
+                    <p className="text-sm font-semibold text-yellow-700 dark:text-yellow-400">Warnings (recommended to fix):</p>
+                    {publishValidation?.warnings.map((w, i) => (
+                      <p key={i} className="text-sm text-yellow-600 dark:text-yellow-400 flex items-start gap-1.5">
+                        <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" /> {w}
+                      </p>
+                    ))}
+                  </div>
+                )}
+
+                {publishValidation?.errors.length === 0 && publishValidation?.warnings.length === 0 && (
+                  <p className="text-sm text-muted-foreground">All checks passed. This job is ready to go live!</p>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            {publishValidation && publishValidation.errors.length === 0 && (
+              <AlertDialogAction
+                onClick={() => publishValidation && executePublish(publishValidation.draft)}
+                disabled={publishing}
+              >
+                {publishing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
+                {publishValidation.warnings.length > 0 ? 'Publish Anyway' : 'Publish'}
+              </AlertDialogAction>
+            )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

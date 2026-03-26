@@ -62,7 +62,7 @@ interface BatchReport {
     source_id: string;
     source_name: string;
     discover?: { success: boolean; stats?: any; error?: string };
-    scrape_extract?: { success: boolean; scraped?: number; extracted?: number; failed?: number; error?: string };
+    scrape_extract?: { success: boolean; scraped?: number; extracted?: number; failed?: number; error?: string; stats?: { pdfFollowUps?: number; unchangedSkips?: number; weakExtractions?: number; strongExtractions?: number; domainCooldowns?: number } };
     error?: string;
   }[];
   completed_at: string;

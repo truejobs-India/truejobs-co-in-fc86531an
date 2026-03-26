@@ -1090,6 +1090,27 @@ export function FirecrawlDraftsManager() {
                           <div className="flex items-center gap-1 justify-end">
                             <Button
                               size="sm" variant="outline"
+                              onClick={() => setPreviewDraft(draft)}
+                              title="Preview how this job will appear to users"
+                              className="gap-1"
+                            >
+                              <Eye className="h-3 w-3" />
+                              <span className="hidden sm:inline text-xs">Preview</span>
+                            </Button>
+                            <Button
+                              size="sm" variant={draft.status === 'promoted' ? 'secondary' : 'default'}
+                              disabled={!!busyRows[draft.id] || publishing || draft.status === 'promoted'}
+                              onClick={() => handlePublishClick(draft)}
+                              title={draft.status === 'promoted' ? 'Already published' : 'Publish this job to TrueJobs'}
+                              className="gap-1"
+                            >
+                              {publishing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+                              <span className="hidden sm:inline text-xs">
+                                {draft.status === 'promoted' ? 'Live' : 'Publish'}
+                              </span>
+                            </Button>
+                            <Button
+                              size="sm" variant="outline"
                               disabled={!!busyRows[draft.id] || (!hasExistingImage(draft) && false)}
                               onClick={() => {
                                 if (hasExistingImage(draft)) {

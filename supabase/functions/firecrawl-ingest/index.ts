@@ -17,6 +17,7 @@ import { classifyPage, type PageBucket } from '../_shared/firecrawl/page-classif
 import { cleanScrapedContent } from '../_shared/firecrawl/content-cleaner.ts';
 import { extractFields } from '../_shared/firecrawl/field-extractor.ts';
 import { checkDuplicate, type DedupCandidate } from '../_shared/firecrawl/dedup.ts';
+import { sanitizeDraftFields } from '../_shared/firecrawl/branding-sanitizer.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',

@@ -192,7 +192,7 @@ const STEP_ICONS: Record<StepState, typeof Circle> = {
   skipped: Ban,
 };
 
-type FilterTab = 'all' | 'draft' | 'enriched' | 'reviewed' | 'approved' | 'promoted' | 'duplicate' | 'rejected';
+type FilterTab = 'all' | 'draft' | 'enriched' | 'reviewed' | 'approved' | 'promoted' | 'duplicate' | 'rejected' | 'govt-all' | 'govt-ready' | 'govt-review' | 'govt-incomplete' | 'govt-retry' | 'govt-no-dates' | 'govt-no-links' | 'govt-low-conf';
 
 interface BulkProgress {
   total: number;

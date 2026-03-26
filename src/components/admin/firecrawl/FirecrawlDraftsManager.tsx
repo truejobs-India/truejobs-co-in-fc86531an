@@ -970,7 +970,7 @@ export function FirecrawlDraftsManager() {
     }
   };
 
-  const filterTabs: { key: FilterTab; label: string }[] = [
+  const filterTabs: { key: FilterTab; label: string; group?: string }[] = [
     { key: 'all', label: 'All' },
     { key: 'draft', label: 'Draft' },
     { key: 'enriched', label: 'Enriched' },
@@ -979,6 +979,14 @@ export function FirecrawlDraftsManager() {
     { key: 'promoted', label: 'Published' },
     { key: 'duplicate', label: 'Duplicates' },
     { key: 'rejected', label: 'Rejected' },
+    { key: 'govt-all', label: 'Govt All', group: 'govt' },
+    { key: 'govt-ready', label: 'Ready', group: 'govt' },
+    { key: 'govt-review', label: 'Review', group: 'govt' },
+    { key: 'govt-incomplete', label: 'Incomplete', group: 'govt' },
+    { key: 'govt-retry', label: 'Retry', group: 'govt' },
+    { key: 'govt-no-dates', label: 'No Dates', group: 'govt' },
+    { key: 'govt-no-links', label: 'No Links', group: 'govt' },
+    { key: 'govt-low-conf', label: 'Low Conf', group: 'govt' },
   ];
 
   const eligibleCount = getEligibleDrafts().length;

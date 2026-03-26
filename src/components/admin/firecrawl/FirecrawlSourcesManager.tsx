@@ -468,8 +468,9 @@ export function FirecrawlSourcesManager({ sourceTypeFilter }: FirecrawlSourcesMa
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-3">
         <CardTitle className="text-lg flex items-center gap-2">
-          <Globe className="h-5 w-5" />
-          Firecrawl Sources
+          {sourceTypeFilter === 'firecrawl_sitemap' ? <FileText className="h-5 w-5" /> : <Globe className="h-5 w-5" />}
+          {sourceTypeFilter ? SOURCE_TYPE_CONFIG[sourceTypeFilter]?.title || 'Firecrawl Sources' : 'Firecrawl Sources'}
+          <Badge variant="secondary" className="text-xs">{sources.length}</Badge>
         </CardTitle>
         <div className="flex items-center gap-2">
           {!runAllActive ? (

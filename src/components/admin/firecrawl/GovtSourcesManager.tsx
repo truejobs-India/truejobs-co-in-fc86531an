@@ -3,6 +3,7 @@
  * into the existing Firecrawl pipeline. Renders inside the Firecrawl admin area.
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
+import * as XLSX from 'xlsx';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';

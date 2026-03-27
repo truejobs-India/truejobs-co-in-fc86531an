@@ -530,13 +530,12 @@ export function GovtSourcesManager() {
                 disabled={enabledCount === 0}
                 onClick={() => {
                   const enabled = sources.filter(s => s.is_enabled);
-                  const lines = enabled.map(s => `${s.source_name}\t${s.seed_url}`);
-                  const blob = new Blob([`Source Name\tURL\n${lines.join('\n')}`], { type: 'text/tab-separated-values' });
-                  const a = document.createElement('a');
-                  a.href = URL.createObjectURL(blob);
-                  a.download = `govt-sources-enabled-${new Date().toISOString().slice(0,10)}.tsv`;
-                  a.click();
-                  URL.revokeObjectURL(a.href);
+                  const rows = enabled.map(s => ({ 'Source Name': s.source_name, 'URL': s.seed_url }));
+                  const ws = XLSX.utils.json_to_sheet(rows);
+                  ws['!cols'] = [{ wch: 40 }, { wch: 60 }];
+                  const wb = XLSX.utils.book_new();
+                  XLSX.utils.book_append_sheet(wb, ws, 'Enabled Sources');
+                  XLSX.writeFile(wb, `govt-sources-enabled-${new Date().toISOString().slice(0,10)}.xlsx`);
                 }}
               >
                 <FileText className="h-3 w-3 mr-1" /> Export Enabled

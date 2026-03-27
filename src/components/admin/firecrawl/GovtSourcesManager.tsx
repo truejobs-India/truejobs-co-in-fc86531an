@@ -524,6 +524,22 @@ export function GovtSourcesManager() {
               <Button size="sm" variant="outline" onClick={() => setAddOpen(true)} className="h-7 text-xs">
                 <Plus className="h-3 w-3 mr-1" /> Add
               </Button>
+              <Button
+                size="sm" variant="outline" className="h-7 text-xs"
+                disabled={enabledCount === 0}
+                onClick={() => {
+                  const enabled = sources.filter(s => s.is_enabled);
+                  const lines = enabled.map(s => `${s.source_name}\t${s.seed_url}`);
+                  const blob = new Blob([`Source Name\tURL\n${lines.join('\n')}`], { type: 'text/tab-separated-values' });
+                  const a = document.createElement('a');
+                  a.href = URL.createObjectURL(blob);
+                  a.download = `govt-sources-enabled-${new Date().toISOString().slice(0,10)}.tsv`;
+                  a.click();
+                  URL.revokeObjectURL(a.href);
+                }}
+              >
+                <FileText className="h-3 w-3 mr-1" /> Export Enabled
+              </Button>
               <Button size="sm" variant="outline" onClick={() => { setImportOpen(true); setImportStep('input'); }} className="h-7 text-xs">
                 <Upload className="h-3 w-3 mr-1" /> Import
               </Button>

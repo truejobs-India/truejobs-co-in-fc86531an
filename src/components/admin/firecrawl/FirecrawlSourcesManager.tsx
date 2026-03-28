@@ -12,7 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Progress } from '@/components/ui/progress';
-import { toast } from '@/hooks/use-toast';
+import { useAdminToast } from '@/contexts/AdminMessagesContext';
 import {
   RefreshCw, Loader2, Play, AlertTriangle, CheckCircle,
   Globe, Settings, BarChart3, ChevronDown, ChevronUp,

@@ -192,6 +192,26 @@ export function ReconstructedNoticesTab() {
           {actionInProgress === 'reconstruct' ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Layers className="h-4 w-4 mr-1" />}
           Reconstruct Notices
         </Button>
+
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={handleDownloadFragments}
+          disabled={!selectedIssueId || !!actionInProgress}
+        >
+          {actionInProgress === 'download-fragments' ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Download className="h-4 w-4 mr-1" />}
+          Download Fragments
+        </Button>
+
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={handleDownloadNotices}
+          disabled={!selectedIssueId || notices.length === 0 || !!actionInProgress}
+        >
+          <Download className="h-4 w-4 mr-1" />
+          Download Notices
+        </Button>
       </div>
 
       {selectedIssue && (

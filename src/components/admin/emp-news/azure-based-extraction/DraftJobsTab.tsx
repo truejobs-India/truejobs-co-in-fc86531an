@@ -38,6 +38,7 @@ const EDITABLE_FIELDS = [
 ] as const;
 
 export function DraftJobsTab() {
+  const { toast } = useAdminToast();
   const [issues, setIssues] = useState<AzureEmpNewsIssue[]>([]);
   const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<AzureEmpNewsDraftJob[]>([]);

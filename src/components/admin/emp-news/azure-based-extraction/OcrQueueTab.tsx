@@ -18,6 +18,7 @@ interface OcrProgress {
 }
 
 export function OcrQueueTab() {
+  const { toast } = useAdminToast();
   const [issues, setIssues] = useState<AzureEmpNewsIssue[]>([]);
   const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
   const [pages, setPages] = useState<AzureEmpNewsPage[]>([]);

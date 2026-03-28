@@ -13,6 +13,7 @@ import { Layers, Hammer, Eye, Loader2 } from 'lucide-react';
 import type { AzureEmpNewsIssue, AzureEmpNewsReconstructedNotice } from '@/types/azureEmpNews';
 
 export function ReconstructedNoticesTab() {
+  const { toast } = useAdminToast();
   const [issues, setIssues] = useState<AzureEmpNewsIssue[]>([]);
   const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
   const [notices, setNotices] = useState<AzureEmpNewsReconstructedNotice[]>([]);

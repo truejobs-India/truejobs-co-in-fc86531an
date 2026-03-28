@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { toast } from '@/components/ui/use-toast';
+import { useAdminToast } from '@/contexts/AdminMessagesContext';
 import { Sparkles, Eye, Loader2, Send, Pencil, CheckCircle2, Link2 } from 'lucide-react';
 import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSelector';
 import type { AzureEmpNewsIssue, AzureEmpNewsDraftJob } from '@/types/azureEmpNews';
@@ -38,6 +38,7 @@ const EDITABLE_FIELDS = [
 ] as const;
 
 export function DraftJobsTab() {
+  const { toast } = useAdminToast();
   const [issues, setIssues] = useState<AzureEmpNewsIssue[]>([]);
   const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<AzureEmpNewsDraftJob[]>([]);

@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { toast } from '@/components/ui/use-toast';
+import { useAdminToast } from '@/contexts/AdminMessagesContext';
 import { Play, RotateCcw, RefreshCw, Loader2, XCircle } from 'lucide-react';
 import type { AzureEmpNewsIssue, AzureEmpNewsPage } from '@/types/azureEmpNews';
 
@@ -18,6 +18,7 @@ interface OcrProgress {
 }
 
 export function OcrQueueTab() {
+  const { toast } = useAdminToast();
   const [issues, setIssues] = useState<AzureEmpNewsIssue[]>([]);
   const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
   const [pages, setPages] = useState<AzureEmpNewsPage[]>([]);

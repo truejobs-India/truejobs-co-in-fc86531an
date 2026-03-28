@@ -15,7 +15,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { toast } from '@/hooks/use-toast';
+import { useAdminToast } from '@/contexts/AdminMessagesContext';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
   Loader2, Plus, Upload, CheckCircle, AlertTriangle, XCircle,
@@ -132,6 +132,7 @@ async function invokeFirecrawl(action: string, body: Record<string, unknown> = {
 
 /* ─── Component ─── */
 export function GovtSourcesManager() {
+  const { toast } = useAdminToast();
   const [sources, setSources] = useState<GovtSource[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(true);

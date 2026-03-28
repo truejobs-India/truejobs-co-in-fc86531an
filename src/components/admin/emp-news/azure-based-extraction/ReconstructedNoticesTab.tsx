@@ -145,7 +145,7 @@ export function ReconstructedNoticesTab() {
     toast({ title: 'Downloaded', description: `${rows.length} notices exported` });
   };
 
-
+  const aiStatusBadge = (status: string) => {
     switch (status) {
       case 'completed': return <Badge className="bg-green-600 text-white">Completed</Badge>;
       case 'processing': return <Badge className="bg-blue-600 text-white">Processing</Badge>;

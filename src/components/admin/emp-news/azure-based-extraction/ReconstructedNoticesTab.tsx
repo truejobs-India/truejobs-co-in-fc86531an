@@ -126,7 +126,7 @@ export function ReconstructedNoticesTab() {
         <Button
           size="sm"
           onClick={handleReconstructNotices}
-          disabled={!selectedIssue || selectedIssue.reconstruction_status === 'pending' && notices.length === 0 || !!actionInProgress}
+          disabled={!canBuildFragments || !!actionInProgress}
           variant="secondary"
         >
           {actionInProgress === 'reconstruct' ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Layers className="h-4 w-4 mr-1" />}

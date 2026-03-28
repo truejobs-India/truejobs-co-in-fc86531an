@@ -87,7 +87,65 @@ export function ReconstructedNoticesTab() {
     }
   };
 
-  const aiStatusBadge = (status: string) => {
+  const handleDownloadFragments = async () => {
+    if (!selectedIssueId || !selectedIssue) return;
+    setActionInProgress('download-fragments');
+    try {
+      const { data, error } = await supabase
+        .from('azure_emp_news_fragments')
+        .select('*')
+        .eq('issue_id', selectedIssueId)
+        .order('page_no', { ascending: true })
+        .order('fragment_index', { ascending: true });
+      if (error) throw error;
+      if (!data || data.length === 0) {
+        toast({ title: 'No Data', description: 'No fragments found for this issue', variant: 'destructive' });
+        return;
+      }
+      const rows = (data as unknown as AzureEmpNewsFragment[]).map(f => ({
+        'Page': f.page_no,
+        'Index': f.fragment_index,
+        'Type': f.fragment_type,
+        'Confidence': f.confidence != null ? Math.round(f.confidence * 100) + '%' : '',
+        'Continuation Hint': f.continuation_hint || '',
+        'Cont. To Page': f.continuation_to_page ?? '',
+        'Cont. From Page': f.continuation_from_page ?? '',
+        'Cleaned Text': f.cleaned_text,
+      }));
+      const ws = XLSX.utils.json_to_sheet(rows);
+      ws['!cols'] = [{ wch: 6 }, { wch: 6 }, { wch: 14 }, { wch: 10 }, { wch: 20 }, { wch: 12 }, { wch: 14 }, { wch: 80 }];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Fragments');
+      XLSX.writeFile(wb, `${selectedIssue.issue_name}_fragments.xlsx`);
+      toast({ title: 'Downloaded', description: `${rows.length} fragments exported` });
+    } catch (e: any) {
+      toast({ title: 'Error', description: e.message || 'Failed to download fragments', variant: 'destructive' });
+    } finally {
+      setActionInProgress(null);
+    }
+  };
+
+  const handleDownloadNotices = () => {
+    if (!selectedIssue || notices.length === 0) return;
+    const rows = notices.map(n => ({
+      'Key': n.notice_key,
+      'Start Page': n.start_page ?? '',
+      'End Page': n.end_page ?? '',
+      'Title': n.notice_title || '',
+      'Employer': n.employer_name || '',
+      'Confidence': n.reconstruction_confidence != null ? Math.round(n.reconstruction_confidence * 100) + '%' : '',
+      'AI Status': n.ai_status,
+      'Merged Text': n.merged_text,
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [{ wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 30 }, { wch: 25 }, { wch: 10 }, { wch: 10 }, { wch: 80 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Notices');
+    XLSX.writeFile(wb, `${selectedIssue.issue_name}_notices.xlsx`);
+    toast({ title: 'Downloaded', description: `${rows.length} notices exported` });
+  };
+
+
     switch (status) {
       case 'completed': return <Badge className="bg-green-600 text-white">Completed</Badge>;
       case 'processing': return <Badge className="bg-blue-600 text-white">Processing</Badge>;

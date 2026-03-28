@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { toast } from '@/components/ui/use-toast';
+import { useAdminToast } from '@/contexts/AdminMessagesContext';
 import { Layers, Hammer, Eye, Loader2 } from 'lucide-react';
 import type { AzureEmpNewsIssue, AzureEmpNewsReconstructedNotice } from '@/types/azureEmpNews';
 

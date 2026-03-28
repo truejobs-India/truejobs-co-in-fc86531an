@@ -9,8 +9,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useAdminToast } from '@/contexts/AdminMessagesContext';
-import { Layers, Hammer, Eye, Loader2 } from 'lucide-react';
-import type { AzureEmpNewsIssue, AzureEmpNewsReconstructedNotice } from '@/types/azureEmpNews';
+import { Layers, Hammer, Eye, Loader2, Download } from 'lucide-react';
+import * as XLSX from 'xlsx';
+import type { AzureEmpNewsIssue, AzureEmpNewsReconstructedNotice, AzureEmpNewsFragment } from '@/types/azureEmpNews';
 
 export function ReconstructedNoticesTab() {
   const { toast } = useAdminToast();

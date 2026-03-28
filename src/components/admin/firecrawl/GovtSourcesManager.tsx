@@ -132,6 +132,7 @@ async function invokeFirecrawl(action: string, body: Record<string, unknown> = {
 
 /* ─── Component ─── */
 export function GovtSourcesManager() {
+  const { toast } = useAdminToast();
   const [sources, setSources] = useState<GovtSource[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(true);

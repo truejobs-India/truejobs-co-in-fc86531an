@@ -92,6 +92,7 @@ const SOURCE_TYPE_CONFIG: Record<string, { title: string; icon: string; emptyMes
 };
 
 export function FirecrawlSourcesManager({ sourceTypeFilter }: FirecrawlSourcesManagerProps = {}) {
+  const { toast } = useAdminToast();
   const [sources, setSources] = useState<FirecrawlSource[]>([]);
   const [loading, setLoading] = useState(true);
   const [busySources, setBusySources] = useState<Record<string, string>>({});

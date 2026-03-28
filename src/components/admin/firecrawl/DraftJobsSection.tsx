@@ -226,6 +226,7 @@ interface DraftJobsSectionProps {
 }
 
 export function DraftJobsSection({ sourceTypeTag }: DraftJobsSectionProps) {
+  const { toast } = useAdminToast();
   const isGovt = sourceTypeTag === 'government';
 
   const [drafts, setDrafts] = useState<DraftJob[]>([]);

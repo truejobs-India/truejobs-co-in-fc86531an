@@ -359,7 +359,28 @@ export default {
       }
     }
 
-    // ── 8. Catch-all → SPA shell (React Router handles routing) ─
+    // ── 8. Private routes → SPA shell with noindex header ──────
+    if (PRIVATE_PREFIXES.some(p => pathname.startsWith(p))) {
+      try {
+        const shellRes = await fetchSpaShell(cfg);
+        const shellHtml = await shellRes.text();
+        return new Response(shellHtml, {
+          status: 200,
+          headers: {
+            'Content-Type': 'text/html; charset=utf-8',
+            'Cache-Control': 'no-cache, max-age=0',
+            'X-Robots-Tag': 'noindex, nofollow',
+          },
+        });
+      } catch (err) {
+        return new Response('Service temporarily unavailable', {
+          status: 502,
+          headers: { 'Retry-After': '30', 'X-Robots-Tag': 'noindex, nofollow' },
+        });
+      }
+    }
+
+    // ── 9. Catch-all → SPA shell (React Router handles routing) ─
     try {
       const shellRes = await fetchSpaShell(cfg);
       const shellHtml = await shellRes.text();

@@ -623,13 +623,47 @@ async function rebuildSingleSlug(db: any, slug: string, pageType: string, forceR
   return error ? 'failed' : 'rebuilt';
 }
 
-// ── DB Page Data Fetchers ────────────────────────────────────────────
+// ── Canonical Cache Key ──────────────────────────────────────────────
+// The seo_page_cache.slug must match the public URL path (without leading /).
+// The Worker's extractSlug() already produces this format.
+// DB triggers store bare slugs, so we prefix them here based on page_type.
 
-async function fetchBlogPageData(db: any, slug: string): Promise<PageData | null> {
+const CACHE_KEY_PREFIXES: Record<string, string> = {
+  'blog': 'blog/',
+  'blog-stale': 'blog/',
+  'employment-news': 'jobs/employment-news/',
+  'employment-news-stale': 'jobs/employment-news/',
+  'govt-exam': 'sarkari-jobs/',
+  'govt-exam-stale': 'sarkari-jobs/',
+};
+
+function toCanonicalCacheKey(bareSlug: string, pageType: string): string {
+  const prefix = CACHE_KEY_PREFIXES[pageType];
+  if (!prefix) return bareSlug; // programmatic pages are already canonical
+  // Avoid double-prefixing if slug already has the prefix
+  if (bareSlug.startsWith(prefix)) return bareSlug;
+  return prefix + bareSlug;
+}
+
+/** Strip the known prefix to get the bare DB slug for table queries */
+function toBareDbSlug(canonicalSlug: string, pageType: string): string {
+  const prefix = CACHE_KEY_PREFIXES[pageType];
+  if (prefix && canonicalSlug.startsWith(prefix)) {
+    return canonicalSlug.slice(prefix.length);
+  }
+  return canonicalSlug;
+}
+
+// ── DB Page Data Fetchers ────────────────────────────────────────────
+// These receive the CANONICAL slug (e.g. 'blog/my-post') and strip the
+// prefix before querying the DB table which stores bare slugs.
+
+async function fetchBlogPageData(db: any, canonicalSlug: string): Promise<PageData | null> {
+  const bareSlug = toBareDbSlug(canonicalSlug, 'blog');
   const { data } = await db
     .from('blog_posts')
     .select('title, slug, meta_title, meta_description, excerpt, content, published_at, updated_at, faq_schema, is_published')
-    .eq('slug', slug)
+    .eq('slug', bareSlug)
     .eq('is_published', true)
     .maybeSingle();
 
@@ -641,7 +675,7 @@ async function fetchBlogPageData(db: any, slug: string): Promise<PageData | null
   })) : [];
 
   return {
-    slug: data.slug,
+    slug: `blog/${data.slug}`,  // CANONICAL: full public path
     pageType: 'blog',
     title: data.meta_title || data.title,
     h1: data.title,
@@ -657,11 +691,12 @@ async function fetchBlogPageData(db: any, slug: string): Promise<PageData | null
   };
 }
 
-async function fetchGovtExamPageData(db: any, slug: string): Promise<PageData | null> {
+async function fetchGovtExamPageData(db: any, canonicalSlug: string): Promise<PageData | null> {
+  const bareSlug = toBareDbSlug(canonicalSlug, 'govt-exam');
   const { data } = await db
     .from('govt_exams')
     .select('exam_name, slug, meta_title, meta_description, seo_content, faqs, created_at, updated_at, conducting_body, department_slug')
-    .eq('slug', slug)
+    .eq('slug', bareSlug)
     .maybeSingle();
 
   if (!data) return null;
@@ -672,7 +707,7 @@ async function fetchGovtExamPageData(db: any, slug: string): Promise<PageData | 
   })).filter((f: any) => f.question && f.answer) : [];
 
   return {
-    slug: data.slug,
+    slug: `sarkari-jobs/${data.slug}`,  // CANONICAL: full public path
     pageType: 'govt-exam',
     title: data.meta_title || `${data.exam_name} Recruitment`,
     h1: data.meta_title || `${data.exam_name} Recruitment`,
@@ -688,18 +723,19 @@ async function fetchGovtExamPageData(db: any, slug: string): Promise<PageData | 
   };
 }
 
-async function fetchEmploymentNewsPageData(db: any, slug: string): Promise<PageData | null> {
+async function fetchEmploymentNewsPageData(db: any, canonicalSlug: string): Promise<PageData | null> {
+  const bareSlug = toBareDbSlug(canonicalSlug, 'employment-news');
   const { data } = await db
     .from('employment_news_jobs')
     .select('org_name, post, slug, meta_title, meta_description, enriched_description, description, published_at, faq_html, state')
-    .eq('slug', slug)
+    .eq('slug', bareSlug)
     .eq('status', 'published')
     .maybeSingle();
 
   if (!data) return null;
 
   return {
-    slug: data.slug,
+    slug: `jobs/employment-news/${data.slug}`,  // CANONICAL: full public path
     pageType: 'employment-news',
     title: data.meta_title || `${data.org_name || ''} ${data.post || ''} Recruitment`,
     h1: data.meta_title || `${data.org_name || ''} ${data.post || ''} Recruitment`,

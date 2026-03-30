@@ -256,6 +256,7 @@ async function generateSEOSitemap(supabase: any, now: string): Promise<Response>
     '', 'jobs', 'blog', 'companies', 'tools', 'aboutus', 'contactus',
     'privacypolicy', 'termsofuse', 'disclaimer', 'editorial-policy',
     'sarkari-jobs', 'private-jobs', 'latest-govt-jobs', 'all-sarkari-jobs',
+    'jobs/employment-news',
     'sample-papers', 'books', 'previous-year-papers', 'free-guides',
     'govt-salary-calculator', 'govt-job-age-calculator',
     'govt-exam-eligibility-checker', 'govt-exam-fee-calculator',

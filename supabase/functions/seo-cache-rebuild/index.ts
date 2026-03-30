@@ -323,7 +323,18 @@ Deno.serve(async (req) => {
         return jsonResponse({ error: 'No slugs provided' }, 400);
       }
       return await handleSlugsMode(db, slugs, triggerSource, startTime, forceRebuild);
+    } else if (mode === 'full-collect') {
+      return await handleFullCollect(db);
     } else if (mode === 'full') {
+      // Legacy: kept for backward compat but now batched from client
+      const slugs: string[] = body.slugs || [];
+      const batchSize = body.batchSize || 50;
+      const offset = body.offset || 0;
+      if (slugs.length > 0) {
+        // Client-driven batched full rebuild
+        return await handleSlugsMode(db, slugs, triggerSource, startTime, forceRebuild);
+      }
+      // Fallback: old full mode (will likely CPU-timeout on large datasets)
       return await handleFullMode(db, triggerSource, startTime, forceRebuild);
     } else if (mode === 'purge-all-cf') {
       return await handlePurgeAllCF(db, triggerSource, startTime);

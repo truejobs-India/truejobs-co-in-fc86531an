@@ -88,6 +88,12 @@ function generateStateFAQs(state: string): FAQItem[] {
   ];
 }
 
+/**
+ * 37 entries: 28 Indian states + 9 Union Territory entries.
+ * India officially has 8 UTs (post-2020 merger), but Dadra & Nagar Haveli
+ * and Daman & Diu are kept as 2 separate SEO pages because users still
+ * search for them independently. Ladakh is counted under UTs.
+ */
 const STATE_LIST: [string, string][] = [
   ['andaman-nicobar', 'Andaman & Nicobar Islands'],
   ['andhra-pradesh', 'Andhra Pradesh'],

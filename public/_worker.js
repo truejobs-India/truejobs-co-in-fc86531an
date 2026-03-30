@@ -88,6 +88,32 @@ const PRIVATE_PREFIXES = [
   '/auth/callback',
 ];
 
+// Known multi-segment route prefixes — any multi-segment path not matching
+// these AND not matching PRIVATE_PREFIXES is a guaranteed 404 in React Router.
+// Single-segment paths (e.g. /ssc-cgl) are ALWAYS allowed through because
+// the /:slug catch-all in React resolves them dynamically via DB + config.
+const KNOWN_MULTI_SEGMENT_PREFIXES = [
+  '/jobs/',
+  '/sarkari-jobs/',
+  '/results/',
+  '/sample-papers/',
+  '/books/',
+  '/previous-year-papers/',
+  '/guides/',
+  '/companies/',
+  '/blog/',
+  '/tools/',
+];
+
+function isLikelyValid(pathname) {
+  // Single-segment paths → always valid (/:slug catch-all exists in React)
+  const segments = pathname.split('/').filter(Boolean);
+  if (segments.length <= 1) return true;
+  // Multi-segment → must match a known prefix or be a private route
+  return KNOWN_MULTI_SEGMENT_PREFIXES.some(p => pathname.startsWith(p))
+    || PRIVATE_PREFIXES.some(p => pathname.startsWith(p));
+}
+
 function isSEORoute(pathname) {
   if (PRIVATE_PREFIXES.some(p => pathname.startsWith(p))) return false;
   if (pathname.startsWith('/assets/') || pathname.startsWith('/api/')) return false;
@@ -380,17 +406,21 @@ export default {
       }
     }
 
-    // ── 9. Catch-all → SPA shell (React Router handles routing) ─
+    // ── 9. Catch-all → SPA shell ──────────────────────────────────
+    // Return 404 status for multi-segment paths with unknown prefixes.
+    // Single-segment paths always get 200 (/:slug resolver handles them).
     try {
       const shellRes = await fetchSpaShell(cfg);
       const shellHtml = await shellRes.text();
-      return new Response(shellHtml, {
-        status: 200,
-        headers: {
-          'Content-Type': 'text/html; charset=utf-8',
-          'Cache-Control': 'public, max-age=60, s-maxage=120',
-        },
-      });
+      const status = isLikelyValid(pathname) ? 200 : 404;
+      const headers = {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': status === 404
+          ? 'no-cache, max-age=0'
+          : 'public, max-age=60, s-maxage=120',
+      };
+      if (status === 404) headers['X-Robots-Tag'] = 'noindex, nofollow';
+      return new Response(shellHtml, { status, headers });
     } catch (err) {
       console.error('SPA shell fetch error:', err);
       return new Response('Service temporarily unavailable', {

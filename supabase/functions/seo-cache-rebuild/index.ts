@@ -365,23 +365,23 @@ async function handleQueueMode(db: any, triggerSource: string, startTime: number
 
   for (const item of pending) {
     try {
-      // Advisory lock skipped — pg_advisory_xact_lock is session-level and
-      // not effective via REST/PostgREST. Concurrency is managed by the
-      // claim-then-process pattern (status = 'processing') instead.
-
       const isStale = item.page_type.endsWith('-stale');
 
+      // Canonical cache key: DB triggers store bare slugs, but cache uses
+      // full public path. Prefix based on page_type before cache operations.
+      const canonicalSlug = toCanonicalCacheKey(item.slug, item.page_type);
+
       if (isStale) {
-        // Delete from cache
-        await db.from('seo_page_cache').delete().eq('slug', item.slug);
-        urlsToPurge.push(`${SITE_URL}/${item.slug}`);
+        // Delete from cache using canonical key
+        await db.from('seo_page_cache').delete().eq('slug', canonicalSlug);
+        urlsToPurge.push(`${SITE_URL}/${canonicalSlug}`);
         rebuilt++;
       } else {
         // Try to fetch page data from DB and rebuild
-        const result = await rebuildSingleSlug(db, item.slug, item.page_type);
+        const result = await rebuildSingleSlug(db, canonicalSlug, item.page_type);
         if (result === 'rebuilt') {
           rebuilt++;
-          urlsToPurge.push(`${SITE_URL}/${item.slug}`);
+          urlsToPurge.push(`${SITE_URL}/${canonicalSlug}`);
         } else if (result === 'skipped') {
           skipped++;
         } else {

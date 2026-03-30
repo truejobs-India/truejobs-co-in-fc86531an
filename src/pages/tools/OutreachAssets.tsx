@@ -102,7 +102,7 @@ const OUTREACH_ASSETS: OutreachAsset[] = [
   {
     id: 'state-govt-jobs',
     title: 'State Government Jobs — Complete State-wise Opportunity Map',
-    description: 'State PSC overviews, BPSC/UPPSC/MPPSC comparison, state police & education department vacancies across 36 states.',
+    description: 'State PSC overviews, BPSC/UPPSC/MPPSC comparison, state police & education department vacancies across all states & UTs.',
     icon: <FileText className="h-6 w-6 text-primary" />,
     fileName: 'State-Govt-Jobs-Map-2026-TrueJobs.pdf',
     category: 'State',

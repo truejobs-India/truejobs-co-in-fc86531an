@@ -129,6 +129,7 @@ function ExamDetailView({ slug }: { slug: string | undefined }) {
   if (empNewsJob && empNewsJob.slug) {
     return (
       <Layout>
+        <SEO title={empNewsJob.org_name || 'Government Job'} noindex={true} />
         <div className="container mx-auto px-4 py-16 text-center">
           <h1 className="text-2xl font-bold mb-4">{empNewsJob.org_name || 'Government Job'}</h1>
           <p className="text-muted-foreground mb-4">This job listing is available at a different URL.</p>

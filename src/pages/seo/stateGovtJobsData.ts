@@ -89,6 +89,7 @@ function generateStateFAQs(state: string): FAQItem[] {
 }
 
 const STATE_LIST: [string, string][] = [
+  ['andaman-nicobar', 'Andaman & Nicobar Islands'],
   ['andhra-pradesh', 'Andhra Pradesh'],
   ['arunachal-pradesh', 'Arunachal Pradesh'],
   ['assam', 'Assam'],

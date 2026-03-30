@@ -116,7 +116,7 @@ export default function SarkariJobs({ presetDept }: SarkariJobsProps = {}) {
 
   return (
     <Layout>
-      <SEO title={pageTitle} description={pageDescription} />
+      <SEO title={pageTitle} description={pageDescription} url={presetDept ? `/sarkari-jobs/${presetDept}` : '/sarkari-jobs'} />
 
       {/* Hero */}
       <section className="bg-gradient-to-br from-[hsl(170,100%,12%)] to-[hsl(174,60%,30%)] text-white py-10">

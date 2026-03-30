@@ -406,17 +406,21 @@ export default {
       }
     }
 
-    // ── 9. Catch-all → SPA shell (React Router handles routing) ─
+    // ── 9. Catch-all → SPA shell ──────────────────────────────────
+    // Return 404 status for multi-segment paths with unknown prefixes.
+    // Single-segment paths always get 200 (/:slug resolver handles them).
     try {
       const shellRes = await fetchSpaShell(cfg);
       const shellHtml = await shellRes.text();
-      return new Response(shellHtml, {
-        status: 200,
-        headers: {
-          'Content-Type': 'text/html; charset=utf-8',
-          'Cache-Control': 'public, max-age=60, s-maxage=120',
-        },
-      });
+      const status = isLikelyValid(pathname) ? 200 : 404;
+      const headers = {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': status === 404
+          ? 'no-cache, max-age=0'
+          : 'public, max-age=60, s-maxage=120',
+      };
+      if (status === 404) headers['X-Robots-Tag'] = 'noindex, nofollow';
+      return new Response(shellHtml, { status, headers });
     } catch (err) {
       console.error('SPA shell fetch error:', err);
       return new Response('Service temporarily unavailable', {

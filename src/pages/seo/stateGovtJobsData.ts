@@ -24,7 +24,7 @@ const STATE_DB_NAME_MAP: Record<string, string> = {
   'jammu-kashmir': 'Jammu & Kashmir',
   'dadra-nagar-haveli': 'Dadra & Nagar Haveli',
   'daman-diu': 'Daman & Diu',
-  'andaman-nicobar': 'Andaman & Nicobar',
+  'andaman-nicobar': 'Andaman & Nicobar Islands',
 };
 
 /**
@@ -89,6 +89,7 @@ function generateStateFAQs(state: string): FAQItem[] {
 }
 
 const STATE_LIST: [string, string][] = [
+  ['andaman-nicobar', 'Andaman & Nicobar Islands'],
   ['andhra-pradesh', 'Andhra Pradesh'],
   ['arunachal-pradesh', 'Arunachal Pradesh'],
   ['assam', 'Assam'],

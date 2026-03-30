@@ -365,23 +365,23 @@ async function handleQueueMode(db: any, triggerSource: string, startTime: number
 
   for (const item of pending) {
     try {
-      // Advisory lock skipped — pg_advisory_xact_lock is session-level and
-      // not effective via REST/PostgREST. Concurrency is managed by the
-      // claim-then-process pattern (status = 'processing') instead.
-
       const isStale = item.page_type.endsWith('-stale');
 
+      // Canonical cache key: DB triggers store bare slugs, but cache uses
+      // full public path. Prefix based on page_type before cache operations.
+      const canonicalSlug = toCanonicalCacheKey(item.slug, item.page_type);
+
       if (isStale) {
-        // Delete from cache
-        await db.from('seo_page_cache').delete().eq('slug', item.slug);
-        urlsToPurge.push(`${SITE_URL}/${item.slug}`);
+        // Delete from cache using canonical key
+        await db.from('seo_page_cache').delete().eq('slug', canonicalSlug);
+        urlsToPurge.push(`${SITE_URL}/${canonicalSlug}`);
         rebuilt++;
       } else {
         // Try to fetch page data from DB and rebuild
-        const result = await rebuildSingleSlug(db, item.slug, item.page_type);
+        const result = await rebuildSingleSlug(db, canonicalSlug, item.page_type);
         if (result === 'rebuilt') {
           rebuilt++;
-          urlsToPurge.push(`${SITE_URL}/${item.slug}`);
+          urlsToPurge.push(`${SITE_URL}/${canonicalSlug}`);
         } else if (result === 'skipped') {
           skipped++;
         } else {
@@ -476,10 +476,11 @@ async function handleFullMode(db: any, triggerSource: string, startTime: number,
     return jsonResponse({ error: `Failed to fetch DB rebuild targets: ${sourceError.message}` }, 500);
   }
 
+  // CANONICAL CACHE KEY: prefix bare DB slugs with their public URL path
   const targets = [
-    ...(blogRes.data || []).map((row: any) => ({ slug: row.slug, page_type: 'blog' })),
-    ...(examRes.data || []).map((row: any) => ({ slug: row.slug, page_type: 'govt-exam' })),
-    ...(newsRes.data || []).map((row: any) => ({ slug: row.slug, page_type: 'employment-news' })),
+    ...(blogRes.data || []).map((row: any) => ({ slug: `blog/${row.slug}`, page_type: 'blog' })),
+    ...(examRes.data || []).map((row: any) => ({ slug: `sarkari-jobs/${row.slug}`, page_type: 'govt-exam' })),
+    ...(newsRes.data || []).map((row: any) => ({ slug: `jobs/employment-news/${row.slug}`, page_type: 'employment-news' })),
   ];
 
   let rebuilt = 0, skipped = 0, failed = 0;
@@ -622,13 +623,47 @@ async function rebuildSingleSlug(db: any, slug: string, pageType: string, forceR
   return error ? 'failed' : 'rebuilt';
 }
 
-// ── DB Page Data Fetchers ────────────────────────────────────────────
+// ── Canonical Cache Key ──────────────────────────────────────────────
+// The seo_page_cache.slug must match the public URL path (without leading /).
+// The Worker's extractSlug() already produces this format.
+// DB triggers store bare slugs, so we prefix them here based on page_type.
 
-async function fetchBlogPageData(db: any, slug: string): Promise<PageData | null> {
+const CACHE_KEY_PREFIXES: Record<string, string> = {
+  'blog': 'blog/',
+  'blog-stale': 'blog/',
+  'employment-news': 'jobs/employment-news/',
+  'employment-news-stale': 'jobs/employment-news/',
+  'govt-exam': 'sarkari-jobs/',
+  'govt-exam-stale': 'sarkari-jobs/',
+};
+
+function toCanonicalCacheKey(bareSlug: string, pageType: string): string {
+  const prefix = CACHE_KEY_PREFIXES[pageType];
+  if (!prefix) return bareSlug; // programmatic pages are already canonical
+  // Avoid double-prefixing if slug already has the prefix
+  if (bareSlug.startsWith(prefix)) return bareSlug;
+  return prefix + bareSlug;
+}
+
+/** Strip the known prefix to get the bare DB slug for table queries */
+function toBareDbSlug(canonicalSlug: string, pageType: string): string {
+  const prefix = CACHE_KEY_PREFIXES[pageType];
+  if (prefix && canonicalSlug.startsWith(prefix)) {
+    return canonicalSlug.slice(prefix.length);
+  }
+  return canonicalSlug;
+}
+
+// ── DB Page Data Fetchers ────────────────────────────────────────────
+// These receive the CANONICAL slug (e.g. 'blog/my-post') and strip the
+// prefix before querying the DB table which stores bare slugs.
+
+async function fetchBlogPageData(db: any, canonicalSlug: string): Promise<PageData | null> {
+  const bareSlug = toBareDbSlug(canonicalSlug, 'blog');
   const { data } = await db
     .from('blog_posts')
     .select('title, slug, meta_title, meta_description, excerpt, content, published_at, updated_at, faq_schema, is_published')
-    .eq('slug', slug)
+    .eq('slug', bareSlug)
     .eq('is_published', true)
     .maybeSingle();
 
@@ -640,7 +675,7 @@ async function fetchBlogPageData(db: any, slug: string): Promise<PageData | null
   })) : [];
 
   return {
-    slug: data.slug,
+    slug: `blog/${data.slug}`,  // CANONICAL: full public path
     pageType: 'blog',
     title: data.meta_title || data.title,
     h1: data.title,
@@ -656,11 +691,12 @@ async function fetchBlogPageData(db: any, slug: string): Promise<PageData | null
   };
 }
 
-async function fetchGovtExamPageData(db: any, slug: string): Promise<PageData | null> {
+async function fetchGovtExamPageData(db: any, canonicalSlug: string): Promise<PageData | null> {
+  const bareSlug = toBareDbSlug(canonicalSlug, 'govt-exam');
   const { data } = await db
     .from('govt_exams')
     .select('exam_name, slug, meta_title, meta_description, seo_content, faqs, created_at, updated_at, conducting_body, department_slug')
-    .eq('slug', slug)
+    .eq('slug', bareSlug)
     .maybeSingle();
 
   if (!data) return null;
@@ -671,7 +707,7 @@ async function fetchGovtExamPageData(db: any, slug: string): Promise<PageData | 
   })).filter((f: any) => f.question && f.answer) : [];
 
   return {
-    slug: data.slug,
+    slug: `sarkari-jobs/${data.slug}`,  // CANONICAL: full public path
     pageType: 'govt-exam',
     title: data.meta_title || `${data.exam_name} Recruitment`,
     h1: data.meta_title || `${data.exam_name} Recruitment`,
@@ -687,18 +723,19 @@ async function fetchGovtExamPageData(db: any, slug: string): Promise<PageData | 
   };
 }
 
-async function fetchEmploymentNewsPageData(db: any, slug: string): Promise<PageData | null> {
+async function fetchEmploymentNewsPageData(db: any, canonicalSlug: string): Promise<PageData | null> {
+  const bareSlug = toBareDbSlug(canonicalSlug, 'employment-news');
   const { data } = await db
     .from('employment_news_jobs')
     .select('org_name, post, slug, meta_title, meta_description, enriched_description, description, published_at, faq_html, state')
-    .eq('slug', slug)
+    .eq('slug', bareSlug)
     .eq('status', 'published')
     .maybeSingle();
 
   if (!data) return null;
 
   return {
-    slug: data.slug,
+    slug: `jobs/employment-news/${data.slug}`,  // CANONICAL: full public path
     pageType: 'employment-news',
     title: data.meta_title || `${data.org_name || ''} ${data.post || ''} Recruitment`,
     h1: data.meta_title || `${data.org_name || ''} ${data.post || ''} Recruitment`,

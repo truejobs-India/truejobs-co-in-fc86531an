@@ -308,6 +308,65 @@ export async function collectAllPages(): Promise<PageData[]> {
     ],
   });
 
+  // Hub pages that were previously missing from cache generation
+  pages.push({
+    slug: 'sarkari-jobs', pageType: 'standalone',
+    title: 'Sarkari Jobs 2026 – Latest Government Job Notifications India',
+    h1: 'Sarkari Jobs 2026 – Latest Government Job Notifications',
+    metaDescription: 'Find latest Sarkari Jobs 2026. Browse all government job notifications, exam dates, eligibility, and apply online at TrueJobs.',
+    introContent: '<h2>Latest Sarkari Naukri Notifications</h2><p>Browse the latest government job notifications from central and state governments across India.</p>',
+    faqItems: [
+      { question: 'What are Sarkari Jobs?', answer: 'Sarkari Jobs are government jobs in India offered by central, state, and local government bodies through competitive exams and recruitment drives.' },
+    ],
+    ...DATE_DEFAULTS,
+    crossLinks: [
+      { label: 'All Sarkari Jobs', slug: 'all-sarkari-jobs' },
+      { label: 'Latest Govt Jobs', slug: 'latest-govt-jobs' },
+    ],
+  });
+
+  pages.push({
+    slug: 'latest-govt-jobs', pageType: 'standalone',
+    title: 'Latest Govt Jobs 2026 – New Government Job Openings Today',
+    h1: 'Latest Govt Jobs 2026',
+    metaDescription: 'Latest government job openings 2026. Find new Sarkari Naukri notifications, upcoming exams, and apply online at TrueJobs.',
+    introContent: '<h2>New Government Job Openings</h2><p>Stay updated with the latest government job notifications published today.</p>',
+    faqItems: [], ...DATE_DEFAULTS,
+    crossLinks: [
+      { label: 'Sarkari Jobs', slug: 'sarkari-jobs' },
+      { label: 'All Sarkari Jobs', slug: 'all-sarkari-jobs' },
+    ],
+  });
+
+  pages.push({
+    slug: 'private-jobs', pageType: 'standalone',
+    title: 'Private Jobs in India 2026 – Latest Private Sector Openings',
+    h1: 'Private Jobs in India 2026',
+    metaDescription: 'Find latest private sector job openings in India 2026. Browse IT, banking, healthcare, and more private jobs on TrueJobs.',
+    introContent: '<h2>Private Sector Job Openings</h2><p>Explore the latest private sector job opportunities across India from top companies.</p>',
+    faqItems: [], ...DATE_DEFAULTS,
+    crossLinks: [
+      { label: 'Browse All Jobs', slug: 'jobs' },
+      { label: 'Companies', slug: 'companies' },
+    ],
+  });
+
+  pages.push({
+    slug: 'jobs/employment-news', pageType: 'standalone',
+    title: 'Employment News – Latest Government Recruitment Notices India',
+    h1: 'Employment News – Government Recruitment Notices',
+    metaDescription: 'Browse latest Employment News government recruitment notices. Find official vacancies from Employment News weekly publication on TrueJobs.',
+    introContent: '<h2>Official Employment News Notices</h2><p>Browse government recruitment notices published in Employment News, India\'s premier recruitment publication.</p>',
+    faqItems: [
+      { question: 'What is Employment News?', answer: 'Employment News is an official weekly publication by the Government of India that carries advertisements for government job vacancies across central and state departments.' },
+    ],
+    ...DATE_DEFAULTS,
+    crossLinks: [
+      { label: 'Sarkari Jobs', slug: 'sarkari-jobs' },
+      { label: 'Latest Govt Jobs', slug: 'latest-govt-jobs' },
+    ],
+  });
+
   return pages;
 }
 

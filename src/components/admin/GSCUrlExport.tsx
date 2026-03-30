@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Download, FileSpreadsheet, Loader2, CheckCircle, Globe } from 'lucide-react';
 import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
+import { GSCAllUrlsExport } from './GSCAllUrlsExport';
 import { INSURANCE_CITIES, INSURANCE_STATES } from '@/pages/jobs/cityData';
 import { NEAR_ME_PAGES } from '@/pages/jobs/nearMeData';
 import { CITY_JOBS_DATA } from '@/pages/seo/cityJobsData';
@@ -260,6 +261,14 @@ export function GSCUrlExport() {
         <p className="text-xs text-muted-foreground mt-3">
           All SEO data files (cities, categories, industries, govt jobs) are automatically included in exports.
         </p>
+
+        <div className="mt-4 pt-4 border-t">
+          <p className="text-sm font-medium mb-2">Comprehensive Export</p>
+          <p className="text-xs text-muted-foreground mb-3">
+            Download every URL on the website — static pages, programmatic SEO, database-driven dynamic pages, excluded routes, and sitemaps — in a multi-sheet Excel file.
+          </p>
+          <GSCAllUrlsExport />
+        </div>
       </CardContent>
     </Card>
   );

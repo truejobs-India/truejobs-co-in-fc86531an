@@ -171,6 +171,9 @@ export function SEOCacheManager() {
             SEO Static HTML Cache
           </CardTitle>
           <div className="flex items-center gap-2 flex-wrap">
+            {rebuildProgress && (
+              <span className="text-xs text-muted-foreground font-mono">{rebuildProgress}</span>
+            )}
             <Button size="sm" variant="outline" onClick={refresh} className="gap-1 h-8">
               <RefreshCw className="h-3 w-3" /> Refresh
             </Button>

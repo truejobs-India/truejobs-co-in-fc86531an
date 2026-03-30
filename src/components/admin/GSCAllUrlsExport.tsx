@@ -135,25 +135,25 @@ async function buildDBRows(): Promise<Row[]> {
   for (const j of jobs || []) rows.push(r(`${SITE}/jobs/${j.id}`, 'Job Listing', 'Dynamic', 'index, follow', 'sitemap-jobs.xml', 'High', ''));
 
   // Companies
-  const { data: companies } = await supabase.from('companies').select('slug').eq('is_approved', true);
+  const { data: companies } = await supabase.from('companies').select('slug').eq('is_approved', true) as { data: { slug: string }[] | null };
   for (const c of companies || []) rows.push(r(`${SITE}/companies/${c.slug}`, 'Company', 'Dynamic', 'index, follow', 'sitemap-pages.xml', 'Medium', ''));
 
   // Govt exams
-  const { data: exams } = await supabase.from('govt_exams').select('slug').eq('is_published', true);
+  const { data: exams } = await supabase.from('govt_exams').select('slug').eq('is_published', true) as { data: { slug: string }[] | null };
   for (const e of exams || []) rows.push(r(`${SITE}/sarkari-jobs/${e.slug}`, 'Govt Exam', 'Dynamic', 'index, follow', 'sitemap-jobs.xml', 'High', ''));
 
   // Employment news
-  const { data: empNews } = await supabase.from('employment_news_jobs').select('slug').eq('status', 'published');
+  const { data: empNews } = await supabase.from('employment_news_jobs').select('slug').eq('status', 'published') as { data: { slug: string | null }[] | null };
   for (const e of empNews || []) {
     if (e.slug) rows.push(r(`${SITE}/jobs/employment-news/${e.slug}`, 'Employment News', 'Dynamic', 'index, follow', 'sitemap-jobs.xml', 'Medium', ''));
   }
 
   // Custom pages
-  const { data: custom } = await supabase.from('custom_pages').select('slug, page_type').eq('is_published', true);
+  const { data: custom } = await supabase.from('custom_pages').select('slug, page_type').eq('is_published', true) as { data: { slug: string; page_type: string | null }[] | null };
   for (const p of custom || []) rows.push(r(`${SITE}/${p.slug}`, `Custom (${p.page_type || 'page'})`, 'Dynamic', 'index, follow', 'sitemap-pages.xml', 'Medium', ''));
 
   // PDF resources
-  const { data: resources } = await supabase.from('pdf_resources').select('slug, resource_type').eq('is_published', true);
+  const { data: resources } = await supabase.from('pdf_resources').select('slug, resource_type').eq('is_published', true) as { data: { slug: string; resource_type: string }[] | null };
   for (const res of resources || []) {
     const prefix = res.resource_type === 'book' ? 'books' : res.resource_type === 'guide' ? 'guides' : res.resource_type === 'previous-year-paper' ? 'previous-year-papers' : 'sample-papers';
     rows.push(r(`${SITE}/${prefix}/${res.slug}`, `Resource (${res.resource_type})`, 'Dynamic', 'index, follow', 'sitemap-resources.xml', 'Medium', ''));

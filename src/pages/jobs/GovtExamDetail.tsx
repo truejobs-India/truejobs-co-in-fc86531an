@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { Helmet } from 'react-helmet-async';
-import { PopularExamsBlock } from '@/pages/govt/components/PopularExamsBlock';
+
 import { RelatedExamLinks } from '@/pages/govt/components/RelatedExamLinks';
 import { QuickLinksBlock } from '@/components/govt/QuickLinksBlock';
 import { ContextualLinks } from '@/components/govt/ContextualLinks';

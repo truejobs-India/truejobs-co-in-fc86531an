@@ -476,10 +476,11 @@ async function handleFullMode(db: any, triggerSource: string, startTime: number,
     return jsonResponse({ error: `Failed to fetch DB rebuild targets: ${sourceError.message}` }, 500);
   }
 
+  // CANONICAL CACHE KEY: prefix bare DB slugs with their public URL path
   const targets = [
-    ...(blogRes.data || []).map((row: any) => ({ slug: row.slug, page_type: 'blog' })),
-    ...(examRes.data || []).map((row: any) => ({ slug: row.slug, page_type: 'govt-exam' })),
-    ...(newsRes.data || []).map((row: any) => ({ slug: row.slug, page_type: 'employment-news' })),
+    ...(blogRes.data || []).map((row: any) => ({ slug: `blog/${row.slug}`, page_type: 'blog' })),
+    ...(examRes.data || []).map((row: any) => ({ slug: `sarkari-jobs/${row.slug}`, page_type: 'govt-exam' })),
+    ...(newsRes.data || []).map((row: any) => ({ slug: `jobs/employment-news/${row.slug}`, page_type: 'employment-news' })),
   ];
 
   let rebuilt = 0, skipped = 0, failed = 0;

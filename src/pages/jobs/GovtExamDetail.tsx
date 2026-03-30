@@ -10,15 +10,17 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { LastUpdatedBadge } from '@/pages/seo/components/LastUpdatedBadge';
 import {
-  ExternalLink, Users, Calendar, Clock, Banknote, GraduationCap,
-  FileText, Download, BookOpen, ChevronRight, Share2, Bookmark, ArrowRight
+  ExternalLink, Users, Calendar, Banknote, GraduationCap,
+  FileText, Download, ChevronRight, Share2, Bookmark, ArrowRight
 } from 'lucide-react';
 import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { Helmet } from 'react-helmet-async';
-import { PopularExamsBlock } from '@/pages/govt/components/PopularExamsBlock';
+
 import { RelatedExamLinks } from '@/pages/govt/components/RelatedExamLinks';
 import { QuickLinksBlock } from '@/components/govt/QuickLinksBlock';
 import { ContextualLinks } from '@/components/govt/ContextualLinks';
+import { isDeptSlug } from '@/lib/deptMapping';
+import SarkariJobs from './SarkariJobs';
 
 interface GovtExam {
   id: string;
@@ -65,32 +67,49 @@ interface GovtExam {
 
 export default function GovtExamDetail() {
   const { slug } = useParams<{ slug: string }>();
+
+  // --- CRITICAL FIX: intercept valid department slugs ---
+  if (slug && isDeptSlug(slug)) {
+    return <SarkariJobs presetDept={slug} />;
+  }
+
+  return <ExamDetailView slug={slug} />;
+}
+
+function ExamDetailView({ slug }: { slug: string | undefined }) {
   const [exam, setExam] = useState<GovtExam | null>(null);
   const [loading, setLoading] = useState(true);
-  const [relatedExams, setRelatedExams] = useState<any[]>([]);
+  const [empNewsJob, setEmpNewsJob] = useState<any>(null);
 
   useEffect(() => {
     const fetchExam = async () => {
       if (!slug) return;
+
+      // Try govt_exams first
       const { data } = await supabase
         .from('govt_exams')
         .select('*')
         .eq('slug', slug)
         .single();
-      const exam = data as unknown as GovtExam | null;
-      setExam(exam);
-      setLoading(false);
 
-      if (exam) {
-        const { data: related } = await supabase
-          .from('govt_exams')
-          .select('id, exam_name, slug, total_vacancies, status')
-          .eq('status', 'active')
-          .neq('id', exam.id)
-          .eq('exam_category', exam.exam_category)
-          .limit(4);
-        setRelatedExams((related as unknown as any[]) || []);
+      if (data) {
+        setExam(data as unknown as GovtExam);
+        setLoading(false);
+        return;
       }
+
+      // Fallback: try employment_news_jobs by slug
+      const { data: empData } = await supabase
+        .from('employment_news_jobs')
+        .select('*')
+        .eq('slug', slug)
+        .eq('status', 'published')
+        .single();
+
+      if (empData) {
+        setEmpNewsJob(empData);
+      }
+      setLoading(false);
     };
     fetchExam();
   }, [slug]);
@@ -106,12 +125,32 @@ export default function GovtExamDetail() {
     );
   }
 
+  // If found in employment_news_jobs, redirect to correct detail page
+  if (empNewsJob && empNewsJob.slug) {
+    return (
+      <Layout>
+        <div className="container mx-auto px-4 py-16 text-center">
+          <h1 className="text-2xl font-bold mb-4">{empNewsJob.org_name || 'Government Job'}</h1>
+          <p className="text-muted-foreground mb-4">This job listing is available at a different URL.</p>
+          <Link to={`/jobs/employment-news/${empNewsJob.slug}`} className="text-primary hover:underline font-medium">
+            View Job Details →
+          </Link>
+        </div>
+      </Layout>
+    );
+  }
+
+  // Not found anywhere
   if (!exam) {
     return (
       <Layout>
         <div className="container mx-auto px-4 py-16 text-center">
-          <h1 className="text-2xl font-bold mb-4">Exam Not Found</h1>
-          <Link to="/sarkari-jobs" className="text-primary hover:underline">← Back to Sarkari Jobs</Link>
+          <h1 className="text-2xl font-bold mb-4">Job Not Found</h1>
+          <p className="text-muted-foreground mb-4">The job or exam you're looking for is not available.</p>
+          <div className="flex gap-3 justify-center">
+            <Link to="/sarkari-jobs" className="text-primary hover:underline">Browse Sarkari Jobs →</Link>
+            <Link to="/jobs/employment-news" className="text-primary hover:underline">Employment News Jobs →</Link>
+          </div>
         </div>
       </Layout>
     );
@@ -122,7 +161,6 @@ export default function GovtExamDetail() {
   const posts = Array.isArray(exam.posts) ? exam.posts : [];
   const examPattern = Array.isArray(exam.exam_pattern) ? exam.exam_pattern : [];
 
-  // JSON-LD schemas
   const jobPostingSchema = {
     '@context': 'https://schema.org',
     '@type': 'JobPosting',
@@ -184,7 +222,6 @@ export default function GovtExamDetail() {
       </Helmet>
 
       <div className="container mx-auto px-4 py-6">
-        {/* Breadcrumb */}
         <nav className="flex items-center gap-1 text-sm text-muted-foreground mb-4">
           <Link to="/" className="hover:text-foreground">Home</Link>
           <ChevronRight className="h-3 w-3" />
@@ -193,7 +230,6 @@ export default function GovtExamDetail() {
           <span className="text-foreground">{exam.exam_name}</span>
         </nav>
 
-        {/* 1. Quick Summary Card */}
         <Card className="mb-6">
           <CardContent className="p-6">
             <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
@@ -251,12 +287,10 @@ export default function GovtExamDetail() {
           <AdPlaceholder variant="banner" />
         </div>
 
-        {/* 2. Last Updated Badge */}
         <div className="mb-6">
           <LastUpdatedBadge date={exam.updated_at.split('T')[0]} />
         </div>
 
-        {/* 3. Eligibility */}
         {(exam.age_limit || exam.qualification_required) && (
           <Card className="mb-6">
             <CardHeader><CardTitle>Eligibility Criteria</CardTitle></CardHeader>
@@ -276,7 +310,6 @@ export default function GovtExamDetail() {
           </Card>
         )}
 
-        {/* 4. Vacancy Breakdown */}
         {posts.length > 0 && (
           <Card className="mb-6">
             <CardHeader><CardTitle>Vacancy Breakdown</CardTitle></CardHeader>
@@ -303,7 +336,6 @@ export default function GovtExamDetail() {
           </Card>
         )}
 
-        {/* 5. Application Fee */}
         {exam.application_fee && (
           <Card className="mb-6">
             <CardHeader><CardTitle>Application Fee</CardTitle></CardHeader>
@@ -311,7 +343,6 @@ export default function GovtExamDetail() {
           </Card>
         )}
 
-        {/* 6. Selection Process */}
         {exam.selection_stages && (
           <Card className="mb-6">
             <CardHeader><CardTitle>Selection Process</CardTitle></CardHeader>
@@ -328,7 +359,6 @@ export default function GovtExamDetail() {
           </Card>
         )}
 
-        {/* 7. Exam Pattern */}
         {examPattern.length > 0 && (
           <Card className="mb-6">
             <CardHeader><CardTitle>Exam Pattern</CardTitle></CardHeader>
@@ -357,7 +387,6 @@ export default function GovtExamDetail() {
           </Card>
         )}
 
-        {/* 8. How to Apply */}
         {exam.how_to_apply && (
           <Card className="mb-6">
             <CardHeader><CardTitle>How to Apply</CardTitle></CardHeader>
@@ -365,7 +394,6 @@ export default function GovtExamDetail() {
           </Card>
         )}
 
-        {/* 9. Important Links */}
         <Card className="mb-6">
           <CardHeader><CardTitle>Important Links</CardTitle></CardHeader>
           <CardContent>
@@ -394,7 +422,6 @@ export default function GovtExamDetail() {
           </CardContent>
         </Card>
 
-        {/* 10. FAQs */}
         {faqs.length > 0 && (
           <Card className="mb-6">
             <CardHeader><CardTitle>Frequently Asked Questions</CardTitle></CardHeader>
@@ -411,56 +438,18 @@ export default function GovtExamDetail() {
           </Card>
         )}
 
-        {/* 11. SEO Content */}
         {exam.seo_content && (
           <Card className="mb-6">
             <CardContent className="p-6">
-              <div className="prose prose-neutral max-w-none text-muted-foreground [&_h2]:text-foreground [&_h3]:text-foreground" dangerouslySetInnerHTML={{ __html: exam.seo_content }} />
+              <div className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: exam.seo_content }} />
             </CardContent>
           </Card>
         )}
 
-        {/* 12. Quick Links */}
-        <QuickLinksBlock
-          departmentSlug={exam.department_slug}
-          states={exam.states}
-          qualificationRequired={exam.qualification_required}
-        />
-
-        {/* 13. Contextual Combo Links */}
-        <ContextualLinks
-          departmentSlug={exam.department_slug}
-          states={exam.states}
-        />
-
-        {/* 14. Related Exam Links (authority + tools + guides) */}
-        {exam.department_slug && (
-          <RelatedExamLinks
-            departmentSlug={exam.department_slug}
-          />
-        )}
-
-        {/* 15. Related Jobs */}
-        {relatedExams.length > 0 && (
-          <Card className="mb-6">
-            <CardHeader><CardTitle>Related Government Jobs</CardTitle></CardHeader>
-            <CardContent>
-              <div className="grid sm:grid-cols-2 gap-3">
-                {relatedExams.map((r: any) => (
-                  <Link key={r.id} to={`/sarkari-jobs/${r.slug}`} className="p-3 rounded-lg border border-border hover:bg-secondary/50 transition-colors">
-                    <h3 className="text-sm font-medium text-foreground">{r.exam_name}</h3>
-                    <div className="flex gap-2 mt-1 text-xs text-muted-foreground">
-                      {r.total_vacancies > 0 && <span>{r.total_vacancies} vacancies</span>}
-                      <span>{r.status.replace(/_/g, ' ')}</span>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
+        <RelatedExamLinks departmentSlug={exam.department_slug || ''} />
+        <QuickLinksBlock />
+        <ContextualLinks departmentSlug={exam.department_slug} states={exam.states} />
       </div>
-      <PopularExamsBlock departmentSlug={exam?.department_slug || undefined} />
     </Layout>
   );
 }

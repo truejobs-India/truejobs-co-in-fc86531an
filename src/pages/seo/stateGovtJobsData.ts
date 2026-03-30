@@ -16,6 +16,25 @@ function titleCase(s: string): string {
   return s.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
+/**
+ * Manual overrides for state names that can't be derived by simple title-casing.
+ * Maps the URL slug portion (without "govt-jobs-") to the exact DB `state` column value.
+ */
+const STATE_DB_NAME_MAP: Record<string, string> = {
+  'jammu-kashmir': 'Jammu & Kashmir',
+  'dadra-nagar-haveli': 'Dadra & Nagar Haveli',
+  'daman-diu': 'Daman & Diu',
+  'andaman-nicobar': 'Andaman & Nicobar',
+};
+
+/**
+ * Returns the DB-compatible state name for querying employment_news_jobs.state
+ */
+export function getStateDBName(stateSlug: string): string {
+  if (STATE_DB_NAME_MAP[stateSlug]) return STATE_DB_NAME_MAP[stateSlug];
+  return titleCase(stateSlug);
+}
+
 function buildStateConfig(stateSlug: string, stateName: string): StateGovtJobPageConfig {
   const slug = `govt-jobs-${stateSlug}`;
   const dbState = stateSlug.replace(/-/g, ' ');
@@ -129,7 +148,5 @@ export function getAllStateGovtSlugs(): string[] {
 /**
  * CTR Override Map — per-slug overrides for metaTitle, metaDescription, or introContent.
  * Add entries here when GSC data shows weak CTR for specific states.
- * Example:
- * 'govt-jobs-uttar-pradesh': { metaTitle: 'UP Govt Jobs 2026 – 5000+ Vacancies Open Now' },
  */
 const STATE_META_OVERRIDES: Record<string, Partial<Pick<StateGovtJobPageConfig, 'metaTitle' | 'metaDescription' | 'introContent'>>> = {};

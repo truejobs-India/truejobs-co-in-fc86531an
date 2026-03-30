@@ -4,36 +4,35 @@ import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowRight, Clock, Users, Flame } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
+import { ArrowRight, Users, MapPin } from 'lucide-react';
 
-interface GovtExamCard {
+interface GovtJobCard {
   id: string;
-  exam_name: string;
-  slug: string;
-  conducting_body: string | null;
-  total_vacancies: number;
-  application_end: string | null;
-  status: string;
-  is_hot: boolean;
-  is_featured: boolean;
-  salary_range: string | null;
-  updated_at: string;
+  org_name: string | null;
+  post: string | null;
+  slug: string | null;
+  vacancies: number | null;
+  salary: string | null;
+  state: string | null;
+  job_category: string | null;
+  last_date: string | null;
+  last_date_resolved: string | null;
+  published_at: string | null;
 }
 
 export function LatestGovtJobs() {
-  const [exams, setExams] = useState<GovtExamCard[]>([]);
+  const [jobs, setJobs] = useState<GovtJobCard[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetch = async () => {
       const { data } = await supabase
-        .from('govt_exams')
-        .select('id, exam_name, slug, conducting_body, total_vacancies, application_end, status, is_hot, is_featured, salary_range, updated_at')
-        .eq('status', 'active')
-        .order('created_at', { ascending: false })
+        .from('employment_news_jobs')
+        .select('id, org_name, post, slug, vacancies, salary, state, job_category, last_date, last_date_resolved, published_at')
+        .eq('status', 'published')
+        .order('published_at', { ascending: false, nullsFirst: false })
         .limit(8);
-      setExams((data as unknown as GovtExamCard[]) || []);
+      setJobs((data as unknown as GovtJobCard[]) || []);
       setLoading(false);
     };
     fetch();
@@ -54,7 +53,7 @@ export function LatestGovtJobs() {
     );
   }
 
-  if (exams.length === 0) return null;
+  if (jobs.length === 0) return null;
 
   return (
     <section className="py-8">
@@ -66,35 +65,36 @@ export function LatestGovtJobs() {
           </Link>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {exams.map(exam => (
-            <Link key={exam.id} to={`/sarkari-jobs/${exam.slug}`}>
+          {jobs.map(job => (
+            <Link key={job.id} to={job.slug ? `/jobs/employment-news/${job.slug}` : '#'}>
               <Card className="h-full hover:shadow-md transition-shadow border-border">
                 <CardContent className="p-4">
-                  <div className="flex items-start justify-between gap-2 mb-2">
-                    <h3 className="text-sm font-semibold text-foreground line-clamp-2">{exam.exam_name}</h3>
-                    {exam.is_hot && <Flame className="h-4 w-4 text-orange-500 shrink-0" />}
-                  </div>
-                  {exam.conducting_body && (
-                    <p className="text-xs text-muted-foreground mb-2">{exam.conducting_body}</p>
+                  <h3 className="text-sm font-semibold text-foreground line-clamp-2 mb-1">
+                    {job.org_name || 'Government Organization'}
+                  </h3>
+                  {job.post && (
+                    <p className="text-xs text-muted-foreground mb-2 line-clamp-1">{job.post}</p>
                   )}
                   <div className="flex items-center gap-3 text-xs text-muted-foreground mb-2">
-                    {exam.total_vacancies > 0 && (
+                    {job.vacancies && job.vacancies > 0 && (
                       <span className="flex items-center gap-1">
-                        <Users className="h-3 w-3" /> {exam.total_vacancies.toLocaleString()} posts
+                        <Users className="h-3 w-3" /> {job.vacancies.toLocaleString()} posts
                       </span>
                     )}
-                    {exam.salary_range && (
-                      <span>{exam.salary_range}</span>
+                    {job.state && (
+                      <span className="flex items-center gap-1">
+                        <MapPin className="h-3 w-3" /> {job.state}
+                      </span>
                     )}
                   </div>
-                  {exam.application_end && (
+                  {(job.last_date_resolved || job.last_date) && (
                     <Badge variant="outline" className="text-xs mb-2">
-                      Last Date: {exam.application_end}
+                      Last Date: {job.last_date_resolved || job.last_date}
                     </Badge>
                   )}
-                  <p className="text-[10px] text-muted-foreground flex items-center gap-1 mt-2">
-                    <Clock className="h-3 w-3" /> Updated: {formatDistanceToNow(new Date(exam.updated_at), { addSuffix: true })}
-                  </p>
+                  {job.job_category && (
+                    <p className="text-[10px] text-muted-foreground mt-1">{job.job_category}</p>
+                  )}
                 </CardContent>
               </Card>
             </Link>

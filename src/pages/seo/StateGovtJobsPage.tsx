@@ -15,7 +15,7 @@ import { PopularExamsBlock } from '@/pages/govt/components/PopularExamsBlock';
 import { EnrichedSection } from '@/components/govt/EnrichedSection';
 import { useEnrichmentOverlay } from '@/hooks/useEnrichmentOverlay';
 import { deduplicateFaqs, type FAQItem } from '@/lib/faqDedup';
-import { format, differenceInDays } from 'date-fns';
+import { differenceInDays } from 'date-fns';
 
 const SITE_URL = 'https://truejobs.co.in';
 

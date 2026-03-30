@@ -697,6 +697,13 @@ function toCanonicalCacheKey(bareSlug: string, pageType: string): string {
 }
 
 /** Strip the known prefix to get the bare DB slug for table queries */
+function inferPageTypeFromSlug(slug: string): string {
+  if (slug.startsWith('blog/')) return 'blog';
+  if (slug.startsWith('sarkari-jobs/')) return 'govt-exam';
+  if (slug.startsWith('jobs/employment-news/')) return 'employment-news';
+  return 'manual';
+}
+
 function toBareDbSlug(canonicalSlug: string, pageType: string): string {
   const prefix = CACHE_KEY_PREFIXES[pageType];
   if (prefix && canonicalSlug.startsWith(prefix)) {

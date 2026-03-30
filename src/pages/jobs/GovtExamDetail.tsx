@@ -10,8 +10,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { LastUpdatedBadge } from '@/pages/seo/components/LastUpdatedBadge';
 import {
-  ExternalLink, Users, Calendar, Clock, Banknote, GraduationCap,
-  FileText, Download, BookOpen, ChevronRight, Share2, Bookmark, ArrowRight
+  ExternalLink, Users, Calendar, Banknote, GraduationCap,
+  FileText, Download, ChevronRight, Share2, Bookmark, ArrowRight
 } from 'lucide-react';
 import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { Helmet } from 'react-helmet-async';

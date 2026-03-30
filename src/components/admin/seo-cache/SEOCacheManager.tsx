@@ -40,6 +40,7 @@ export function SEOCacheManager() {
   const [previewPage, setPreviewPage] = useState<CachePage | null>(null);
   const [validatePage, setValidatePage] = useState<CachePage | null>(null);
   const [isRebuilding, setIsRebuilding] = useState(false);
+  const [rebuildProgress, setRebuildProgress] = useState('');
   const [purgeConfirmText, setPurgeConfirmText] = useState('');
 
   const handleFiltersChange = (f: CacheFiltersState) => {

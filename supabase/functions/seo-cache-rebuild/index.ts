@@ -323,7 +323,18 @@ Deno.serve(async (req) => {
         return jsonResponse({ error: 'No slugs provided' }, 400);
       }
       return await handleSlugsMode(db, slugs, triggerSource, startTime, forceRebuild);
+    } else if (mode === 'full-collect') {
+      return await handleFullCollect(db);
     } else if (mode === 'full') {
+      // Legacy: kept for backward compat but now batched from client
+      const slugs: string[] = body.slugs || [];
+      const batchSize = body.batchSize || 50;
+      const offset = body.offset || 0;
+      if (slugs.length > 0) {
+        // Client-driven batched full rebuild
+        return await handleSlugsMode(db, slugs, triggerSource, startTime, forceRebuild);
+      }
+      // Fallback: old full mode (will likely CPU-timeout on large datasets)
       return await handleFullMode(db, triggerSource, startTime, forceRebuild);
     } else if (mode === 'purge-all-cf') {
       return await handlePurgeAllCF(db, triggerSource, startTime);
@@ -475,6 +486,29 @@ async function fetchAllRows(query: any): Promise<{ data: any[]; error: any }> {
     from += PAGE_SIZE;
   }
   return { data: allRows, error: null };
+}
+
+// ── Full Collect Mode (returns slug list only — no CPU-heavy work) ───
+
+async function handleFullCollect(db: any) {
+  const [blogRes, examRes, newsRes] = await Promise.all([
+    fetchAllRows(db.from('blog_posts').select('slug').eq('is_published', true).not('slug', 'is', null)),
+    fetchAllRows(db.from('govt_exams').select('slug').not('slug', 'is', null)),
+    fetchAllRows(db.from('employment_news_jobs').select('slug').eq('status', 'published').not('slug', 'is', null)),
+  ]);
+
+  const sourceError = blogRes.error || examRes.error || newsRes.error;
+  if (sourceError) {
+    return jsonResponse({ error: `Failed to fetch slugs: ${sourceError.message}` }, 500);
+  }
+
+  const slugs = [
+    ...(blogRes.data || []).map((r: any) => `blog/${r.slug}`),
+    ...(examRes.data || []).map((r: any) => `sarkari-jobs/${r.slug}`),
+    ...(newsRes.data || []).map((r: any) => `jobs/employment-news/${r.slug}`),
+  ];
+
+  return jsonResponse({ success: true, total: slugs.length, slugs });
 }
 
 // ── Full Mode ────────────────────────────────────────────────────────

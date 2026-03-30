@@ -40,6 +40,7 @@ export function SEOCacheManager() {
   const [previewPage, setPreviewPage] = useState<CachePage | null>(null);
   const [validatePage, setValidatePage] = useState<CachePage | null>(null);
   const [isRebuilding, setIsRebuilding] = useState(false);
+  const [rebuildProgress, setRebuildProgress] = useState('');
   const [purgeConfirmText, setPurgeConfirmText] = useState('');
 
   const handleFiltersChange = (f: CacheFiltersState) => {
@@ -89,20 +90,51 @@ export function SEOCacheManager() {
 
   const handleRebuildAll = async (force = false) => {
     setIsRebuilding(true);
+    setRebuildProgress('Collecting slugs...');
     try {
-      const { data, error } = await supabase.functions.invoke('seo-cache-rebuild', {
-        body: { mode: 'full', trigger: 'admin-ui', ...(force ? { force: true } : {}) },
+      // Step 1: Collect all slugs (lightweight call)
+      const { data: collectData, error: collectError } = await supabase.functions.invoke('seo-cache-rebuild', {
+        body: { mode: 'full-collect', trigger: 'admin-ui' },
       });
-      if (error) throw error;
+      if (collectError) throw collectError;
+      const allSlugs: string[] = collectData?.slugs || [];
+      if (allSlugs.length === 0) {
+        toast({ title: 'No pages found', description: 'No DB-sourced pages to rebuild.' });
+        return;
+      }
+
+      // Step 2: Process in batches of 50
+      const BATCH_SIZE = 50;
+      let totalRebuilt = 0, totalSkipped = 0, totalFailed = 0;
+      const totalBatches = Math.ceil(allSlugs.length / BATCH_SIZE);
+
+      for (let i = 0; i < allSlugs.length; i += BATCH_SIZE) {
+        const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+        setRebuildProgress(`Batch ${batchNum}/${totalBatches} (${i}/${allSlugs.length} pages)...`);
+        const batch = allSlugs.slice(i, i + BATCH_SIZE);
+        const { data, error } = await supabase.functions.invoke('seo-cache-rebuild', {
+          body: { mode: 'slugs', slugs: batch, trigger: 'admin-ui', force },
+        });
+        if (error) {
+          console.error(`Batch ${batchNum} failed:`, error);
+          totalFailed += batch.length;
+          continue;
+        }
+        totalRebuilt += data?.rebuilt ?? 0;
+        totalSkipped += data?.skipped ?? 0;
+        totalFailed += data?.failed ?? 0;
+      }
+
       toast({
         title: force ? 'Force Rebuild Complete' : 'Full Rebuild Complete',
-        description: `Rebuilt: ${data?.rebuilt ?? 0}, Skipped: ${data?.skipped ?? 0}, Failed: ${data?.failed ?? 0}`,
+        description: `Rebuilt: ${totalRebuilt}, Skipped: ${totalSkipped}, Failed: ${totalFailed}`,
       });
       refresh();
     } catch (err: any) {
       toast({ title: 'Rebuild Failed', description: err.message, variant: 'destructive' });
     } finally {
       setIsRebuilding(false);
+      setRebuildProgress('');
     }
   };
 
@@ -139,6 +171,9 @@ export function SEOCacheManager() {
             SEO Static HTML Cache
           </CardTitle>
           <div className="flex items-center gap-2 flex-wrap">
+            {rebuildProgress && (
+              <span className="text-xs text-muted-foreground font-mono">{rebuildProgress}</span>
+            )}
             <Button size="sm" variant="outline" onClick={refresh} className="gap-1 h-8">
               <RefreshCw className="h-3 w-3" /> Refresh
             </Button>

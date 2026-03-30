@@ -5,8 +5,7 @@ import { Layout } from '@/components/layout/Layout';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Card, CardContent } from '@/components/ui/card';
-import { Search, Users, ArrowRight, Landmark } from 'lucide-react';
+import { Search, Users, ArrowRight, Landmark, MapPin } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { supabase } from '@/integrations/supabase/client';
@@ -15,39 +14,61 @@ import { buildBreadcrumbSchema } from './schemas/seoPageSchemas';
 
 const SITE_URL = 'https://truejobs.co.in';
 
+interface EmpNewsJob {
+  id: string;
+  org_name: string | null;
+  post: string | null;
+  slug: string | null;
+  vacancies: number | null;
+  state: string | null;
+  job_category: string | null;
+  published_at: string | null;
+}
+
 export default function AllSarkariJobsHub() {
   const [search, setSearch] = useState('');
 
-  const { data: exams, isLoading } = useQuery({
+  const { data: jobs, isLoading } = useQuery({
     queryKey: ['all-sarkari-index'],
     queryFn: async () => {
-      const { data } = await supabase
-        .from('govt_exams')
-        .select('id, exam_name, slug, conducting_body, department_slug, total_vacancies, status, application_end, updated_at')
-        .order('exam_name', { ascending: true })
-        .limit(500);
-      return (data as any[]) || [];
+      // Fetch all published jobs (paginated to handle >1000)
+      const PAGE = 1000;
+      let all: any[] = [];
+      let from = 0;
+      while (true) {
+        const { data } = await supabase
+          .from('employment_news_jobs')
+          .select('id, org_name, post, slug, vacancies, state, job_category, published_at')
+          .eq('status', 'published')
+          .order('org_name', { ascending: true })
+          .range(from, from + PAGE - 1);
+        if (!data || data.length === 0) break;
+        all = all.concat(data);
+        if (data.length < PAGE) break;
+        from += PAGE;
+      }
+      return all as EmpNewsJob[];
     },
     staleTime: 10 * 60 * 1000,
   });
 
   const filtered = useMemo(() => {
-    if (!exams) return [];
-    if (!search.trim()) return exams;
+    if (!jobs) return [];
+    if (!search.trim()) return jobs;
     const q = search.toLowerCase();
-    return exams.filter((e: any) =>
-      e.exam_name.toLowerCase().includes(q) ||
-      (e.conducting_body || '').toLowerCase().includes(q)
+    return jobs.filter((j) =>
+      (j.org_name || '').toLowerCase().includes(q) ||
+      (j.post || '').toLowerCase().includes(q)
     );
-  }, [exams, search]);
+  }, [jobs, search]);
 
-  // Group by first letter
+  // Group by org_name first letter
   const grouped = useMemo(() => {
-    const map: Record<string, any[]> = {};
-    for (const exam of filtered) {
-      const letter = exam.exam_name[0]?.toUpperCase() || '#';
+    const map: Record<string, EmpNewsJob[]> = {};
+    for (const job of filtered) {
+      const letter = (job.org_name || '#')[0]?.toUpperCase() || '#';
       if (!map[letter]) map[letter] = [];
-      map[letter].push(exam);
+      map[letter].push(job);
     }
     return Object.entries(map).sort(([a], [b]) => a.localeCompare(b));
   }, [filtered]);
@@ -57,21 +78,11 @@ export default function AllSarkariJobsHub() {
     { name: 'All Sarkari Jobs', url: '/all-sarkari-jobs' },
   ]);
 
-  const statusColor = (s: string) => {
-    switch (s) {
-      case 'active': return 'bg-green-100 text-green-800';
-      case 'upcoming': return 'bg-blue-100 text-blue-800';
-      case 'result_declared': return 'bg-purple-100 text-purple-800';
-      case 'admit_card_released': return 'bg-orange-100 text-orange-800';
-      default: return 'bg-muted text-muted-foreground';
-    }
-  };
-
   return (
     <Layout>
       <Helmet>
         <title>All Sarkari Jobs A-Z Index — Complete Government Job Directory | TrueJobs</title>
-        <meta name="description" content="Complete A-Z index of all government job notifications in India. Browse SSC, Railway, Banking, UPSC, Defence & State govt exams. Find and apply instantly." />
+        <meta name="description" content="Complete A-Z index of all government job notifications in India. Browse SSC, Railway, Banking, UPSC, Defence & State govt jobs. Find and apply instantly." />
         <link rel="canonical" href={`${SITE_URL}/all-sarkari-jobs`} />
         <script type="application/ld+json">{JSON.stringify(breadcrumbSchema)}</script>
       </Helmet>
@@ -83,12 +94,12 @@ export default function AllSarkariJobsHub() {
             All Sarkari Jobs — A to Z Directory
           </h1>
           <p className="text-sm opacity-80 max-w-2xl mx-auto mb-6">
-            Complete index of government job notifications. Search, browse, and apply.
+            Complete index of government job notifications by organization. Search, browse, and apply.
           </p>
           <div className="max-w-lg mx-auto relative">
             <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search exams..."
+              placeholder="Search organizations or posts..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-10 bg-white text-foreground"
@@ -109,13 +120,12 @@ export default function AllSarkariJobsHub() {
 
         {/* Quick links */}
         <div className="flex flex-wrap gap-2 mb-6">
-          <Link to="/govt-jobs-last-date-today" className="text-xs px-3 py-1.5 rounded-full bg-destructive/10 text-destructive hover:bg-destructive/20">Last Date Today</Link>
-          <Link to="/govt-jobs-last-date-this-week" className="text-xs px-3 py-1.5 rounded-full bg-primary/10 text-primary hover:bg-primary/20">Closing This Week</Link>
-          <Link to="/ssc-jobs" className="text-xs px-3 py-1.5 rounded-full bg-secondary hover:bg-accent">SSC</Link>
-          <Link to="/railway-jobs" className="text-xs px-3 py-1.5 rounded-full bg-secondary hover:bg-accent">Railway</Link>
-          <Link to="/banking-jobs" className="text-xs px-3 py-1.5 rounded-full bg-secondary hover:bg-accent">Banking</Link>
-          <Link to="/upsc-jobs" className="text-xs px-3 py-1.5 rounded-full bg-secondary hover:bg-accent">UPSC</Link>
-          <Link to="/defence-jobs" className="text-xs px-3 py-1.5 rounded-full bg-secondary hover:bg-accent">Defence</Link>
+          <Link to="/sarkari-jobs?dept=ssc" className="text-xs px-3 py-1.5 rounded-full bg-secondary hover:bg-accent">SSC</Link>
+          <Link to="/sarkari-jobs?dept=railway" className="text-xs px-3 py-1.5 rounded-full bg-secondary hover:bg-accent">Railway</Link>
+          <Link to="/sarkari-jobs?dept=banking" className="text-xs px-3 py-1.5 rounded-full bg-secondary hover:bg-accent">Banking</Link>
+          <Link to="/sarkari-jobs?dept=upsc" className="text-xs px-3 py-1.5 rounded-full bg-secondary hover:bg-accent">UPSC</Link>
+          <Link to="/sarkari-jobs?dept=defence" className="text-xs px-3 py-1.5 rounded-full bg-secondary hover:bg-accent">Defence</Link>
+          <Link to="/sarkari-jobs?dept=psu" className="text-xs px-3 py-1.5 rounded-full bg-secondary hover:bg-accent">PSU</Link>
         </div>
 
         <div className="my-6">
@@ -127,24 +137,33 @@ export default function AllSarkariJobsHub() {
             {[1,2,3,4,5].map(i => <Skeleton key={i} className="h-16 w-full rounded-xl" />)}
           </div>
         ) : grouped.length === 0 ? (
-          <p className="text-center text-muted-foreground py-12">No exams found matching "{search}".</p>
+          <p className="text-center text-muted-foreground py-12">No jobs found matching "{search}".</p>
         ) : (
           <div className="space-y-8">
-            {grouped.map(([letter, exams]) => (
+            {grouped.map(([letter, letterJobs]) => (
               <div key={letter} id={`letter-${letter}`}>
                 <h2 className="text-xl font-bold text-foreground border-b border-border pb-2 mb-3">{letter}</h2>
                 <div className="grid gap-2">
-                  {exams.map((exam: any) => (
-                    <Link key={exam.id} to={`/sarkari-jobs/${exam.slug}`} className="flex items-center justify-between p-3 rounded-lg border border-border hover:bg-secondary/50 transition-colors group">
+                  {letterJobs.map((job) => (
+                    <Link key={job.id} to={job.slug ? `/jobs/employment-news/${job.slug}` : '#'} className="flex items-center justify-between p-3 rounded-lg border border-border hover:bg-secondary/50 transition-colors group">
                       <div className="min-w-0 flex-1">
-                        <h3 className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors">{exam.exam_name}</h3>
+                        <h3 className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors">
+                          {job.org_name || 'Government Organization'}
+                        </h3>
                         <div className="flex flex-wrap gap-2 mt-0.5 text-xs text-muted-foreground">
-                          {exam.conducting_body && <span>{exam.conducting_body}</span>}
-                          {exam.total_vacancies > 0 && <span className="flex items-center gap-1"><Users className="h-3 w-3" />{exam.total_vacancies.toLocaleString()}</span>}
+                          {job.post && <span className="truncate max-w-[200px]">{job.post}</span>}
+                          {job.vacancies && job.vacancies > 0 && (
+                            <span className="flex items-center gap-1"><Users className="h-3 w-3" />{job.vacancies.toLocaleString()}</span>
+                          )}
+                          {job.state && (
+                            <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{job.state}</span>
+                          )}
                         </div>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
-                        <Badge className={`text-[10px] ${statusColor(exam.status)}`}>{exam.status.replace(/_/g, ' ')}</Badge>
+                        {job.job_category && (
+                          <Badge variant="outline" className="text-[10px]">{job.job_category}</Badge>
+                        )}
                         <ArrowRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                       </div>
                     </Link>
@@ -156,7 +175,7 @@ export default function AllSarkariJobsHub() {
         )}
 
         <div className="mt-10 text-center text-sm text-muted-foreground">
-          <p>Showing {filtered.length} government exam notifications. Data sourced from official portals.</p>
+          <p>Showing {filtered.length} government job notifications. Data sourced from Employment News / official portals.</p>
         </div>
       </div>
 

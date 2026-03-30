@@ -441,7 +441,7 @@ async function handleSlugsMode(db: any, slugs: string[], triggerSource: string, 
 
   for (const slug of slugs) {
     try {
-      const result = await rebuildSingleSlug(db, slug, 'manual', forceRebuild);
+      const result = await rebuildSingleSlug(db, slug, inferPageTypeFromSlug(slug), forceRebuild);
       if (result === 'rebuilt') {
         rebuilt++;
         urlsToPurge.push(`${SITE_URL}/${slug}`);

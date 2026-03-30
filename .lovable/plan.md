@@ -1,75 +1,89 @@
 
 
-# Root Cause: Force Rebuild Still Hardcodes `'manual'` in `handleSlugsMode`
+# Improve GSCAllUrlsExport — 5 Safe Changes
 
-## 1. Root cause found
+## File: `src/components/admin/GSCAllUrlsExport.tsx` (single file, no backend changes)
 
-**Line 444** of `supabase/functions/seo-cache-rebuild/index.ts`:
+## Verified Facts
 
-```typescript
-const result = await rebuildSingleSlug(db, slug, 'manual', forceRebuild);
+- **Dedup ALREADY EXISTS** at lines 201-207: a shared `Set<string>` filters `staticRows → seoRows → dbRows` sequentially, keeping first occurrence. It does NOT cover `excludedRows` or `sitemapRows`. It does NOT track how many duplicates were removed.
+- **`govt_exams` has NO `is_published` column**. It has `status` (default `'upcoming'`), with values like `upcoming`, `active`, `closed`, etc. `slug` is `NOT NULL`. All rows represent public pages. The current filter `['is_published', true]` silently returns 0 rows.
+- **`employment_news_jobs` has 1,158+ published rows** — exceeds the 1,000-row Supabase default limit.
+
+## Changes
+
+### 1. Add pagination helper (before `buildDBRows`)
+Simple `fetchAllRows` function using `.range()` in a while-loop. Apply to `employment_news_jobs`, `blog_posts`, `custom_pages`, and `govt_exams`.
+
+### 2. Fix `govt_exams` query
+Remove the broken `['is_published', true]` filter. Export all `govt_exams` rows — every row has a slug and represents a public page.
+
+### 3. Refactor `buildDBRows` to return per-table counts
+Return `{ rows: Row[], counts: { blogs, empNews, companies, customPages, resources, jobs, exams } }` so the summary sheet can show per-table breakdowns from the actual fetched data.
+
+### 4. Enhance existing dedup to track removals
+Add `dupCount` counter and `dupExamples` array (max 20) to the existing dedup function at lines 201-207. Dedup scope stays the same (static + SEO + DB sheets only — not excluded/sitemaps). Label it accurately in the summary.
+
+### 5. Add "Export Summary" sheet as the FIRST sheet
+A 2-column `Metric | Value` sheet built from **final post-dedup arrays** (`s1`, `s2`, `s3`) and `excludedRows`/`sitemapRows`:
+
+```
+Generated At              | 2026-03-30 06:33 PM
+Total Workbook URLs       | (s1 + s2 + s3 + excluded + sitemaps)
+Static Pages              | s1.length
+Programmatic SEO          | s2.length
+Database-Driven           | s3.length
+  - Blog                  | s3.filter(r => r[1] === 'Blog').length
+  - Employment News       | s3.filter(r => r[1] === 'Employment News').length
+  - Companies             | s3.filter(r => r[1] === 'Company').length
+  - Custom Pages          | s3.filter(r => r[1].startsWith('Custom')).length
+  - PDF Resources         | s3.filter(r => r[1].startsWith('Resource')).length
+  - Jobs                  | s3.filter(r => r[1] === 'Job Listing').length
+  - Govt Exams            | s3.filter(r => r[1] === 'Govt Exam').length
+Excluded Routes           | excludedRows.length
+Sitemap URLs              | sitemapRows.length
+Duplicates Removed        | dupCount
+(first 20 dup URLs listed below if any)
 ```
 
-The batched Force Rebuild flow is:
-1. Admin UI calls `mode: 'full-collect'` → returns canonical slugs like `blog/my-post`, `sarkari-jobs/ssc-cgl`, `jobs/employment-news/some-job` ✅
-2. Admin UI sends those slugs in batches of 50 to `mode: 'slugs'` with `force: true` ✅
-3. `handleSlugsMode` (line 444) calls `rebuildSingleSlug(db, slug, 'manual', forceRebuild)` — **hardcodes `'manual'`** ❌
-4. `rebuildSingleSlug` (lines 624-630) checks: is `pageType === 'blog'`? No, it's `'manual'`. Is it `'govt-exam'`? No. Is it `'employment-news'`? No. → `pageData = null`
-5. Lines 633-644: No page data → checks for existing cache row → if found, returns `'skipped'`; if not found, returns `'failed'`
+All counts come from the final written data, not raw query counts.
 
-**Result**: 1357 skipped (had existing cache rows), 11 failed (no cache rows), 0 rebuilt.
+### 6. Enhanced toast
+```
+"1,543 URLs exported (33 static, 581 SEO, 1,371 DB). 2 duplicates removed. File generated successfully."
+```
 
-Note: The old `handleFullMode` (line 545) correctly passes `row.page_type` — but this path is no longer used since the batching refactor routes everything through `handleSlugsMode`.
+## Technical Detail
 
-## 2. Exact file and function
-
-- **File**: `supabase/functions/seo-cache-rebuild/index.ts`
-- **Function**: `handleSlugsMode`, line 444
-
-## 3. Why the earlier plan missed this
-
-The earlier plan correctly identified this bug and proposed the fix. However, the fix was **discussed and approved but never actually committed to the file**. The deployed edge function still has the original `'manual'` hardcode. The plan was approved multiple times but the actual code edit was never applied.
-
-## 4. Minimal safe fix
-
-Add a slug-prefix inference function and use it in `handleSlugsMode`:
-
-**Add after `toBareDbSlug` (~line 706):**
+**Pagination helper:**
 ```typescript
-function inferPageTypeFromSlug(slug: string): string {
-  if (slug.startsWith('blog/')) return 'blog';
-  if (slug.startsWith('sarkari-jobs/')) return 'govt-exam';
-  if (slug.startsWith('jobs/employment-news/')) return 'employment-news';
-  return 'manual';
+async function fetchAllRows<T>(table: string, cols: string, filter?: [string, unknown]): Promise<T[]> {
+  const PAGE = 1000;
+  let all: T[] = [];
+  let from = 0;
+  while (true) {
+    let query = supabase.from(table as any).select(cols) as any;
+    if (filter) query = query.eq(filter[0], filter[1]);
+    const { data } = await query.range(from, from + PAGE - 1);
+    if (!data || data.length === 0) break;
+    all = all.concat(data);
+    if (data.length < PAGE) break;
+    from += PAGE;
+  }
+  return all;
 }
 ```
 
-**Change line 444 from:**
-```typescript
-const result = await rebuildSingleSlug(db, slug, 'manual', forceRebuild);
-```
-**To:**
-```typescript
-const result = await rebuildSingleSlug(db, slug, inferPageTypeFromSlug(slug), forceRebuild);
-```
+**`buildDBRows` refactored** to use `fetchAllRows` for all tables, remove the broken `is_published` filter on `govt_exams`, and return both the rows array and per-table counts.
 
-Two changes. ~8 lines total.
+**Dedup enhanced** — same `Set<string>` logic, same scope (static + SEO + DB), but now counts removals and captures first 20 examples.
 
-## 5. Why this fix is safer than broader alternatives
+**Summary sheet** inserted as sheet index 0 using a simple `aoa_to_sheet` with `[['Metric', 'Value'], ...]`.
 
-- The `full-collect` mode already returns canonical-prefixed slugs — the prefix inference is deterministic and guaranteed correct
-- Unknown prefixes fall back to `'manual'` — identical to current behavior, so no regression for programmatic/inventory pages
-- No changes to `rebuildSingleSlug`, `handleFullMode`, fetchers, or any other function
-- No changes to canonical cache key strategy
-- No changes to the Worker
-
-## 6. What must be redeployed
-
-Only the `seo-cache-rebuild` edge function.
-
-## 7. Expected result after rerunning Force Rebuild
-
-~1,368 rebuilt, 0 skipped, 0 failed.
-
-The 11 previously "failed" slugs should also succeed now — they failed because they had no existing cache row AND no page data (since `'manual'` type bypassed all fetchers). With correct type inference, the fetchers will find their source data.
+## Risk Assessment
+- Single file, no backend, no new libraries
+- Pagination is a simple while-loop
+- govt_exams fix removes a broken filter (can only improve)
+- Dedup scope unchanged — just adds counting
+- Summary sheet is purely additive
 

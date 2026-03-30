@@ -125,36 +125,31 @@ async function buildSEORows(): Promise<Row[]> {
 
 async function buildDBRows(): Promise<Row[]> {
   const rows: Row[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const q = (table: string, cols: string, filter?: [string, unknown]) =>
+    filter
+      ? (supabase.from(table as any).select(cols) as any).eq(filter[0], filter[1])
+      : supabase.from(table as any).select(cols);
 
-  // Blog posts
-  const { data: blogs } = await supabase.from('blog_posts').select('slug').eq('is_published', true) as { data: { slug: string }[] | null };
-  for (const b of blogs || []) rows.push(r(`${SITE}/blog/${b.slug}`, 'Blog', 'Dynamic', 'index, follow', 'sitemap-blog.xml', 'High', ''));
+  const [blogs, jobs, companies, exams, empNews, custom, resources] = await Promise.all([
+    q('blog_posts', 'slug', ['is_published', true]),
+    q('jobs', 'id', ['status', 'active']),
+    q('companies', 'slug', ['is_approved', true]),
+    q('govt_exams', 'slug', ['is_published', true]),
+    q('employment_news_jobs', 'slug', ['status', 'published']),
+    q('custom_pages', 'slug, page_type', ['is_published', true]),
+    q('pdf_resources', 'slug, resource_type', ['is_published', true]),
+  ]);
 
-  // Active jobs
-  const { data: jobs } = await supabase.from('jobs').select('id').eq('status', 'active') as { data: { id: string }[] | null };
-  for (const j of jobs || []) rows.push(r(`${SITE}/jobs/${j.id}`, 'Job Listing', 'Dynamic', 'index, follow', 'sitemap-jobs.xml', 'High', ''));
-
-  // Companies
-  const { data: companies } = await supabase.from('companies').select('slug').eq('is_approved', true) as { data: { slug: string }[] | null };
-  for (const c of companies || []) rows.push(r(`${SITE}/companies/${c.slug}`, 'Company', 'Dynamic', 'index, follow', 'sitemap-pages.xml', 'Medium', ''));
-
-  // Govt exams
-  const { data: exams } = await supabase.from('govt_exams').select('slug').eq('is_published', true) as { data: { slug: string }[] | null };
-  for (const e of exams || []) rows.push(r(`${SITE}/sarkari-jobs/${e.slug}`, 'Govt Exam', 'Dynamic', 'index, follow', 'sitemap-jobs.xml', 'High', ''));
-
-  // Employment news
-  const { data: empNews } = await supabase.from('employment_news_jobs').select('slug').eq('status', 'published') as { data: { slug: string | null }[] | null };
-  for (const e of empNews || []) {
+  for (const b of (blogs.data || []) as { slug: string }[]) rows.push(r(`${SITE}/blog/${b.slug}`, 'Blog', 'Dynamic', 'index, follow', 'sitemap-blog.xml', 'High', ''));
+  for (const j of (jobs.data || []) as { id: string }[]) rows.push(r(`${SITE}/jobs/${j.id}`, 'Job Listing', 'Dynamic', 'index, follow', 'sitemap-jobs.xml', 'High', ''));
+  for (const c of (companies.data || []) as { slug: string }[]) rows.push(r(`${SITE}/companies/${c.slug}`, 'Company', 'Dynamic', 'index, follow', 'sitemap-pages.xml', 'Medium', ''));
+  for (const e of (exams.data || []) as { slug: string }[]) rows.push(r(`${SITE}/sarkari-jobs/${e.slug}`, 'Govt Exam', 'Dynamic', 'index, follow', 'sitemap-jobs.xml', 'High', ''));
+  for (const e of (empNews.data || []) as { slug: string | null }[]) {
     if (e.slug) rows.push(r(`${SITE}/jobs/employment-news/${e.slug}`, 'Employment News', 'Dynamic', 'index, follow', 'sitemap-jobs.xml', 'Medium', ''));
   }
-
-  // Custom pages
-  const { data: custom } = await supabase.from('custom_pages').select('slug, page_type').eq('is_published', true) as { data: { slug: string; page_type: string | null }[] | null };
-  for (const p of custom || []) rows.push(r(`${SITE}/${p.slug}`, `Custom (${p.page_type || 'page'})`, 'Dynamic', 'index, follow', 'sitemap-pages.xml', 'Medium', ''));
-
-  // PDF resources
-  const { data: resources } = await supabase.from('pdf_resources').select('slug, resource_type').eq('is_published', true) as { data: { slug: string; resource_type: string }[] | null };
-  for (const res of resources || []) {
+  for (const p of (custom.data || []) as { slug: string; page_type: string | null }[]) rows.push(r(`${SITE}/${p.slug}`, `Custom (${p.page_type || 'page'})`, 'Dynamic', 'index, follow', 'sitemap-pages.xml', 'Medium', ''));
+  for (const res of (resources.data || []) as { slug: string; resource_type: string }[]) {
     const prefix = res.resource_type === 'book' ? 'books' : res.resource_type === 'guide' ? 'guides' : res.resource_type === 'previous-year-paper' ? 'previous-year-papers' : 'sample-papers';
     rows.push(r(`${SITE}/${prefix}/${res.slug}`, `Resource (${res.resource_type})`, 'Dynamic', 'index, follow', 'sitemap-resources.xml', 'Medium', ''));
   }

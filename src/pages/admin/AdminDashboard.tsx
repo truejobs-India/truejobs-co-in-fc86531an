@@ -367,6 +367,7 @@ function AdminDashboardInner() {
               <TabsContent value="seo" className="space-y-6">
                 <SEOContentHealth />
                 <SEOCacheManager />
+                <SEOCacheBuilder />
                 <GuideGenerator />
                 <GSCUrlExport />
               </TabsContent>

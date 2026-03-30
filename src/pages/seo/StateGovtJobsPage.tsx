@@ -3,7 +3,7 @@ import { Helmet } from 'react-helmet-async';
 import { Layout } from '@/components/layout/Layout';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { FileText, Calendar, ArrowRight, Users, MapPin } from 'lucide-react';
+import { Calendar, ArrowRight, Users, MapPin } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { getStateGovtJobConfig, getStateDBName } from './stateGovtJobsData';

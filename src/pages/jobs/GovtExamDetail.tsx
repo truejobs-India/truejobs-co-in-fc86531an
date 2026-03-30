@@ -446,9 +446,9 @@ function ExamDetailView({ slug }: { slug: string | undefined }) {
           </Card>
         )}
 
-        <RelatedExamLinks currentSlug={slug || ''} category={exam.exam_category} />
+        <RelatedExamLinks departmentSlug={exam.department_slug || ''} />
         <QuickLinksBlock />
-        <ContextualLinks slug={`sarkari-jobs/${slug}`} />
+        <ContextualLinks departmentSlug={exam.department_slug} states={exam.states} />
       </div>
     </Layout>
   );

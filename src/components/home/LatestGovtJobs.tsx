@@ -4,7 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowRight, Users, MapPin, Banknote, Calendar } from 'lucide-react';
+import { ArrowRight, Users, MapPin } from 'lucide-react';
 
 interface GovtJobCard {
   id: string;

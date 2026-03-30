@@ -38,7 +38,8 @@ const SEO_ROUTE_PATTERNS = [
   /^\/blog\/category\/[a-z0-9][a-z0-9-]*$/,
   /^\/companies$/,
   /^\/companies\/[a-z0-9][a-z0-9-]*$/,
-  /^\/employment-news\/[a-z0-9][a-z0-9-]*$/,
+  /^\/jobs\/employment-news$/,
+  /^\/jobs\/employment-news\/[a-z0-9][a-z0-9-]*$/,
   /^\/tools$/,
   /^\/aboutus$/,
   /^\/contactus$/,
@@ -58,6 +59,7 @@ const SEO_ROUTE_PATTERNS = [
   /^\/[a-z-]+-jobs$/,
   /^\/[a-z-]+-govt-jobs$/,
   /^\/all-sarkari-jobs$/,
+  /^\/latest-govt-jobs$/,
   /^\/latest-govt-jobs-[0-9]+$/,
   /^\/govt-job-age-calculator$/,
   /^\/govt-salary-calculator$/,
@@ -73,6 +75,7 @@ const SEO_ROUTE_PATTERNS = [
   /^\/private-jobs$/,
   /^\/today-govt-jobs$/,
   /^\/sarkari-jobs$/,
+  /^\/sarkari-jobs\/[a-z0-9][a-z0-9-]*$/,
   /^\/sarkari-result$/,
 ];
 

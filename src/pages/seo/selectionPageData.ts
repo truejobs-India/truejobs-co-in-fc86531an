@@ -51,6 +51,23 @@ const STATE_ALIASES: Record<string, string> = {
   'uk': 'uttarakhand',
 };
 
+/**
+ * Returns all known selection page slugs for sitemap/GSC export.
+ */
+export function getAllSelectionSlugs(): string[] {
+  const slugs: string[] = ['govt-jobs-without-exam'];
+  for (const q of QUALIFICATIONS) {
+    slugs.push(`${q === '10th' ? '10th-pass' : q === '12th' ? '12th-pass' : q}-govt-jobs-without-exam`);
+  }
+  for (const d of DEPARTMENTS) {
+    slugs.push(`${d}-jobs-without-exam`);
+  }
+  for (const s of STATES) {
+    slugs.push(`govt-jobs-without-exam-${s}`);
+  }
+  return slugs;
+}
+
 function titleCase(s: string): string {
   return s.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }

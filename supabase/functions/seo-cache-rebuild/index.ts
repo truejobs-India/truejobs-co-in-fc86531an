@@ -460,15 +460,32 @@ async function handleSlugsMode(db: any, slugs: string[], triggerSource: string, 
   return jsonResponse({ success: true, rebuilt, skipped, failed, cfPurged });
 }
 
+// ── Pagination helper (Supabase JS defaults to 1000 rows) ────────────
+
+async function fetchAllRows(query: any): Promise<{ data: any[]; error: any }> {
+  const PAGE_SIZE = 1000;
+  const allRows: any[] = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await query.range(from, from + PAGE_SIZE - 1);
+    if (error) return { data: allRows, error };
+    if (!data || data.length === 0) break;
+    allRows.push(...data);
+    if (data.length < PAGE_SIZE) break;
+    from += PAGE_SIZE;
+  }
+  return { data: allRows, error: null };
+}
+
 // ── Full Mode ────────────────────────────────────────────────────────
 
 async function handleFullMode(db: any, triggerSource: string, startTime: number, forceRebuild = false) {
   // Full rebuild means ALL DB-sourced pages only.
   // Inventory-sourced pages are handled by build-seo-cache.
   const [blogRes, examRes, newsRes] = await Promise.all([
-    db.from('blog_posts').select('slug').eq('is_published', true).not('slug', 'is', null),
-    db.from('govt_exams').select('slug').not('slug', 'is', null),
-    db.from('employment_news_jobs').select('slug').eq('status', 'published').not('slug', 'is', null),
+    fetchAllRows(db.from('blog_posts').select('slug').eq('is_published', true).not('slug', 'is', null)),
+    fetchAllRows(db.from('govt_exams').select('slug').not('slug', 'is', null)),
+    fetchAllRows(db.from('employment_news_jobs').select('slug').eq('status', 'published').not('slug', 'is', null)),
   ]);
 
   const sourceError = blogRes.error || examRes.error || newsRes.error;

@@ -127,11 +127,11 @@ async function buildDBRows(): Promise<Row[]> {
   const rows: Row[] = [];
 
   // Blog posts
-  const { data: blogs } = await supabase.from('blog_posts').select('slug').eq('is_published', true);
+  const { data: blogs } = await supabase.from('blog_posts').select('slug').eq('is_published', true) as { data: { slug: string }[] | null };
   for (const b of blogs || []) rows.push(r(`${SITE}/blog/${b.slug}`, 'Blog', 'Dynamic', 'index, follow', 'sitemap-blog.xml', 'High', ''));
 
   // Active jobs
-  const { data: jobs } = await supabase.from('jobs').select('id').eq('status', 'active');
+  const { data: jobs } = await supabase.from('jobs').select('id').eq('status', 'active') as { data: { id: string }[] | null };
   for (const j of jobs || []) rows.push(r(`${SITE}/jobs/${j.id}`, 'Job Listing', 'Dynamic', 'index, follow', 'sitemap-jobs.xml', 'High', ''));
 
   // Companies

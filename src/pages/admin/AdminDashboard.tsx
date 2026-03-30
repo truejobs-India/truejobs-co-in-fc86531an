@@ -46,6 +46,7 @@ import { JobPlansManager } from '@/components/admin/JobPlansManager';
 import { EnrollmentsManager } from '@/components/admin/EnrollmentsManager';
 import { GSCUrlExport } from '@/components/admin/GSCUrlExport';
 import { SEOCacheManager } from '@/components/admin/seo-cache/SEOCacheManager';
+import { SEOCacheBuilder } from '@/components/admin/SEOCacheBuilder';
 import { SEOContentHealth } from '@/components/admin/SEOContentHealth';
 import { BulkBlogUpload } from '@/components/admin/BulkBlogUpload';
 import { GovtExamsManager } from '@/components/admin/GovtExamsManager';
@@ -366,6 +367,7 @@ function AdminDashboardInner() {
               <TabsContent value="seo" className="space-y-6">
                 <SEOContentHealth />
                 <SEOCacheManager />
+                <SEOCacheBuilder />
                 <GuideGenerator />
                 <GSCUrlExport />
               </TabsContent>

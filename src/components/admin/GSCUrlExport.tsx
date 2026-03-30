@@ -261,6 +261,14 @@ export function GSCUrlExport() {
         <p className="text-xs text-muted-foreground mt-3">
           All SEO data files (cities, categories, industries, govt jobs) are automatically included in exports.
         </p>
+
+        <div className="mt-4 pt-4 border-t">
+          <p className="text-sm font-medium mb-2">Comprehensive Export</p>
+          <p className="text-xs text-muted-foreground mb-3">
+            Download every URL on the website — static pages, programmatic SEO, database-driven dynamic pages, excluded routes, and sitemaps — in a multi-sheet Excel file.
+          </p>
+          <GSCAllUrlsExport />
+        </div>
       </CardContent>
     </Card>
   );

@@ -441,7 +441,7 @@ async function handleSlugsMode(db: any, slugs: string[], triggerSource: string, 
 
   for (const slug of slugs) {
     try {
-      const result = await rebuildSingleSlug(db, slug, 'manual', forceRebuild);
+      const result = await rebuildSingleSlug(db, slug, inferPageTypeFromSlug(slug), forceRebuild);
       if (result === 'rebuilt') {
         rebuilt++;
         urlsToPurge.push(`${SITE_URL}/${slug}`);
@@ -697,6 +697,13 @@ function toCanonicalCacheKey(bareSlug: string, pageType: string): string {
 }
 
 /** Strip the known prefix to get the bare DB slug for table queries */
+function inferPageTypeFromSlug(slug: string): string {
+  if (slug.startsWith('blog/')) return 'blog';
+  if (slug.startsWith('sarkari-jobs/')) return 'govt-exam';
+  if (slug.startsWith('jobs/employment-news/')) return 'employment-news';
+  return 'manual';
+}
+
 function toBareDbSlug(canonicalSlug: string, pageType: string): string {
   const prefix = CACHE_KEY_PREFIXES[pageType];
   if (prefix && canonicalSlug.startsWith(prefix)) {

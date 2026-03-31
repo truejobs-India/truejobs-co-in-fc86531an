@@ -291,12 +291,32 @@ export default function CompanyDetail() {
 
             {jobs.length === 0 ? (
               <Card>
-                <CardContent className="p-12 text-center">
+                <CardContent className="p-8 text-center">
                   <Briefcase className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">No Open Positions</h3>
-                  <p className="text-muted-foreground">
-                    This company doesn't have any active job openings at the moment.
+                  <h3 className="text-lg font-semibold mb-2">No Active Openings</h3>
+                  <p className="text-muted-foreground mb-6">
+                    No active openings from {company.name} right now. Browse similar opportunities:
                   </p>
+                  <div className="flex flex-wrap justify-center gap-3">
+                    <Button variant="outline" size="sm" asChild>
+                      <Link to="/sarkari-jobs">
+                        <GraduationCap className="h-4 w-4 mr-1" />
+                        Government Jobs
+                      </Link>
+                    </Button>
+                    <Button variant="outline" size="sm" asChild>
+                      <Link to="/private-jobs">
+                        <Briefcase className="h-4 w-4 mr-1" />
+                        Private Jobs
+                      </Link>
+                    </Button>
+                    <Button variant="outline" size="sm" asChild>
+                      <Link to="/companies">
+                        <Building2 className="h-4 w-4 mr-1" />
+                        All Companies
+                      </Link>
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             ) : (

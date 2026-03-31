@@ -101,8 +101,7 @@ export function BoardResultAlertCTA({
     );
   }
 
-  const isStrong = variant === 'strong';
-
+  // ── Strong (default) ───────────────────────────────────────
   return (
     <motion.div
       className={`rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/[0.04] via-accent/[0.03] to-transparent p-6 md:p-8 ${className}`}

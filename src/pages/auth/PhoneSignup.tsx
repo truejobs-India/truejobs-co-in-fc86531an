@@ -136,6 +136,7 @@ export default function PhoneSignup() {
 
   return (
     <Layout>
+      <SEO title="Phone Sign Up" noindex={true} />
       <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center py-12 px-4">
         <Card className="w-full max-w-md">
           <CardHeader className="space-y-1 text-center">

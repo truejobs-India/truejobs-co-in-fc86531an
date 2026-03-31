@@ -57,7 +57,11 @@ export default function Index() {
       <PrivateJobsExplore />
 
       {/* Alert signup banner */}
-      <AlertSignupBanner />
+      <section className="py-6">
+        <div className="container mx-auto px-4">
+          <JobAlertCTA variant="strong" />
+        </div>
+      </section>
     </Layout>
   );
 }

@@ -21,7 +21,6 @@ export function Layout({ children, hideFooter = false, noAds = false }: LayoutPr
         <AdPlaceholder variant="footer" />
         {!hideFooter && <Footer />}
         <JobSearchBot />
-        <StickyMobileCTA />
       </div>
     </NoAdsContext.Provider>
   );

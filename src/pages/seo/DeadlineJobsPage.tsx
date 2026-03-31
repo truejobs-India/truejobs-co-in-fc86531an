@@ -178,19 +178,22 @@ export default function DeadlineJobsPage() {
         ) : exams && exams.length > 0 ? (
           <div className="space-y-3 mb-8">
             {exams.map((exam: any) => {
-              const daysLeft = differenceInDays(new Date(exam.application_end), new Date());
+              const title = exam.post
+                ? `${exam.org_name || 'Govt'} — ${exam.post}`
+                : exam.org_name || 'Government Job';
+              const daysLeft = differenceInDays(new Date(exam.last_date_resolved), new Date());
               return (
-                <Link key={exam.id} to={`/sarkari-jobs/${exam.slug}`}>
+                <Link key={exam.id} to={`/jobs/employment-news/${exam.slug}`}>
                   <Card className="hover:shadow-md transition-shadow">
                     <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <div className="flex-1 min-w-0">
-                        <h2 className="font-semibold text-foreground text-sm sm:text-base truncate">{exam.exam_name}</h2>
+                        <h2 className="font-semibold text-foreground text-sm sm:text-base truncate">{title}</h2>
                         <div className="flex flex-wrap gap-2 mt-1 text-xs text-muted-foreground">
-                          {exam.conducting_body && <span>{exam.conducting_body}</span>}
-                          {exam.total_vacancies > 0 && (
-                            <span className="flex items-center gap-1"><Users className="h-3 w-3" />{exam.total_vacancies.toLocaleString()} vacancies</span>
+                          {exam.org_name && <span>{exam.org_name}</span>}
+                          {exam.vacancies > 0 && (
+                            <span className="flex items-center gap-1"><Users className="h-3 w-3" />{exam.vacancies.toLocaleString()} vacancies</span>
                           )}
-                          {exam.salary_range && <span>{exam.salary_range}</span>}
+                          {exam.salary && <span>{exam.salary}</span>}
                         </div>
                       </div>
                       <div className="flex items-center gap-3 shrink-0">
@@ -200,7 +203,7 @@ export default function DeadlineJobsPage() {
                         </Badge>
                         <span className="text-xs text-muted-foreground flex items-center gap-1">
                           <Calendar className="h-3 w-3" />
-                          {format(new Date(exam.application_end), 'dd MMM yyyy')}
+                          {format(new Date(exam.last_date_resolved), 'dd MMM yyyy')}
                         </span>
                         <ArrowRight className="h-4 w-4 text-muted-foreground" />
                       </div>

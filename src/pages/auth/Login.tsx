@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { SEO } from '@/components/SEO';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';

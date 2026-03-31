@@ -48,7 +48,7 @@ export const DEPT_CONFIG: Record<string, DeptConfig> = {
   police: {
     label: 'Police & Paramilitary Jobs 2026',
     shortLabel: 'Police',
-    applyFilter: (q) => q.or('org_name.ilike.%Police%,org_name.ilike.%CRPF%,org_name.ilike.%BSF%,org_name.ilike.%CISF%,org_name.ilike.%ITBP%,org_name.ilike.%SSB%'),
+    applyFilter: (q) => q.or('org_name.ilike.%Police%,org_name.ilike.%CRPF%,org_name.ilike.%BSF%,org_name.ilike.%CISF%,org_name.ilike.%ITBP%,org_name.ilike.%Sashastra Seema Bal%'),
   },
   psu: {
     label: 'PSU Government Jobs 2026',

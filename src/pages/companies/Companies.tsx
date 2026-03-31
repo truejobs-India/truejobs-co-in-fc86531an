@@ -200,6 +200,8 @@ export default function Companies() {
     url: 'https://truejobs.co.in/companies',
   };
 
+  const isEmpty = !isLoading && totalCount === 0 && !searchParams.get('q');
+
   return (
     <Layout>
       <AdPlaceholder variant="banner" />
@@ -207,6 +209,7 @@ export default function Companies() {
         title="Companies Hiring in India - Browse Employers"
         description="Discover top companies hiring in India. Browse company profiles, open positions, and apply directly on TrueJobs."
         url="/companies"
+        noindex={isEmpty}
         structuredData={companiesSchema}
       />
       <div className="bg-muted/30 py-8">

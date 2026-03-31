@@ -4,6 +4,7 @@
  * and imports rows into intake_drafts.
  */
 import { useState, useRef } from 'react';
+import Papa from 'papaparse';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -70,39 +71,18 @@ const GENERIC_TITLE_PATTERNS = /^(advertisement|notice|notification|corrigendum|
 
 const TIME_SENSITIVE_TERMS = /\b(result|merit\s+list|shortlist|admit\s+card|hall\s+ticket|call\s+letter|answer\s+key|correction\s+notice|interview\s+schedule|cut[\s-]?off)\b/i;
 
-function parseCSV(text: string): { headers: string[]; rows: ParsedRow[] } {
-  const lines = text.split(/\r?\n/).filter(l => l.trim());
-  if (lines.length === 0) return { headers: [], rows: [] };
-
-  const parseLine = (line: string): string[] => {
-    const result: string[] = [];
-    let current = '';
-    let inQuotes = false;
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i];
-      if (inQuotes) {
-        if (ch === '"' && line[i + 1] === '"') { current += '"'; i++; }
-        else if (ch === '"') { inQuotes = false; }
-        else { current += ch; }
-      } else {
-        if (ch === '"') { inQuotes = true; }
-        else if (ch === ',') { result.push(current.trim()); current = ''; }
-        else { current += ch; }
-      }
-    }
-    result.push(current.trim());
-    return result;
-  };
-
-  const headers = parseLine(lines[0]);
-  const rows = lines.slice(1).map(line => {
-    const values = parseLine(line);
-    const row: ParsedRow = {};
-    headers.forEach((h, i) => { row[h] = values[i] || ''; });
-    return row;
+function parseCSVWithPapa(text: string): { headers: string[]; rows: ParsedRow[]; warnings: number } {
+  const result = Papa.parse<ParsedRow>(text, {
+    header: true,
+    skipEmptyLines: 'greedy',
+    transformHeader: (h: string) => h.trim(),
   });
 
-  return { headers, rows };
+  const headers = result.meta.fields || [];
+  const rows = result.data;
+  const warnings = result.errors.length;
+
+  return { headers, rows, warnings };
 }
 
 function normalizeUrl(url: string): string {
@@ -159,21 +139,31 @@ export function IntakeCsvUploader({ onImportComplete }: { onImportComplete?: () 
   const [columnMapping, setColumnMapping] = useState<Record<string, string>>({});
   const [isImporting, setIsImporting] = useState(false);
   const [summary, setSummary] = useState<ImportSummary | null>(null);
+  const [parseWarnings, setParseWarnings] = useState(0);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setSummary(null);
+    setParseWarnings(0);
 
     const reader = new FileReader();
     reader.onload = (ev) => {
       const text = ev.target?.result as string;
-      const parsed = parseCSV(text);
-      setParsedData(parsed);
+      const { headers, rows, warnings } = parseCSVWithPapa(text);
+
+      if (headers.length === 0 || rows.length === 0) {
+        toast({ title: 'Invalid CSV', description: 'No headers or rows detected. Check the file format.', variant: 'destructive' });
+        setParsedData(null);
+        return;
+      }
+
+      setParsedData({ headers, rows });
+      setParseWarnings(warnings);
 
       // Auto-map columns
       const mapping: Record<string, string> = {};
-      parsed.headers.forEach(h => {
+      headers.forEach(h => {
         const key = h.trim().toLowerCase().replace(/\s+/g, '_');
         mapping[h] = AUTO_MAP[key] || '__skip__';
       });
@@ -325,6 +315,13 @@ export function IntakeCsvUploader({ onImportComplete }: { onImportComplete?: () 
             <div className="text-sm text-muted-foreground">
               Detected {parsedData.headers.length} columns, {parsedData.rows.length} rows
             </div>
+
+            {parseWarnings > 0 && (
+              <div className="flex items-center gap-2 rounded-md border border-yellow-500/50 bg-yellow-500/10 p-3 text-sm text-yellow-700 dark:text-yellow-400">
+                <AlertTriangle className="h-4 w-4 shrink-0" />
+                {parseWarnings} row(s) had formatting issues (e.g. inconsistent columns). Review the preview carefully before importing.
+              </div>
+            )}
 
             {/* Column Mapping */}
             <div className="space-y-2">

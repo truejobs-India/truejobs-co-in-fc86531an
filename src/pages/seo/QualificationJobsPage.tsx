@@ -166,6 +166,34 @@ export default function QualificationJobsPage() {
         <FAQAccordion items={config.faqItems} />
 
         <section className="mb-10">
+          <h2 className="text-xl font-semibold text-foreground mb-4">Browse by State</h2>
+          <p className="text-sm text-muted-foreground mb-3">
+            Find {config.qualification.toLowerCase()} government jobs in your state:
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {[
+              { label: 'Delhi', href: '/govt-jobs-delhi' },
+              { label: 'Maharashtra', href: '/govt-jobs-maharashtra' },
+              { label: 'Uttar Pradesh', href: '/govt-jobs-uttar-pradesh' },
+              { label: 'Rajasthan', href: '/govt-jobs-rajasthan' },
+              { label: 'Bihar', href: '/govt-jobs-bihar' },
+              { label: 'Madhya Pradesh', href: '/govt-jobs-madhya-pradesh' },
+              { label: 'Tamil Nadu', href: '/govt-jobs-tamil-nadu' },
+              { label: 'Karnataka', href: '/govt-jobs-karnataka' },
+            ].map((s) => (
+              <Link
+                key={s.href}
+                to={s.href}
+                className="inline-flex items-center gap-1 rounded-lg border border-border/60 bg-card px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors"
+              >
+                {s.label}
+                <ArrowRight className="h-3 w-3" />
+              </Link>
+            ))}
+          </div>
+        </section>
+
+        <section className="mb-10">
           <h2 className="text-xl font-semibold text-foreground mb-4">Explore More Government Jobs</h2>
           <div className="flex flex-wrap gap-2">
             {quickLinks.map((link) => (

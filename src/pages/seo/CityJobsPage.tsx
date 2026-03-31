@@ -12,6 +12,8 @@ import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { RelatedCities } from './components/RelatedCities';
 import { RelatedCategories } from './components/RelatedCategories';
 import { PopularSearches } from './components/PopularSearches';
+import { ExploreRelatedSection } from './components/ExploreRelatedSection';
+import { GovtJobsCrossLink } from './components/GovtJobsCrossLink';
 import { getCategoryJobConfig } from './categoryJobsData';
 
 
@@ -177,17 +179,17 @@ export default function CityJobsPage() {
         {/* Popular Searches */}
         <PopularSearches searches={popularSearches} />
 
-        {/* CTA */}
-        <section className="rounded-xl bg-primary/5 border border-primary/20 p-8 text-center">
-          <h2 className="text-2xl font-semibold text-foreground mb-3">Find Your Dream Job in {config.city}</h2>
-          <p className="text-muted-foreground mb-6">Browse verified job listings and apply directly. New jobs added daily.</p>
-          <Link
-            to="/jobs"
-            className="inline-flex items-center justify-center rounded-md bg-primary px-8 py-3 text-base font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-          >
-            Browse All Jobs
-          </Link>
-        </section>
+        <GovtJobsCrossLink context={`in ${config.state}`} />
+
+        <ExploreRelatedSection
+          title={`Explore More Jobs in ${config.city}`}
+          links={[
+            { label: `Govt Jobs in ${config.state}`, href: `/govt-jobs-${config.state.toLowerCase().replace(/\s+/g, '-')}`, description: `Sarkari Naukri openings in ${config.state}` },
+            { label: 'Latest Sarkari Jobs', href: '/sarkari-jobs', description: 'SSC, Railway, Banking & more' },
+            { label: 'Work From Home Jobs', href: '/work-from-home-jobs', description: 'Remote opportunities across India' },
+            { label: 'Fresher Jobs', href: '/fresher-jobs', description: 'Entry-level openings for freshers' },
+          ]}
+        />
       </main>
     </Layout>
   );

@@ -207,6 +207,27 @@ export default function NearMeJobPage() {
           </div>
         </section>
 
+        {/* Cross-links to main site sections */}
+        <section className="mb-10">
+          <h2 className="text-2xl font-semibold text-foreground mb-4">Explore More on TrueJobs</h2>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Link to="/jobs" className="flex items-center gap-3 rounded-lg border p-4 hover:border-primary/50 hover:bg-primary/5 transition-colors">
+              <Briefcase className="h-5 w-5 text-primary shrink-0" />
+              <div>
+                <span className="font-medium text-foreground">All Job Listings</span>
+                <p className="text-sm text-muted-foreground">Browse verified private sector jobs</p>
+              </div>
+            </Link>
+            <Link to="/sarkari-jobs" className="flex items-center gap-3 rounded-lg border p-4 hover:border-primary/50 hover:bg-primary/5 transition-colors">
+              <Home className="h-5 w-5 text-primary shrink-0" />
+              <div>
+                <span className="font-medium text-foreground">Sarkari Jobs</span>
+                <p className="text-sm text-muted-foreground">1,100+ government job openings</p>
+              </div>
+            </Link>
+          </div>
+        </section>
+
         {/* Final CTA */}
         <section className="rounded-xl bg-primary/5 border border-primary/20 p-8 text-center">
           <h2 className="text-2xl font-semibold text-foreground mb-3">Ready to Get Started?</h2>

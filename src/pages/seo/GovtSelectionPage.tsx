@@ -62,12 +62,14 @@ export default function GovtSelectionPage() {
 
   const quickLinks = [
     { label: 'Latest Govt Jobs', href: '/sarkari-jobs' },
-    { label: 'SSC Jobs', href: '/ssc-jobs' },
-    { label: 'Railway Jobs', href: '/railway-jobs' },
+    { label: 'Closing This Week', href: '/govt-jobs-last-date-this-week' },
+    { label: 'Closing Today', href: '/govt-jobs-last-date-today' },
     { label: '10th Pass Govt Jobs', href: '/10th-pass-govt-jobs' },
     { label: '12th Pass Govt Jobs', href: '/12th-pass-govt-jobs' },
     { label: 'Graduate Govt Jobs', href: '/graduate-govt-jobs' },
-    { label: 'Closing Soon', href: '/closing-soon-govt-jobs' },
+    { label: 'SSC Jobs', href: '/ssc-jobs' },
+    { label: 'Railway Jobs', href: '/railway-jobs' },
+    { label: 'Defence Jobs', href: '/defence-jobs' },
     { label: 'Exam Calendar', href: '/govt-exam-calendar' },
   ];
 

@@ -240,8 +240,9 @@ export default function DeadlineJobsPage() {
         {config.faqItems.length > 0 && (
           <FAQAccordion items={config.faqItems} />
         )}
+
+        <PopularExamsBlock />
       </div>
-      <PopularExamsBlock />
     </Layout>
   );
 }

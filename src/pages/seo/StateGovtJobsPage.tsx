@@ -84,17 +84,19 @@ export default function StateGovtJobsPage() {
   ]);
   const faqSchema = buildFAQSchema(config.faqItems);
 
+  // Build state-aware quick links including qualification cross-links
   const quickLinks = [
     { label: 'Latest Sarkari Jobs', href: '/sarkari-jobs' },
-    { label: 'SSC Jobs', href: '/sarkari-jobs?dept=ssc' },
-    { label: 'Railway Jobs', href: '/sarkari-jobs?dept=railway' },
-    { label: 'Banking Jobs', href: '/sarkari-jobs?dept=banking' },
-    { label: 'Defence Jobs', href: '/sarkari-jobs?dept=defence' },
-    { label: 'PSU Jobs', href: '/sarkari-jobs?dept=psu' },
-    { label: 'Teaching Jobs', href: '/sarkari-jobs?dept=teaching' },
+    { label: '10th Pass Govt Jobs', href: '/10th-pass-govt-jobs' },
+    { label: '12th Pass Govt Jobs', href: '/12th-pass-govt-jobs' },
+    { label: 'Graduate Govt Jobs', href: '/graduate-govt-jobs' },
+    { label: 'SSC Jobs', href: '/ssc-jobs' },
+    { label: 'Railway Jobs', href: '/railway-jobs' },
+    { label: 'Banking Jobs', href: '/banking-jobs' },
+    { label: 'Defence Jobs', href: '/defence-jobs' },
+    { label: 'Closing This Week', href: '/govt-jobs-last-date-this-week' },
+    { label: 'Jobs Without Exam', href: '/govt-jobs-without-exam' },
     { label: 'All Sarkari Jobs A-Z', href: '/all-sarkari-jobs' },
-    { label: 'Govt Salary Calculator', href: '/govt-salary-calculator' },
-    { label: 'Age Eligibility Calculator', href: '/govt-job-age-calculator' },
   ];
 
   const renderJobCard = (job: EmpNewsJob) => {

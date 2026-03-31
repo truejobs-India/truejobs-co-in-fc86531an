@@ -183,7 +183,7 @@ export default function DepartmentJobsPage() {
           </div>
         </section>
 
-        <JobAlertCTA variant="banner" context={config?.departmentName || 'Department Jobs'} className="mb-6" />
+        <JobAlertCTA variant="banner" context={config?.department || 'Department Jobs'} className="mb-6" />
 
         <div className="rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 p-4 text-sm text-amber-800 dark:text-amber-200">
           <strong>Disclaimer:</strong> TrueJobs aggregates information from official sources. Always verify details on the official recruitment website. We are not affiliated with any government body.

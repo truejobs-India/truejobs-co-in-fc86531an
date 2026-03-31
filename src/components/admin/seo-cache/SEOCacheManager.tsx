@@ -234,7 +234,7 @@ export function SEOCacheManager() {
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button size="sm" variant="destructive" className="gap-1 h-8">
-                  <Trash2 className="h-3 w-3" /> Purge All CF
+                  <Trash2 className="h-3 w-3" /> ③ Purge All CF
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>

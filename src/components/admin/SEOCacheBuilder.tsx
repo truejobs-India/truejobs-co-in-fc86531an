@@ -528,10 +528,10 @@ export function SEOCacheBuilder() {
         {/* Build & Status Row */}
         <div className="flex flex-wrap items-center gap-3">
           <Button onClick={handleBuild} disabled={isBuilding || isRebuilding} className="gap-2">
-            {isBuilding ? <><Loader2 className="h-4 w-4 animate-spin" /> Building...</> : <><Globe className="h-4 w-4" /> Build SEO Cache</>}
+            {isBuilding ? <><Loader2 className="h-4 w-4 animate-spin" /> Building...</> : <><Globe className="h-4 w-4" /> ① Build SEO Cache</>}
           </Button>
           <Button onClick={handleRebuildAll} disabled={isBuilding || isRebuilding} variant="secondary" className="gap-2">
-            {isRebuilding ? <><Loader2 className="h-4 w-4 animate-spin" /> Rebuilding...</> : <><RefreshCw className="h-4 w-4" /> Rebuild All</>}
+            {isRebuilding ? <><Loader2 className="h-4 w-4 animate-spin" /> Rebuilding...</> : <><RefreshCw className="h-4 w-4" /> ② Rebuild All</>}
           </Button>
           {cachedCount !== null && <Badge variant="secondary">{cachedCount} pages cached</Badge>}
           {pendingCount > 0 && <Badge variant="outline" className="gap-1"><Clock className="h-3 w-3" />{pendingCount} pending</Badge>}

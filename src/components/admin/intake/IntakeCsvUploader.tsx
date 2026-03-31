@@ -139,21 +139,31 @@ export function IntakeCsvUploader({ onImportComplete }: { onImportComplete?: () 
   const [columnMapping, setColumnMapping] = useState<Record<string, string>>({});
   const [isImporting, setIsImporting] = useState(false);
   const [summary, setSummary] = useState<ImportSummary | null>(null);
+  const [parseWarnings, setParseWarnings] = useState(0);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setSummary(null);
+    setParseWarnings(0);
 
     const reader = new FileReader();
     reader.onload = (ev) => {
       const text = ev.target?.result as string;
-      const parsed = parseCSV(text);
-      setParsedData(parsed);
+      const { headers, rows, warnings } = parseCSVWithPapa(text);
+
+      if (headers.length === 0 || rows.length === 0) {
+        toast({ title: 'Invalid CSV', description: 'No headers or rows detected. Check the file format.', variant: 'destructive' });
+        setParsedData(null);
+        return;
+      }
+
+      setParsedData({ headers, rows });
+      setParseWarnings(warnings);
 
       // Auto-map columns
       const mapping: Record<string, string> = {};
-      parsed.headers.forEach(h => {
+      headers.forEach(h => {
         const key = h.trim().toLowerCase().replace(/\s+/g, '_');
         mapping[h] = AUTO_MAP[key] || '__skip__';
       });

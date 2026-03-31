@@ -13,6 +13,8 @@ import { LiveJobListings } from './components/LiveJobListings';
 import { RelatedCities } from './components/RelatedCities';
 import { RelatedCategories } from './components/RelatedCategories';
 import { PopularSearches } from './components/PopularSearches';
+import { ExploreRelatedSection } from './components/ExploreRelatedSection';
+import { GovtJobsCrossLink } from './components/GovtJobsCrossLink';
 import { getCategoryJobConfig } from './categoryJobsData';
 
 const SITE_URL = 'https://truejobs.co.in';

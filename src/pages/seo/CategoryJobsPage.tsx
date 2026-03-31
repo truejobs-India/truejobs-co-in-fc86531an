@@ -5,6 +5,7 @@ import { Layout } from '@/components/layout/Layout';
 import { Briefcase, TrendingUp, IndianRupee, Zap } from 'lucide-react';
 import { getCategoryJobConfig } from './categoryJobsData';
 import { getCityJobConfig } from './cityJobsData';
+import { getIndustryJobConfig } from './industryJobsData';
 import { buildBreadcrumbSchema, buildFAQSchema } from './schemas/seoPageSchemas';
 import { FAQAccordion } from './components/FAQAccordion';
 import { SEOContentSection } from './components/SEOContentSection';
@@ -12,6 +13,8 @@ import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { LiveJobListings } from './components/LiveJobListings';
 import { RelatedCities } from './components/RelatedCities';
 import { PopularSearches } from './components/PopularSearches';
+import { ExploreRelatedSection } from './components/ExploreRelatedSection';
+import { GovtJobsCrossLink } from './components/GovtJobsCrossLink';
 
 const SITE_URL = 'https://truejobs.co.in';
 

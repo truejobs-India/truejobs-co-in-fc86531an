@@ -99,24 +99,25 @@ export default function DeadlineJobsPage() {
     queryKey: ['deadline-exams', config.slug],
     queryFn: async () => {
       let query = supabase
-        .from('govt_exams')
-        .select('id, exam_name, slug, conducting_body, application_end, total_vacancies, status, salary_range, updated_at')
-        .not('application_end', 'is', null);
+        .from('employment_news_jobs')
+        .select('id, org_name, post, slug, last_date_resolved, vacancies, salary, status')
+        .eq('status', 'published')
+        .not('last_date_resolved', 'is', null);
 
       const today = new Date().toISOString().split('T')[0];
 
       if (config.deadlineType === 'today') {
-        query = query.eq('application_end', today);
+        query = query.eq('last_date_resolved', today);
       } else if (config.deadlineType === 'this-week') {
         const weekEnd = addDays(new Date(), 7).toISOString().split('T')[0];
-        query = query.gte('application_end', today).lte('application_end', weekEnd);
+        query = query.gte('last_date_resolved', today).lte('last_date_resolved', weekEnd);
       } else if (config.deadlineType === 'month' && config.month && config.year) {
         const monthStart = startOfMonth(new Date(config.year, config.month - 1)).toISOString().split('T')[0];
         const monthEnd = endOfMonth(new Date(config.year, config.month - 1)).toISOString().split('T')[0];
-        query = query.gte('application_end', monthStart).lte('application_end', monthEnd);
+        query = query.gte('last_date_resolved', monthStart).lte('last_date_resolved', monthEnd);
       }
 
-      query = query.order('application_end', { ascending: true }).limit(50);
+      query = query.order('last_date_resolved', { ascending: true }).limit(50);
 
       const { data } = await query;
       return (data as any[]) || [];

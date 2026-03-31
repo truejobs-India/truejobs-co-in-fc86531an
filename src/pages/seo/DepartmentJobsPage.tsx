@@ -12,6 +12,7 @@ import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { FAQAccordion } from './components/FAQAccordion';
 import { SEOContentSection } from './components/SEOContentSection';
 import { PopularExamsBlock } from '@/pages/govt/components/PopularExamsBlock';
+import { DEPT_CONFIG } from '@/lib/deptMapping';
 import { format, differenceInDays } from 'date-fns';
 
 const SITE_URL = 'https://truejobs.co.in';

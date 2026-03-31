@@ -15,8 +15,6 @@ import { format, differenceInDays } from 'date-fns';
 
 const SITE_URL = 'https://truejobs.co.in';
 
-const SELECTION_TYPES_NO_EXAM = ['interview', 'merit', 'direct_recruitment'];
-
 export default function GovtSelectionPage() {
   const { slug } = useParams<{ slug: string }>();
   const parsed = slug ? parseSelectionSlug(slug) : null;
@@ -28,21 +26,24 @@ export default function GovtSelectionPage() {
   const { data: exams, isLoading } = useQuery({
     queryKey: ['selection-exams', parsed.slug],
     queryFn: async () => {
+      // "Without exam" pages: show jobs where application_mode suggests walk-in/interview/direct
       let query = supabase
-        .from('govt_exams')
-        .select('id, exam_name, slug, conducting_body, qualification_required, application_end, selection_stages, selection_type, status, total_vacancies, updated_at')
-        .in('selection_type', SELECTION_TYPES_NO_EXAM)
-        .order('updated_at', { ascending: false })
+        .from('employment_news_jobs')
+        .select('id, org_name, post, slug, qualification, last_date_resolved, vacancies, job_category, state, application_mode, status')
+        .eq('status', 'published')
+        .or('application_mode.ilike.%interview%,application_mode.ilike.%walk%,application_mode.ilike.%direct%,application_mode.ilike.%merit%')
+        .order('created_at', { ascending: false })
         .limit(50);
 
       if (parsed.department) {
-        query = query.ilike('exam_category', `%${parsed.department}%`);
+        query = query.or(`job_category.ilike.%${parsed.department}%,org_name.ilike.%${parsed.department}%`);
       }
       if (parsed.qualification) {
-        query = query.contains('qualification_tags', [parsed.qualification]);
+        query = query.ilike('qualification', `%${parsed.qualification}%`);
       }
       if (parsed.state) {
-        query = query.contains('states', [parsed.state.replace(/-/g, ' ')]);
+        const stateName = parsed.state.replace(/-/g, ' ');
+        query = query.ilike('state', `%${stateName}%`);
       }
 
       const { data, error } = await query;
@@ -122,33 +123,36 @@ export default function GovtSelectionPage() {
           ) : exams && exams.length > 0 ? (
             <div className="space-y-3">
               {exams.map((exam) => {
-                const daysLeft = exam.application_end
-                  ? differenceInDays(new Date(exam.application_end), new Date())
+                const title = exam.post
+                  ? `${exam.org_name || 'Govt'} — ${exam.post}`
+                  : exam.org_name || 'Government Job';
+                const daysLeft = exam.last_date_resolved
+                  ? differenceInDays(new Date(exam.last_date_resolved), new Date())
                   : null;
 
                 return (
                   <Link
                     key={exam.id}
-                    to={`/sarkari-jobs/${exam.slug}`}
+                    to={`/jobs/employment-news/${exam.slug}`}
                     className="block rounded-lg border border-border/60 p-4 hover:border-primary/50 hover:bg-primary/5 transition-colors"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
-                        <h3 className="font-medium text-foreground mb-1 line-clamp-2">{exam.exam_name}</h3>
+                        <h3 className="font-medium text-foreground mb-1 line-clamp-2">{title}</h3>
                         <div className="flex flex-wrap gap-2 text-sm text-muted-foreground mb-2">
-                          {exam.conducting_body && (
+                          {exam.org_name && (
                             <span className="inline-flex items-center gap-1">
-                              <FileText className="h-3.5 w-3.5" /> {exam.conducting_body}
+                              <FileText className="h-3.5 w-3.5" /> {exam.org_name}
                             </span>
                           )}
-                          {exam.total_vacancies && exam.total_vacancies > 0 && (
-                            <span>{exam.total_vacancies} Vacancies</span>
+                          {exam.vacancies && exam.vacancies > 0 && (
+                            <span>{exam.vacancies.toLocaleString('en-IN')} Vacancies</span>
                           )}
                         </div>
                         <div className="flex flex-wrap gap-1.5">
-                          {exam.selection_type && (
+                          {exam.application_mode && (
                             <Badge variant="secondary" className="text-xs capitalize">
-                              {exam.selection_type.replace(/_/g, ' ')}
+                              {exam.application_mode}
                             </Badge>
                           )}
                           {daysLeft !== null && daysLeft >= 0 && daysLeft <= 3 && (
@@ -158,11 +162,11 @@ export default function GovtSelectionPage() {
                           )}
                         </div>
                       </div>
-                      {exam.application_end && (
+                      {exam.last_date_resolved && (
                         <div className="text-right shrink-0">
                           <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                             <Calendar className="h-3 w-3" />
-                            Last Date: {format(new Date(exam.application_end), 'dd MMM yyyy')}
+                            Last Date: {format(new Date(exam.last_date_resolved), 'dd MMM yyyy')}
                           </span>
                         </div>
                       )}

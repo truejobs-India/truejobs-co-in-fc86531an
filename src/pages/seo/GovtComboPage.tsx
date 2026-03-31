@@ -26,35 +26,36 @@ export default function GovtComboPage() {
     queryKey: ['combo-exams', config.slug],
     queryFn: async () => {
       let query = supabase
-        .from('govt_exams')
-        .select('id, exam_name, slug, conducting_body, qualification_required, application_end, status, total_vacancies, updated_at, qualification_tags, states');
+        .from('employment_news_jobs')
+        .select('id, org_name, post, slug, qualification, last_date_resolved, vacancies, job_category, state, status')
+        .eq('status', 'published');
 
-      // Department filter
+      // Department filter — use DEPT_CONFIG if available, else keyword match
       if (config.dbFilters.departmentKey) {
-        query = query.or(
-          `department_slug.eq.${config.dbFilters.departmentKey},exam_category.ilike.%${config.dbFilters.departmentKey}%`
-        );
+        const deptKey = config.dbFilters.departmentKey;
+        query = query.or(`job_category.ilike.%${deptKey}%,org_name.ilike.%${deptKey}%`);
       }
 
       // State filter
       if (config.dbFilters.stateSlug) {
-        query = query.contains('states', [config.dbFilters.stateSlug]);
+        const stateName = config.dbFilters.stateSlug.replace(/-/g, ' ');
+        query = query.ilike('state', `%${stateName}%`);
       }
 
       // Qualification filter
       if (config.dbFilters.qualTag) {
-        query = query.contains('qualification_tags', [config.dbFilters.qualTag]);
+        query = query.ilike('qualification', `%${config.dbFilters.qualTag}%`);
       }
 
-      // Closing-soon: application_end within next 7 days
+      // Closing-soon: last_date_resolved within next 7 days
       if (config.dbFilters.closingSoon) {
         const today = new Date().toISOString().split('T')[0];
         const nextWeek = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
-        query = query.gte('application_end', today).lte('application_end', nextWeek);
+        query = query.gte('last_date_resolved', today).lte('last_date_resolved', nextWeek);
       }
 
       const { data, error } = await query
-        .order('updated_at', { ascending: false })
+        .order('created_at', { ascending: false })
         .limit(50);
 
       if (error) throw error;
@@ -147,27 +148,30 @@ export default function GovtComboPage() {
           ) : exams && exams.length > 0 ? (
             <div className="space-y-3">
               {exams.map((exam) => {
-                const daysLeft = exam.application_end
-                  ? differenceInDays(new Date(exam.application_end), new Date())
+                const title = exam.post
+                  ? `${exam.org_name || 'Govt'} — ${exam.post}`
+                  : exam.org_name || 'Government Job';
+                const daysLeft = exam.last_date_resolved
+                  ? differenceInDays(new Date(exam.last_date_resolved), new Date())
                   : null;
 
                 return (
                   <Link
                     key={exam.id}
-                    to={`/sarkari-jobs/${exam.slug}`}
+                    to={`/jobs/employment-news/${exam.slug}`}
                     className="block rounded-lg border border-border/60 p-4 hover:border-primary/50 hover:bg-primary/5 transition-colors"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
-                        <h3 className="font-medium text-foreground mb-1 line-clamp-2">{exam.exam_name}</h3>
+                        <h3 className="font-medium text-foreground mb-1 line-clamp-2">{title}</h3>
                         <div className="flex flex-wrap gap-2 text-sm text-muted-foreground mb-2">
-                          {exam.conducting_body && (
+                          {exam.org_name && (
                             <span className="inline-flex items-center gap-1">
-                              <FileText className="h-3.5 w-3.5" /> {exam.conducting_body}
+                              <FileText className="h-3.5 w-3.5" /> {exam.org_name}
                             </span>
                           )}
-                          {exam.total_vacancies && exam.total_vacancies > 0 && (
-                            <span>{exam.total_vacancies.toLocaleString('en-IN')} Vacancies</span>
+                          {exam.vacancies && exam.vacancies > 0 && (
+                            <span>{exam.vacancies.toLocaleString('en-IN')} Vacancies</span>
                           )}
                         </div>
                         {daysLeft !== null && daysLeft >= 0 && daysLeft <= 7 && (
@@ -176,11 +180,11 @@ export default function GovtComboPage() {
                           </Badge>
                         )}
                       </div>
-                      {exam.application_end && (
+                      {exam.last_date_resolved && (
                         <div className="text-right shrink-0">
                           <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                             <Calendar className="h-3 w-3" />
-                            Last Date: {format(new Date(exam.application_end), 'dd MMM yyyy')}
+                            Last Date: {format(new Date(exam.last_date_resolved), 'dd MMM yyyy')}
                           </span>
                         </div>
                       )}

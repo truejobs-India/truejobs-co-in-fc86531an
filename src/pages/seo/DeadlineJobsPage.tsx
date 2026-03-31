@@ -99,24 +99,25 @@ export default function DeadlineJobsPage() {
     queryKey: ['deadline-exams', config.slug],
     queryFn: async () => {
       let query = supabase
-        .from('govt_exams')
-        .select('id, exam_name, slug, conducting_body, application_end, total_vacancies, status, salary_range, updated_at')
-        .not('application_end', 'is', null);
+        .from('employment_news_jobs')
+        .select('id, org_name, post, slug, last_date_resolved, vacancies, salary, status')
+        .eq('status', 'published')
+        .not('last_date_resolved', 'is', null);
 
       const today = new Date().toISOString().split('T')[0];
 
       if (config.deadlineType === 'today') {
-        query = query.eq('application_end', today);
+        query = query.eq('last_date_resolved', today);
       } else if (config.deadlineType === 'this-week') {
         const weekEnd = addDays(new Date(), 7).toISOString().split('T')[0];
-        query = query.gte('application_end', today).lte('application_end', weekEnd);
+        query = query.gte('last_date_resolved', today).lte('last_date_resolved', weekEnd);
       } else if (config.deadlineType === 'month' && config.month && config.year) {
         const monthStart = startOfMonth(new Date(config.year, config.month - 1)).toISOString().split('T')[0];
         const monthEnd = endOfMonth(new Date(config.year, config.month - 1)).toISOString().split('T')[0];
-        query = query.gte('application_end', monthStart).lte('application_end', monthEnd);
+        query = query.gte('last_date_resolved', monthStart).lte('last_date_resolved', monthEnd);
       }
 
-      query = query.order('application_end', { ascending: true }).limit(50);
+      query = query.order('last_date_resolved', { ascending: true }).limit(50);
 
       const { data } = await query;
       return (data as any[]) || [];
@@ -177,19 +178,22 @@ export default function DeadlineJobsPage() {
         ) : exams && exams.length > 0 ? (
           <div className="space-y-3 mb-8">
             {exams.map((exam: any) => {
-              const daysLeft = differenceInDays(new Date(exam.application_end), new Date());
+              const title = exam.post
+                ? `${exam.org_name || 'Govt'} — ${exam.post}`
+                : exam.org_name || 'Government Job';
+              const daysLeft = differenceInDays(new Date(exam.last_date_resolved), new Date());
               return (
-                <Link key={exam.id} to={`/sarkari-jobs/${exam.slug}`}>
+                <Link key={exam.id} to={`/jobs/employment-news/${exam.slug}`}>
                   <Card className="hover:shadow-md transition-shadow">
                     <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <div className="flex-1 min-w-0">
-                        <h2 className="font-semibold text-foreground text-sm sm:text-base truncate">{exam.exam_name}</h2>
+                        <h2 className="font-semibold text-foreground text-sm sm:text-base truncate">{title}</h2>
                         <div className="flex flex-wrap gap-2 mt-1 text-xs text-muted-foreground">
-                          {exam.conducting_body && <span>{exam.conducting_body}</span>}
-                          {exam.total_vacancies > 0 && (
-                            <span className="flex items-center gap-1"><Users className="h-3 w-3" />{exam.total_vacancies.toLocaleString()} vacancies</span>
+                          {exam.org_name && <span>{exam.org_name}</span>}
+                          {exam.vacancies > 0 && (
+                            <span className="flex items-center gap-1"><Users className="h-3 w-3" />{exam.vacancies.toLocaleString()} vacancies</span>
                           )}
-                          {exam.salary_range && <span>{exam.salary_range}</span>}
+                          {exam.salary && <span>{exam.salary}</span>}
                         </div>
                       </div>
                       <div className="flex items-center gap-3 shrink-0">
@@ -199,7 +203,7 @@ export default function DeadlineJobsPage() {
                         </Badge>
                         <span className="text-xs text-muted-foreground flex items-center gap-1">
                           <Calendar className="h-3 w-3" />
-                          {format(new Date(exam.application_end), 'dd MMM yyyy')}
+                          {format(new Date(exam.last_date_resolved), 'dd MMM yyyy')}
                         </span>
                         <ArrowRight className="h-4 w-4 text-muted-foreground" />
                       </div>

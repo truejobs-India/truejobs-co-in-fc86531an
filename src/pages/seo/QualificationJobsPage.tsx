@@ -26,10 +26,11 @@ export default function QualificationJobsPage() {
     queryKey: ['qual-govt-exams', config.slug],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('govt_exams')
-        .select('id, exam_name, slug, conducting_body, qualification_required, application_end, status, total_vacancies, updated_at')
-        .contains('qualification_tags', [config.qualTag])
-        .order('updated_at', { ascending: false })
+        .from('employment_news_jobs')
+        .select('id, org_name, post, slug, qualification, last_date_resolved, vacancies, status')
+        .eq('status', 'published')
+        .ilike('qualification', `%${config.qualTag}%`)
+        .order('created_at', { ascending: false })
         .limit(50);
       if (error) throw error;
       return data || [];
@@ -108,27 +109,30 @@ export default function QualificationJobsPage() {
           ) : exams && exams.length > 0 ? (
             <div className="space-y-3">
               {exams.map((exam) => {
-                const daysLeft = exam.application_end
-                  ? differenceInDays(new Date(exam.application_end), new Date())
+                const title = exam.post
+                  ? `${exam.org_name || 'Govt'} — ${exam.post}`
+                  : exam.org_name || 'Government Job';
+                const daysLeft = exam.last_date_resolved
+                  ? differenceInDays(new Date(exam.last_date_resolved), new Date())
                   : null;
 
                 return (
                   <Link
                     key={exam.id}
-                    to={`/sarkari-jobs/${exam.slug}`}
+                    to={`/jobs/employment-news/${exam.slug}`}
                     className="block rounded-lg border border-border/60 p-4 hover:border-primary/50 hover:bg-primary/5 transition-colors"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
-                        <h3 className="font-medium text-foreground mb-1 line-clamp-2">{exam.exam_name}</h3>
+                        <h3 className="font-medium text-foreground mb-1 line-clamp-2">{title}</h3>
                         <div className="flex flex-wrap gap-2 text-sm text-muted-foreground mb-2">
-                          {exam.conducting_body && (
+                          {exam.org_name && (
                             <span className="inline-flex items-center gap-1">
-                              <FileText className="h-3.5 w-3.5" /> {exam.conducting_body}
+                              <FileText className="h-3.5 w-3.5" /> {exam.org_name}
                             </span>
                           )}
-                          {exam.total_vacancies && exam.total_vacancies > 0 && (
-                            <span>{exam.total_vacancies.toLocaleString('en-IN')} Vacancies</span>
+                          {exam.vacancies && exam.vacancies > 0 && (
+                            <span>{exam.vacancies.toLocaleString('en-IN')} Vacancies</span>
                           )}
                         </div>
                         {daysLeft !== null && daysLeft >= 0 && daysLeft <= 7 && (
@@ -137,11 +141,11 @@ export default function QualificationJobsPage() {
                           </Badge>
                         )}
                       </div>
-                      {exam.application_end && (
+                      {exam.last_date_resolved && (
                         <div className="text-right shrink-0">
                           <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                             <Calendar className="h-3 w-3" />
-                            Last Date: {format(new Date(exam.application_end), 'dd MMM yyyy')}
+                            Last Date: {format(new Date(exam.last_date_resolved), 'dd MMM yyyy')}
                           </span>
                         </div>
                       )}

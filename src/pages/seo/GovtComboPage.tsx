@@ -26,35 +26,36 @@ export default function GovtComboPage() {
     queryKey: ['combo-exams', config.slug],
     queryFn: async () => {
       let query = supabase
-        .from('govt_exams')
-        .select('id, exam_name, slug, conducting_body, qualification_required, application_end, status, total_vacancies, updated_at, qualification_tags, states');
+        .from('employment_news_jobs')
+        .select('id, org_name, post, slug, qualification, last_date_resolved, vacancies, job_category, state, status')
+        .eq('status', 'published');
 
-      // Department filter
+      // Department filter — use DEPT_CONFIG if available, else keyword match
       if (config.dbFilters.departmentKey) {
-        query = query.or(
-          `department_slug.eq.${config.dbFilters.departmentKey},exam_category.ilike.%${config.dbFilters.departmentKey}%`
-        );
+        const deptKey = config.dbFilters.departmentKey;
+        query = query.or(`job_category.ilike.%${deptKey}%,org_name.ilike.%${deptKey}%`);
       }
 
       // State filter
       if (config.dbFilters.stateSlug) {
-        query = query.contains('states', [config.dbFilters.stateSlug]);
+        const stateName = config.dbFilters.stateSlug.replace(/-/g, ' ');
+        query = query.ilike('state', `%${stateName}%`);
       }
 
       // Qualification filter
       if (config.dbFilters.qualTag) {
-        query = query.contains('qualification_tags', [config.dbFilters.qualTag]);
+        query = query.ilike('qualification', `%${config.dbFilters.qualTag}%`);
       }
 
-      // Closing-soon: application_end within next 7 days
+      // Closing-soon: last_date_resolved within next 7 days
       if (config.dbFilters.closingSoon) {
         const today = new Date().toISOString().split('T')[0];
         const nextWeek = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
-        query = query.gte('application_end', today).lte('application_end', nextWeek);
+        query = query.gte('last_date_resolved', today).lte('last_date_resolved', nextWeek);
       }
 
       const { data, error } = await query
-        .order('updated_at', { ascending: false })
+        .order('created_at', { ascending: false })
         .limit(50);
 
       if (error) throw error;

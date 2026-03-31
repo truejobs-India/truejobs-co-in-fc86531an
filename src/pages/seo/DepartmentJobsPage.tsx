@@ -57,11 +57,12 @@ export default function DepartmentJobsPage() {
     { label: 'Banking Jobs', href: '/banking-jobs' },
     { label: 'Defence Jobs', href: '/defence-jobs' },
     { label: 'UPSC Jobs', href: '/upsc-jobs' },
+    { label: '10th Pass Govt Jobs', href: '/10th-pass-govt-jobs' },
+    { label: '12th Pass Govt Jobs', href: '/12th-pass-govt-jobs' },
+    { label: 'Graduate Govt Jobs', href: '/graduate-govt-jobs' },
+    { label: 'Closing This Week', href: '/govt-jobs-last-date-this-week' },
     { label: 'Jobs Without Exam', href: '/govt-jobs-without-exam' },
     { label: 'Govt Salary Calculator', href: '/govt-salary-calculator' },
-    { label: 'Age Eligibility Calculator', href: '/govt-job-age-calculator' },
-    { label: 'Govt Jobs by Stream Guide', href: '/blog/govt-jobs-by-stream-guide' },
-    { label: 'SSC CGL Preparation Guide', href: '/blog/ssc-cgl-preparation-guide' },
   ].filter(l => l.href !== `/${config.slug}`);
 
   return (

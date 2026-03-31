@@ -126,17 +126,27 @@ export default function IndustryJobsPage() {
         <RelatedCities cities={topCityLinks} title={`Top Cities for ${config.industry} Jobs`} />
         {relatedCatLinks.length > 0 && <RelatedCategories categories={relatedCatLinks} title="Related Job Categories" />}
 
-        <PopularSearches searches={[
-          { label: 'Fresher Jobs', slug: 'fresher-jobs' },
-          { label: 'Remote Jobs', slug: 'remote-jobs' },
-          { label: 'Work From Home Jobs', slug: 'work-from-home-jobs' },
-        ]} />
+        <PopularSearches searches={
+          topCityLinks.slice(0, 4).map(c => ({
+            label: `${config.industry} Jobs in ${c.name}`,
+            slug: c.slug,
+          }))
+        } />
 
-        <section className="rounded-xl bg-primary/5 border border-primary/20 p-8 text-center">
-          <h2 className="text-2xl font-semibold text-foreground mb-3">Find Your Next {config.industry} Job</h2>
-          <p className="text-muted-foreground mb-6">Browse verified listings and apply directly. New jobs added daily.</p>
-          <Link to="/jobs" className="inline-flex items-center justify-center rounded-md bg-primary px-8 py-3 text-base font-medium text-primary-foreground hover:bg-primary/90 transition-colors">Browse All Jobs</Link>
-        </section>
+        <GovtJobsCrossLink context={`in ${config.industry}`} />
+
+        <ExploreRelatedSection
+          title={`Explore Related Opportunities`}
+          links={[
+            ...(relatedCatLinks || []).slice(0, 2).map(c => ({
+              label: c.name,
+              href: `/${c.slug}`,
+              description: `Browse ${c.name.toLowerCase()} across India`,
+            })),
+            { label: 'Latest Sarkari Jobs', href: '/sarkari-jobs', description: 'SSC, Railway, Banking & more govt jobs' },
+            { label: 'Private Jobs', href: '/private-jobs', description: 'Verified private sector openings' },
+          ]}
+        />
       </main>
     </Layout>
   );

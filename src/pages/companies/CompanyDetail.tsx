@@ -12,7 +12,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { AICompanyLogo } from '@/components/companies/AICompanyLogo';
 import { 
   Building2, MapPin, Briefcase, Clock, IndianRupee, 
-  ArrowLeft, Globe, Users, Calendar, ChevronRight 
+  ArrowLeft, Globe, Users, Calendar, ChevronRight, GraduationCap
 } from 'lucide-react';
 import type { Tables } from '@/integrations/supabase/types';
 
@@ -241,16 +241,15 @@ export default function CompanyDetail() {
           {/* Sidebar */}
           <div className="lg:col-span-1 space-y-6">
             <AdPlaceholder variant="sidebar" className="hidden lg:block" />
-            {company.description && (
-              <Card>
-                <CardContent className="p-6">
-                  <h3 className="font-semibold mb-3">About</h3>
-                  <p className="text-sm text-muted-foreground">
-                    {company.description}
-                  </p>
-                </CardContent>
-              </Card>
-            )}
+            {/* About — always rendered */}
+            <Card>
+              <CardContent className="p-6">
+                <h3 className="font-semibold mb-3">About</h3>
+                <p className="text-sm text-muted-foreground">
+                  {company.description || `${company.name} is listed on TrueJobs as an employer. Profile details will be updated as they become available.`}
+                </p>
+              </CardContent>
+            </Card>
 
             <Card>
               <CardContent className="p-6">
@@ -291,12 +290,32 @@ export default function CompanyDetail() {
 
             {jobs.length === 0 ? (
               <Card>
-                <CardContent className="p-12 text-center">
+                <CardContent className="p-8 text-center">
                   <Briefcase className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">No Open Positions</h3>
-                  <p className="text-muted-foreground">
-                    This company doesn't have any active job openings at the moment.
+                  <h3 className="text-lg font-semibold mb-2">No Active Openings</h3>
+                  <p className="text-muted-foreground mb-6">
+                    No active openings from {company.name} right now. Browse similar opportunities:
                   </p>
+                  <div className="flex flex-wrap justify-center gap-3">
+                    <Button variant="outline" size="sm" asChild>
+                      <Link to="/sarkari-jobs">
+                        <GraduationCap className="h-4 w-4 mr-1" />
+                        Government Jobs
+                      </Link>
+                    </Button>
+                    <Button variant="outline" size="sm" asChild>
+                      <Link to="/private-jobs">
+                        <Briefcase className="h-4 w-4 mr-1" />
+                        Private Jobs
+                      </Link>
+                    </Button>
+                    <Button variant="outline" size="sm" asChild>
+                      <Link to="/companies">
+                        <Building2 className="h-4 w-4 mr-1" />
+                        All Companies
+                      </Link>
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             ) : (
@@ -362,6 +381,46 @@ export default function CompanyDetail() {
               </div>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Browse More — always rendered */}
+      <div className="container mx-auto px-4 pb-8">
+        <h2 className="text-xl font-semibold text-foreground mb-4">Browse More</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <Link to="/sarkari-jobs">
+            <Card className="hover:shadow-md transition-shadow h-full">
+              <CardContent className="p-5 flex items-start gap-3">
+                <GraduationCap className="h-8 w-8 text-primary shrink-0 mt-1" />
+                <div>
+                  <p className="font-semibold text-foreground">Government Jobs</p>
+                  <p className="text-sm text-muted-foreground">Latest sarkari job notifications</p>
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link to="/private-jobs">
+            <Card className="hover:shadow-md transition-shadow h-full">
+              <CardContent className="p-5 flex items-start gap-3">
+                <Briefcase className="h-8 w-8 text-primary shrink-0 mt-1" />
+                <div>
+                  <p className="font-semibold text-foreground">Private Jobs</p>
+                  <p className="text-sm text-muted-foreground">Browse private sector openings</p>
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link to="/companies">
+            <Card className="hover:shadow-md transition-shadow h-full">
+              <CardContent className="p-5 flex items-start gap-3">
+                <Building2 className="h-8 w-8 text-primary shrink-0 mt-1" />
+                <div>
+                  <p className="font-semibold text-foreground">All Companies</p>
+                  <p className="text-sm text-muted-foreground">Explore more employers on TrueJobs</p>
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
         </div>
       </div>
     </Layout>

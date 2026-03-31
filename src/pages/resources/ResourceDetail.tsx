@@ -7,9 +7,10 @@ import { RelatedResources } from '@/components/resources/RelatedResources';
 import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { Download, FileText, Calendar, Globe } from 'lucide-react';
-import { RESOURCE_TYPE_PATHS, PATH_TO_RESOURCE_TYPE, getDefaultCover, type ResourceType } from '@/lib/resourceHubs';
+import { Download, FileText, Calendar, Globe, BookOpen, Users, ArrowRight } from 'lucide-react';
+import { RESOURCE_TYPE_PATHS, PATH_TO_RESOURCE_TYPE, RESOURCE_HUBS, getDefaultCover, type ResourceType } from '@/lib/resourceHubs';
 import { toast } from '@/hooks/use-toast';
 
 export default function ResourceDetail() {
@@ -19,7 +20,6 @@ export default function ResourceDetail() {
   const [resource, setResource] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  // Derive resource type from URL
   const derivedType: ResourceType = (() => {
     for (const [path, type] of Object.entries(PATH_TO_RESOURCE_TYPE)) {
       if (pathname.startsWith(`/${path}`)) return type;
@@ -29,6 +29,7 @@ export default function ResourceDetail() {
 
   const typePath = RESOURCE_TYPE_PATHS[derivedType];
   const typeLabel = typePath === 'books' ? 'Books' : typePath === 'sample-papers' ? 'Sample Papers' : typePath === 'guides' ? 'Guides' : 'Previous Year Papers';
+  const typeLabelSingular = typePath === 'books' ? 'book' : typePath === 'sample-papers' ? 'sample paper' : typePath === 'guides' ? 'guide' : 'previous year paper';
 
   useEffect(() => {
     async function fetchResource() {
@@ -49,7 +50,6 @@ export default function ResourceDetail() {
       setResource(data);
       setLoading(false);
 
-      // Log page view
       supabase.rpc('log_resource_event', {
         p_resource_id: data.id,
         p_event_type: 'page_view',
@@ -74,7 +74,14 @@ export default function ResourceDetail() {
     );
   }
 
-  const shouldNoindex = !resource.is_published || resource.is_noindex || resource.status !== 'published' || (resource.word_count || 0) < 500 || !resource.meta_title || !resource.file_url;
+  // Indexability decision matrix (strict rules):
+  // Indexable when ALL true: is_published, !is_noindex, has file_url, has title, has excerpt or meta_description
+  const shouldNoindex =
+    !resource.is_published ||
+    resource.is_noindex ||
+    !resource.file_url ||
+    !resource.title ||
+    (!resource.excerpt && !resource.meta_description);
 
   const faqItems = Array.isArray(resource.faq_schema) ? resource.faq_schema : [];
   const coverSrc = resource.cover_image_url || getDefaultCover(resource.category);
@@ -100,6 +107,37 @@ export default function ResourceDetail() {
     });
     navigate(`/${typePath}/${slug}/download`);
   };
+
+  // Find matching hub for "Browse more" link
+  const matchingHubSlug = (() => {
+    const hubs = RESOURCE_HUBS[derivedType] || {};
+    for (const [hubSlug, hubConfig] of Object.entries(hubs)) {
+      for (const filter of hubConfig.dbFilters) {
+        const fieldValue = resource[filter.field];
+        if (fieldValue && filter.values.some(v => v.toLowerCase() === fieldValue.toLowerCase())) {
+          return hubSlug;
+        }
+      }
+    }
+    return null;
+  })();
+
+  const matchingHubConfig = matchingHubSlug ? RESOURCE_HUBS[derivedType][matchingHubSlug] : null;
+
+  // "Who Should Use This" — safe derived text using real fields only
+  const examContext = resource.exam_name || resource.category || 'government';
+  const whoShouldUseText = `This ${typeLabelSingular} is useful for candidates preparing for ${examContext} exams. Download the PDF for offline practice.`;
+
+  // Resource Details metadata rows
+  const detailRows: { label: string; value: string | number | null }[] = [
+    { label: 'Exam', value: resource.exam_name },
+    { label: 'Category', value: resource.category },
+    { label: 'Subject', value: resource.subject },
+    { label: 'Language', value: resource.language ? resource.language.charAt(0).toUpperCase() + resource.language.slice(1) : null },
+    { label: 'Pages', value: resource.page_count },
+    { label: 'File Size', value: formatSize(resource.file_size_bytes) },
+    { label: 'Year', value: resource.exam_year || resource.edition_year },
+  ].filter(r => r.value != null);
 
   return (
     <Layout>
@@ -138,14 +176,17 @@ export default function ResourceDetail() {
           {/* Main content */}
           <div className="lg:col-span-2 space-y-8">
             <div>
+              {/* Badges */}
               <div className="flex flex-wrap gap-2 mb-3">
                 {resource.category && <Badge variant="secondary">{resource.category}</Badge>}
                 {resource.exam_name && <Badge variant="outline">{resource.exam_name}</Badge>}
                 {resource.subject && <Badge variant="outline">{resource.subject}</Badge>}
               </div>
+
+              {/* Title */}
               <h1 className="text-3xl font-bold text-foreground mb-4">{resource.title}</h1>
 
-              {/* PDF metadata */}
+              {/* File metadata bar */}
               <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground mb-6">
                 <span className="flex items-center gap-1">
                   <FileText className="h-4 w-4" />
@@ -180,8 +221,42 @@ export default function ResourceDetail() {
               Download PDF Free
             </Button>
 
-            {/* Content */}
-            {resource.content && (
+            {/* Resource Details card — always rendered */}
+            {detailRows.length > 0 && (
+              <Card>
+                <CardContent className="p-6">
+                  <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
+                    <BookOpen className="h-5 w-5 text-primary" />
+                    Resource Details
+                  </h2>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    {detailRows.map((row) => (
+                      <div key={row.label}>
+                        <p className="text-xs text-muted-foreground uppercase tracking-wide">{row.label}</p>
+                        <p className="text-sm font-medium text-foreground mt-0.5">{row.value}</p>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Who Should Use This — always rendered */}
+            <Card className="bg-muted/30 border-primary/20">
+              <CardContent className="p-6">
+                <h2 className="text-lg font-semibold text-foreground mb-2 flex items-center gap-2">
+                  <Users className="h-5 w-5 text-primary" />
+                  Who Should Use This
+                </h2>
+                <p className="text-sm text-muted-foreground">{whoShouldUseText}</p>
+                {resource.excerpt && (
+                  <p className="text-sm text-muted-foreground mt-3">{resource.excerpt}</p>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Prose content — only if non-empty */}
+            {resource.content && resource.content.trim().length > 0 && (
               <div
                 className="prose prose-lg dark:prose-invert max-w-none"
                 dangerouslySetInnerHTML={{ __html: resource.content }}
@@ -203,6 +278,17 @@ export default function ResourceDetail() {
                   ))}
                 </Accordion>
               </section>
+            )}
+
+            {/* Browse Hub link */}
+            {matchingHubSlug && matchingHubConfig && (
+              <Link
+                to={`/${typePath}/hub/${matchingHubSlug}`}
+                className="inline-flex items-center gap-2 text-primary hover:underline font-medium"
+              >
+                Browse more {matchingHubConfig.label}
+                <ArrowRight className="h-4 w-4" />
+              </Link>
             )}
 
             {/* Second CTA */}

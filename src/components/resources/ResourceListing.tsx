@@ -6,9 +6,10 @@ import { ResourceSEO } from '@/components/resources/ResourceSEO';
 import { ResourceCard } from '@/components/resources/ResourceCard';
 import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, FileText, BookOpen, GraduationCap, Briefcase, Newspaper } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { getHubsForType, RESOURCE_TYPE_PATHS, type ResourceType } from '@/lib/resourceHubs';
 
@@ -20,6 +21,14 @@ interface ResourceListingProps {
   metaTitle: string;
   metaDescription: string;
 }
+
+/** Type-specific intro text — no generic fallback */
+const TYPE_INTROS: Record<ResourceType, string> = {
+  sample_paper: 'Download free sample papers in PDF for government and board exams. Practice with latest pattern papers for SSC, Railway, Banking, UPSC, CBSE and more.',
+  book: 'We\'re building a library of free PDF books for competitive exam preparation. Browse available study materials below, or explore our other resources.',
+  previous_year_paper: 'Access previous year question papers for government exams. We\'re adding papers for SSC, Railway, Banking, UPSC and more.',
+  guide: 'Download preparation guides, study strategies, and exam-specific tips. We\'re expanding this section — in the meantime, check out our ready-to-use guides below.',
+};
 
 export function ResourceListing({ resourceType, pageTitle, metaTitle, metaDescription }: ResourceListingProps) {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -92,6 +101,9 @@ export function ResourceListing({ resourceType, pageTitle, metaTitle, metaDescri
     { name: pageTitle, url: `/${typePath}` },
   ];
 
+  const hasInventory = !loading && resources.length > 0;
+  const isEmpty = !loading && resources.length === 0 && !debouncedSearch && !categoryFilter;
+
   return (
     <Layout>
       <ResourceSEO
@@ -118,11 +130,9 @@ export function ResourceListing({ resourceType, pageTitle, metaTitle, metaDescri
 
         <h1 className="text-3xl font-bold text-foreground mb-2">{pageTitle}</h1>
         <AdPlaceholder variant="banner" />
-        <p className="text-muted-foreground mb-6">
-          Download free PDF resources for government exam preparation. All materials are verified and up-to-date.
-        </p>
+        <p className="text-muted-foreground mb-6">{TYPE_INTROS[resourceType]}</p>
 
-        {/* Hub navigation */}
+        {/* Hub navigation — always visible for internal linking value */}
         {hubs.length > 0 && (
           <div className="flex flex-wrap gap-2 mb-6">
             {hubs.map(h => (
@@ -135,37 +145,54 @@ export function ResourceListing({ resourceType, pageTitle, metaTitle, metaDescri
           </div>
         )}
 
-        {/* Search & filters */}
-        <div className="flex flex-col sm:flex-row gap-3 mb-8">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search resources..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant={categoryFilter === '' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => { setCategoryFilter(''); setSearchParams({}); }}
-            >
-              All
-            </Button>
-            {categories.map(c => (
+        {/* Featured link to /free-guides — only on guides listing */}
+        {resourceType === 'guide' && (
+          <Link to="/free-guides">
+            <Card className="mb-8 border-primary/30 bg-primary/5 hover:shadow-md transition-shadow">
+              <CardContent className="p-6 flex items-center gap-4">
+                <BookOpen className="h-10 w-10 text-primary shrink-0" />
+                <div>
+                  <p className="font-semibold text-foreground text-lg">10 Free Preparation Guides Available Now</p>
+                  <p className="text-sm text-muted-foreground">Download ready-to-use PDF guides for exam strategy, syllabus breakdowns, and preparation tips.</p>
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+        )}
+
+        {/* Search & filters — show when there's inventory or active search */}
+        {(hasInventory || debouncedSearch || categoryFilter) && (
+          <div className="flex flex-col sm:flex-row gap-3 mb-8">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search resources..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            <div className="flex flex-wrap gap-2">
               <Button
-                key={c}
-                variant={categoryFilter === c ? 'default' : 'outline'}
+                variant={categoryFilter === '' ? 'default' : 'outline'}
                 size="sm"
-                onClick={() => setCategoryFilter(c)}
+                onClick={() => { setCategoryFilter(''); setSearchParams({}); }}
               >
-                {c}
+                All
               </Button>
-            ))}
+              {categories.map(c => (
+                <Button
+                  key={c}
+                  variant={categoryFilter === c ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setCategoryFilter(c)}
+                >
+                  {c}
+                </Button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Grid */}
         {loading ? (
@@ -174,12 +201,13 @@ export function ResourceListing({ resourceType, pageTitle, metaTitle, metaDescri
               <div key={i} className="h-72 bg-muted animate-pulse rounded-lg" />
             ))}
           </div>
-        ) : resources.length === 0 ? (
+        ) : resources.length === 0 && (debouncedSearch || categoryFilter) ? (
+          // Filtered search with no results
           <div className="text-center py-16 text-muted-foreground">
-            <p className="text-lg">No resources found.</p>
-            <p className="text-sm mt-2">Check back soon — we're adding new materials regularly.</p>
+            <p className="text-lg">No resources found matching your search.</p>
+            <p className="text-sm mt-2">Try different keywords or browse categories above.</p>
           </div>
-        ) : (
+        ) : resources.length > 0 ? (
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
               {resources.map((r) => (
@@ -228,6 +256,100 @@ export function ResourceListing({ resourceType, pageTitle, metaTitle, metaDescri
               </div>
             )}
           </>
+        ) : null}
+
+        {/* Zero-inventory cross-resource section — only when truly empty (no search filter) */}
+        {isEmpty && (
+          <div className="space-y-10">
+            {/* Exam category cards for PYP */}
+            {resourceType === 'previous_year_paper' && hubs.length > 0 && (
+              <div>
+                <h2 className="text-xl font-semibold text-foreground mb-4">Exam Categories</h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {hubs.map(h => (
+                    <Link key={h.slug} to={`/${typePath}/hub/${h.slug}`}>
+                      <Card className="hover:shadow-md transition-shadow h-full">
+                        <CardContent className="p-5">
+                          <p className="font-semibold text-foreground mb-1">{h.config.label}</p>
+                          <p className="text-sm text-muted-foreground line-clamp-2">{h.config.intro.substring(0, 120)}…</p>
+                          <Badge variant="outline" className="mt-3 text-xs">Coming Soon</Badge>
+                        </CardContent>
+                      </Card>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Cross-resource section */}
+            <div>
+              <h2 className="text-xl font-semibold text-foreground mb-4">Available Study Materials</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <Link to="/sample-papers">
+                  <Card className="hover:shadow-md transition-shadow h-full">
+                    <CardContent className="p-5 flex items-start gap-3">
+                      <FileText className="h-8 w-8 text-primary shrink-0 mt-1" />
+                      <div>
+                        <p className="font-semibold text-foreground">Sample Papers</p>
+                        <p className="text-sm text-muted-foreground">Practice papers for competitive exams</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+                <Link to="/free-guides">
+                  <Card className="hover:shadow-md transition-shadow h-full">
+                    <CardContent className="p-5 flex items-start gap-3">
+                      <BookOpen className="h-8 w-8 text-primary shrink-0 mt-1" />
+                      <div>
+                        <p className="font-semibold text-foreground">Free Guides</p>
+                        <p className="text-sm text-muted-foreground">10 downloadable preparation guides</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+                <Link to="/jobs/employment-news">
+                  <Card className="hover:shadow-md transition-shadow h-full">
+                    <CardContent className="p-5 flex items-start gap-3">
+                      <Newspaper className="h-8 w-8 text-primary shrink-0 mt-1" />
+                      <div>
+                        <p className="font-semibold text-foreground">Employment News</p>
+                        <p className="text-sm text-muted-foreground">Latest government job notifications</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+              </div>
+            </div>
+
+            {/* Preparation hub links */}
+            <div>
+              <h2 className="text-xl font-semibold text-foreground mb-4">Explore Job Opportunities</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Link to="/sarkari-jobs">
+                  <Card className="hover:shadow-md transition-shadow h-full">
+                    <CardContent className="p-5 flex items-start gap-3">
+                      <GraduationCap className="h-8 w-8 text-primary shrink-0 mt-1" />
+                      <div>
+                        <p className="font-semibold text-foreground">Government Jobs</p>
+                        <p className="text-sm text-muted-foreground">Latest sarkari job notifications</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+                <Link to="/private-jobs">
+                  <Card className="hover:shadow-md transition-shadow h-full">
+                    <CardContent className="p-5 flex items-start gap-3">
+                      <Briefcase className="h-8 w-8 text-primary shrink-0 mt-1" />
+                      <div>
+                        <p className="font-semibold text-foreground">Private Jobs</p>
+                        <p className="text-sm text-muted-foreground">Browse private sector openings</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </Layout>

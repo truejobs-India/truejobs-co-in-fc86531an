@@ -6,8 +6,10 @@ import { supabase } from '@/integrations/supabase/client';
 import { ResourceSEO } from '@/components/resources/ResourceSEO';
 import { ResourceCard } from '@/components/resources/ResourceCard';
 import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
 import { Link } from 'react-router-dom';
-import { getHubConfig, getHubsForType, RESOURCE_TYPE_PATHS, PATH_TO_RESOURCE_TYPE, type ResourceType } from '@/lib/resourceHubs';
+import { BookOpen, FileText, GraduationCap } from 'lucide-react';
+import { getHubConfig, getHubsForType, buildHubFilterString, RESOURCE_TYPE_PATHS, PATH_TO_RESOURCE_TYPE, type ResourceType } from '@/lib/resourceHubs';
 
 interface ResourceHubProps {
   resourceType?: ResourceType;
@@ -17,7 +19,6 @@ export default function ResourceHub({ resourceType: propType }: ResourceHubProps
   const { hubSlug } = useParams<{ hubSlug: string }>();
   const pathname = window.location.pathname;
 
-  // Derive resource type from URL path
   const derivedType = propType || (() => {
     for (const [path, type] of Object.entries(PATH_TO_RESOURCE_TYPE)) {
       if (pathname.startsWith(`/${path}`)) return type;
@@ -35,29 +36,36 @@ export default function ResourceHub({ resourceType: propType }: ResourceHubProps
   const [loading, setLoading] = useState(true);
 
   const fetchData = useCallback(async () => {
-    if (!hubSlug) return;
+    if (!hubSlug || !hubConfig) return;
     setLoading(true);
 
+    // Build deterministic filter from hub's dbFilters
+    const filterString = buildHubFilterString(hubConfig.dbFilters);
+
+    const selectCols = 'slug, title, excerpt, category, resource_type, cover_image_url, language, download_count, file_size_bytes, page_count, is_featured, is_trending';
+
     const [mainRes, topRes, latestRes] = await Promise.all([
+      filterString
+        ? supabase
+            .from('pdf_resources')
+            .select(selectCols)
+            .eq('is_published', true)
+            .eq('resource_type', derivedType)
+            .or(filterString)
+            .order('is_featured', { ascending: false })
+            .order('download_count', { ascending: false })
+            .limit(24)
+        : Promise.resolve({ data: [] }),
       supabase
         .from('pdf_resources')
-        .select('slug, title, excerpt, category, resource_type, cover_image_url, language, download_count, file_size_bytes, page_count, is_featured, is_trending')
-        .eq('is_published', true)
-        .eq('resource_type', derivedType)
-        .or(`category.ilike.%${hubSlug}%,exam_name.ilike.%${hubSlug}%,subject.ilike.%${hubSlug}%`)
-        .order('is_featured', { ascending: false })
-        .order('download_count', { ascending: false })
-        .limit(24),
-      supabase
-        .from('pdf_resources')
-        .select('slug, title, excerpt, category, resource_type, cover_image_url, language, download_count, file_size_bytes, page_count, is_featured, is_trending')
+        .select(selectCols)
         .eq('is_published', true)
         .eq('resource_type', derivedType)
         .order('download_count', { ascending: false })
         .limit(6),
       supabase
         .from('pdf_resources')
-        .select('slug, title, excerpt, category, resource_type, cover_image_url, language, download_count, file_size_bytes, page_count, is_featured, is_trending')
+        .select(selectCols)
         .eq('is_published', true)
         .eq('resource_type', derivedType)
         .order('published_at', { ascending: false })
@@ -68,7 +76,7 @@ export default function ResourceHub({ resourceType: propType }: ResourceHubProps
     setTopDownloads(topRes.data || []);
     setLatestUploads(latestRes.data || []);
     setLoading(false);
-  }, [hubSlug, derivedType]);
+  }, [hubSlug, derivedType, hubConfig]);
 
   useEffect(() => {
     fetchData();
@@ -89,9 +97,11 @@ export default function ResourceHub({ resourceType: propType }: ResourceHubProps
     );
   }
 
+  const typeLabel = typePath === 'books' ? 'Books' : typePath === 'sample-papers' ? 'Sample Papers' : typePath === 'guides' ? 'Guides' : 'Previous Year Papers';
+
   const breadcrumbs = [
     { name: 'Home', url: '/' },
-    { name: typePath === 'books' ? 'Books' : typePath === 'sample-papers' ? 'Sample Papers' : typePath === 'guides' ? 'Guides' : 'Previous Year Papers', url: `/${typePath}` },
+    { name: typeLabel, url: `/${typePath}` },
     { name: hubConfig.label, url: `/${typePath}/hub/${hubSlug}` },
   ];
 
@@ -116,9 +126,7 @@ export default function ResourceHub({ resourceType: propType }: ResourceHubProps
         <nav className="text-sm text-muted-foreground mb-6">
           <Link to="/" className="hover:text-primary">Home</Link>
           <span className="mx-2">›</span>
-          <Link to={`/${typePath}`} className="hover:text-primary">
-            {typePath === 'books' ? 'Books' : typePath === 'sample-papers' ? 'Sample Papers' : typePath === 'guides' ? 'Guides' : 'Previous Year Papers'}
-          </Link>
+          <Link to={`/${typePath}`} className="hover:text-primary">{typeLabel}</Link>
           <span className="mx-2">›</span>
           <span className="text-foreground">{hubConfig.label}</span>
         </nav>
@@ -145,9 +153,57 @@ export default function ResourceHub({ resourceType: propType }: ResourceHubProps
             ))}
           </div>
         ) : resources.length === 0 ? (
-          <div className="text-center py-16 text-muted-foreground">
-            <p className="text-lg">No resources found in this category yet.</p>
-            <p className="text-sm mt-2">We're adding new materials regularly. Check back soon!</p>
+          <div className="space-y-8">
+            <div className="text-center py-12 text-muted-foreground bg-muted/30 rounded-lg">
+              <GraduationCap className="h-12 w-12 mx-auto mb-4 text-muted-foreground/60" />
+              <p className="text-lg font-medium">No resources in this category yet</p>
+              <p className="text-sm mt-2 max-w-md mx-auto">
+                We're adding new {typeLabel.toLowerCase()} regularly. Browse other categories or explore available resources below.
+              </p>
+              <Link to={`/${typePath}`} className="inline-block mt-4 text-primary hover:underline font-medium">
+                ← Browse all {typeLabel}
+              </Link>
+            </div>
+
+            {/* Cross-resource links */}
+            <div>
+              <h2 className="text-xl font-semibold text-foreground mb-4">Explore Other Resources</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <Link to="/sample-papers">
+                  <Card className="hover:shadow-md transition-shadow h-full">
+                    <CardContent className="p-5 flex items-start gap-3">
+                      <FileText className="h-8 w-8 text-primary shrink-0 mt-1" />
+                      <div>
+                        <p className="font-semibold text-foreground">Sample Papers</p>
+                        <p className="text-sm text-muted-foreground">Practice papers for competitive exams</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+                <Link to="/free-guides">
+                  <Card className="hover:shadow-md transition-shadow h-full">
+                    <CardContent className="p-5 flex items-start gap-3">
+                      <BookOpen className="h-8 w-8 text-primary shrink-0 mt-1" />
+                      <div>
+                        <p className="font-semibold text-foreground">Free Guides</p>
+                        <p className="text-sm text-muted-foreground">10 downloadable preparation guides</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+                <Link to="/sarkari-jobs">
+                  <Card className="hover:shadow-md transition-shadow h-full">
+                    <CardContent className="p-5 flex items-start gap-3">
+                      <GraduationCap className="h-8 w-8 text-primary shrink-0 mt-1" />
+                      <div>
+                        <p className="font-semibold text-foreground">Government Jobs</p>
+                        <p className="text-sm text-muted-foreground">Latest sarkari job notifications</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+              </div>
+            </div>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -171,8 +227,8 @@ export default function ResourceHub({ resourceType: propType }: ResourceHubProps
           </div>
         )}
 
-        {/* Top Downloads */}
-        {topDownloads.length > 0 && (
+        {/* Top Downloads — only show if we have hub-specific results */}
+        {resources.length > 0 && topDownloads.length > 0 && (
           <section className="mt-16">
             <h2 className="text-2xl font-bold text-foreground mb-6">🔥 Top Downloads</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -184,7 +240,7 @@ export default function ResourceHub({ resourceType: propType }: ResourceHubProps
         )}
 
         {/* Latest Uploads */}
-        {latestUploads.length > 0 && (
+        {resources.length > 0 && latestUploads.length > 0 && (
           <section className="mt-12">
             <h2 className="text-2xl font-bold text-foreground mb-6">📄 Latest Uploads</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">

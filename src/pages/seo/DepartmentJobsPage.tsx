@@ -23,14 +23,20 @@ export default function DepartmentJobsPage() {
 
   if (!config) return <Navigate to="/404" replace />;
 
-  const { data: exams, isLoading } = useQuery({
-    queryKey: ['dept-govt-exams', config.slug],
+  const deptFilter = config.deptKey ? DEPT_CONFIG[config.deptKey] : undefined;
+
+  const { data: jobs, isLoading } = useQuery({
+    queryKey: ['dept-employment-jobs', config.slug],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('govt_exams')
-        .select('id, exam_name, slug, conducting_body, qualification_required, application_end, status, total_vacancies, updated_at')
-        .or(`department_slug.eq.${config.deptKey},exam_category.ilike.%${config.deptKey}%`)
-        .order('updated_at', { ascending: false })
+      let query = supabase
+        .from('employment_news_jobs')
+        .select('id, org_name, post, slug, vacancies, last_date_resolved, published_at, job_category')
+        .eq('status', 'published');
+      if (deptFilter) {
+        query = deptFilter.applyFilter(query);
+      }
+      const { data, error } = await query
+        .order('published_at', { ascending: false })
         .limit(50);
       if (error) throw error;
       return data || [];

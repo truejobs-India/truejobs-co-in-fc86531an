@@ -60,6 +60,7 @@ import { ChatbotSettingsManager } from '@/components/admin/ChatbotSettingsManage
 import { ChatbotAnalytics } from '@/components/admin/ChatbotAnalytics';
 import { SitewideSeoAudit } from '@/components/admin/SitewideSeoAudit';
 import { FirecrawlDraftsManager } from '@/components/admin/firecrawl/FirecrawlDraftsManager';
+import { IntakeDraftsManager } from '@/components/admin/intake/IntakeDraftsManager';
 import { useNavigate } from 'react-router-dom';
 
 type DrilldownView = 
@@ -326,6 +327,10 @@ function AdminDashboardInner() {
                   <Bug className="h-4 w-4" />
                   <span className="hidden sm:inline">Firecrawl</span>
                 </TabsTrigger>
+                <TabsTrigger value="intake" className="flex items-center gap-2">
+                  <ClipboardList className="h-4 w-4" />
+                  <span className="hidden sm:inline">Intake</span>
+                </TabsTrigger>
               </TabsList>
 
               <TabsContent value="users">
@@ -419,6 +424,10 @@ function AdminDashboardInner() {
 
               <TabsContent value="firecrawl" className="w-full max-w-none">
                 <FirecrawlDraftsManager />
+              </TabsContent>
+
+              <TabsContent value="intake" className="w-full max-w-none">
+                <IntakeDraftsManager />
               </TabsContent>
             </Tabs>
           </>

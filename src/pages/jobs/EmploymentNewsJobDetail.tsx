@@ -10,6 +10,7 @@ import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { supabase } from '@/integrations/supabase/client';
 import { ChevronLeft, MapPin, Calendar, Users, IndianRupee, ExternalLink, Briefcase } from 'lucide-react';
 import DOMPurify from 'dompurify';
+import { JobAlertCTA } from '@/components/shared/JobAlertCTA';
 
 export default function EmploymentNewsJobDetail() {
   const { slug } = useParams<{ slug: string }>();

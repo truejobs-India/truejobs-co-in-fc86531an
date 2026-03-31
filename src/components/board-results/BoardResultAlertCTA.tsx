@@ -154,7 +154,7 @@ export function BoardResultAlertCTA({
         </div>
 
         <p className="text-xs text-muted-foreground">
-          Free • No spam • Unsubscribe anytime
+          {CTA_TRUST_LINE}
         </p>
       </div>
     </motion.div>

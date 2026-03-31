@@ -60,6 +60,7 @@ import { ChatbotSettingsManager } from '@/components/admin/ChatbotSettingsManage
 import { ChatbotAnalytics } from '@/components/admin/ChatbotAnalytics';
 import { SitewideSeoAudit } from '@/components/admin/SitewideSeoAudit';
 import { FirecrawlDraftsManager } from '@/components/admin/firecrawl/FirecrawlDraftsManager';
+import { IntakeDraftsManager } from '@/components/admin/intake/IntakeDraftsManager';
 import { useNavigate } from 'react-router-dom';
 
 type DrilldownView = 

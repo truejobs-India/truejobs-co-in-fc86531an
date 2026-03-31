@@ -12,6 +12,7 @@ import { ExamPatternTable } from './components/ExamPatternTable';
 import { FeeTable } from './components/FeeTable';
 import { SalaryDetails } from './components/SalaryDetails';
 import { RelatedExamLinks } from './components/RelatedExamLinks';
+import { JobAlertCTA } from '@/components/shared/JobAlertCTA';
 import { AgeCalculatorCTA } from '@/components/govt/AgeCalculatorCTA';
 import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { EnrichedSection } from '@/components/govt/EnrichedSection';

@@ -1558,7 +1558,7 @@ export function BlogPostEditor() {
               <div className="space-y-1">
                 <Label className="text-xs">Target Words</Label>
                 <div className="flex items-center gap-1.5">
-                  <Select value={[1200, 1500, 1800, 2200].includes(bulkWordCount) ? String(bulkWordCount) : 'custom'} onValueChange={(v) => { if (v !== 'custom') setBulkWordCount(Number(v)); }}>
+                  <Select value={[1200, 1500, 1800, 2200].includes(bulkWordCount) ? String(bulkWordCount) : 'custom'} onValueChange={(v) => { if (v === 'custom') setBulkWordCount(2500); else setBulkWordCount(Number(v)); }}>
                     <SelectTrigger className="w-[100px] h-8 text-xs"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="1200">1200</SelectItem>

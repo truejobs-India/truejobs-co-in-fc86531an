@@ -71,39 +71,18 @@ const GENERIC_TITLE_PATTERNS = /^(advertisement|notice|notification|corrigendum|
 
 const TIME_SENSITIVE_TERMS = /\b(result|merit\s+list|shortlist|admit\s+card|hall\s+ticket|call\s+letter|answer\s+key|correction\s+notice|interview\s+schedule|cut[\s-]?off)\b/i;
 
-function parseCSV(text: string): { headers: string[]; rows: ParsedRow[] } {
-  const lines = text.split(/\r?\n/).filter(l => l.trim());
-  if (lines.length === 0) return { headers: [], rows: [] };
-
-  const parseLine = (line: string): string[] => {
-    const result: string[] = [];
-    let current = '';
-    let inQuotes = false;
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i];
-      if (inQuotes) {
-        if (ch === '"' && line[i + 1] === '"') { current += '"'; i++; }
-        else if (ch === '"') { inQuotes = false; }
-        else { current += ch; }
-      } else {
-        if (ch === '"') { inQuotes = true; }
-        else if (ch === ',') { result.push(current.trim()); current = ''; }
-        else { current += ch; }
-      }
-    }
-    result.push(current.trim());
-    return result;
-  };
-
-  const headers = parseLine(lines[0]);
-  const rows = lines.slice(1).map(line => {
-    const values = parseLine(line);
-    const row: ParsedRow = {};
-    headers.forEach((h, i) => { row[h] = values[i] || ''; });
-    return row;
+function parseCSVWithPapa(text: string): { headers: string[]; rows: ParsedRow[]; warnings: number } {
+  const result = Papa.parse<ParsedRow>(text, {
+    header: true,
+    skipEmptyLines: 'greedy',
+    transformHeader: (h: string) => h.trim(),
   });
 
-  return { headers, rows };
+  const headers = result.meta.fields || [];
+  const rows = result.data;
+  const warnings = result.errors.filter(e => e.type !== 'Abort').length;
+
+  return { headers, rows, warnings };
 }
 
 function normalizeUrl(url: string): string {

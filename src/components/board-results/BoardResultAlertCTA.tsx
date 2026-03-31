@@ -11,9 +11,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { z } from 'zod';
 
-import whatsappLogo from '@/assets/whatsapp-logo.jpg';
-import telegramLogo from '@/assets/telegram-logo.jpg';
-import emailLogo from '@/assets/email-logo.png';
+import { CTA_CHANNELS } from '@/lib/ctaConfig';
 
 const emailSchema = z.string().trim().email('Please enter a valid email').max(255);
 

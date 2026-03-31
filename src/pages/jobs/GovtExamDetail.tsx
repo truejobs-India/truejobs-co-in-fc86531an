@@ -13,6 +13,7 @@ import {
   ExternalLink, Users, Calendar, Banknote, GraduationCap,
   FileText, Download, ChevronRight, Share2, Bookmark, ArrowRight
 } from 'lucide-react';
+import { JobAlertCTA } from '@/components/shared/JobAlertCTA';
 import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { Helmet } from 'react-helmet-async';
 

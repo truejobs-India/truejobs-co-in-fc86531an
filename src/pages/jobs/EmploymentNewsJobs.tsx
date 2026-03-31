@@ -61,7 +61,7 @@ export default function EmploymentNewsJobs() {
   return (
     <Layout>
       <SEO
-        title="Government Jobs from Employment News 2026 | TrueJobs"
+        title="Government Jobs from Employment News 2026"
         description="Browse latest government job notifications from Employment News India. Central Govt, PSU, Defence, University jobs updated weekly."
         canonical="https://truejobs.co.in/jobs/employment-news"
       />

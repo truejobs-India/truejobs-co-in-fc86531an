@@ -7,7 +7,7 @@ export default function ThankYou() {
   return (
     <Layout>
       <SEO 
-        title="Thank You - Jobs Campaign | TrueJobs" 
+        title="Thank You - Jobs Campaign" 
         description="Thank you for enrolling in our jobs campaign."
         url="/thankyou"
       />

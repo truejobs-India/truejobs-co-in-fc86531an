@@ -62,7 +62,7 @@ export default function PrivateJobs() {
   return (
     <Layout>
       <SEO
-        title="Private Jobs in India 2026 | Latest Private Sector Job Openings | TrueJobs"
+        title="Private Jobs in India 2026 | Latest Private Sector Job Openings"
         description="Find latest private sector jobs in India 2026. IT, banking, sales, marketing, fresher & experienced openings from top companies. Apply now on TrueJobs."
         url="/private-jobs"
         structuredData={[breadcrumbSchema, collectionSchema]}

@@ -37,7 +37,10 @@ export function SEO({
   articleSection,
   articleTags,
 }: SEOProps) {
-  const fullTitle = title ? `${title} | ${SITE_NAME}` : DEFAULT_TITLE;
+  // Guard against double suffix: don't append "| TrueJobs" if title already contains it
+  const fullTitle = title
+    ? (title.includes(SITE_NAME) ? title : `${title} | ${SITE_NAME}`)
+    : DEFAULT_TITLE;
   const fullUrl = url ? `${SITE_URL}${url}` : SITE_URL;
   const canonicalUrl = canonical || fullUrl;
   

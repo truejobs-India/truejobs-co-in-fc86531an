@@ -176,16 +176,3 @@ function AlertButton({ type, size = 'default' }: { type: 'whatsapp' | 'telegram'
   );
 }
 
-  const c = config[type];
-  const imgSize = size === 'sm' ? 'h-4 w-4' : 'h-5 w-5';
-  const h = size === 'sm' ? 'h-8 text-xs px-3' : 'h-10 text-sm px-4';
-
-  return (
-    <Button asChild className={`${c.bgClass} text-white rounded-xl ${h} flex-1`}>
-      <a href={c.href} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2">
-        <img src={c.logo} alt={type} className={`${imgSize} rounded-sm object-cover`} />
-        <span>{c.label}</span>
-      </a>
-    </Button>
-  );
-}

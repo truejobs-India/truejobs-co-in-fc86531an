@@ -174,7 +174,7 @@ export default function ResourceDownload() {
         {/* Subscribe CTAs */}
         <Card className="mb-8">
           <CardContent className="p-6">
-            <ResourceSubscribeCTA resourceId={resource.id} onEvent={logEvent} />
+            <JobAlertCTA variant="compact" />
           </CardContent>
         </Card>
 

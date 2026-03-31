@@ -715,7 +715,7 @@ export default function Jobs() {
           </div>
         </section>
 
-        <EmailDigestCapture variant="banner" className="mt-8" />
+        <JobAlertCTA variant="banner" className="mt-8" />
       </div>
     </Layout>
   );

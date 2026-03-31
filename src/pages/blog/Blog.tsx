@@ -410,11 +410,8 @@ export default function Blog() {
 
       {/* Distribution widgets */}
       <section className="py-10">
-        <div className="container mx-auto px-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl mx-auto">
-            <EmailDigestCapture variant="card" />
-            <TelegramAlertWidget />
-          </div>
+        <div className="container mx-auto px-4 max-w-2xl">
+          <JobAlertCTA variant="strong" />
         </div>
       </section>
     </Layout>

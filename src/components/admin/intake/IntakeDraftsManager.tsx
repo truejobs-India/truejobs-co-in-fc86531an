@@ -33,7 +33,6 @@ type IntakeDraft = {
   secondary_tags: string[] | null;
   publish_blockers: string[] | null;
   classification_reason: string | null;
-  normalised_title: string | null;
   organisation_name: string | null;
   post_name: string | null;
   exam_name: string | null;

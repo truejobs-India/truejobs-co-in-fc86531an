@@ -8,6 +8,7 @@ import { LastUpdatedBadge } from '@/pages/seo/components/LastUpdatedBadge';
 import { SEOContentSection } from '@/pages/seo/components/SEOContentSection';
 import { FAQAccordion } from '@/pages/seo/components/FAQAccordion';
 import { RelatedExamLinks } from './components/RelatedExamLinks';
+import { JobAlertCTA } from '@/components/shared/JobAlertCTA';
 import { EnrichedSection } from '@/components/govt/EnrichedSection';
 import { useEnrichmentOverlay } from '@/hooks/useEnrichmentOverlay';
 import { deduplicateFaqs, type FAQItem } from '@/lib/faqDedup';

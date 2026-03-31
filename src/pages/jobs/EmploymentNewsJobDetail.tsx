@@ -219,6 +219,8 @@ export default function EmploymentNewsJobDetail() {
             <p className="text-xs text-muted-foreground mt-8">
               Published on TrueJobs
             </p>
+
+            <JobAlertCTA variant="strong" context={job?.org_name || job?.post || 'Government Jobs'} className="mt-8" />
           </CardContent>
         </Card>
       </div>

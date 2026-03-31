@@ -749,6 +749,7 @@ export default function JobDetail() {
                 jobTitle={job.title}
               />
             )}
+            <JobAlertCTA variant="compact" context="Job Updates" className="mt-4" />
           </div>
         </div>
       </div>

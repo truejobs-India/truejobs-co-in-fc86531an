@@ -178,6 +178,8 @@ export default function AllSarkariJobsHub() {
         <div className="mt-10 text-center text-sm text-muted-foreground">
           <p>Showing {filtered.length} government job notifications. Data sourced from Employment News / official portals.</p>
         </div>
+
+        <JobAlertCTA variant="banner" context="Sarkari Jobs" className="mt-8" />
       </div>
 
       <PopularExamsBlock />

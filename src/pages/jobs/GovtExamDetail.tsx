@@ -448,6 +448,7 @@ function ExamDetailView({ slug }: { slug: string | undefined }) {
           </Card>
         )}
 
+        <JobAlertCTA variant="strong" context={exam.title} className="mb-6" />
         <RelatedExamLinks departmentSlug={exam.department_slug || ''} />
         <QuickLinksBlock />
         <ContextualLinks departmentSlug={exam.department_slug} states={exam.states} />

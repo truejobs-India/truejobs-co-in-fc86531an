@@ -26,10 +26,11 @@ export default function QualificationJobsPage() {
     queryKey: ['qual-govt-exams', config.slug],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('govt_exams')
-        .select('id, exam_name, slug, conducting_body, qualification_required, application_end, status, total_vacancies, updated_at')
-        .contains('qualification_tags', [config.qualTag])
-        .order('updated_at', { ascending: false })
+        .from('employment_news_jobs')
+        .select('id, org_name, post, slug, qualification, last_date_resolved, vacancies, status')
+        .eq('status', 'published')
+        .ilike('qualification', `%${config.qualTag}%`)
+        .order('created_at', { ascending: false })
         .limit(50);
       if (error) throw error;
       return data || [];

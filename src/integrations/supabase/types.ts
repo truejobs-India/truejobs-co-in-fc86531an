@@ -2655,6 +2655,237 @@ export type Database = {
         }
         Relationships: []
       }
+      intake_drafts: {
+        Row: {
+          admit_card_date: string | null
+          admit_card_link: string | null
+          advertisement_no: string | null
+          age_limit_text: string | null
+          ai_model_used: string | null
+          ai_processed_at: string | null
+          answer_key_date: string | null
+          answer_key_link: string | null
+          application_fee_text: string | null
+          application_mode: string | null
+          classification_reason: string | null
+          closing_date: string | null
+          confidence_score: number | null
+          content_type: string | null
+          correction_last_date: string | null
+          created_at: string
+          department_name: string | null
+          discovered_at: string | null
+          draft_content_html: string | null
+          draft_content_text: string | null
+          exam_date: string | null
+          exam_name: string | null
+          faq_json: Json | null
+          how_to_apply_text: string | null
+          id: string
+          important_dates_json: Json | null
+          important_links_json: Json | null
+          job_location: string | null
+          key_points_json: Json | null
+          meta_description: string | null
+          ministry_name: string | null
+          normalized_title: string | null
+          notification_date: string | null
+          official_apply_link: string | null
+          official_notification_link: string | null
+          official_website_link: string | null
+          opening_date: string | null
+          organisation_name: string | null
+          post_name: string | null
+          primary_status: string | null
+          processing_status: string
+          publish_blockers: Json | null
+          publish_error: string | null
+          publish_target: string | null
+          published_at: string | null
+          published_record_id: string | null
+          published_table_name: string | null
+          qualification_text: string | null
+          raw_file_type: string
+          raw_file_url: string | null
+          raw_html: string | null
+          raw_text: string | null
+          raw_title: string | null
+          reference_no: string | null
+          result_date: string | null
+          result_link: string | null
+          review_notes: string | null
+          review_status: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          salary_text: string | null
+          scrape_run_id: string | null
+          secondary_tags: Json | null
+          selection_process_text: string | null
+          seo_title: string | null
+          slug: string | null
+          source_domain: string | null
+          source_name: string | null
+          source_type: string
+          source_url: string | null
+          structured_data_json: Json | null
+          summary: string | null
+          updated_at: string
+          vacancy_count: number | null
+        }
+        Insert: {
+          admit_card_date?: string | null
+          admit_card_link?: string | null
+          advertisement_no?: string | null
+          age_limit_text?: string | null
+          ai_model_used?: string | null
+          ai_processed_at?: string | null
+          answer_key_date?: string | null
+          answer_key_link?: string | null
+          application_fee_text?: string | null
+          application_mode?: string | null
+          classification_reason?: string | null
+          closing_date?: string | null
+          confidence_score?: number | null
+          content_type?: string | null
+          correction_last_date?: string | null
+          created_at?: string
+          department_name?: string | null
+          discovered_at?: string | null
+          draft_content_html?: string | null
+          draft_content_text?: string | null
+          exam_date?: string | null
+          exam_name?: string | null
+          faq_json?: Json | null
+          how_to_apply_text?: string | null
+          id?: string
+          important_dates_json?: Json | null
+          important_links_json?: Json | null
+          job_location?: string | null
+          key_points_json?: Json | null
+          meta_description?: string | null
+          ministry_name?: string | null
+          normalized_title?: string | null
+          notification_date?: string | null
+          official_apply_link?: string | null
+          official_notification_link?: string | null
+          official_website_link?: string | null
+          opening_date?: string | null
+          organisation_name?: string | null
+          post_name?: string | null
+          primary_status?: string | null
+          processing_status?: string
+          publish_blockers?: Json | null
+          publish_error?: string | null
+          publish_target?: string | null
+          published_at?: string | null
+          published_record_id?: string | null
+          published_table_name?: string | null
+          qualification_text?: string | null
+          raw_file_type?: string
+          raw_file_url?: string | null
+          raw_html?: string | null
+          raw_text?: string | null
+          raw_title?: string | null
+          reference_no?: string | null
+          result_date?: string | null
+          result_link?: string | null
+          review_notes?: string | null
+          review_status?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          salary_text?: string | null
+          scrape_run_id?: string | null
+          secondary_tags?: Json | null
+          selection_process_text?: string | null
+          seo_title?: string | null
+          slug?: string | null
+          source_domain?: string | null
+          source_name?: string | null
+          source_type?: string
+          source_url?: string | null
+          structured_data_json?: Json | null
+          summary?: string | null
+          updated_at?: string
+          vacancy_count?: number | null
+        }
+        Update: {
+          admit_card_date?: string | null
+          admit_card_link?: string | null
+          advertisement_no?: string | null
+          age_limit_text?: string | null
+          ai_model_used?: string | null
+          ai_processed_at?: string | null
+          answer_key_date?: string | null
+          answer_key_link?: string | null
+          application_fee_text?: string | null
+          application_mode?: string | null
+          classification_reason?: string | null
+          closing_date?: string | null
+          confidence_score?: number | null
+          content_type?: string | null
+          correction_last_date?: string | null
+          created_at?: string
+          department_name?: string | null
+          discovered_at?: string | null
+          draft_content_html?: string | null
+          draft_content_text?: string | null
+          exam_date?: string | null
+          exam_name?: string | null
+          faq_json?: Json | null
+          how_to_apply_text?: string | null
+          id?: string
+          important_dates_json?: Json | null
+          important_links_json?: Json | null
+          job_location?: string | null
+          key_points_json?: Json | null
+          meta_description?: string | null
+          ministry_name?: string | null
+          normalized_title?: string | null
+          notification_date?: string | null
+          official_apply_link?: string | null
+          official_notification_link?: string | null
+          official_website_link?: string | null
+          opening_date?: string | null
+          organisation_name?: string | null
+          post_name?: string | null
+          primary_status?: string | null
+          processing_status?: string
+          publish_blockers?: Json | null
+          publish_error?: string | null
+          publish_target?: string | null
+          published_at?: string | null
+          published_record_id?: string | null
+          published_table_name?: string | null
+          qualification_text?: string | null
+          raw_file_type?: string
+          raw_file_url?: string | null
+          raw_html?: string | null
+          raw_text?: string | null
+          raw_title?: string | null
+          reference_no?: string | null
+          result_date?: string | null
+          result_link?: string | null
+          review_notes?: string | null
+          review_status?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          salary_text?: string | null
+          scrape_run_id?: string | null
+          secondary_tags?: Json | null
+          selection_process_text?: string | null
+          seo_title?: string | null
+          slug?: string | null
+          source_domain?: string | null
+          source_name?: string | null
+          source_type?: string
+          source_url?: string | null
+          structured_data_json?: Json | null
+          summary?: string | null
+          updated_at?: string
+          vacancy_count?: number | null
+        }
+        Relationships: []
+      }
       job_posting_drafts: {
         Row: {
           company_id: string

@@ -260,6 +260,7 @@ export default function ForgotPassword() {
 
   return (
     <Layout>
+      <SEO title="Reset Password" noindex={true} />
       <div className="min-h-[calc(100vh-4rem)] relative overflow-hidden bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
         <PremiumAuthBackground />
 

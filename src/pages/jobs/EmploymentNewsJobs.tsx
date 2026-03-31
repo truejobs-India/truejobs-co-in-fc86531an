@@ -73,6 +73,12 @@ export default function EmploymentNewsJobs() {
 
         <AdPlaceholder variant="banner" />
 
+        {!isLoading && data && (
+          <p className="text-sm text-muted-foreground mb-4">
+            Showing {data.jobs.length} of {data.count} active job{data.count !== 1 ? 's' : ''}
+          </p>
+        )}
+
         {/* Filters */}
         <div className="flex flex-wrap gap-2 mb-6">
           <div className="relative flex-1 min-w-[200px]">

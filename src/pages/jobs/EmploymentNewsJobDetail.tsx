@@ -204,14 +204,23 @@ export default function EmploymentNewsJobDetail() {
               </div>
             )}
 
-            {/* Apply button */}
-            {job.apply_link && (
-              <div className="mt-8">
-                <a href={job.apply_link} target="_blank" rel="noopener noreferrer">
-                  <Button size="lg" className="w-full sm:w-auto">
-                    <ExternalLink className="h-4 w-4 mr-2" /> Apply Now
-                  </Button>
-                </a>
+            {/* Apply / Official Links */}
+            {(job.apply_link || (job as any).official_website) && (
+              <div className="mt-8 flex flex-wrap gap-3">
+                {job.apply_link && (
+                  <a href={job.apply_link} target="_blank" rel="noopener noreferrer">
+                    <Button size="lg">
+                      <ExternalLink className="h-4 w-4 mr-2" /> Apply Now
+                    </Button>
+                  </a>
+                )}
+                {!job.apply_link && (job as any).official_website && (
+                  <a href={(job as any).official_website} target="_blank" rel="noopener noreferrer">
+                    <Button size="lg" variant="outline">
+                      <ExternalLink className="h-4 w-4 mr-2" /> Visit Official Website
+                    </Button>
+                  </a>
+                )}
               </div>
             )}
 

@@ -387,6 +387,7 @@ export default function Signup() {
   // Main Signup Step - Premium Two-Column Design
   return (
     <Layout>
+      <SEO title="Sign Up" noindex={true} />
       <div className={cn(
         "min-h-[calc(100vh-4rem)] relative overflow-hidden",
         isEmployer 

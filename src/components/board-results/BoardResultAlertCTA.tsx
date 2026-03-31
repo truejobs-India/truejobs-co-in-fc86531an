@@ -105,7 +105,7 @@ export function BoardResultAlertCTA({
 
   return (
     <motion.div
-      className={`rounded-2xl border ${isStrong ? 'border-primary/20 bg-gradient-to-br from-primary/[0.04] via-accent/[0.03] to-transparent' : 'border-border/50 bg-card'} p-6 md:p-8 ${className}`}
+      className={`rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/[0.04] via-accent/[0.03] to-transparent p-6 md:p-8 ${className}`}
       initial={{ opacity: 0, y: 16 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true }}

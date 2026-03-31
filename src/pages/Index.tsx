@@ -7,7 +7,7 @@ import { StateQuickFilter } from '@/components/home/StateQuickFilter';
 import { InfoCardsRow } from '@/components/home/InfoCardsRow';
 import { PrepToolsBanner } from '@/components/home/PrepToolsBanner';
 import { PrivateJobsExplore } from '@/components/home/PrivateJobsExplore';
-import { AlertSignupBanner } from '@/components/home/AlertSignupBanner';
+import { JobAlertCTA } from '@/components/shared/JobAlertCTA';
 import { SEO, OrganizationSchema, WebsiteSchema } from '@/components/SEO';
 import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 
@@ -57,7 +57,11 @@ export default function Index() {
       <PrivateJobsExplore />
 
       {/* Alert signup banner */}
-      <AlertSignupBanner />
+      <section className="py-6">
+        <div className="container mx-auto px-4">
+          <JobAlertCTA variant="strong" />
+        </div>
+      </section>
     </Layout>
   );
 }

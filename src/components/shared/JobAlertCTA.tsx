@@ -1,6 +1,7 @@
 /**
- * Premium Alert Subscription CTA for Board Result pages.
- * Uses actual WhatsApp, Telegram, and Email logos.
+ * Shared Job Alert CTA — single component for the entire site.
+ * Variants: strong (detail pages), compact (sidebars/listings), banner (horizontal strips).
+ * All URLs from ctaConfig.ts. Email = direct email_subscribers insert, never /signup.
  */
 import { useState } from 'react';
 import { motion } from 'framer-motion';
@@ -10,35 +11,28 @@ import { Input } from '@/components/ui/input';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { z } from 'zod';
-
-import { CTA_CHANNELS } from '@/lib/ctaConfig';
+import { CTA_CHANNELS, CTA_TRUST_LINE } from '@/lib/ctaConfig';
 
 const emailSchema = z.string().trim().email('Please enter a valid email').max(255);
 
-interface BoardResultAlertCTAProps {
-  variant: 'strong' | 'soft' | 'compact';
-  context: string;
-  resultReleased?: boolean;
+interface JobAlertCTAProps {
+  variant: 'strong' | 'compact' | 'banner';
+  context?: string;
   className?: string;
 }
 
-export function BoardResultAlertCTA({
-  variant = 'strong',
-  context,
-  resultReleased = false,
-  className = '',
-}: BoardResultAlertCTAProps) {
+export function JobAlertCTA({ variant, context, className = '' }: JobAlertCTAProps) {
   const [email, setEmail] = useState('');
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  const headline = resultReleased
-    ? 'Get Updates for Revaluation & Marksheet'
-    : 'Get Instant Alert When Result is Announced';
+  const headline = context
+    ? `Get Instant Alerts for ${context}`
+    : 'Get Free Job Alerts';
 
-  const subtext = resultReleased
-    ? 'Stay updated on revaluation, compartment exams, marksheet downloads, and related notices.'
-    : `Be the first to know when ${context} results are declared. Join thousands of students.`;
+  const subtext = context
+    ? `Be the first to know about ${context} updates. Join thousands of aspirants.`
+    : 'Join WhatsApp, Telegram, or email alerts for daily government job updates.';
 
   const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,7 +45,7 @@ export function BoardResultAlertCTA({
     try {
       const { error } = await supabase
         .from('email_subscribers' as any)
-        .insert({ email: result.data, frequency: 'instant', job_categories: ['board-results'] } as any);
+        .insert({ email: result.data, frequency: 'daily' } as any);
       if (error) {
         if (error.code === '23505') {
           toast.info('You are already subscribed!');
@@ -59,7 +53,7 @@ export function BoardResultAlertCTA({
         } else throw error;
       } else {
         setIsSubmitted(true);
-        toast.success('Subscribed! You\'ll receive instant result alerts.');
+        toast.success('Subscribed! You\'ll receive job alerts via email.');
       }
     } catch (err) {
       console.error('Subscription error:', err);
@@ -70,6 +64,7 @@ export function BoardResultAlertCTA({
     }
   };
 
+  // ── Compact ────────────────────────────────────────────────
   if (variant === 'compact') {
     return (
       <div className={`rounded-xl border border-border/60 bg-card p-4 ${className}`}>
@@ -77,11 +72,11 @@ export function BoardResultAlertCTA({
           <Bell className="h-4 w-4 text-primary" />
           <span className="text-sm font-semibold text-foreground">{headline}</span>
         </div>
-        <div className="flex gap-2 items-center">
-          <AlertButton type="whatsapp" size="sm" />
-          <AlertButton type="telegram" size="sm" />
+        <div className="flex flex-wrap gap-2 items-center">
+          <ChannelButton type="whatsapp" size="sm" />
+          <ChannelButton type="telegram" size="sm" />
           {!isSubmitted ? (
-            <form onSubmit={handleEmailSubmit} className="flex gap-1.5 flex-1">
+            <form onSubmit={handleEmailSubmit} className="flex gap-1.5 flex-1 min-w-[180px]">
               <Input
                 type="email" placeholder="Email" value={email}
                 onChange={e => setEmail(e.target.value)}
@@ -101,36 +96,73 @@ export function BoardResultAlertCTA({
     );
   }
 
-  const isStrong = variant === 'strong';
+  // ── Banner ─────────────────────────────────────────────────
+  if (variant === 'banner') {
+    return (
+      <motion.div
+        className={`rounded-2xl border border-primary/20 bg-gradient-to-r from-primary/5 via-accent/5 to-primary/5 p-5 ${className}`}
+        initial={{ opacity: 0, y: 16 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true }}
+      >
+        <div className="flex flex-col sm:flex-row items-center gap-4">
+          <div className="flex items-center gap-3 flex-1">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+              <Bell className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-foreground">{headline}</p>
+              <p className="text-xs text-muted-foreground">Daily updates on WhatsApp, Telegram & Email</p>
+            </div>
+          </div>
+          <div className="flex gap-2 items-center flex-wrap">
+            <ChannelButton type="whatsapp" size="sm" />
+            <ChannelButton type="telegram" size="sm" />
+            {!isSubmitted ? (
+              <form onSubmit={handleEmailSubmit} className="flex gap-1.5">
+                <Input
+                  type="email" placeholder="your@email.com" value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  className="h-8 rounded-lg w-40 text-xs" required
+                />
+                <Button type="submit" disabled={isLoading} size="sm" className="h-8 text-xs rounded-lg bg-primary hover:bg-primary/90">
+                  {isLoading ? '…' : 'Subscribe'}
+                </Button>
+              </form>
+            ) : (
+              <span className="flex items-center gap-1 text-xs text-primary font-medium">
+                <CheckCircle2 className="h-3.5 w-3.5" /> Subscribed
+              </span>
+            )}
+          </div>
+        </div>
+      </motion.div>
+    );
+  }
 
+  // ── Strong (default) ───────────────────────────────────────
   return (
     <motion.div
-      className={`rounded-2xl border ${isStrong ? 'border-primary/20 bg-gradient-to-br from-primary/[0.04] via-accent/[0.03] to-transparent' : 'border-border/50 bg-card'} p-6 md:p-8 ${className}`}
+      className={`rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/[0.04] via-accent/[0.03] to-transparent p-6 md:p-8 ${className}`}
       initial={{ opacity: 0, y: 16 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true }}
     >
       <div className="flex flex-col items-center text-center gap-5">
-        {/* Icon */}
-        <div className={`flex h-14 w-14 items-center justify-center rounded-2xl ${isStrong ? 'bg-primary text-primary-foreground shadow-lg' : 'bg-muted text-primary'}`}>
+        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg">
           <Bell className="h-7 w-7" />
         </div>
 
-        {/* Text */}
         <div className="max-w-md">
-          <h3 className={`${isStrong ? 'text-xl' : 'text-lg'} font-bold text-foreground mb-1.5`}>
-            {headline}
-          </h3>
+          <h3 className="text-xl font-bold text-foreground mb-1.5">{headline}</h3>
           <p className="text-sm text-muted-foreground leading-relaxed">{subtext}</p>
         </div>
 
-        {/* Action buttons with real logos */}
         <div className="flex flex-col sm:flex-row items-center gap-3 w-full max-w-md">
-          <AlertButton type="whatsapp" size="default" />
-          <AlertButton type="telegram" size="default" />
+          <ChannelButton type="whatsapp" size="default" />
+          <ChannelButton type="telegram" size="default" />
         </div>
 
-        {/* Email form with real logo */}
         <div className="w-full max-w-md">
           {isSubmitted ? (
             <div className="flex items-center justify-center gap-2 text-primary font-semibold py-2">
@@ -153,15 +185,13 @@ export function BoardResultAlertCTA({
           )}
         </div>
 
-        <p className="text-xs text-muted-foreground">
-          Free • No spam • Unsubscribe anytime
-        </p>
+        <p className="text-xs text-muted-foreground">{CTA_TRUST_LINE}</p>
       </div>
     </motion.div>
   );
 }
 
-function AlertButton({ type, size = 'default' }: { type: 'whatsapp' | 'telegram'; size?: 'sm' | 'default' }) {
+function ChannelButton({ type, size = 'default' }: { type: 'whatsapp' | 'telegram'; size?: 'sm' | 'default' }) {
   const c = CTA_CHANNELS[type];
   const imgSize = size === 'sm' ? 'h-4 w-4' : 'h-5 w-5';
   const h = size === 'sm' ? 'h-8 text-xs px-3' : 'h-10 text-sm px-4';
@@ -175,4 +205,3 @@ function AlertButton({ type, size = 'default' }: { type: 'whatsapp' | 'telegram'
     </Button>
   );
 }
-

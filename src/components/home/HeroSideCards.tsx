@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { MessageCircle, Send, Mail } from 'lucide-react';
+import { CTA_CHANNELS } from '@/lib/ctaConfig';
 
 export function HeroSideCards() {
   return (
@@ -36,23 +36,25 @@ export function HeroSideCards() {
           Join WhatsApp, Telegram, or email alerts for daily government job updates.
         </p>
         <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => window.open('https://wa.me/919876543210?text=Subscribe%20to%20job%20alerts', '_blank')}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#25D366] text-white text-xs font-semibold hover:bg-[#20BD5A] transition-colors"
+          <a
+            href={CTA_CHANNELS.whatsapp.url}
+            target="_blank" rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[hsl(142_70%_40%)] text-white text-xs font-semibold hover:bg-[hsl(142_70%_35%)] transition-colors"
           >
-            <MessageCircle className="h-3.5 w-3.5" /> WhatsApp Alerts
-          </button>
-          <button
-            onClick={() => window.open('https://t.me/truejobsindia', '_blank')}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#0088cc] text-white text-xs font-semibold hover:bg-[#006fa3] transition-colors"
+            <img src={CTA_CHANNELS.whatsapp.logo} alt="WhatsApp" className="h-3.5 w-3.5 rounded-sm" /> WhatsApp Alerts
+          </a>
+          <a
+            href={CTA_CHANNELS.telegram.url}
+            target="_blank" rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[hsl(200_100%_40%)] text-white text-xs font-semibold hover:bg-[hsl(200_100%_35%)] transition-colors"
           >
-            <Send className="h-3.5 w-3.5" /> Telegram Channel
-          </button>
+            <img src={CTA_CHANNELS.telegram.logo} alt="Telegram" className="h-3.5 w-3.5 rounded-sm" /> Telegram Channel
+          </a>
           <Link
-            to="/signup"
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#EA4335] text-white text-xs font-semibold hover:bg-[#d33426] transition-colors"
+            to="/email-subscribe"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[hsl(4_80%_56%)] text-white text-xs font-semibold hover:bg-[hsl(4_80%_48%)] transition-colors"
           >
-            <Mail className="h-3.5 w-3.5" /> Email Alerts
+            <img src={CTA_CHANNELS.email.logo} alt="Email" className="h-3.5 w-3.5 rounded-sm" /> Email Alerts
           </Link>
         </div>
       </div>

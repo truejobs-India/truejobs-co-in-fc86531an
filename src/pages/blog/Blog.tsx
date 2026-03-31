@@ -14,8 +14,7 @@ import { categoryToSlug } from '@/lib/blogUtils';
 import searchJobsBtn from '@/assets/btn-search-jobs.png';
 import aiResumeBtn from '@/assets/btn-ai-resume.png';
 import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
-import { EmailDigestCapture } from '@/components/distribution/EmailDigestCapture';
-import { TelegramAlertWidget } from '@/components/distribution/TelegramAlertWidget';
+import { JobAlertCTA } from '@/components/shared/JobAlertCTA';
 
 // Premium 3D category icons
 import iconJobSearch from '@/assets/icon-blog-job-search.png';
@@ -411,11 +410,8 @@ export default function Blog() {
 
       {/* Distribution widgets */}
       <section className="py-10">
-        <div className="container mx-auto px-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl mx-auto">
-            <EmailDigestCapture variant="card" />
-            <TelegramAlertWidget />
-          </div>
+        <div className="container mx-auto px-4 max-w-2xl">
+          <JobAlertCTA variant="strong" />
         </div>
       </section>
     </Layout>

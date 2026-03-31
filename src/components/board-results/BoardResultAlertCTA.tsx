@@ -118,7 +118,7 @@ export function BoardResultAlertCTA({
 
         {/* Text */}
         <div className="max-w-md">
-          <h3 className={`${isStrong ? 'text-xl' : 'text-lg'} font-bold text-foreground mb-1.5`}>
+          <h3 className="text-xl font-bold text-foreground mb-1.5">
             {headline}
           </h3>
           <p className="text-sm text-muted-foreground leading-relaxed">{subtext}</p>

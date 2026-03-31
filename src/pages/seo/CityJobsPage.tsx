@@ -8,6 +8,7 @@ import { buildBreadcrumbSchema, buildFAQSchema } from './schemas/seoPageSchemas'
 import { FAQAccordion } from './components/FAQAccordion';
 import { SEOContentSection } from './components/SEOContentSection';
 import { LiveJobListings } from './components/LiveJobListings';
+import { JobAlertCTA } from '@/components/shared/JobAlertCTA';
 import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { RelatedCities } from './components/RelatedCities';
 import { RelatedCategories } from './components/RelatedCategories';

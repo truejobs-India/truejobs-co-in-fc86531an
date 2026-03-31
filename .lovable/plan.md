@@ -1,36 +1,29 @@
 
 
-# Add Sequential Numbering to SEO Section Buttons
+# Fix: Custom Word Count Input Not Appearing
 
-## What & Why
-The SEO section has two cards with multiple action buttons. Users need to know the correct order of operations. We will prefix button labels with step numbers indicating the workflow sequence.
+## Root Cause
+In `BlogPostEditor.tsx` line 1561, when "Custom" is selected:
+```js
+onValueChange={(v) => { if (v !== 'custom') setBulkWordCount(Number(v)); }}
+```
+This **does nothing** when `v === 'custom'`, so `bulkWordCount` stays at a preset (e.g. 1500). The input field on line 1571 checks `![1200,1500,1800,2200].includes(bulkWordCount)` — which is still `true`, so the input never renders.
 
-## Verified Workflow Sequence
+## Fix
+**File:** `src/components/admin/BlogPostEditor.tsx`
 
-| Step | Button | Card | What it does |
-|---|---|---|---|
-| **①** | Build SEO Cache | SEOCacheBuilder | Generates HTML for inventory-sourced pages (cities, hubs, combos, deadlines, standalone pages) |
-| **②** | Rebuild All | SEOCacheManager | Regenerates HTML for DB-sourced pages (blog, govt-exam, employment-news). Skips unchanged. |
-| **③** | Purge All CF | SEOCacheManager | Clears Cloudflare CDN so visitors/bots get the fresh content |
+**Line 1561** — Change the `onValueChange` to set a non-preset default when "Custom" is selected:
+```js
+onValueChange={(v) => {
+  if (v === 'custom') setBulkWordCount(2500);
+  else setBulkWordCount(Number(v));
+}}
+```
 
-### Buttons that do NOT get numbers (utility/alternative actions):
-- **Refresh** — just reloads the stats table, can be used anytime
-- **Force Rebuild** — alternative to step ②, used only when templates changed but data hasn't. Will get label "②⚡ Force Rebuild" to show it's an alternative to step 2
-- **Export** — data export utility, no sequence dependency
-- **Rebuild [slug]** in SEOCacheBuilder — single-slug tool, no sequence dependency
-- **Rebuild All** in SEOCacheBuilder — same function as step ②, will get "② Rebuild All" to stay consistent
+This sets `bulkWordCount` to 2500 (a non-preset value), which:
+1. Makes the input field appear immediately
+2. Gives a sensible starting value the user can adjust
+3. Preserves all existing logic — presets still work, custom input still clamps 300–5000
 
-## Files Changed
-
-### 1. `src/components/admin/SEOCacheBuilder.tsx`
-- Line 531: `Build SEO Cache` → `① Build SEO Cache`
-- Line 534: `Rebuild All` → `② Rebuild All`
-
-### 2. `src/components/admin/seo-cache/SEOCacheManager.tsx`
-- Line 186: `Rebuild All` → `② Rebuild All`
-- Line 213: `Force Rebuild` → `②⚡ Force Rebuild`
-- Line 237: `Purge All CF` → `③ Purge All CF`
-
-## Risk
-Minimal — label-only changes, no logic affected.
+**One line change. No other files affected.**
 

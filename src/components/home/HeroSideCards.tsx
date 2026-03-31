@@ -56,12 +56,7 @@ export function HeroSideCards() {
           >
             <img src={CTA_CHANNELS.telegram.logo} alt="Telegram" className="h-3.5 w-3.5 rounded-sm" /> Telegram Channel
           </a>
-          <Link
-            to="/email-subscribe"
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[hsl(4_80%_56%)] text-white text-xs font-semibold hover:bg-[hsl(4_80%_48%)] transition-colors"
-          >
-            <img src={CTA_CHANNELS.email.logo} alt="Email" className="h-3.5 w-3.5 rounded-sm" /> Email Alerts
-          </Link>
+          <HeroEmailForm />
         </div>
       </div>
     </div>

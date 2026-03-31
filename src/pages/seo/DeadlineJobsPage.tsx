@@ -8,6 +8,7 @@ import { Calendar, Clock, Users, ArrowRight, AlertTriangle } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { buildBreadcrumbSchema, buildFAQSchema } from './schemas/seoPageSchemas';
+import { JobAlertCTA } from '@/components/shared/JobAlertCTA';
 import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { FAQAccordion } from './components/FAQAccordion';
 import { PopularExamsBlock } from '@/pages/govt/components/PopularExamsBlock';
@@ -242,6 +243,7 @@ export default function DeadlineJobsPage() {
         )}
 
         <PopularExamsBlock />
+        <JobAlertCTA variant="compact" context="Upcoming Deadlines" className="mt-6" />
       </div>
     </Layout>
   );

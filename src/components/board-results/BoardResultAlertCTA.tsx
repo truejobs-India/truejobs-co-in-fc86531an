@@ -11,12 +11,12 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { z } from 'zod';
 
-import { CTA_CHANNELS } from '@/lib/ctaConfig';
+import { CTA_CHANNELS, CTA_TRUST_LINE } from '@/lib/ctaConfig';
 
 const emailSchema = z.string().trim().email('Please enter a valid email').max(255);
 
 interface BoardResultAlertCTAProps {
-  variant: 'strong' | 'soft' | 'compact';
+  variant: 'strong' | 'compact';
   context: string;
   resultReleased?: boolean;
   className?: string;
@@ -101,24 +101,23 @@ export function BoardResultAlertCTA({
     );
   }
 
-  const isStrong = variant === 'strong';
-
+  // ── Strong (default) ───────────────────────────────────────
   return (
     <motion.div
-      className={`rounded-2xl border ${isStrong ? 'border-primary/20 bg-gradient-to-br from-primary/[0.04] via-accent/[0.03] to-transparent' : 'border-border/50 bg-card'} p-6 md:p-8 ${className}`}
+      className={`rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/[0.04] via-accent/[0.03] to-transparent p-6 md:p-8 ${className}`}
       initial={{ opacity: 0, y: 16 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true }}
     >
       <div className="flex flex-col items-center text-center gap-5">
         {/* Icon */}
-        <div className={`flex h-14 w-14 items-center justify-center rounded-2xl ${isStrong ? 'bg-primary text-primary-foreground shadow-lg' : 'bg-muted text-primary'}`}>
+        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg">
           <Bell className="h-7 w-7" />
         </div>
 
         {/* Text */}
         <div className="max-w-md">
-          <h3 className={`${isStrong ? 'text-xl' : 'text-lg'} font-bold text-foreground mb-1.5`}>
+          <h3 className="text-xl font-bold text-foreground mb-1.5">
             {headline}
           </h3>
           <p className="text-sm text-muted-foreground leading-relaxed">{subtext}</p>
@@ -154,7 +153,7 @@ export function BoardResultAlertCTA({
         </div>
 
         <p className="text-xs text-muted-foreground">
-          Free • No spam • Unsubscribe anytime
+          {CTA_TRUST_LINE}
         </p>
       </div>
     </motion.div>

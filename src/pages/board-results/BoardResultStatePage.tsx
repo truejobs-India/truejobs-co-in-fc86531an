@@ -118,7 +118,7 @@ export default function BoardResultStatePage() {
         </p>
 
         {/* Alert CTA - soft below intro */}
-        <BoardResultAlertCTA variant="soft" context={stateDisplay} className="mb-10" />
+        <BoardResultAlertCTA variant="compact" context={stateDisplay} className="mb-10" />
 
         {/* Board listing */}
         <section className="mb-10">

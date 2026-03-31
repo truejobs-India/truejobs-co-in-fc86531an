@@ -8,6 +8,7 @@ import { getCityJobConfig } from './cityJobsData';
 import { getIndustryJobConfig } from './industryJobsData';
 import { buildBreadcrumbSchema, buildFAQSchema } from './schemas/seoPageSchemas';
 import { FAQAccordion } from './components/FAQAccordion';
+import { JobAlertCTA } from '@/components/shared/JobAlertCTA';
 import { SEOContentSection } from './components/SEOContentSection';
 import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { LiveJobListings } from './components/LiveJobListings';
@@ -162,6 +163,7 @@ export default function CategoryJobsPage() {
             { label: 'Work From Home Jobs', href: '/work-from-home-jobs', description: 'Remote opportunities across India' },
           ]}
         />
+        <JobAlertCTA variant="compact" context={config.category} className="mt-8" />
       </main>
     </Layout>
   );

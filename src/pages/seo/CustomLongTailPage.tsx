@@ -8,6 +8,7 @@ import { buildBreadcrumbSchema, buildFAQSchema } from './schemas/seoPageSchemas'
 import { FAQAccordion } from './components/FAQAccordion';
 import { SEOContentSection } from './components/SEOContentSection';
 import { LiveJobListings } from './components/LiveJobListings';
+import { JobAlertCTA } from '@/components/shared/JobAlertCTA';
 import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import type { JobFilter } from './hooks/useFilteredJobs';
 
@@ -169,6 +170,7 @@ export default function CustomLongTailPage() {
             <Link to="/govt-exam-eligibility-checker" className="text-primary hover:underline">Eligibility Checker</Link>
           </p>
         </section>
+        <JobAlertCTA variant="compact" context={config.h1} className="mt-6 mb-6" />
       </div>
     </Layout>
   );

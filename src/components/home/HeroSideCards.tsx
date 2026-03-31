@@ -1,5 +1,11 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CTA_CHANNELS } from '@/lib/ctaConfig';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
+import { z } from 'zod';
+
+const emailSchema = z.string().trim().email('Please enter a valid email').max(255);
 
 export function HeroSideCards() {
   return (
@@ -50,14 +56,74 @@ export function HeroSideCards() {
           >
             <img src={CTA_CHANNELS.telegram.logo} alt="Telegram" className="h-3.5 w-3.5 rounded-sm" /> Telegram Channel
           </a>
-          <Link
-            to="/email-subscribe"
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[hsl(4_80%_56%)] text-white text-xs font-semibold hover:bg-[hsl(4_80%_48%)] transition-colors"
-          >
-            <img src={CTA_CHANNELS.email.logo} alt="Email" className="h-3.5 w-3.5 rounded-sm" /> Email Alerts
-          </Link>
+          <HeroEmailForm />
         </div>
       </div>
     </div>
+  );
+}
+
+function HeroEmailForm() {
+  const [email, setEmail] = useState('');
+  const [submitted, setSubmitted] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const result = emailSchema.safeParse(email);
+    if (!result.success) {
+      toast.error(result.error.errors[0].message);
+      return;
+    }
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from('email_subscribers' as any)
+        .insert({ email: result.data, frequency: 'daily' } as any);
+      if (error) {
+        if (error.code === '23505') {
+          toast.info('You are already subscribed!');
+          setSubmitted(true);
+        } else throw error;
+      } else {
+        setSubmitted(true);
+        toast.success("Subscribed! You'll receive job alerts via email.");
+      }
+    } catch (err) {
+      console.error('Subscription error:', err);
+      toast.error('Something went wrong. Please try again.');
+    } finally {
+      setLoading(false);
+      setEmail('');
+    }
+  };
+
+  if (submitted) {
+    return (
+      <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-white/20 text-white text-xs font-semibold">
+        ✓ Subscribed
+      </span>
+    );
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="inline-flex items-center gap-1">
+      <input
+        type="email"
+        placeholder="Email"
+        value={email}
+        onChange={e => setEmail(e.target.value)}
+        required
+        className="px-2 py-1 rounded-full text-xs w-28 bg-white/90 text-gray-900 placeholder:text-gray-500 outline-none"
+      />
+      <button
+        type="submit"
+        disabled={loading}
+        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-[hsl(4_80%_56%)] text-white text-xs font-semibold hover:bg-[hsl(4_80%_48%)] transition-colors disabled:opacity-50"
+      >
+        <img src={CTA_CHANNELS.email.logo} alt="Email" className="h-3.5 w-3.5 rounded-sm" />
+        {loading ? '…' : 'Subscribe'}
+      </button>
+    </form>
   );
 }

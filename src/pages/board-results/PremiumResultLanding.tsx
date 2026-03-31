@@ -188,7 +188,7 @@ export function PremiumResultLanding({ page }: PremiumResultLandingProps) {
         <>
           <AdPlaceholder variant="in-content" />
           <BoardResultAlertCTA
-            variant="soft"
+            variant="strong"
             context={page.board_name || page.title}
             resultReleased={!!page.result_url}
             className="my-8"

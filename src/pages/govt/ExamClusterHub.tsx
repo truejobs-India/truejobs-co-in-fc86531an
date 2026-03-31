@@ -8,6 +8,7 @@ import { LastUpdatedBadge } from '@/pages/seo/components/LastUpdatedBadge';
 import { SEOContentSection } from '@/pages/seo/components/SEOContentSection';
 import { FAQAccordion } from '@/pages/seo/components/FAQAccordion';
 import { RelatedExamLinks } from './components/RelatedExamLinks';
+import { JobAlertCTA } from '@/components/shared/JobAlertCTA';
 import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 
 import {
@@ -144,6 +145,7 @@ export default function ExamClusterHub() {
         )}
 
         {/* Related Exam Links */}
+        <JobAlertCTA variant="banner" context={config.examName} className="mb-6" />
         <RelatedExamLinks departmentSlug={config.departmentSlug} />
       </article>
     </Layout>

@@ -1,41 +1,52 @@
 
+# CTA Standardization — Implementation Plan
 
-# Updated Pass 1 — Defer Two Non-Critical Items
+## 3-Pass Structure (Non-Negotiable)
 
-## What's Deferred
+### Pass 1 — Migration ✅ COMPLETED
+- Created `src/lib/ctaConfig.ts` (canonical URLs, labels, logos)
+- Created shared `JobAlertCTA` component with 3 variants: `strong`, `compact`, `banner`
+- Migrated all page families to `JobAlertCTA` + `ctaConfig.ts`
+- `HeroSideCards` uses shared config + inline email form (direct DB insert)
+- `BoardResultAlertCTA` uses `CTA_TRUST_LINE` from shared config, `soft` variant removed
+- All old components remain untouched — no deletions, no renames, no dead-code removal
+- Codebase-wide sweep confirmed zero active violations
 
-### 1. Homepage/Blog variant-weight change — DEFERRED
-- `Index.tsx` stays `variant="strong"` (current working state)
-- `Blog.tsx` stays `variant="strong"` (current working state)
-- These are functional and policy-compliant — the `strong` → `banner` change was a weight/placement preference, not a technical violation
-- Can be revisited in a later cosmetic/placement pass
+### Pass 2 — Full Verification (NEXT)
+- Verify every migrated page family on desktop and mobile
+- Confirm canonical WhatsApp, Telegram, Email flows work on all pages
+- Confirm no page still renders an old component
+- Confirm no "Email Alerts" → `/signup` flow remains
+- Confirm no placeholder URLs remain (e.g. `919876543210`)
+- Grep codebase: confirm zero active imports of old components
 
-### 2. HeroSideCards trust-line display — DEFERRED
-- `CTA_TRUST_LINE` will NOT be added to HeroSideCards in this phase
-- The amber card doesn't currently show a trust line — adding one is a cosmetic addition, not a technical fix
-- HeroSideCards still must fix the `/email-subscribe` link (that IS a technical violation)
+### Pass 3 — Cleanup (single phase, after full verification)
+- Only after Pass 2 is fully complete
+- Delete all 5 old components in one cleanup pass:
+  - `AlertSignupBanner.tsx`
+  - `ResourceSubscribeCTA.tsx`
+  - `TelegramAlertWidget.tsx`
+  - `EmailDigestCapture.tsx`
+  - `DistributionSidebar.tsx`
+- Final grep to confirm zero broken imports
+- Spot-check routes after deletion
 
-## What Remains in Pass 1 (Technical Only)
+## Deferred Items (Not Part of Pass 1-3)
+1. Homepage/Blog variant-weight change (`strong` → `banner`) — cosmetic, revisit later
+2. HeroSideCards trust-line display — cosmetic addition, not required for technical correctness
+3. All visual polish, logo beautification, spacing/styling refinements
 
-### Corrections (3 violations)
-1. **HeroSideCards** — replace `/email-subscribe` link with inline email form (direct DB insert, shared validation). No trust-line addition, no visual changes.
-2. **TodayJobsPage** — replace `/signup` link with `JobAlertCTA variant="banner"`
-3. **BoardResultAlertCTA** — remove `soft` variant type, import `CTA_TRUST_LINE` (this IS technically required since the component already shows a trust line but hardcodes it)
+## Non-Negotiable Rules
+1. Pass 1 = migration only. No deletions until Pass 3.
+2. No old component is deleted while any page family is still mid-migration.
+3. "Email Alerts" = direct `email_subscribers` insert. Never `/signup`.
+4. All CTA surfaces use `ctaConfig.ts`. Zero inline URLs.
+5. 3 variants only: `strong`, `compact`, `banner`.
+6. No CTA on empty-state or thin pages.
+7. `BoardResultAlertCTA` imports from shared config.
 
-### Variant fixes
-- `PremiumResultLanding.tsx`: `soft` → `strong`
-- `BoardResultStatePage.tsx`: `soft` → `compact`
-
-### Page family migrations (18 files)
-Add `JobAlertCTA` to all remaining page families per the approved list — no changes to this scope.
-
-### Codebase-wide sweep
-Grep for active `/signup` alert links, `/email-subscribe` alert links, `soft` variant usage, non-canonical WA/TG numbers. Fix any found in active code.
-
-## Updated Plan File Change
-Update `.lovable/plan.md` to note these two deferrals explicitly.
-
-## Files Changed
-- `.lovable/plan.md` — add deferral notes
-- All other Pass 1 files per the existing approved technical scope (no change to file list except homepage/blog variant lines are skipped)
-
+## Owner Confirmations (Received)
+1. WhatsApp: `+917982306492` ✅
+2. Telegram: `@truejobs_alerts` ✅
+3. Email Alerts = direct subscribe only ✅
+4. StickyMobileCTA: removed ✅

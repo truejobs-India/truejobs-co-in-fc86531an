@@ -1,4 +1,5 @@
 import { useParams, Navigate, Link } from 'react-router-dom';
+import { JobAlertCTA } from '@/components/shared/JobAlertCTA';
 import { Helmet } from 'react-helmet-async';
 import { Layout } from '@/components/layout/Layout';
 import { Clock, Briefcase, MapPin } from 'lucide-react';
@@ -236,13 +237,7 @@ export default function TodayJobsPage() {
         />
 
         {/* CTA */}
-        <section className="rounded-xl bg-primary/5 border border-primary/20 p-8 text-center">
-          <h2 className="text-2xl font-semibold text-foreground mb-3">Get Daily Job Alerts</h2>
-          <p className="text-muted-foreground mb-6">Receive notifications for new jobs posted every day. Never miss an opportunity.</p>
-          <Link to="/signup" className="inline-flex items-center justify-center rounded-md bg-primary px-8 py-3 text-base font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
-            Get Free Alerts
-          </Link>
-        </section>
+        <JobAlertCTA variant="banner" context="Today's Jobs" className="mb-6" />
       </main>
     </Layout>
   );

@@ -8,6 +8,7 @@ import { getCityJobConfig } from './cityJobsData';
 import { buildBreadcrumbSchema, buildFAQSchema } from './schemas/seoPageSchemas';
 import { FAQAccordion } from './components/FAQAccordion';
 import { SEOContentSection } from './components/SEOContentSection';
+import { JobAlertCTA } from '@/components/shared/JobAlertCTA';
 import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { LiveJobListings } from './components/LiveJobListings';
 import { RelatedCities } from './components/RelatedCities';
@@ -147,6 +148,7 @@ export default function IndustryJobsPage() {
             { label: 'Private Jobs', href: '/private-jobs', description: 'Verified private sector openings' },
           ]}
         />
+        <JobAlertCTA variant="compact" context={`${config.industry} Jobs`} className="mt-8" />
       </main>
     </Layout>
   );

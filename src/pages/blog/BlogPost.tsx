@@ -8,6 +8,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Separator } from '@/components/ui/separator';
 import { Card, CardContent } from '@/components/ui/card';
 import { supabase } from '@/integrations/supabase/client';
+import { JobAlertCTA } from '@/components/shared/JobAlertCTA';
 import { format } from 'date-fns';
 import { Calendar, Clock, ArrowLeft, User, Share2, Tag, ChevronRight, BookOpen, Linkedin, Twitter } from 'lucide-react';
 import { RelatedJobs } from '@/components/blog/RelatedJobs';
@@ -466,6 +467,7 @@ export default function BlogPostPage() {
 
             {/* Bottom CTAs */}
             <BlogCTA variant="all" />
+            <JobAlertCTA variant="compact" context="Career Updates" className="mt-6" />
           </div>
 
           {/* Sidebar */}

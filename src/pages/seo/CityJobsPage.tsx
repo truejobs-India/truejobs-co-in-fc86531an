@@ -8,6 +8,7 @@ import { buildBreadcrumbSchema, buildFAQSchema } from './schemas/seoPageSchemas'
 import { FAQAccordion } from './components/FAQAccordion';
 import { SEOContentSection } from './components/SEOContentSection';
 import { LiveJobListings } from './components/LiveJobListings';
+import { JobAlertCTA } from '@/components/shared/JobAlertCTA';
 import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { RelatedCities } from './components/RelatedCities';
 import { RelatedCategories } from './components/RelatedCategories';
@@ -190,6 +191,7 @@ export default function CityJobsPage() {
             { label: 'Fresher Jobs', href: '/fresher-jobs', description: 'Entry-level openings for freshers' },
           ]}
         />
+        <JobAlertCTA variant="compact" context={`Jobs in ${config.city}`} className="mt-8" />
       </main>
     </Layout>
   );

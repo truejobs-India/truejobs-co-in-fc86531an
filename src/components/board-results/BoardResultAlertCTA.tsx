@@ -11,7 +11,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { z } from 'zod';
 
-import { CTA_CHANNELS } from '@/lib/ctaConfig';
+import { CTA_CHANNELS, CTA_TRUST_LINE } from '@/lib/ctaConfig';
 
 const emailSchema = z.string().trim().email('Please enter a valid email').max(255);
 

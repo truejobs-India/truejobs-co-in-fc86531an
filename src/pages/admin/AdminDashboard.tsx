@@ -425,6 +425,10 @@ function AdminDashboardInner() {
               <TabsContent value="firecrawl" className="w-full max-w-none">
                 <FirecrawlDraftsManager />
               </TabsContent>
+
+              <TabsContent value="intake" className="w-full max-w-none">
+                <IntakeDraftsManager />
+              </TabsContent>
             </Tabs>
           </>
         ) : currentView.type === 'users' ? (

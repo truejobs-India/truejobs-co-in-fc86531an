@@ -134,3 +134,9 @@ verify_jwt = false
 
 [functions.firecrawl-cleanup-branding]
 verify_jwt = false
+
+[functions.intake-ai-classify]
+verify_jwt = false
+
+[functions.intake-publish]
+verify_jwt = false

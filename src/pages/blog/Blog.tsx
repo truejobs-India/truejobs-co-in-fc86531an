@@ -14,8 +14,7 @@ import { categoryToSlug } from '@/lib/blogUtils';
 import searchJobsBtn from '@/assets/btn-search-jobs.png';
 import aiResumeBtn from '@/assets/btn-ai-resume.png';
 import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
-import { EmailDigestCapture } from '@/components/distribution/EmailDigestCapture';
-import { TelegramAlertWidget } from '@/components/distribution/TelegramAlertWidget';
+import { JobAlertCTA } from '@/components/shared/JobAlertCTA';
 
 // Premium 3D category icons
 import iconJobSearch from '@/assets/icon-blog-job-search.png';

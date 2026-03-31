@@ -145,6 +145,7 @@ export default function ExamClusterHub() {
         )}
 
         {/* Related Exam Links */}
+        <JobAlertCTA variant="banner" context={config.examName} className="mb-6" />
         <RelatedExamLinks departmentSlug={config.departmentSlug} />
       </article>
     </Layout>

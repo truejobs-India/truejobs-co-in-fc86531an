@@ -148,6 +148,7 @@ export default function IndustryJobsPage() {
             { label: 'Private Jobs', href: '/private-jobs', description: 'Verified private sector openings' },
           ]}
         />
+        <JobAlertCTA variant="compact" context={`${config.industry} Jobs`} className="mt-8" />
       </main>
     </Layout>
   );

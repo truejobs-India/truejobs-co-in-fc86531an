@@ -163,6 +163,7 @@ export default function CategoryJobsPage() {
             { label: 'Work From Home Jobs', href: '/work-from-home-jobs', description: 'Remote opportunities across India' },
           ]}
         />
+        <JobAlertCTA variant="compact" context={config.category} className="mt-8" />
       </main>
     </Layout>
   );

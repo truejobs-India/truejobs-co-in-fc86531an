@@ -243,6 +243,7 @@ export default function DeadlineJobsPage() {
         )}
 
         <PopularExamsBlock />
+        <JobAlertCTA variant="compact" context="Upcoming Deadlines" className="mt-6" />
       </div>
     </Layout>
   );

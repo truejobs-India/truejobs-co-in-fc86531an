@@ -382,6 +382,7 @@ export default function ExamAuthorityPage() {
         })()}
 
         {/* Related Links */}
+        <JobAlertCTA variant="compact" context={config.examName} className="mb-6" />
         <RelatedExamLinks
           relatedExams={config.relatedExams}
           departmentSlug={config.departmentSlug}

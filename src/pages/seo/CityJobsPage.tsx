@@ -191,6 +191,7 @@ export default function CityJobsPage() {
             { label: 'Fresher Jobs', href: '/fresher-jobs', description: 'Entry-level openings for freshers' },
           ]}
         />
+        <JobAlertCTA variant="compact" context={`Jobs in ${config.city}`} className="mt-8" />
       </main>
     </Layout>
   );

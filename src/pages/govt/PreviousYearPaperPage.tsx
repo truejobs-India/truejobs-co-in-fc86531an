@@ -195,6 +195,7 @@ export default function PreviousYearPaperPage() {
         />
 
         {/* Back to Hub */}
+        <JobAlertCTA variant="compact" context={config.examName} className="mb-6" />
         <div className="mt-8 mb-4">
           <Link
             to={`/${config.hubSlug}`}

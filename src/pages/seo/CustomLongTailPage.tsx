@@ -170,6 +170,7 @@ export default function CustomLongTailPage() {
             <Link to="/govt-exam-eligibility-checker" className="text-primary hover:underline">Eligibility Checker</Link>
           </p>
         </section>
+        <JobAlertCTA variant="compact" context={config.h1} className="mt-6 mb-6" />
       </div>
     </Layout>
   );

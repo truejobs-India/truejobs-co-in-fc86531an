@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { MessageCircle, Send, Mail } from 'lucide-react';
+import { CTA_CHANNELS } from '@/lib/ctaConfig';
 
 export function HeroSideCards() {
   return (

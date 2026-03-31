@@ -8,6 +8,7 @@ import { getCityJobConfig } from './cityJobsData';
 import { getIndustryJobConfig } from './industryJobsData';
 import { buildBreadcrumbSchema, buildFAQSchema } from './schemas/seoPageSchemas';
 import { FAQAccordion } from './components/FAQAccordion';
+import { JobAlertCTA } from '@/components/shared/JobAlertCTA';
 import { SEOContentSection } from './components/SEOContentSection';
 import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { LiveJobListings } from './components/LiveJobListings';

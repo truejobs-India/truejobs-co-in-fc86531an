@@ -27,7 +27,7 @@ import {
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
-import { EmailDigestCapture } from '@/components/distribution/EmailDigestCapture';
+import { JobAlertCTA } from '@/components/shared/JobAlertCTA';
 const JOB_TYPE_VALUES = ['full_time', 'part_time', 'contract', 'internship', 'remote'];
 
 // Experience level values for database queries

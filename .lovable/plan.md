@@ -1,113 +1,62 @@
 
 
-# Technical Audit: 6 Additional Checks
+# Plan Tightening Note — Pre-Implementation
 
-## SECTION 1: APPLY-LINK CONSISTENCY
+## What Must Be Tightened
 
-**Status: Data-dependent, not a code bug. Consistent by template.**
+### 1. Job-Detail CTA
+- Status changed from "no action needed" to: **implementation present, verification pending**
+- Final verification report must explicitly confirm CTA presence, canonical destinations, and alert behavior across `GovtExamDetail`, `EmploymentNewsJobDetail`, and `JobDetail`
+- Not silently closed — remains in verification checklist
 
-All three detail templates handle apply links correctly:
+### 2. Download / Free-Guide Flow
+- Status changed from "no code fix needed" to: **no code change planned unless live verification reveals failure**
+- Remains **live-verification pending** — not closed from code inspection alone
+- If `file_url` data is missing for any resource family, report as data/content dependency honestly
 
-- **GovtExamDetail.tsx (line 270):** `{exam.apply_link && <Button>Apply Online</Button>}` — conditional render. Also has `official_website` and `notification_pdf_url` links rendered separately in an "Important Links" card.
-- **EmploymentNewsJobDetail.tsx (line 208):** `{job.apply_link && <Button>Apply Now</Button>}` — conditional render. Also shows `application_mode` as text in the info grid (line 136-140) but does NOT render a clickable link from `official_website` — only `apply_link`.
-- **JobDetail.tsx:** Private-sector template. Uses `job.application_url` for "Apply Now" button, also conditional.
+### 3. Thin-Family Noindex Logic
+- `noindex` applies **only when query returns zero published results and no active search/filter**
+- Families with real content (e.g., `/sample-papers` with populated records) must NOT be noindexed
+- Implementation: `noindex={results.length === 0 && !hasActiveFilters}` — condition-based, never family-wide
 
-**Findings:**
-- Apply-link presence is entirely data-dependent. If `apply_link` is null, no button renders. This is correct behavior, not a bug.
-- **Gap in EmploymentNewsJobDetail:** Unlike GovtExamDetail (which also shows `official_website`), this template only renders `apply_link`. If a job has `official_website` but no `apply_link`, the user sees no official link at all. This is an inconsistency between templates.
-- The "Apply Mode" field (line 136) shows text like "online" or "offline" but is NOT a link — it's informational only. This may have been what earlier reports flagged as "showing apply mode text without a real link."
-- **Verdict:** Templates are technically correct but **EmploymentNewsJobDetail is weaker** than GovtExamDetail — it doesn't fall back to `official_website` when `apply_link` is missing.
+### 4. Companies Family
+- Protection extends beyond listing page to **company detail pages**
+- `CompanyDetail.tsx` must also get conditional noindex when: zero active jobs AND minimal company info (no description, no logo)
+- Both listing and detail thinness are addressed
 
----
+### 5. Sitemap Fix Path — Decision Made
+- **Chosen route: Hardcode dept slugs into `dynamic-sitemap` edge function's `sitemap-pages.xml` generator**
+- Reason: Dept slugs are a known fixed set (`VALID_DEPT_SLUGS` — 9 values). They don't change dynamically. Hardcoding is simpler, faster, has zero cache dependency, and avoids requiring admin cache-build runs to include them
+- The `seo_page_cache` path would work but adds unnecessary operational overhead for 9 static URLs
 
-## SECTION 2: FREE GUIDES / DOWNLOAD FLOW
+### 6. SSC Issue
+- Filter widening (`job_category.eq.SSC` addition) is a **technical mitigation attempt only**
+- Full closure depends on whether SSC-tagged records actually exist in `employment_news_jobs`
+- If zero records match even after widening, this is a **data population gap** — will be reported honestly, not overclaimed as fixed
 
-**Status: Code is technically sound. Data-dependent.**
+## What Remains Implementation-Ready
 
-- `ResourceDownload.tsx` (line 65-81): Downloads via creating an `<a>` element with `href=resource.file_url` and programmatically clicking it. No auth check, no API call — direct browser download.
-- The "Generating..." stuck state reported earlier is NOT caused by this download flow. It may relate to the AI image generation pipeline (`generate-vertex-image` edge function) which shows 429 rate-limit retries in logs — but that's for admin cover image generation, not user-facing downloads.
-- Download works if `file_url` is populated. If null, a "File temporarily unavailable" toast fires (line 66-68).
-- No login/auth gate blocks downloads.
-- **Verdict:** Download flow is technically correct. Any "stuck" behavior is data-dependent (missing `file_url`) or a misattributed report about admin image generation.
+- Duplicate title suffix fix (10 files) — straightforward, verified
+- Auth page noindex (4 files) — straightforward
+- `index.html` OG tag neutralization — straightforward
+- `SEO.tsx` DEFAULT_TITLE alignment and double-suffix guard — ready
+- `ResourceSEO.tsx` explicit robots meta — ready
+- `ResourceListing.tsx` conditional noindex (with tightened condition) — ready
+- `Companies.tsx` listing + detail conditional noindex — ready
+- `deptMapping.ts` police SSB fix and SSC filter widening — ready
+- `stateGovtJobsData.ts` UT copy fix — ready
+- `dynamic-sitemap` dept slug hardcode — ready
+- AdSense: footer ad suppression on empty listings — ready; Auto Ads = dashboard dependency (documented)
 
----
+## What Must Stay Verification-Dependent
 
-## SECTION 3: REAL 404 STATUS VERIFICATION
+1. Job-detail CTA — live confirmation of all 3 families
+2. Download flow — live test of actual file downloads across `/books`, `/sample-papers`, `/previous-year-papers`
+3. SSC data — whether records exist post-filter-widening
+4. Thin families — whether `/books`, `/previous-year-papers` currently have real published content or are genuinely empty
+5. Company detail thinness — data-dependent assessment
 
-**Status: Correctly implemented for multi-segment; soft-404 risk for single-segment.**
+## Plan Ready?
 
-Worker logic (lines 409-423):
-```
-const status = isLikelyValid(pathname) ? 200 : 404;
-```
-
-- **Multi-segment unknown paths** (e.g., `/xyz/abc`): Return HTTP 404 with `X-Robots-Tag: noindex, nofollow` and `no-cache`. Correct.
-- **Single-segment paths** (e.g., `/nonexistent-slug`): Always return HTTP 200 (line 111: `if (segments.length <= 1) return true`). React's `SEOLandingResolver` then tries to resolve via DB. If not found, React renders a client-side NotFound page — but the HTTP status is still 200. This is a **soft 404** for crawlers.
-- **SEO routes with cache miss** (line 323-331): Return HTTP 200 with SPA shell even when `serve-public-page` returns 404. This means a valid SEO route pattern with no actual content still returns 200.
-- **Verdict:** Multi-segment 404s are correct. Single-segment unknown URLs are soft 404s (HTTP 200 + client-side "not found" page). This is a known architectural trade-off documented in the worker strategy, but it means Google may index some garbage single-segment URLs with 200 status.
-
----
-
-## SECTION 4: HOMEPAGE TITLE / H1 ALIGNMENT
-
-**Status: Mismatch still exists, but not technically broken.**
-
-- **`<title>`:** `Index.tsx` line 17-18 passes no `title` prop to `<SEO>`. So `SEO.tsx` line 40 uses `DEFAULT_TITLE`: "TrueJobs – Latest Govt & Private Jobs in India 2026 | Free Job Alert"
-- **H1:** `GovtHeroBlock.tsx` renders: "Latest Government Jobs, Results, Admit Cards & Exams"
-- **Mismatch:** Title says "Govt & Private Jobs" + "Free Job Alert". H1 says only "Government Jobs, Results, Admit Cards & Exams". Different intent scope.
-- **Shell title** (`index.html`): "Smart Job Search India | TrueJobs" — a third different title visible to crawlers on uncached/shell-fallback routes.
-- **Verdict:** Three different title/heading signals for the homepage. Not critical (Google will typically use `<title>` from hydrated page), but the shell title is the weakest signal and should be neutralized.
-
----
-
-## SECTION 5: EMPLOYMENT NEWS LISTING DEPTH / PAGINATION
-
-**Status: Technically adequate but lean.**
-
-- `EmploymentNewsJobs.tsx`: Queries with `PER_PAGE = 20`, has pagination, shows total page count.
-- **No total job count displayed** to users — only "Page X of Y" in pagination.
-- Has search, category filter, state filter — functionally complete.
-- No "X jobs found" result count indicator.
-- Query uses `.eq('status', 'published')` — no expired-job filter (same issue as Sarkari listings).
-- **Verdict:** Pagination and filtering are technically adequate. Missing: visible total count, and expired-job filtering. The listing is functional but doesn't communicate volume/depth to users or crawlers.
-
----
-
-## SECTION 6: QUERY / SEARCH URL INDEXATION POLICY
-
-**Status: Correct and intentional.**
-
-- `robots.txt` lines 42-45:
-  ```
-  Disallow: /*?*sort=
-  Disallow: /*?*page=
-  Disallow: /*?*filter=
-  Disallow: /*?*search=
-  ```
-- This blocks crawling of any URL with `sort`, `page`, `filter`, or `search` query parameters. This prevents duplicate content from paginated/filtered views.
-- The actual listing pages themselves (e.g., `/jobs/employment-news`, `/sarkari-jobs`) are NOT blocked — only their query-parameterized variants.
-- **Verdict:** This is correct and intentional. Canonical listing URLs are indexable; filtered/paginated variants are blocked. Technically sound for SEO.
-
----
-
-## SEVERITY SUMMARY OF NEW FINDINGS
-
-| # | Finding | SEO Risk | UX Risk | Complexity |
-|---|---------|----------|---------|------------|
-| 1 | EmploymentNewsJobDetail missing `official_website` fallback | Low | Medium | Low |
-| 2 | Download flow | None (working) | None | N/A |
-| 3 | Single-segment soft 404s (HTTP 200) | Medium | Low | Medium (architectural) |
-| 4 | Homepage 3-way title mismatch | Medium | Low | Low |
-| 5 | Employment News listing no total count, no expired filter | Medium | Medium | Low |
-| 6 | Query URL indexation | None (correct) | None | N/A |
-
----
-
-## ACTIONABLE FIXES TO PLAN
-
-1. **EmploymentNewsJobDetail:** Add `official_website` fallback link when `apply_link` is null — match GovtExamDetail behavior.
-2. **Homepage shell title:** Neutralize `index.html` title to just "TrueJobs" to prevent SEO signal conflict.
-3. **Employment News listing:** Add total count display; add expired-job filter (`.gte('last_date_resolved', today)` or null-pass).
-4. **Single-segment soft 404:** Architectural — no simple fix. Documented trade-off. Can be partially mitigated by having `SEOLandingResolver` emit a `noindex` meta tag when slug resolution fails (which it likely already does via NotFound page).
-5. **No code changes needed** for download flow or query URL policy — both are correct.
+**Yes — ready for implementation after these 6 tightenings are accepted.** No structural changes to the plan, only precision improvements to closure language and condition logic.
 

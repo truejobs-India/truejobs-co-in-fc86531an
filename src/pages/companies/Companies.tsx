@@ -12,7 +12,51 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AICompanyLogo } from '@/components/companies/AICompanyLogo';
-import { Search, Building2, MapPin, Users, ChevronLeft, ChevronRight, Briefcase } from 'lucide-react';
+import { Search, Building2, MapPin, Users, ChevronLeft, ChevronRight, Briefcase, GraduationCap, Newspaper } from 'lucide-react';
+
+/** Explore More section — shown when company listing is sparse or empty */
+function ExploreMoreSection() {
+  return (
+    <div>
+      <h2 className="text-xl font-semibold mb-4">Explore More Opportunities</h2>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Link to="/sarkari-jobs">
+          <Card className="hover:shadow-md transition-shadow h-full">
+            <CardContent className="p-5 flex items-start gap-3">
+              <GraduationCap className="h-8 w-8 text-primary shrink-0 mt-1" />
+              <div>
+                <p className="font-semibold text-foreground">Government Jobs</p>
+                <p className="text-sm text-muted-foreground">Browse latest sarkari job notifications</p>
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
+        <Link to="/private-jobs">
+          <Card className="hover:shadow-md transition-shadow h-full">
+            <CardContent className="p-5 flex items-start gap-3">
+              <Briefcase className="h-8 w-8 text-primary shrink-0 mt-1" />
+              <div>
+                <p className="font-semibold text-foreground">Private Jobs</p>
+                <p className="text-sm text-muted-foreground">Browse private sector openings</p>
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
+        <Link to="/jobs/employment-news">
+          <Card className="hover:shadow-md transition-shadow h-full">
+            <CardContent className="p-5 flex items-start gap-3">
+              <Newspaper className="h-8 w-8 text-primary shrink-0 mt-1" />
+              <div>
+                <p className="font-semibold text-foreground">Employment News</p>
+                <p className="text-sm text-muted-foreground">Latest government recruitment updates</p>
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
+      </div>
+    </div>
+  );
+}
 
 const ITEMS_PER_PAGE = 12;
 

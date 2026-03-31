@@ -383,6 +383,46 @@ export default function CompanyDetail() {
           </div>
         </div>
       </div>
+
+      {/* Browse More — always rendered */}
+      <div className="container mx-auto px-4 pb-8">
+        <h2 className="text-xl font-semibold text-foreground mb-4">Browse More</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <Link to="/sarkari-jobs">
+            <Card className="hover:shadow-md transition-shadow h-full">
+              <CardContent className="p-5 flex items-start gap-3">
+                <GraduationCap className="h-8 w-8 text-primary shrink-0 mt-1" />
+                <div>
+                  <p className="font-semibold text-foreground">Government Jobs</p>
+                  <p className="text-sm text-muted-foreground">Latest sarkari job notifications</p>
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link to="/private-jobs">
+            <Card className="hover:shadow-md transition-shadow h-full">
+              <CardContent className="p-5 flex items-start gap-3">
+                <Briefcase className="h-8 w-8 text-primary shrink-0 mt-1" />
+                <div>
+                  <p className="font-semibold text-foreground">Private Jobs</p>
+                  <p className="text-sm text-muted-foreground">Browse private sector openings</p>
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link to="/companies">
+            <Card className="hover:shadow-md transition-shadow h-full">
+              <CardContent className="p-5 flex items-start gap-3">
+                <Building2 className="h-8 w-8 text-primary shrink-0 mt-1" />
+                <div>
+                  <p className="font-semibold text-foreground">All Companies</p>
+                  <p className="text-sm text-muted-foreground">Explore more employers on TrueJobs</p>
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+        </div>
+      </div>
     </Layout>
   );
 }

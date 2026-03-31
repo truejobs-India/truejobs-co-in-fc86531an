@@ -1,4 +1,4 @@
-import { useParams, Navigate } from 'react-router-dom';
+import { useParams, Navigate, Link } from 'react-router-dom';
 import { JobAlertCTA } from '@/components/shared/JobAlertCTA';
 import { Helmet } from 'react-helmet-async';
 import { Layout } from '@/components/layout/Layout';

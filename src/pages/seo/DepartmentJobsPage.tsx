@@ -12,6 +12,7 @@ import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { FAQAccordion } from './components/FAQAccordion';
 import { SEOContentSection } from './components/SEOContentSection';
 import { PopularExamsBlock } from '@/pages/govt/components/PopularExamsBlock';
+import { DEPT_CONFIG } from '@/lib/deptMapping';
 import { format, differenceInDays } from 'date-fns';
 
 const SITE_URL = 'https://truejobs.co.in';
@@ -22,14 +23,20 @@ export default function DepartmentJobsPage() {
 
   if (!config) return <Navigate to="/404" replace />;
 
-  const { data: exams, isLoading } = useQuery({
-    queryKey: ['dept-govt-exams', config.slug],
+  const deptFilter = config.deptKey ? DEPT_CONFIG[config.deptKey] : undefined;
+
+  const { data: jobs, isLoading } = useQuery({
+    queryKey: ['dept-employment-jobs', config.slug],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('govt_exams')
-        .select('id, exam_name, slug, conducting_body, qualification_required, application_end, status, total_vacancies, updated_at')
-        .or(`department_slug.eq.${config.deptKey},exam_category.ilike.%${config.deptKey}%`)
-        .order('updated_at', { ascending: false })
+      let query = supabase
+        .from('employment_news_jobs')
+        .select('id, org_name, post, slug, vacancies, last_date_resolved, published_at, job_category')
+        .eq('status', 'published');
+      if (deptFilter) {
+        query = deptFilter.applyFilter(query);
+      }
+      const { data, error } = await query
+        .order('published_at', { ascending: false })
         .limit(50);
       if (error) throw error;
       return data || [];
@@ -102,30 +109,30 @@ export default function DepartmentJobsPage() {
                 <Skeleton key={i} className="h-24 w-full rounded-lg" />
               ))}
             </div>
-          ) : exams && exams.length > 0 ? (
+          ) : jobs && jobs.length > 0 ? (
             <div className="space-y-3">
-              {exams.map((exam) => {
-                const daysLeft = exam.application_end
-                  ? differenceInDays(new Date(exam.application_end), new Date())
+              {jobs.map((job) => {
+                const daysLeft = job.last_date_resolved
+                  ? differenceInDays(new Date(job.last_date_resolved), new Date())
                   : null;
 
                 return (
                   <Link
-                    key={exam.id}
-                    to={`/sarkari-jobs/${exam.slug}`}
+                    key={job.id}
+                    to={`/jobs/employment-news/${job.slug}`}
                     className="block rounded-lg border border-border/60 p-4 hover:border-primary/50 hover:bg-primary/5 transition-colors"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
-                        <h3 className="font-medium text-foreground mb-1 line-clamp-2">{exam.exam_name}</h3>
+                        <h3 className="font-medium text-foreground mb-1 line-clamp-2">{job.org_name}</h3>
                         <div className="flex flex-wrap gap-2 text-sm text-muted-foreground mb-2">
-                          {exam.conducting_body && (
+                          {job.post && (
                             <span className="inline-flex items-center gap-1">
-                              <FileText className="h-3.5 w-3.5" /> {exam.conducting_body}
+                              <FileText className="h-3.5 w-3.5" /> {job.post}
                             </span>
                           )}
-                          {exam.total_vacancies && exam.total_vacancies > 0 && (
-                            <span>{exam.total_vacancies.toLocaleString('en-IN')} Vacancies</span>
+                          {job.vacancies && job.vacancies > 0 && (
+                            <span>{job.vacancies.toLocaleString('en-IN')} Vacancies</span>
                           )}
                         </div>
                         {daysLeft !== null && daysLeft >= 0 && daysLeft <= 7 && (
@@ -134,11 +141,11 @@ export default function DepartmentJobsPage() {
                           </Badge>
                         )}
                       </div>
-                      {exam.application_end && (
+                      {job.last_date_resolved && (
                         <div className="text-right shrink-0">
                           <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                             <Calendar className="h-3 w-3" />
-                            Last Date: {format(new Date(exam.application_end), 'dd MMM yyyy')}
+                            Last Date: {format(new Date(job.last_date_resolved), 'dd MMM yyyy')}
                           </span>
                         </div>
                       )}

@@ -8,6 +8,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { getComboPageConfig } from './govtComboData';
 import { buildBreadcrumbSchema, buildFAQSchema } from './schemas/seoPageSchemas';
+import { JobAlertCTA } from '@/components/shared/JobAlertCTA';
 import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { FAQAccordion } from './components/FAQAccordion';
 import { SEOContentSection } from './components/SEOContentSection';

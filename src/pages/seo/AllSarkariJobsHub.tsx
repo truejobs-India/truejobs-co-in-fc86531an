@@ -8,6 +8,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Search, Users, ArrowRight, Landmark, MapPin } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
+import { JobAlertCTA } from '@/components/shared/JobAlertCTA';
 import { supabase } from '@/integrations/supabase/client';
 import { PopularExamsBlock } from '@/pages/govt/components/PopularExamsBlock';
 import { buildBreadcrumbSchema } from './schemas/seoPageSchemas';

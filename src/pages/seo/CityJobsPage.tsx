@@ -12,6 +12,8 @@ import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { RelatedCities } from './components/RelatedCities';
 import { RelatedCategories } from './components/RelatedCategories';
 import { PopularSearches } from './components/PopularSearches';
+import { ExploreRelatedSection } from './components/ExploreRelatedSection';
+import { GovtJobsCrossLink } from './components/GovtJobsCrossLink';
 import { getCategoryJobConfig } from './categoryJobsData';
 
 

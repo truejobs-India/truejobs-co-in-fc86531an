@@ -183,7 +183,7 @@ export function SEOCacheManager() {
               <AlertDialogTrigger asChild>
                 <Button size="sm" variant="secondary" disabled={isRebuilding} className="gap-1 h-8">
                   {isRebuilding ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-                  Rebuild All
+                   ② Rebuild All
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
@@ -209,7 +209,7 @@ export function SEOCacheManager() {
               <AlertDialogTrigger asChild>
                 <Button size="sm" variant="outline" disabled={isRebuilding} className="gap-1 h-8 border-orange-300 text-orange-700 hover:bg-orange-50">
                   {isRebuilding ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-                  Force Rebuild
+                   ②⚡ Force Rebuild
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
@@ -234,7 +234,7 @@ export function SEOCacheManager() {
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button size="sm" variant="destructive" className="gap-1 h-8">
-                  <Trash2 className="h-3 w-3" /> Purge All CF
+                  <Trash2 className="h-3 w-3" /> ③ Purge All CF
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>

@@ -4,7 +4,7 @@ import { Layout } from '@/components/layout/Layout';
 import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { supabase } from '@/integrations/supabase/client';
 import { ResourceSEO } from '@/components/resources/ResourceSEO';
-import { ResourceSubscribeCTA } from '@/components/resources/ResourceSubscribeCTA';
+import { JobAlertCTA } from '@/components/shared/JobAlertCTA';
 import { RelatedResources } from '@/components/resources/RelatedResources';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';

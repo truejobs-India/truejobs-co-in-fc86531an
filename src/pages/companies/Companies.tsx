@@ -207,15 +207,19 @@ export default function Companies() {
             ))}
           </div>
         ) : registeredCompanies.length === 0 && companiesFromJobs.length === 0 ? (
-          <Card>
-            <CardContent className="p-12 text-center">
-              <Building2 className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <h3 className="text-lg font-semibold mb-2">No companies found</h3>
-              <p className="text-muted-foreground">
-                Try adjusting your search criteria
-              </p>
-            </CardContent>
-          </Card>
+          <div className="space-y-8">
+            <Card>
+              <CardContent className="p-12 text-center">
+                <Building2 className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                <h3 className="text-lg font-semibold mb-2">No companies found</h3>
+                <p className="text-muted-foreground">
+                  {searchParams.get('q') ? 'Try adjusting your search criteria' : 'We\'re building India\'s employer directory. Explore job opportunities while we grow this section.'}
+                </p>
+              </CardContent>
+            </Card>
+            {/* Explore More section when listing is sparse/empty */}
+            <ExploreMoreSection />
+          </div>
         ) : (
           <>
             <p className="text-muted-foreground mb-6">{totalCount} companies found</p>

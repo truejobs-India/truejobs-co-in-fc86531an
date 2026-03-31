@@ -1557,15 +1557,32 @@ export function BlogPostEditor() {
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Target Words</Label>
-                <Select value={String(bulkWordCount)} onValueChange={(v) => setBulkWordCount(Number(v))}>
-                  <SelectTrigger className="w-[100px] h-8 text-xs"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="1200">1200</SelectItem>
-                    <SelectItem value="1500">1500</SelectItem>
-                    <SelectItem value="1800">1800</SelectItem>
-                    <SelectItem value="2200">2200</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="flex items-center gap-1.5">
+                  <Select value={[1200, 1500, 1800, 2200].includes(bulkWordCount) ? String(bulkWordCount) : 'custom'} onValueChange={(v) => { if (v !== 'custom') setBulkWordCount(Number(v)); }}>
+                    <SelectTrigger className="w-[100px] h-8 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1200">1200</SelectItem>
+                      <SelectItem value="1500">1500</SelectItem>
+                      <SelectItem value="1800">1800</SelectItem>
+                      <SelectItem value="2200">2200</SelectItem>
+                      <SelectItem value="custom">Custom</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {![1200, 1500, 1800, 2200].includes(bulkWordCount) && (
+                    <Input
+                      type="number"
+                      min={300}
+                      max={5000}
+                      value={bulkWordCount}
+                      onChange={(e) => {
+                        const val = Math.max(300, Math.min(5000, Number(e.target.value) || 300));
+                        setBulkWordCount(val);
+                      }}
+                      className="w-[80px] h-8 text-xs"
+                      placeholder="e.g. 2500"
+                    />
+                  )}
+                </div>
               </div>
               <div className="flex items-center gap-1.5">
                 <Badge variant="outline" className="text-[10px] h-5 px-1.5">Using: {getModelDef(blogTextModel)?.label || blogTextModel}</Badge>

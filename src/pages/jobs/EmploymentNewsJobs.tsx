@@ -24,10 +24,12 @@ export default function EmploymentNewsJobs() {
   const { data, isLoading } = useQuery({
     queryKey: ['emp-news-published', page, search, categoryFilter, stateFilter],
     queryFn: async () => {
+      const today = new Date().toISOString().split('T')[0];
       let query = supabase
         .from('employment_news_jobs')
         .select('*', { count: 'exact' })
         .eq('status', 'published')
+        .or(`last_date_resolved.gte.${today},last_date_resolved.is.null`)
         .order('published_at', { ascending: false });
 
       if (search.trim()) {
@@ -70,6 +72,12 @@ export default function EmploymentNewsJobs() {
         </p>
 
         <AdPlaceholder variant="banner" />
+
+        {!isLoading && data && (
+          <p className="text-sm text-muted-foreground mb-4">
+            Showing {data.jobs.length} of {data.count} active job{data.count !== 1 ? 's' : ''}
+          </p>
+        )}
 
         {/* Filters */}
         <div className="flex flex-wrap gap-2 mb-6">

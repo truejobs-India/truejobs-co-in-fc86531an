@@ -408,6 +408,13 @@ export default function Companies() {
             )}
           </>
         )}
+
+        {/* Explore More — shown when listing is sparse (< 6 total results) */}
+        {!isLoading && totalCount > 0 && totalCount < 6 && (
+          <div className="mt-12">
+            <ExploreMoreSection />
+          </div>
+        )}
       </div>
     </Layout>
   );

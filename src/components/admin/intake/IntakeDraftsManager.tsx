@@ -85,7 +85,7 @@ export function IntakeDraftsManager() {
       if (filterProcessing !== 'all') query = query.eq('processing_status', filterProcessing);
       if (searchQuery.trim()) {
         const s = `%${searchQuery.trim()}%`;
-        query = query.or(`raw_title.ilike.${s},normalised_title.ilike.${s},organisation_name.ilike.${s},source_url.ilike.${s}`);
+        query = query.or(`raw_title.ilike.${s},normalized_title.ilike.${s},organisation_name.ilike.${s},source_url.ilike.${s}`);
       }
 
       const { data, error } = await query;

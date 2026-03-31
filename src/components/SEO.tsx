@@ -17,7 +17,7 @@ interface SEOProps {
 }
 
 const SITE_NAME = 'TrueJobs';
-const DEFAULT_TITLE = 'TrueJobs – Latest Govt & Private Jobs in India 2026 | Free Job Alert';
+const DEFAULT_TITLE = 'Latest Govt Jobs, Sarkari Results & Free Job Alerts 2026 – TrueJobs';
 const DEFAULT_DESCRIPTION = 'Find latest govt jobs, sarkari naukri, PSU, state & central government recruitment 2026. Free job alerts for 10th pass, 12th pass, graduates & engineers. Updated daily.';
 const DEFAULT_IMAGE = 'https://truejobs.co.in/og-image.png';
 const SITE_URL = 'https://truejobs.co.in';

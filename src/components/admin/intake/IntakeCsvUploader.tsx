@@ -80,7 +80,7 @@ function parseCSVWithPapa(text: string): { headers: string[]; rows: ParsedRow[];
 
   const headers = result.meta.fields || [];
   const rows = result.data;
-  const warnings = result.errors.filter(e => e.type !== 'Abort').length;
+  const warnings = result.errors.length;
 
   return { headers, rows, warnings };
 }

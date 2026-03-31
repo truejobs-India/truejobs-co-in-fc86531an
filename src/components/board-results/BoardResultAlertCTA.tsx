@@ -88,7 +88,7 @@ export function BoardResultAlertCTA({
                 className="h-8 text-xs rounded-lg flex-1 min-w-0" required
               />
               <Button type="submit" disabled={isLoading} size="sm" className="h-8 text-xs rounded-lg px-3 bg-primary hover:bg-primary/90">
-                {isLoading ? '…' : <img src={emailLogo} alt="Email" className="h-4 w-4 rounded-sm" />}
+                {isLoading ? '…' : <img src={CTA_CHANNELS.email.logo} alt="Email" className="h-4 w-4 rounded-sm" />}
               </Button>
             </form>
           ) : (

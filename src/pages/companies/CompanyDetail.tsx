@@ -12,7 +12,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { AICompanyLogo } from '@/components/companies/AICompanyLogo';
 import { 
   Building2, MapPin, Briefcase, Clock, IndianRupee, 
-  ArrowLeft, Globe, Users, Calendar, ChevronRight 
+  ArrowLeft, Globe, Users, Calendar, ChevronRight,
+  GraduationCap, Newspaper
 } from 'lucide-react';
 import type { Tables } from '@/integrations/supabase/types';
 

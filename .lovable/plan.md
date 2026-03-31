@@ -1,29 +1,42 @@
 
 
-# Fix: Custom Word Count Input Not Appearing
+# Update: Tighten Old Component Deletion Policy
 
-## Root Cause
-In `BlogPostEditor.tsx` line 1561, when "Custom" is selected:
-```js
-onValueChange={(v) => { if (v !== 'custom') setBulkWordCount(Number(v)); }}
-```
-This **does nothing** when `v === 'custom'`, so `bulkWordCount` stays at a preset (e.g. 1500). The input field on line 1571 checks `![1200,1500,1800,2200].includes(bulkWordCount)` — which is still `true`, so the input never renders.
+## Change
+Replace the two-phase cleanup (Phase A after homepage, Phase B after remaining pages) with a single cleanup pass that runs only after **all** page families are migrated and verified site-wide.
 
-## Fix
-**File:** `src/components/admin/BlogPostEditor.tsx`
+## Updated 3-Pass Structure
 
-**Line 1561** — Change the `onValueChange` to set a non-preset default when "Custom" is selected:
-```js
-onValueChange={(v) => {
-  if (v === 'custom') setBulkWordCount(2500);
-  else setBulkWordCount(Number(v));
-}}
-```
+### Pass 1 — Migration
+- Migrate all 15+ page families to `JobAlertCTA` + `ctaConfig.ts`
+- All old components (`AlertSignupBanner`, `ResourceSubscribeCTA`, `TelegramAlertWidget`, `EmailDigestCapture`, `DistributionSidebar`) remain untouched in the codebase throughout this entire pass
+- No deletions, no renames, no dead-code removal
 
-This sets `bulkWordCount` to 2500 (a non-preset value), which:
-1. Makes the input field appear immediately
-2. Gives a sensible starting value the user can adjust
-3. Preserves all existing logic — presets still work, custom input still clamps 300–5000
+### Pass 2 — Full Verification
+- Verify every migrated page family on desktop and mobile
+- Confirm canonical WhatsApp, Telegram, Email flows work on all pages
+- Confirm no page still renders an old component
+- Confirm no "Email Alerts" → `/signup` flow remains
+- Confirm no placeholder URLs remain
+- Grep codebase: confirm zero active imports of old components
 
-**One line change. No other files affected.**
+### Pass 3 — Cleanup (single phase)
+- Only after Pass 2 is fully complete
+- Delete all 5 old components in one cleanup pass:
+  - `AlertSignupBanner.tsx`
+  - `ResourceSubscribeCTA.tsx`
+  - `TelegramAlertWidget.tsx`
+  - `EmailDigestCapture.tsx`
+  - `DistributionSidebar.tsx`
+- Final grep to confirm zero broken imports
+- Spot-check routes after deletion
+
+## What Changes From Current Plan
+- **Remove "Cleanup Phase A"** — `AlertSignupBanner` is no longer deleted early after homepage verification
+- **Remove "Cleanup Phase B"** — all deletions consolidated into one pass
+- **No old component is deleted while any page family is still mid-migration**
+- The `.lovable/plan.md` file will be updated to reflect these 3 passes
+
+## File Changed
+`.lovable/plan.md` — update to reflect the tightened 3-pass policy
 

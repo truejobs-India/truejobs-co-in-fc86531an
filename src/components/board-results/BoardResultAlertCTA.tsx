@@ -16,7 +16,7 @@ import { CTA_CHANNELS } from '@/lib/ctaConfig';
 const emailSchema = z.string().trim().email('Please enter a valid email').max(255);
 
 interface BoardResultAlertCTAProps {
-  variant: 'strong' | 'soft' | 'compact';
+  variant: 'strong' | 'compact';
   context: string;
   resultReleased?: boolean;
   className?: string;

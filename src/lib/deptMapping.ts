@@ -23,7 +23,7 @@ export const DEPT_CONFIG: Record<string, DeptConfig> = {
   ssc: {
     label: 'SSC Government Jobs 2026',
     shortLabel: 'SSC',
-    applyFilter: (q) => q.or('org_name.ilike.%SSC%,org_name.ilike.%Staff Selection%'),
+    applyFilter: (q) => q.or('job_category.eq.SSC,org_name.ilike.%SSC%,org_name.ilike.%Staff Selection Commission%'),
   },
   banking: {
     label: 'Banking Government Jobs 2026',

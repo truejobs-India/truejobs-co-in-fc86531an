@@ -242,16 +242,15 @@ export default function CompanyDetail() {
           {/* Sidebar */}
           <div className="lg:col-span-1 space-y-6">
             <AdPlaceholder variant="sidebar" className="hidden lg:block" />
-            {company.description && (
-              <Card>
-                <CardContent className="p-6">
-                  <h3 className="font-semibold mb-3">About</h3>
-                  <p className="text-sm text-muted-foreground">
-                    {company.description}
-                  </p>
-                </CardContent>
-              </Card>
-            )}
+            {/* About — always rendered */}
+            <Card>
+              <CardContent className="p-6">
+                <h3 className="font-semibold mb-3">About</h3>
+                <p className="text-sm text-muted-foreground">
+                  {company.description || `${company.name} is listed on TrueJobs as an employer. Profile details will be updated as they become available.`}
+                </p>
+              </CardContent>
+            </Card>
 
             <Card>
               <CardContent className="p-6">

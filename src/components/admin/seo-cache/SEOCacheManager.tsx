@@ -209,7 +209,7 @@ export function SEOCacheManager() {
               <AlertDialogTrigger asChild>
                 <Button size="sm" variant="outline" disabled={isRebuilding} className="gap-1 h-8 border-orange-300 text-orange-700 hover:bg-orange-50">
                   {isRebuilding ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-                  Force Rebuild
+                   ②⚡ Force Rebuild
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>

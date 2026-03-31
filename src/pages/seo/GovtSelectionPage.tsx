@@ -15,8 +15,6 @@ import { format, differenceInDays } from 'date-fns';
 
 const SITE_URL = 'https://truejobs.co.in';
 
-const SELECTION_TYPES_NO_EXAM = ['interview', 'merit', 'direct_recruitment'];
-
 export default function GovtSelectionPage() {
   const { slug } = useParams<{ slug: string }>();
   const parsed = slug ? parseSelectionSlug(slug) : null;
@@ -28,21 +26,24 @@ export default function GovtSelectionPage() {
   const { data: exams, isLoading } = useQuery({
     queryKey: ['selection-exams', parsed.slug],
     queryFn: async () => {
+      // "Without exam" pages: show jobs where application_mode suggests walk-in/interview/direct
       let query = supabase
-        .from('govt_exams')
-        .select('id, exam_name, slug, conducting_body, qualification_required, application_end, selection_stages, selection_type, status, total_vacancies, updated_at')
-        .in('selection_type', SELECTION_TYPES_NO_EXAM)
-        .order('updated_at', { ascending: false })
+        .from('employment_news_jobs')
+        .select('id, org_name, post, slug, qualification, last_date_resolved, vacancies, job_category, state, application_mode, status')
+        .eq('status', 'published')
+        .or('application_mode.ilike.%interview%,application_mode.ilike.%walk%,application_mode.ilike.%direct%,application_mode.ilike.%merit%')
+        .order('created_at', { ascending: false })
         .limit(50);
 
       if (parsed.department) {
-        query = query.ilike('exam_category', `%${parsed.department}%`);
+        query = query.or(`job_category.ilike.%${parsed.department}%,org_name.ilike.%${parsed.department}%`);
       }
       if (parsed.qualification) {
-        query = query.contains('qualification_tags', [parsed.qualification]);
+        query = query.ilike('qualification', `%${parsed.qualification}%`);
       }
       if (parsed.state) {
-        query = query.contains('states', [parsed.state.replace(/-/g, ' ')]);
+        const stateName = parsed.state.replace(/-/g, ' ');
+        query = query.ilike('state', `%${stateName}%`);
       }
 
       const { data, error } = await query;

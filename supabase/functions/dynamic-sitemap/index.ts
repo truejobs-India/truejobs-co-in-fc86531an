@@ -174,6 +174,9 @@ async function generateBlogSitemap(supabase: any, now: string): Promise<Response
 
 // ─── Pages (static + companies + govt exam listings) ────────────────────────
 async function generatePagesSitemap(supabase: any, now: string): Promise<Response> {
+  // Known department slugs — hardcoded (fixed set, no cache dependency)
+  const DEPT_SLUGS = ['railway', 'ssc', 'banking', 'upsc', 'defence', 'teaching', 'police', 'psu', 'state'];
+
   const staticPages = [
     { loc: '/', cf: 'daily', pr: '1.0' },
     { loc: '/jobs', cf: 'hourly', pr: '0.9' },
@@ -205,6 +208,8 @@ async function generatePagesSitemap(supabase: any, now: string): Promise<Respons
     { loc: '/termsofuse', cf: 'yearly', pr: '0.3' },
     { loc: '/disclaimer', cf: 'yearly', pr: '0.3' },
     { loc: '/editorial-policy', cf: 'yearly', pr: '0.3' },
+    // Department filter pages
+    ...DEPT_SLUGS.map(d => ({ loc: `/sarkari-jobs/${d}`, cf: 'daily', pr: '0.7' })),
   ];
 
   // Govt exam detail pages

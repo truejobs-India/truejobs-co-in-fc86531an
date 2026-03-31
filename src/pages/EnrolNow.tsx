@@ -165,7 +165,7 @@ export default function EnrolNow() {
   return (
     <Layout>
       <SEO 
-        title="Enrol Now - Jobs Campaign | TrueJobs" 
+        title="Enrol Now - Jobs Campaign" 
         description="Register for our exclusive jobs campaign. Get connected with top employers hiring now."
         url="/enrol-now"
       />

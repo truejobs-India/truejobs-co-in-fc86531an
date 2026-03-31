@@ -111,6 +111,7 @@ export function ResourceListing({ resourceType, pageTitle, metaTitle, metaDescri
         metaTitle={metaTitle}
         metaDescription={metaDescription}
         canonicalUrl={`/${typePath}`}
+        noindex={isEmpty}
         breadcrumbs={breadcrumbs}
         schemaJson={{
           '@context': 'https://schema.org',

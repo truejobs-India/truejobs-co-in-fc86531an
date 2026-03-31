@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { SEO } from '@/components/SEO';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -225,6 +226,7 @@ export default function Login() {
 
   return (
     <Layout>
+      <SEO title="Login" noindex={true} />
       <div className={cn(
         "min-h-[calc(100vh-4rem)] relative overflow-hidden",
         isEmployer 

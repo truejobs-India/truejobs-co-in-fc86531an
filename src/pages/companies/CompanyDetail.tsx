@@ -160,12 +160,15 @@ export default function CompanyDetail() {
     ...(company.location ? { address: { '@type': 'PostalAddress', addressLocality: company.location, addressCountry: 'IN' } } : {}),
   };
 
+  const isThin = jobs.length === 0 && !company.description && !company.logo_url;
+
   return (
     <Layout>
       <SEO
         title={`${company.name} - Jobs & Company Profile`}
         description={company.description || `View ${company.name} company profile, open positions and career opportunities on TrueJobs.`}
         url={`/companies/${slug}`}
+        noindex={isThin}
         structuredData={companySchema}
       />
       {/* Top Banner Ad */}

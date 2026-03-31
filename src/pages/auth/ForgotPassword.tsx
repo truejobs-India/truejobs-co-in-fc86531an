@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Layout } from '@/components/layout/Layout';
+import { SEO } from '@/components/SEO';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -260,6 +261,7 @@ export default function ForgotPassword() {
 
   return (
     <Layout>
+      <SEO title="Reset Password" noindex={true} />
       <div className="min-h-[calc(100vh-4rem)] relative overflow-hidden bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
         <PremiumAuthBackground />
 

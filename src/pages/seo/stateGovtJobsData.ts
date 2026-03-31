@@ -51,13 +51,23 @@ function buildStateConfig(stateSlug: string, stateName: string): StateGovtJobPag
   };
 }
 
+const UNION_TERRITORIES = new Set([
+  'Andaman & Nicobar Islands', 'Chandigarh', 'Dadra & Nagar Haveli',
+  'Daman & Diu', 'Delhi', 'Ladakh', 'Lakshadweep', 'Puducherry',
+  'Jammu & Kashmir',
+]);
+
 function generateStateIntro(state: string): string {
+  const isUT = UNION_TERRITORIES.has(state);
+  const entityType = isUT ? 'Union Territory' : 'state';
+  const govtLabel = isUT ? `the ${state} administration` : `the ${state} state government`;
+
   return `<h2>Latest Government Jobs in ${state}</h2>
-<p>Looking for sarkari naukri in ${state}? This page lists all the latest central and state government job notifications available for candidates in ${state}. Whether you are a 10th pass, 12th pass, graduate, or post-graduate candidate, you will find relevant government job openings updated daily.</p>
-<p>${state} is served by numerous central government organizations such as SSC, Railway Recruitment Boards, IBPS, SBI, UPSC, and Defence recruitment bodies. Additionally, the ${state} state government regularly publishes vacancies through its own Public Service Commission and state-level recruitment boards for positions in education, healthcare, police, revenue, and administrative departments.</p>
+<p>Looking for sarkari naukri in ${state}? This page lists all the latest central and ${entityType} government job notifications available for candidates in ${state}. Whether you are a 10th pass, 12th pass, graduate, or post-graduate candidate, you will find relevant government job openings updated daily.</p>
+<p>${state} is served by numerous central government organizations such as SSC, Railway Recruitment Boards, IBPS, SBI, UPSC, and Defence recruitment bodies. Additionally, ${govtLabel} regularly publishes vacancies through its own recruitment boards for positions in education, healthcare, police, revenue, and administrative departments.</p>
 <h3>Types of Government Jobs Available in ${state}</h3>
-<p>Government jobs in ${state} span multiple sectors and qualification levels. Central government positions include clerical roles through SSC (CHSL, MTS), technical positions through Railway recruitment, banking jobs through IBPS and SBI, and administrative services through UPSC. State-level positions cover teachers, police constables and sub-inspectors, revenue officers, healthcare workers, and various Group-C and Group-D posts.</p>
-<p>Many all-India level examinations also have exam centres and postings available in ${state}, making them relevant for candidates domiciled in the state. The list below includes both state-specific and all-India vacancies with posting locations in ${state}.</p>
+<p>Government jobs in ${state} span multiple sectors and qualification levels. Central government positions include clerical roles through SSC (CHSL, MTS), technical positions through Railway recruitment, banking jobs through IBPS and SBI, and administrative services through UPSC. ${isUT ? 'UT-level' : 'State-level'} positions cover teachers, police constables and sub-inspectors, revenue officers, healthcare workers, and various Group-C and Group-D posts.</p>
+<p>Many all-India level examinations also have exam centres and postings available in ${state}, making them relevant for candidates domiciled in the ${entityType}. The list below includes both ${entityType}-specific and all-India vacancies with posting locations in ${state}.</p>
 <h3>How to Apply for Govt Jobs in ${state}</h3>
 <p>Browse the listings below to find government job notifications relevant to ${state}. Each listing includes the recruiting organization, number of vacancies, eligibility criteria, important dates, and direct links to official notification and application forms. We recommend bookmarking this page and checking regularly as new notifications are published frequently throughout the year.</p>
 <p>Candidates should verify all details including age limits, educational qualifications, domicile requirements, and application fees from the official notification before applying. Age relaxation and reservation benefits as per government rules are applicable for SC/ST/OBC/PH/Ex-servicemen categories.</p>`;

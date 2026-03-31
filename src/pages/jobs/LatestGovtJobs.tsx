@@ -51,7 +51,7 @@ export default function LatestGovtJobs() {
   return (
     <Layout>
       <SEO
-        title="Latest Government Jobs 2026 — New Sarkari Naukri Vacancies | TrueJobs"
+        title="Latest Government Jobs 2026 — New Sarkari Naukri Vacancies"
         description="Find the latest government jobs and sarkari naukri vacancies for 2026. Updated daily with eligibility, salary, exam dates & apply online links."
       />
 

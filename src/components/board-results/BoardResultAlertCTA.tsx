@@ -112,7 +112,7 @@ export function BoardResultAlertCTA({
     >
       <div className="flex flex-col items-center text-center gap-5">
         {/* Icon */}
-        <div className={`flex h-14 w-14 items-center justify-center rounded-2xl ${isStrong ? 'bg-primary text-primary-foreground shadow-lg' : 'bg-muted text-primary'}`}>
+        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg">
           <Bell className="h-7 w-7" />
         </div>
 

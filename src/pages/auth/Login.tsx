@@ -225,6 +225,7 @@ export default function Login() {
 
   return (
     <Layout>
+      <SEO title="Login" noindex={true} />
       <div className={cn(
         "min-h-[calc(100vh-4rem)] relative overflow-hidden",
         isEmployer 

@@ -60,6 +60,8 @@ const TAB_LABELS: Record<TabKey, string> = {
 };
 
 function isLowConfidence(d: IntakeDraft): boolean {
+  if (d.processing_status === 'publish_failed') return true;
+
   const score = d.confidence_score;
   const blockers = Array.isArray(d.publish_blockers) ? d.publish_blockers : [];
   const tags = Array.isArray(d.secondary_tags) ? d.secondary_tags : [];

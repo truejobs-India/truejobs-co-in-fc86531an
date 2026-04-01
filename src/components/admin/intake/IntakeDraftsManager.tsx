@@ -182,12 +182,49 @@ export function IntakeDraftsManager() {
     const importedIds = drafts
       .filter(d => d.processing_status === 'imported')
       .map(d => d.id)
-      .slice(0, 15); // Limit per edge function timeout
+      .slice(0, 15);
     if (importedIds.length === 0) {
       toast({ title: 'Nothing to classify', description: 'No imported rows found' });
       return;
     }
     handleClassify(importedIds);
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (selectedIds.size === drafts.length && drafts.length > 0) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(drafts.map(d => d.id)));
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedIds.size === 0) return;
+    setDeleting(true);
+    try {
+      const ids = Array.from(selectedIds);
+      // Delete in batches of 50
+      for (let i = 0; i < ids.length; i += 50) {
+        const batch = ids.slice(i, i + 50);
+        const { error } = await supabase.from('intake_drafts').delete().in('id', batch);
+        if (error) throw error;
+      }
+      toast({ title: 'Deleted', description: `Permanently deleted ${ids.length} draft(s)` });
+      setSelectedIds(new Set());
+      fetchDrafts();
+    } catch (err) {
+      toast({ title: 'Delete failed', description: String(err), variant: 'destructive' });
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const dashCards = [

@@ -16,9 +16,9 @@ import { RelatedBlogs } from '@/components/blog/RelatedBlogs';
 import { BlogCTA } from '@/components/blog/BlogCTA';
 import { TableOfContents } from '@/components/blog/TableOfContents';
 import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
-import { 
-  generateArticleSchema, 
-  generateFAQSchema, 
+import {
+  generateArticleSchema,
+  generateFAQSchema,
   generateBreadcrumbSchema,
   categoryToSlug,
   extractHeadings,
@@ -27,6 +27,7 @@ import {
   enhanceContentImageAlts,
 } from '@/lib/blogUtils';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 import { Helmet } from 'react-helmet-async';
 import DOMPurify from 'dompurify';
 import { BLOG_REDIRECTS } from '@/lib/blogRedirects';
@@ -39,6 +40,7 @@ interface BlogPostData {
   excerpt: string | null;
   cover_image_url: string | null;
   featured_image_alt: string | null;
+  is_published: boolean;
   published_at: string | null;
   created_at: string;
   updated_at: string;
@@ -54,14 +56,17 @@ interface BlogPostData {
 export default function BlogPostPage() {
   const { slug } = useParams<{ slug: string }>();
   const [searchParams] = useSearchParams();
+  const previewId = searchParams.get('preview');
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { isLoading: authLoading } = useAuth();
   const [post, setPost] = useState<BlogPostData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isPreview, setIsPreview] = useState(false);
 
   useEffect(() => {
     if (!slug) return;
+    if (previewId && authLoading) return;
 
     // Check redirect map (handles both exact match and case-insensitive for Agniveer)
     const redirectTarget = BLOG_REDIRECTS[slug] || BLOG_REDIRECTS[slug.toLowerCase()];
@@ -74,52 +79,49 @@ export default function BlogPostPage() {
       return;
     }
 
-    fetchPost();
-  }, [slug]);
+    const fetchPost = async () => {
+      setIsLoading(true);
+      setIsPreview(Boolean(previewId));
 
-  const fetchPost = async () => {
-    setIsLoading(true);
-    const previewId = searchParams.get('preview');
+      let query = supabase.from('blog_posts').select('*');
 
-    let query = supabase
-      .from('blog_posts')
-      .select('*')
-      .eq('slug', slug as string);
-
-    // Only filter by is_published when NOT in preview mode
-    if (!previewId) {
-      query = query.eq('is_published', true);
-    }
-
-    const { data, error } = await query.maybeSingle();
-
-    if (previewId) setIsPreview(true);
-
-    if (error || !data) {
-      setIsLoading(false);
-      return;
-    }
-
-    // Parse faq_schema if it's a string or normalize it
-    let faqData: Array<{ question: string; answer: string }> | null = null;
-    if (data.faq_schema) {
-      if (typeof data.faq_schema === 'string') {
-        try {
-          faqData = JSON.parse(data.faq_schema);
-        } catch {
-          faqData = null;
-        }
-      } else if (Array.isArray(data.faq_schema)) {
-        faqData = data.faq_schema as Array<{ question: string; answer: string }>;
+      if (previewId) {
+        query = query.eq('id', previewId).eq('slug', slug);
+      } else {
+        query = query.eq('slug', slug).eq('is_published', true);
       }
-    }
 
-    setPost({
-      ...data,
-      faq_schema: faqData,
-    } as BlogPostData);
-    setIsLoading(false);
-  };
+      const { data, error } = await query.maybeSingle();
+
+      if (error || !data) {
+        setPost(null);
+        setIsLoading(false);
+        return;
+      }
+
+      // Parse faq_schema if it's a string or normalize it
+      let faqData: Array<{ question: string; answer: string }> | null = null;
+      if (data.faq_schema) {
+        if (typeof data.faq_schema === 'string') {
+          try {
+            faqData = JSON.parse(data.faq_schema);
+          } catch {
+            faqData = null;
+          }
+        } else if (Array.isArray(data.faq_schema)) {
+          faqData = data.faq_schema as Array<{ question: string; answer: string }>;
+        }
+      }
+
+      setPost({
+        ...data,
+        faq_schema: faqData,
+      } as BlogPostData);
+      setIsLoading(false);
+    };
+
+    void fetchPost();
+  }, [slug, previewId, authLoading, navigate]);
 
   const headings = useMemo(() => {
     if (!post?.content) return [];

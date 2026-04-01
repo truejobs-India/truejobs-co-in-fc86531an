@@ -70,6 +70,8 @@ export function IntakeDraftsManager() {
   const [publishingIds, setPublishingIds] = useState<Set<string>>(new Set());
   const [selectedDraft, setSelectedDraft] = useState<IntakeDraft | null>(null);
   const [showUploader, setShowUploader] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState(false);
 
   const fetchDrafts = useCallback(async () => {
     setLoading(true);

@@ -203,16 +203,8 @@ export function BlogPostEditor() {
   const [selectedPostIds, setSelectedPostIds] = useState<Set<string>>(new Set());
   const [imageCleanupLoading, setImageCleanupLoading] = useState<'cover' | 'inline' | null>(null);
 
-  // Bulk Fix All by AI state
-  type BulkFixPhase = 'idle' | 'scanning' | 'scanned' | 'fixing' | 'done';
-  type BulkFixScanItem = { postId: string; slug: string; title: string; failCount: number; warnCount: number; failedChecks: { key: string; label: string; detail: string; recommendation?: string }[] };
-  type BulkFixResultItem = { postId: string; slug: string; title: string; autoFixed: number; reviewRequired: number; error?: string };
-  const [bulkFixPhase, setBulkFixPhase] = useState<BulkFixPhase>('idle');
-  const [bulkFixScanResults, setBulkFixScanResults] = useState<BulkFixScanItem[]>([]);
-  const [bulkFixResults, setBulkFixResults] = useState<BulkFixResultItem[]>([]);
-  const [bulkFixProgress, setBulkFixProgress] = useState<{ done: number; total: number; current: string }>({ done: 0, total: 0, current: '' });
-  const bulkFixAbortRef = useRef(false);
-  const [showBulkFixDialog, setShowBulkFixDialog] = useState(false);
+  // Bulk Fix All by AI — autonomous pipeline via hook
+  const bulkAutoFix = useBulkAutoFix(posts, blogTextModel, fetchPosts);
 
   // Autosave
   const autosaveTimerRef = useRef<NodeJS.Timeout | null>(null);

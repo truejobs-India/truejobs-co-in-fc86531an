@@ -23,7 +23,9 @@ interface ImportSummary {
   total: number;
   imported: number;
   skippedExactDupes: number;
+  skippedPublishedDupes: number;
   taggedDuplicateRisk: number;
+  taggedPublishedDupeRisk: number;
   taggedGenericTitle: number;
   taggedStaleContent: number;
   errors: number;

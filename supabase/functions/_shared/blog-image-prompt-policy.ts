@@ -10,15 +10,20 @@
 export const BLOG_IMAGE_MANDATORY_RULES = `
 
 MANDATORY IMAGE RULES (always enforced, cannot be overridden):
-1. Absolutely NO Hindi text, Hinglish text, Devanagari script, or any Indic script anywhere in the image.
-2. If any text is required, it MUST be in English only.
-3. Strongly prefer images with NO visible text at all unless text is truly necessary.
-4. Never use Hindi fonts, Devanagari, or any Indic script in any form.
-5. Where human subjects are appropriate, depict young, very fair, very beautiful and handsome Indian men and women who look well-groomed and aspirational.
-6. The image must be highly relevant to the specific article topic and context provided.
-7. Avoid generic stock-style scenes that do not match the article context.
-8. Do NOT include any text overlays, watermarks, official government seals, emblems, logos, or misleading official symbols.
-9. Use warm, professional colors suitable for an Indian government jobs and exam preparation portal.`;
+1. Generate PHOTOREALISTIC, true-to-life, editorial-quality images by default. Use realistic lighting, realistic textures, realistic depth of field, and natural color grading as in professional magazine or newspaper photography.
+2. Do NOT generate vector art, flat illustration, cartoon, infographic, poster, sketch, clipart, icon-style, or stylized explainer artwork unless the prompt explicitly requests a non-realistic style.
+3. Do NOT create poster-style explainer layouts, diagram boards, educational infographic scenes, labeled panels, or text-heavy compositions unless explicitly requested.
+4. Prefer realistic human-centered scenes in believable real environments over symbolic, graphic-style, or abstract compositions.
+5. Prefer cinematic but natural realism over symbolic or graphic-style composition. Avoid generic business illustration composition even when the topic is informational.
+6. Absolutely NO Hindi text, Hinglish text, Devanagari script, or any Indic script anywhere in the image.
+7. If any text is required, it MUST be in English only.
+8. Strongly prefer images with NO visible text at all unless text is truly necessary.
+9. Never use Hindi fonts, Devanagari, or any Indic script in any form.
+10. Where human subjects are appropriate, depict young Indian men and young Indian women with youthful appearance, very fair complexion, beautiful and handsome features, polished, aspirational, premium look. Use realistic facial detail, realistic skin texture, realistic clothing, realistic posture, and realistic environments. Do NOT use simplified faces, cartoon faces, flat facial features, or low-detail human rendering.
+11. The image must be highly relevant to the specific article topic and context provided.
+12. Avoid generic stock-style scenes that do not match the article context.
+13. Do NOT include any text overlays, watermarks, official government seals, emblems, logos, or misleading official symbols.
+14. Use warm, professional colors suitable for an Indian government jobs and exam preparation portal.`;
 
 /**
  * Build the final prompt for a blog COVER / FEATURED image.
@@ -39,7 +44,7 @@ export function buildBlogCoverPrompt(body: {
   const title = body.title || body.topic || 'Government Jobs in India';
   const category = body.category || 'Government Jobs';
   const tags = Array.isArray(body.tags) ? body.tags.join(', ') : '';
-  const style = body.visualStyle || 'modern flat illustration';
+  const style = body.visualStyle || 'photorealistic editorial image';
   const brand = body.brandGuidelines || '';
   const customContext = body.prompt
     ? ` Additional context: ${body.prompt}.`
@@ -74,7 +79,7 @@ export function buildBlogInlinePrompt(body: {
     ? `for a section about "${nearbyHeading}"`
     : `for section ${slotNumber} of the article`;
 
-  const base = `Create a contextual editorial illustration ${sectionContext} in a blog article titled "${title}" about ${category}. ${contextSnippet ? `Nearby content context: ${contextSnippet.substring(0, 250)}.` : ''}${body.excerpt ? ` Article summary: ${body.excerpt.substring(0, 150)}.` : ''} Style: clean, professional infographic or illustration suitable for inline blog placement. Aspect ratio 4:3. This image must be highly relevant to the exact paragraph or section described above, not just broadly relevant to the full article.`;
+  const base = `Create a contextual photorealistic editorial image ${sectionContext} in a blog article titled "${title}" about ${category}. ${contextSnippet ? `Nearby content context: ${contextSnippet.substring(0, 250)}.` : ''}${body.excerpt ? ` Article summary: ${body.excerpt.substring(0, 150)}.` : ''} Style: photorealistic, editorial-quality image suitable for inline blog placement. Do not use illustration, vector, or infographic style. Aspect ratio 4:3. This image must be highly relevant to the exact paragraph or section described above, not just broadly relevant to the full article.`;
 
   return base + BLOG_IMAGE_MANDATORY_RULES;
 }

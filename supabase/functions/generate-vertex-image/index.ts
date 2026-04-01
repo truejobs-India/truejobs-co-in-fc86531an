@@ -314,7 +314,9 @@ async function generateViaGeminiFlashImage(
         clearTimeout(timer);
         const isTimeout = fetchErr?.name === 'AbortError';
         console.error(`[gemini-flash-image] ${isTimeout ? 'timeout' : 'fetch error'} on attempt ${attempt}: ${fetchErr.message}`);
-        // On timeout or network error, fall back to gateway
+        if (strict) {
+          return buildStrictErrorResponse(isTimeout ? 504 : 502, `Vertex AI ${isTimeout ? 'timeout' : 'fetch error'}: ${fetchErr.message}. No fallback was used.`, { selectedModelKey: 'gemini-flash-image', resolvedProvider: 'vertex-ai-direct', resolvedRuntimeModelId: GEMINI_IMAGE_MODEL });
+        }
         return await generateViaLovableGatewayImage(body, slug, imagePrompt, adminClient, startMs, isTimeout ? 'vertex-timeout' : 'vertex-fetch-error');
       } finally {
         clearTimeout(timer);

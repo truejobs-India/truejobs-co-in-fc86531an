@@ -13,6 +13,10 @@ import { Progress } from '@/components/ui/progress';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
   CheckCircle2, AlertTriangle, XCircle, Upload as UploadIcon,
   RefreshCw, Search, Eye, Loader2, Send, Trash2, Play, Square, Zap,
 } from 'lucide-react';

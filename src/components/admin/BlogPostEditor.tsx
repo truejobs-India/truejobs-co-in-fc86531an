@@ -203,6 +203,17 @@ export function BlogPostEditor() {
   const [selectedPostIds, setSelectedPostIds] = useState<Set<string>>(new Set());
   const [imageCleanupLoading, setImageCleanupLoading] = useState<'cover' | 'inline' | null>(null);
 
+  // Bulk Fix All by AI state
+  type BulkFixPhase = 'idle' | 'scanning' | 'scanned' | 'fixing' | 'done';
+  type BulkFixScanItem = { postId: string; slug: string; title: string; failCount: number; warnCount: number; failedChecks: { key: string; label: string; detail: string; recommendation?: string }[] };
+  type BulkFixResultItem = { postId: string; slug: string; title: string; autoFixed: number; reviewRequired: number; error?: string };
+  const [bulkFixPhase, setBulkFixPhase] = useState<BulkFixPhase>('idle');
+  const [bulkFixScanResults, setBulkFixScanResults] = useState<BulkFixScanItem[]>([]);
+  const [bulkFixResults, setBulkFixResults] = useState<BulkFixResultItem[]>([]);
+  const [bulkFixProgress, setBulkFixProgress] = useState<{ done: number; total: number; current: string }>({ done: 0, total: 0, current: '' });
+  const bulkFixAbortRef = useRef(false);
+  const [showBulkFixDialog, setShowBulkFixDialog] = useState(false);
+
   // Autosave
   const autosaveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -1134,6 +1145,125 @@ export function BlogPostEditor() {
     setFixAllRunning(false);
   };
 
+  // ── Bulk Fix All by AI: Phase 1 — Scan ──
+  const handleBulkFixScan = async () => {
+    const selectedPosts = posts.filter(p => selectedPostIds.has(p.id));
+    if (selectedPosts.length === 0) return;
+    setShowBulkFixDialog(true);
+    setBulkFixPhase('scanning');
+    setBulkFixScanResults([]);
+    setBulkFixResults([]);
+
+    const needsFix: BulkFixScanItem[] = [];
+    for (const post of selectedPosts) {
+      const meta = blogPostToMetadata(post);
+      const compliance = analyzePublishCompliance(meta);
+      const failedChecks = compliance.checks.filter(c => c.status === 'fail' || c.status === 'warn');
+      if (failedChecks.length > 0) {
+        needsFix.push({
+          postId: post.id,
+          slug: post.slug,
+          title: post.title,
+          failCount: failedChecks.filter(c => c.status === 'fail').length,
+          warnCount: failedChecks.filter(c => c.status === 'warn').length,
+          failedChecks: failedChecks.map(c => ({ key: c.key, label: c.label, detail: c.detail, recommendation: c.recommendation })),
+        });
+      }
+    }
+    setBulkFixScanResults(needsFix);
+    setBulkFixPhase('scanned');
+    if (needsFix.length === 0) {
+      toast({ title: '✅ All selected articles pass compliance', description: 'No fixes needed.' });
+    }
+  };
+
+  // ── Bulk Fix All by AI: Phase 2 — Fix ──
+  const handleBulkFixExecute = async () => {
+    if (bulkFixScanResults.length === 0) return;
+    bulkFixAbortRef.current = false;
+    setBulkFixPhase('fixing');
+    setBulkFixResults([]);
+    setBulkFixProgress({ done: 0, total: bulkFixScanResults.length, current: '' });
+
+    const results: BulkFixResultItem[] = [];
+    for (let i = 0; i < bulkFixScanResults.length; i++) {
+      if (bulkFixAbortRef.current) {
+        for (let j = i; j < bulkFixScanResults.length; j++) {
+          results.push({ postId: bulkFixScanResults[j].postId, slug: bulkFixScanResults[j].slug, title: bulkFixScanResults[j].title, autoFixed: 0, reviewRequired: 0, error: 'Stopped by user' });
+        }
+        break;
+      }
+      const item = bulkFixScanResults[i];
+      const post = posts.find(p => p.id === item.postId);
+      if (!post) { results.push({ postId: item.postId, slug: item.slug, title: item.title, autoFixed: 0, reviewRequired: 0, error: 'Post not found' }); continue; }
+      setBulkFixProgress({ done: i, total: bulkFixScanResults.length, current: item.title });
+
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) throw new Error('Not authenticated');
+        const meta = blogPostToMetadata(post);
+        const { data, error } = await supabase.functions.invoke('analyze-blog-compliance-fixes', {
+          body: {
+            title: post.title, content: post.content, slug: post.slug,
+            aiModel: blogTextModel,
+            issues: item.failedChecks,
+            existingMeta: {
+              meta_title: post.meta_title, meta_description: post.meta_description, excerpt: post.excerpt,
+              featured_image_alt: post.featured_image_alt, author_name: post.author_name, canonical_url: post.canonical_url,
+              hasCoverImage: !!post.cover_image_url, hasIntro: meta.hasIntro, hasConclusion: meta.hasConclusion,
+              headings: meta.headings, wordCount: meta.wordCount, featured_image: post.cover_image_url,
+              faqCount: post.faq_count ?? 0, internalLinkCount: meta.internalLinks?.length ?? 0,
+            },
+          },
+        });
+        if (error) throw new Error(error.message);
+
+        const fixes: any[] = Array.isArray(data?.fixes) ? data.fixes : [];
+        const updatePayload: Record<string, string> = {};
+        let autoFixed = 0;
+        let reviewRequired = 0;
+        for (const fix of fixes) {
+          const mode = fix.applyMode || 'advisory';
+          if (mode === 'apply_field' && fix.field && SAFE_METADATA_FIELDS.has(fix.field) && fix.suggestedValue) {
+            const currentVal = (post as any)[fix.field] || '';
+            if (!currentVal || currentVal.length < 3) {
+              updatePayload[fix.field] = fix.suggestedValue;
+              autoFixed++;
+            } else {
+              reviewRequired++;
+            }
+          } else if (mode !== 'advisory' && fix.confidence !== 'low') {
+            reviewRequired++;
+          }
+        }
+
+        if (Object.keys(updatePayload).length > 0) {
+          const { word_count, reading_time } = wordCountFields(post.content);
+          (updatePayload as any).word_count = word_count;
+          (updatePayload as any).reading_time = reading_time;
+          await supabase.from('blog_posts').update(updatePayload).eq('id', post.id);
+        }
+        await supabase.from('blog_posts').update({ ai_fixed_at: new Date().toISOString() } as any).eq('id', post.id);
+        results.push({ postId: item.postId, slug: item.slug, title: item.title, autoFixed, reviewRequired });
+      } catch (err: any) {
+        results.push({ postId: item.postId, slug: item.slug, title: item.title, autoFixed: 0, reviewRequired: 0, error: err.message });
+      }
+
+      setBulkFixResults([...results]);
+      // Throttle: 3s between AI calls to avoid rate limits
+      if (i < bulkFixScanResults.length - 1 && !bulkFixAbortRef.current) {
+        await new Promise(r => setTimeout(r, 3000));
+      }
+    }
+
+    setBulkFixProgress({ done: bulkFixScanResults.length, total: bulkFixScanResults.length, current: '' });
+    setBulkFixPhase('done');
+    await fetchPosts();
+    const totalFixed = results.reduce((s, r) => s + r.autoFixed, 0);
+    const totalFailed = results.filter(r => r.error).length;
+    toast({ title: `Bulk Fix complete`, description: `${totalFixed} fixes applied across ${results.length - totalFailed} articles. ${totalFailed > 0 ? `${totalFailed} failed.` : ''}` });
+  };
+
   // ── Enrich Now handler (from list view) ──
   const handleEnrichPost = async () => {
     if (!enrichDialogPost) return;
@@ -1953,6 +2083,10 @@ export function BlogPostEditor() {
                     </AlertDialogFooter>
                   </AlertDialogContent>
                 </AlertDialog>
+                <Button size="sm" className="text-xs gap-1" disabled={bulkFixPhase === 'scanning' || bulkFixPhase === 'fixing'} onClick={handleBulkFixScan}>
+                  {bulkFixPhase === 'scanning' ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                  Bulk Fix All by AI ({selectedPostIds.size})
+                </Button>
                 <Button variant="ghost" size="sm" className="text-xs" onClick={() => setSelectedPostIds(new Set())}>
                   Clear selection
                 </Button>
@@ -2249,6 +2383,110 @@ export function BlogPostEditor() {
             </div>
           )}
         </div>
+      </DialogContent>
+    </Dialog>
+
+    {/* ── Bulk Fix All by AI Dialog ── */}
+    <Dialog open={showBulkFixDialog} onOpenChange={(open) => { if (!open && bulkFixPhase !== 'fixing') { setShowBulkFixDialog(false); setBulkFixPhase('idle'); setBulkFixScanResults([]); setBulkFixResults([]); } }}>
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2"><Sparkles className="h-4 w-4" /> Bulk Fix All by AI</DialogTitle>
+          <DialogDescription>
+            {bulkFixPhase === 'scanning' && 'Scanning selected articles for compliance issues…'}
+            {bulkFixPhase === 'scanned' && `${bulkFixScanResults.length} article(s) need fixing out of ${selectedPostIds.size} scanned.`}
+            {bulkFixPhase === 'fixing' && `Fixing ${bulkFixProgress.done}/${bulkFixProgress.total}… ${bulkFixProgress.current}`}
+            {bulkFixPhase === 'done' && `Complete — ${bulkFixResults.filter(r => !r.error).length} succeeded, ${bulkFixResults.filter(r => r.error).length} failed.`}
+          </DialogDescription>
+        </DialogHeader>
+
+        {bulkFixPhase === 'scanning' && (
+          <div className="flex items-center gap-2 py-6 justify-center text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" /> Scanning {selectedPostIds.size} articles…
+          </div>
+        )}
+
+        {bulkFixPhase === 'scanned' && bulkFixScanResults.length > 0 && (
+          <div className="space-y-3">
+            <div className="text-xs font-medium text-muted-foreground">
+              Using: {getModelDef(blogTextModel)?.label || blogTextModel}
+            </div>
+            <ScrollArea className="max-h-[350px]">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="text-xs">Article</TableHead>
+                    <TableHead className="text-xs w-20">Fails</TableHead>
+                    <TableHead className="text-xs w-20">Warnings</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {bulkFixScanResults.map(item => (
+                    <TableRow key={item.postId}>
+                      <TableCell className="text-xs truncate max-w-[300px]">{item.title}</TableCell>
+                      <TableCell><Badge variant="destructive" className="text-[10px]">{item.failCount}</Badge></TableCell>
+                      <TableCell><Badge variant="secondary" className="text-[10px]">{item.warnCount}</Badge></TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </ScrollArea>
+            <div className="flex gap-2">
+              <Button onClick={handleBulkFixExecute} className="gap-1">
+                <Sparkles className="h-4 w-4" /> Fix {bulkFixScanResults.length} Article(s) Now
+              </Button>
+              <Button variant="outline" onClick={() => { setShowBulkFixDialog(false); setBulkFixPhase('idle'); }}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {bulkFixPhase === 'scanned' && bulkFixScanResults.length === 0 && (
+          <div className="text-center py-6 text-sm text-muted-foreground">
+            ✅ All selected articles pass compliance — no fixes needed.
+          </div>
+        )}
+
+        {(bulkFixPhase === 'fixing' || bulkFixPhase === 'done') && (
+          <div className="space-y-3">
+            {bulkFixPhase === 'fixing' && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Processing: {bulkFixProgress.current}</span>
+                </div>
+                <div className="w-full bg-muted rounded-full h-2">
+                  <div className="bg-primary rounded-full h-2 transition-all" style={{ width: `${(bulkFixProgress.done / bulkFixProgress.total) * 100}%` }} />
+                </div>
+                <div className="text-xs text-muted-foreground">{bulkFixProgress.done}/{bulkFixProgress.total} completed</div>
+                <Button variant="destructive" size="sm" onClick={() => { bulkFixAbortRef.current = true; }}>
+                  <Square className="h-3 w-3 mr-1" /> Stop
+                </Button>
+              </div>
+            )}
+            <ScrollArea className="max-h-[350px]">
+              <div className="space-y-1">
+                {bulkFixResults.map((r, i) => (
+                  <div key={i} className="flex items-center gap-2 text-xs py-1 border-b border-border/50">
+                    {r.error ? (
+                      <Badge variant="destructive" className="text-[10px] shrink-0"><X className="h-2.5 w-2.5 mr-0.5" />Failed</Badge>
+                    ) : (
+                      <Badge className="text-[10px] bg-green-500/15 text-green-700 dark:text-green-400 shrink-0"><Check className="h-2.5 w-2.5 mr-0.5" />{r.autoFixed} fixed</Badge>
+                    )}
+                    <span className="truncate max-w-[250px]">{r.title}</span>
+                    {r.reviewRequired > 0 && <span className="text-amber-600 text-[10px]">{r.reviewRequired} review</span>}
+                    {r.error && <span className="text-destructive text-[10px] truncate max-w-[150px]">{r.error}</span>}
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+            {bulkFixPhase === 'done' && (
+              <Button variant="outline" onClick={() => { setShowBulkFixDialog(false); setBulkFixPhase('idle'); setBulkFixScanResults([]); setBulkFixResults([]); }}>
+                Close
+              </Button>
+            )}
+          </div>
+        )}
       </DialogContent>
     </Dialog>
     </>

@@ -204,8 +204,7 @@ export function BlogPostEditor() {
   const [selectedPostIds, setSelectedPostIds] = useState<Set<string>>(new Set());
   const [imageCleanupLoading, setImageCleanupLoading] = useState<'cover' | 'inline' | null>(null);
 
-  // Bulk Fix All by AI — autonomous pipeline via hook
-  const bulkAutoFix = useBulkAutoFix(posts, blogTextModel, fetchPosts);
+  // Bulk Fix All by AI — placeholder; hook initialized after fetchPosts is declared
 
   // Autosave
   const autosaveTimerRef = useRef<NodeJS.Timeout | null>(null);

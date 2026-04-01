@@ -843,6 +843,7 @@ async function generateViaImagen(
   aspectRatio: string,
   adminClient: any,
   startMs: number,
+  strict = false,
 ): Promise<Response> {
   const purpose = body.purpose || 'unspecified';
   const slotNumber = body.slotNumber || 0;

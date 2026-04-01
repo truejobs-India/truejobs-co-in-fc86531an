@@ -1,6 +1,7 @@
 // Uses Lovable AI gateway with gemini-2.5-flash-image for image generation.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { buildBlogCoverPrompt } from "../_shared/blog-image-prompt-policy.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

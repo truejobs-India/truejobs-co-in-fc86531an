@@ -180,34 +180,13 @@ async function verifyAdmin(req: Request): Promise<{ userId: string; adminClient:
 }
 
 // ═══════════════════════════════════════════════════════════════
-// PROMPT BUILDERS
+// PROMPT BUILDERS — delegated to shared policy (single source of truth)
 // ═══════════════════════════════════════════════════════════════
+import { buildBlogCoverPrompt, buildBlogInlinePrompt } from '../_shared/blog-image-prompt-policy.ts';
 
-function buildCoverImagePrompt(body: any): string {
-  if (body.prompt) return body.prompt;
-
-  const title = body.title || body.topic || 'Government Jobs in India';
-  const category = body.category || 'Government Jobs';
-  const tags = Array.isArray(body.tags) ? body.tags.join(', ') : '';
-  const style = body.visualStyle || 'modern flat illustration';
-  const brand = body.brandGuidelines || '';
-
-  return `Create a clean, professional ${style} for a blog article titled "${title}" about ${category}.${tags ? ` Related topics: ${tags}.` : ''}${brand ? ` Brand guidelines: ${brand}.` : ''} Style: suitable for an Indian government jobs and exam preparation portal. Use warm, professional colors. Do NOT include any text overlays, watermarks, official government seals, emblems, logos, or misleading official symbols. The image should be abstract, editorial, and visually appealing.${body.excerpt ? ` Article summary: ${body.excerpt.substring(0, 200)}` : ''}`;
-}
-
-function buildInlineImagePrompt(body: any): string {
-  const title = body.title || 'Government Jobs';
-  const contextSnippet = body.contextSnippet || '';
-  const nearbyHeading = body.nearbyHeading || '';
-  const category = body.category || 'Government Jobs';
-  const slotNumber = body.slotNumber || 1;
-
-  const sectionContext = nearbyHeading
-    ? `for a section about "${nearbyHeading}"`
-    : `for section ${slotNumber} of the article`;
-
-  return `Create a contextual editorial illustration ${sectionContext} in a blog article titled "${title}" about ${category}. ${contextSnippet ? `Nearby content context: ${contextSnippet.substring(0, 250)}.` : ''} Style: clean, professional infographic or illustration suitable for inline blog placement. Aspect ratio 4:3. Use warm, professional colors. Do NOT include any text overlays, watermarks, official government seals, emblems, logos, or misleading official symbols. The image should complement the article section and be visually distinct from a cover image.`;
-}
+// Local aliases so call-sites don't need renaming everywhere
+const buildCoverImagePrompt = (body: any) => buildBlogCoverPrompt(body);
+const buildInlineImagePrompt = (body: any) => buildBlogInlinePrompt(body);
 
 // ═══════════════════════════════════════════════════════════════
 // SHARED HELPERS

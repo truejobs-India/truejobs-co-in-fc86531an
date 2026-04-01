@@ -646,6 +646,11 @@ export function IntakeDraftsManager() {
                                 {d.publish_error.slice(0, 40)}
                               </span>
                             )}
+                            {tags.includes('published_duplicate_risk') && (
+                              <Badge className="text-[9px] px-1 py-0 bg-amber-500/20 text-amber-700 border-amber-500/30 dark:text-amber-400">
+                                Possible Published Duplicate
+                              </Badge>
+                            )}
                             {tags.slice(0, 3).map((t: string) => (
                               <Badge key={t} variant="outline" className="text-[9px] px-1 py-0">{t}</Badge>
                             ))}

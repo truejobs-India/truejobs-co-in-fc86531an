@@ -504,7 +504,9 @@ export function IntakeCsvUploader({ onImportComplete }: { onImportComplete?: (im
               <div>Total Parsed: <strong>{summary.total}</strong></div>
               <div>Imported: <Badge variant="default" className="ml-1">{summary.imported}</Badge></div>
               <div>Exact Dupes Skipped: <Badge variant="secondary" className="ml-1">{summary.skippedExactDupes}</Badge></div>
+              <div>Published Dupes Skipped: <Badge variant="secondary" className="ml-1">{summary.skippedPublishedDupes}</Badge></div>
               <div>Tagged Duplicate Risk: <Badge variant="outline" className="ml-1">{summary.taggedDuplicateRisk}</Badge></div>
+              <div>Tagged Published Dupe Risk: <Badge variant="outline" className="ml-1">{summary.taggedPublishedDupeRisk}</Badge></div>
               <div>Tagged Generic Title: <Badge variant="outline" className="ml-1">{summary.taggedGenericTitle}</Badge></div>
               <div>Tagged Stale: <Badge variant="outline" className="ml-1">{summary.taggedStaleContent}</Badge></div>
               {summary.errors > 0 && (

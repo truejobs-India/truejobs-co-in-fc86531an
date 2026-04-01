@@ -1124,7 +1124,6 @@ serve(async (req) => {
       return buildStrictErrorResponse(400, `Cannot resolve model "${selectedModel}" to a known route. No fallback was used.`, { selectedModelKey: selectedModel });
     }
     return await generateViaImagen(body, slug, imagePrompt, imageCount, aspectRatio, adminClient, startMs);
-    }
 
   } catch (err) {
     const elapsed = Date.now() - startMs;

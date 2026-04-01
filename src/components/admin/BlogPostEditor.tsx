@@ -64,7 +64,7 @@ import { BlogScoreBreakdown } from './blog/BlogScoreBreakdown';
 import { VertexAITools } from './blog/VertexAITools';
 import { AiModelSelector } from '@/components/admin/AiModelSelector';
 import { getModelDef, getRecommendedModelsForTarget } from '@/lib/aiModels';
-import { useBulkAutoFix, type ArticleResult } from '@/hooks/useBulkAutoFix';
+import { useBulkAutoFix } from '@/hooks/useBulkAutoFix';
 
 interface BlogPost {
   id: string;

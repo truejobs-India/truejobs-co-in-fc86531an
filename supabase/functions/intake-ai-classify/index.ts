@@ -297,7 +297,10 @@ Deno.serve(async (req) => {
 
         const aiResult = await callAI(lovableKey, systemPrompt, userPrompt, CLASSIFICATION_TOOL, aiModel);
 
-        const existingTags = Array.isArray(draft.secondary_tags) ? draft.secondary_tags as string[] : [];
+        const rawExistingTags = draft.secondary_tags;
+        const existingTags: string[] = Array.isArray(rawExistingTags)
+          ? rawExistingTags
+          : (typeof rawExistingTags === 'string' ? (() => { try { const v = JSON.parse(rawExistingTags); return Array.isArray(v) ? v : []; } catch { return []; } })() : []);
         const aiTags = Array.isArray(aiResult.secondary_tags) ? aiResult.secondary_tags : [];
         const mergedTags = [...new Set([...existingTags, ...aiTags])];
 

@@ -368,7 +368,7 @@ export function IntakeCsvUploader({ onImportComplete }: { onImportComplete?: (im
 
         if (tags.includes('generic_title')) stats.taggedGenericTitle++;
         if (tags.includes('stale_content')) stats.taggedStaleContent++;
-        mapped.secondary_tags = JSON.stringify(tags);
+        mapped.secondary_tags = tags;
         if (mapped.source_url) existingUrlSet.add(normalizeUrl(mapped.source_url));
         batchRows.push(mapped);
       }

@@ -1,38 +1,74 @@
 
 
-# Fix 3 Issues + Surface Publish Error Reason
+# Duplicate Reconciliation v1 — Simplest Safe Version
 
-## File 1: `IntakeDraftsManager.tsx`
+## Current State
+- `IntakeCsvUploader.tsx` (lines 264-326) already fetches draft URLs and title+domain sets before import
+- Exact URL duplicates against drafts are skipped (line 309-312)
+- Title+domain near-matches against drafts are tagged `duplicate_risk` (line 316-319)
+- `isLowConfidence()` in `IntakeDraftsManager.tsx` already routes `duplicate_risk` tagged rows to Low Confidence
+- **No checking against published tables at all**
 
-### Fix 1: Safe publish failure handling (lines 269-295, 308-324)
+## What v1 Adds
 
-**`handleApproveAndPublish`**: Set `review_status: 'approved'` (edge function requires it), call `intake-publish`. On failure: set `processing_status: 'publish_failed'` and `publish_error` with the error message, revert `review_status: 'pending'`. On success: leave as-is (edge function already sets `processing_status: 'published'`).
+### File 1: `IntakeCsvUploader.tsx`
 
-**`handleBulkApprovePublish`**: Same pattern per row — on failure, revert and store error.
+**Before the import loop (after line 272), fetch published URLs:**
 
-### Fix 2: `publish_failed` rows visible in Low Confidence with badge + error reason
+```
+employment_news_jobs → select apply_link
+govt_exams → select apply_link, official_notification_url
+```
 
-- Add `publish_error` to `IntakeDraft` type (line ~45)
-- In `isLowConfidence` (line 57): add `if (d.processing_status === 'publish_failed') return true;`
-- In `filterDrafts` `low_confidence` case (line 89-94): change filter to also include `d.processing_status === 'publish_failed'`
-- In table row rendering (line 603-609 area): after existing tag badges, add a red "Publish Failed" badge when `processing_status === 'publish_failed'`, and if `publish_error` is present, show it as a truncated tooltip/subtitle
+Build a `publishedUrlSet` of all non-null normalized URLs.
 
-### Fix 3: Single-row delete confirmation (line 628-631)
+**Also fetch published identifiers for conservative near-matching:**
 
-- Add `singleDeleteId` state
-- Change trash icon onClick to `setSingleDeleteId(d.id)` instead of `handleDeleteIds([d.id])`
-- Add a simple `AlertDialog` (or reuse existing `Dialog`): "Permanently delete this draft? This cannot be undone." with Cancel / Delete buttons
+```
+employment_news_jobs → select post, org_name
+govt_exams → select exam_name, conducting_body
+```
 
-### Fix 4: Preserve original payload for Excel/CSV
+Build a `publishedIdentifierSet` using exact normalized concatenation: `normalizeTitle(post||exam_name) + "||" + normalizeTitle(org_name||conducting_body)`. This is strict — only exact normalized matches count.
 
-**File 2: `IntakeCsvUploader.tsx` (line ~300)**
+**In the import loop, after existing draft URL check (line 309):**
 
-Add `mapped.structured_data_json = row;` after the column mapping loop in the `else` branch (non-JSON imports).
+1. If `source_url` matches `publishedUrlSet` → skip row, increment `skippedPublishedDupes`
+2. After existing draft title+domain check (line 316), also check incoming title against `publishedIdentifierSet` using exact normalized match. If matched → add `published_duplicate_risk` tag
 
-## Summary of changes
+**Matching approach (conservative, per user's guard):**
+- URL matching: exact normalized only
+- Identifier matching: exact normalized `post/exam_name + org/body` concatenation only
+- No fuzzy matching, no substring matching, no similarity scoring
+
+**Update `ImportSummary`:** Add `skippedPublishedDupes: number`. Show in summary card.
+
+### File 2: `IntakeDraftsManager.tsx`
+
+**In `isLowConfidence()` (line 62-83):** Add `if (tags.includes('published_duplicate_risk')) return true;`
+
+**In row rendering:** Add an amber "Possible Published Duplicate" badge when `published_duplicate_risk` tag is present.
+
+### No schema changes needed
+Uses existing `secondary_tags` array. No migration.
+
+### No merge logic
+Near-matches go to Low Confidence for manual review. No auto-merging.
+
+## Decision Matrix
+
+| Condition | Action |
+|-----------|--------|
+| Exact URL in drafts | Skip (existing) |
+| Exact URL in published | Skip (new) |
+| Title+domain match in drafts | Tag `duplicate_risk` → Low Confidence (existing) |
+| Exact identifier match in published | Tag `published_duplicate_risk` → Low Confidence (new) |
+| No match | Ready Draft (unchanged) |
+
+## Files Changed
 
 | File | Changes |
 |------|---------|
-| `IntakeDraftsManager.tsx` | Safe publish flow with rollback + error storage, publish_failed in Low Confidence with error reason badge, single-delete confirmation dialog |
-| `IntakeCsvUploader.tsx` | Add `structured_data_json = row` for Excel/CSV |
+| `IntakeCsvUploader.tsx` | Fetch published URLs + identifiers, skip published URL dupes, tag exact published identifier matches, update summary |
+| `IntakeDraftsManager.tsx` | Route `published_duplicate_risk` to Low Confidence, add amber badge |
 

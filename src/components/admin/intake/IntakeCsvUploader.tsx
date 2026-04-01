@@ -23,7 +23,9 @@ interface ImportSummary {
   total: number;
   imported: number;
   skippedExactDupes: number;
+  skippedPublishedDupes: number;
   taggedDuplicateRisk: number;
+  taggedPublishedDupeRisk: number;
   taggedGenericTitle: number;
   taggedStaleContent: number;
   errors: number;
@@ -257,10 +259,12 @@ export function IntakeCsvUploader({ onImportComplete }: { onImportComplete?: (im
 
     const stats: ImportSummary = {
       total: parsedData.rows.length, imported: 0, skippedExactDupes: 0,
-      taggedDuplicateRisk: 0, taggedGenericTitle: 0, taggedStaleContent: 0, errors: 0,
+      skippedPublishedDupes: 0, taggedDuplicateRisk: 0, taggedPublishedDupeRisk: 0,
+      taggedGenericTitle: 0, taggedStaleContent: 0, errors: 0,
     };
 
     try {
+      // Fetch existing draft URLs and title+domain sets
       const { data: existingUrls } = await supabase
         .from('intake_drafts').select('source_url, raw_title, source_domain');
       const existingUrlSet = new Set(
@@ -270,6 +274,34 @@ export function IntakeCsvUploader({ onImportComplete }: { onImportComplete?: (im
         (existingUrls || []).filter(r => r.raw_title && r.source_domain)
           .map(r => `${normalizeTitle(r.raw_title!)}||${(r.source_domain || '').toLowerCase()}`)
       );
+
+      // Fetch published URLs from employment_news_jobs and govt_exams
+      const [{ data: enjUrls }, { data: geUrls }] = await Promise.all([
+        supabase.from('employment_news_jobs').select('apply_link, post, org_name'),
+        supabase.from('govt_exams').select('apply_link, official_notification_url, exam_name, conducting_body'),
+      ]);
+
+      const publishedUrlSet = new Set<string>();
+      for (const r of (enjUrls || [])) {
+        if (r.apply_link) publishedUrlSet.add(normalizeUrl(r.apply_link));
+      }
+      for (const r of (geUrls || [])) {
+        if (r.apply_link) publishedUrlSet.add(normalizeUrl(r.apply_link));
+        if (r.official_notification_url) publishedUrlSet.add(normalizeUrl(r.official_notification_url));
+      }
+
+      // Build strict published identifier set (exact normalized post+org / exam+body)
+      const publishedIdentifierSet = new Set<string>();
+      for (const r of (enjUrls || [])) {
+        if (r.post && r.org_name) {
+          publishedIdentifierSet.add(`${normalizeTitle(r.post)}||${normalizeTitle(r.org_name)}`);
+        }
+      }
+      for (const r of (geUrls || [])) {
+        if (r.exam_name && r.conducting_body) {
+          publishedIdentifierSet.add(`${normalizeTitle(r.exam_name)}||${normalizeTitle(r.conducting_body)}`);
+        }
+      }
 
       const batchRows: any[] = [];
 
@@ -311,12 +343,27 @@ export function IntakeCsvUploader({ onImportComplete }: { onImportComplete?: (im
           continue;
         }
 
+        // Skip exact URL duplicates against published tables
+        if (mapped.source_url && publishedUrlSet.has(normalizeUrl(mapped.source_url))) {
+          stats.skippedPublishedDupes++;
+          continue;
+        }
+
         const tags = detectTags(mapped.raw_title || '', mapped.raw_text || '', mapped.raw_file_url || '');
 
         if (mapped.raw_title && mapped.source_domain) {
           const titleDomainKey = `${normalizeTitle(mapped.raw_title)}||${mapped.source_domain.toLowerCase()}`;
           if (existingTitleDomains.has(titleDomainKey)) { tags.push('duplicate_risk'); stats.taggedDuplicateRisk++; }
           existingTitleDomains.add(titleDomainKey);
+        }
+
+        // Tag exact identifier matches against published items (conservative: no fuzzy)
+        if (mapped.raw_title && mapped.source_domain) {
+          const pubIdKey = `${normalizeTitle(mapped.raw_title)}||${normalizeTitle(mapped.source_domain)}`;
+          if (publishedIdentifierSet.has(pubIdKey)) {
+            tags.push('published_duplicate_risk');
+            stats.taggedPublishedDupeRisk++;
+          }
         }
 
         if (tags.includes('generic_title')) stats.taggedGenericTitle++;
@@ -341,7 +388,7 @@ export function IntakeCsvUploader({ onImportComplete }: { onImportComplete?: (im
       }
 
       setSummary(stats);
-      toast({ title: 'Import Complete', description: `${stats.imported} rows imported, ${stats.skippedExactDupes} exact dupes skipped` });
+      toast({ title: 'Import Complete', description: `${stats.imported} imported, ${stats.skippedExactDupes} draft dupes skipped, ${stats.skippedPublishedDupes} published dupes skipped` });
       onImportComplete?.(allInsertedIds, scrapeRunId);
     } catch (err) {
       console.error('Import error:', err);
@@ -457,7 +504,9 @@ export function IntakeCsvUploader({ onImportComplete }: { onImportComplete?: (im
               <div>Total Parsed: <strong>{summary.total}</strong></div>
               <div>Imported: <Badge variant="default" className="ml-1">{summary.imported}</Badge></div>
               <div>Exact Dupes Skipped: <Badge variant="secondary" className="ml-1">{summary.skippedExactDupes}</Badge></div>
+              <div>Published Dupes Skipped: <Badge variant="secondary" className="ml-1">{summary.skippedPublishedDupes}</Badge></div>
               <div>Tagged Duplicate Risk: <Badge variant="outline" className="ml-1">{summary.taggedDuplicateRisk}</Badge></div>
+              <div>Tagged Published Dupe Risk: <Badge variant="outline" className="ml-1">{summary.taggedPublishedDupeRisk}</Badge></div>
               <div>Tagged Generic Title: <Badge variant="outline" className="ml-1">{summary.taggedGenericTitle}</Badge></div>
               <div>Tagged Stale: <Badge variant="outline" className="ml-1">{summary.taggedStaleContent}</Badge></div>
               {summary.errors > 0 && (

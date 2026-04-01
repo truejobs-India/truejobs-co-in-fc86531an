@@ -72,6 +72,7 @@ function isLowConfidence(d: IntakeDraft): boolean {
   if (tags.includes('stale_content') || tags.includes('old_year')) return true;
   if (tags.includes('generic_title') && !d.normalized_title) return true;
   if (tags.includes('exact_duplicate') || tags.includes('probable_duplicate')) return true;
+  if (tags.includes('published_duplicate_risk')) return true;
 
   // Missing core fields for publishable content
   const isJob = d.publish_target === 'jobs' || d.content_type === 'job';
@@ -644,6 +645,11 @@ export function IntakeDraftsManager() {
                               <span className="text-[9px] text-destructive max-w-[120px] truncate" title={d.publish_error}>
                                 {d.publish_error.slice(0, 40)}
                               </span>
+                            )}
+                            {tags.includes('published_duplicate_risk') && (
+                              <Badge className="text-[9px] px-1 py-0 bg-amber-500/20 text-amber-700 border-amber-500/30 dark:text-amber-400">
+                                Possible Published Duplicate
+                              </Badge>
                             )}
                             {tags.slice(0, 3).map((t: string) => (
                               <Badge key={t} variant="outline" className="text-[9px] px-1 py-0">{t}</Badge>

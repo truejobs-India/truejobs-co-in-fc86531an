@@ -336,6 +336,9 @@ async function generateViaGeminiFlashImage(
       const errText = await resp!.text();
       console.error(`[gemini-flash-image] Vertex error [${resp!.status}]: ${errText.substring(0, 300)}`);
       if (resp!.status === 429) {
+        if (strict) {
+          return buildStrictErrorResponse(429, `Vertex AI rate-limited. No fallback was used.`, { selectedModelKey: 'gemini-flash-image', resolvedProvider: 'vertex-ai-direct', resolvedRuntimeModelId: GEMINI_IMAGE_MODEL });
+        }
         return await generateViaLovableGatewayImage(body, slug, imagePrompt, adminClient, startMs, 'vertex-429');
       }
       return new Response(JSON.stringify({ success: false, error: `Vertex AI error (${resp!.status}): ${errText.substring(0, 200)}`, model: GEMINI_IMAGE_MODEL }),

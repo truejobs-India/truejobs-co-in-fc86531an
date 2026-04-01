@@ -1909,9 +1909,66 @@ export function BlogPostEditor() {
           </div>
         ) : (
           <>
+            {/* Image cleanup action buttons */}
+            {selectedPostIds.size > 0 && (
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-xs text-muted-foreground">{selectedPostIds.size} selected</span>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="destructive" size="sm" disabled={imageCleanupLoading !== null} className="text-xs gap-1">
+                      <Trash2 className="h-3 w-3" /> Delete Cover Images ({selectedPostIds.size})
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Delete cover images?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This will permanently delete cover image files from storage and clear DB references for {selectedPostIds.size} selected article(s). This cannot be undone.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={handleDeleteCoverImages} className="bg-destructive text-destructive-foreground">
+                        Delete Cover Images
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="destructive" size="sm" disabled={imageCleanupLoading !== null} className="text-xs gap-1">
+                      <Trash2 className="h-3 w-3" /> Delete Inline Images ({selectedPostIds.size})
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Delete inline images?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This will permanently delete inline image files from storage, clean article_images metadata, and remove matching image tags from content HTML for {selectedPostIds.size} selected article(s). This cannot be undone.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={handleDeleteInlineImages} className="bg-destructive text-destructive-foreground">
+                        Delete Inline Images
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+                <Button variant="ghost" size="sm" className="text-xs" onClick={() => setSelectedPostIds(new Set())}>
+                  Clear selection
+                </Button>
+              </div>
+            )}
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={paginatedPosts.length > 0 && paginatedPosts.every(p => selectedPostIds.has(p.id))}
+                      onCheckedChange={toggleSelectAllVisible}
+                    />
+                  </TableHead>
                   <TableHead>Title</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Words</TableHead>

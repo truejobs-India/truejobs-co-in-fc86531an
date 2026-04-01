@@ -1,74 +1,50 @@
 
 
-# Duplicate Reconciliation v1 — Simplest Safe Version
+# Fix: AI Classification Crashing — No Drafts Created
 
-## Current State
-- `IntakeCsvUploader.tsx` (lines 264-326) already fetches draft URLs and title+domain sets before import
-- Exact URL duplicates against drafts are skipped (line 309-312)
-- Title+domain near-matches against drafts are tagged `duplicate_risk` (line 316-319)
-- `isLowConfidence()` in `IntakeDraftsManager.tsx` already routes `duplicate_risk` tagged rows to Low Confidence
-- **No checking against published tables at all**
+## Root Cause
 
-## What v1 Adds
+`IntakeCsvUploader.tsx` line 371 stores `secondary_tags` as `JSON.stringify(tags)` — a **string** like `'["duplicate_risk"]'` instead of a native array `["duplicate_risk"]`.
 
-### File 1: `IntakeCsvUploader.tsx`
+When `intake-ai-classify` reads these rows back and calls `draft.secondary_tags.join(', ')` on line 282, it crashes because strings don't have a `.join()` method. Every single draft fails with `draft.secondary_tags.join is not a function`, so zero drafts get created.
 
-**Before the import loop (after line 272), fetch published URLs:**
+## Fix
 
-```
-employment_news_jobs → select apply_link
-govt_exams → select apply_link, official_notification_url
-```
+### File 1: `IntakeCsvUploader.tsx` (line 371)
 
-Build a `publishedUrlSet` of all non-null normalized URLs.
+Change `JSON.stringify(tags)` to just `tags` — Supabase automatically serializes arrays to JSONB.
 
-**Also fetch published identifiers for conservative near-matching:**
+```ts
+// Before:
+mapped.secondary_tags = JSON.stringify(tags);
 
-```
-employment_news_jobs → select post, org_name
-govt_exams → select exam_name, conducting_body
+// After:
+mapped.secondary_tags = tags;
 ```
 
-Build a `publishedIdentifierSet` using exact normalized concatenation: `normalizeTitle(post||exam_name) + "||" + normalizeTitle(org_name||conducting_body)`. This is strict — only exact normalized matches count.
+### File 2: `intake-ai-classify/index.ts` (line 281-282) — defensive guard
 
-**In the import loop, after existing draft URL check (line 309):**
+Even after fixing the uploader, add a safety parse for any existing rows that already have stringified tags in the database:
 
-1. If `source_url` matches `publishedUrlSet` → skip row, increment `skippedPublishedDupes`
-2. After existing draft title+domain check (line 316), also check incoming title against `publishedIdentifierSet` using exact normalized match. If matched → add `published_duplicate_risk` tag
+```ts
+const rawTags = draft.secondary_tags;
+const parsedTags = Array.isArray(rawTags)
+  ? rawTags
+  : (typeof rawTags === 'string' ? (() => { try { return JSON.parse(rawTags); } catch { return []; } })() : []);
+```
 
-**Matching approach (conservative, per user's guard):**
-- URL matching: exact normalized only
-- Identifier matching: exact normalized `post/exam_name + org/body` concatenation only
-- No fuzzy matching, no substring matching, no similarity scoring
+Use `parsedTags` for the `.join()` call and for merging.
 
-**Update `ImportSummary`:** Add `skippedPublishedDupes: number`. Show in summary card.
+## What This Fixes
 
-### File 2: `IntakeDraftsManager.tsx`
-
-**In `isLowConfidence()` (line 62-83):** Add `if (tags.includes('published_duplicate_risk')) return true;`
-
-**In row rendering:** Add an amber "Possible Published Duplicate" badge when `published_duplicate_risk` tag is present.
-
-### No schema changes needed
-Uses existing `secondary_tags` array. No migration.
-
-### No merge logic
-Near-matches go to Low Confidence for manual review. No auto-merging.
-
-## Decision Matrix
-
-| Condition | Action |
-|-----------|--------|
-| Exact URL in drafts | Skip (existing) |
-| Exact URL in published | Skip (new) |
-| Title+domain match in drafts | Tag `duplicate_risk` → Low Confidence (existing) |
-| Exact identifier match in published | Tag `published_duplicate_risk` → Low Confidence (new) |
-| No match | Ready Draft (unchanged) |
+- AI classification will stop crashing on every row
+- Drafts will actually be created after classification succeeds
+- Existing rows with stringified tags will also work
 
 ## Files Changed
 
-| File | Changes |
-|------|---------|
-| `IntakeCsvUploader.tsx` | Fetch published URLs + identifiers, skip published URL dupes, tag exact published identifier matches, update summary |
-| `IntakeDraftsManager.tsx` | Route `published_duplicate_risk` to Low Confidence, add amber badge |
+| File | Change |
+|------|--------|
+| `IntakeCsvUploader.tsx` | Remove `JSON.stringify()` wrapper on `secondary_tags` |
+| `intake-ai-classify/index.ts` | Add defensive parse for `secondary_tags` before `.join()` and merge |
 

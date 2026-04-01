@@ -293,6 +293,12 @@ export function PendingActionsPanel({
 
   const executeInline = useCallback(async () => {
     if (!inlineScan || inlineScan.count === 0) return;
+    // Frontend validation guard
+    const inlineModelDef = getModelDef(inlineImageModel);
+    if (!inlineModelDef?.capabilities.includes('image')) {
+      toast({ title: 'Invalid model', description: `"${inlineImageModel}" is not an image-capable model.`, variant: 'destructive' });
+      return;
+    }
     inlineAbortRef.current = false;
     setInlinePhase('executing');
     const items = inlineScan.items;
@@ -300,7 +306,16 @@ export function PendingActionsPanel({
     let done = 0;
     let failed = 0;
     let skipped = 0;
+    const runtimeModels = new Set<string>();
     setInlineProgress({ done: 0, total, failed: 0, skipped: 0, current: items[0]?.title || '' });
+
+    // Helper to track runtime from response
+    const trackRuntime = (imgData: any) => {
+      const rp = imgData?.resolvedProvider || imgData?.data?.resolvedProvider;
+      const rm = imgData?.resolvedRuntimeModelId || imgData?.data?.resolvedRuntimeModelId || imgData?.model;
+      if (rp && rm) runtimeModels.add(`${rm} (${rp})`);
+      else if (rm) runtimeModels.add(rm);
+    };
 
     for (const post of items) {
       if (inlineAbortRef.current) {
@@ -317,9 +332,10 @@ export function PendingActionsPanel({
         if (!status.slot1Filled && status.canPlaceSlot1) {
           const ctx = getContextForSlot(updatedContent, 1, post.title, post.category);
           const { data: imgData, error: imgError } = await supabase.functions.invoke('generate-vertex-image', {
-            body: { slug: post.slug, title: post.title, category: post.category || 'General', tags: post.tags || [], model: inlineImageModel, purpose: 'inline', slotNumber: 1, contextSnippet: ctx.nearbyText, nearbyHeading: ctx.nearbyHeading },
+            body: { slug: post.slug, title: post.title, category: post.category || 'General', tags: post.tags || [], model: inlineImageModel, purpose: 'inline', slotNumber: 1, contextSnippet: ctx.nearbyText, nearbyHeading: ctx.nearbyHeading, strict: true },
           });
           if (!imgError && imgData?.data?.images?.[0]?.url) {
+            trackRuntime(imgData);
             const result = insertInlineImage(updatedContent, 1, imgData.data.images[0].url, imgData.data.images[0].altText || `${post.title} - illustration`);
             if (result) {
               updatedContent = result;
@@ -334,9 +350,10 @@ export function PendingActionsPanel({
         if (!status.slot2Filled && status.canPlaceSlot2) {
           const ctx = getContextForSlot(updatedContent, 2, post.title, post.category);
           const { data: imgData, error: imgError } = await supabase.functions.invoke('generate-vertex-image', {
-            body: { slug: post.slug, title: post.title, category: post.category || 'General', tags: post.tags || [], model: inlineImageModel, purpose: 'inline', slotNumber: 2, contextSnippet: ctx.nearbyText, nearbyHeading: ctx.nearbyHeading },
+            body: { slug: post.slug, title: post.title, category: post.category || 'General', tags: post.tags || [], model: inlineImageModel, purpose: 'inline', slotNumber: 2, contextSnippet: ctx.nearbyText, nearbyHeading: ctx.nearbyHeading, strict: true },
           });
           if (!imgError && imgData?.data?.images?.[0]?.url) {
+            trackRuntime(imgData);
             const result = insertInlineImage(updatedContent, 2, imgData.data.images[0].url, imgData.data.images[0].altText || `${post.title} - illustration`);
             if (result) {
               updatedContent = result;
@@ -361,7 +378,10 @@ export function PendingActionsPanel({
     }
 
     if (!inlineAbortRef.current) {
-      toast({ title: '🖼️ Inline image generation complete', description: `${done} done, ${failed} failed, ${skipped} skipped out of ${total}.` });
+      const runtimeSummary = runtimeModels.size === 1
+        ? ` via ${[...runtimeModels][0]}`
+        : runtimeModels.size > 1 ? ' (mixed runtime)' : '';
+      toast({ title: '🖼️ Inline image generation complete', description: `${done} done${runtimeSummary}, ${failed} failed, ${skipped} skipped out of ${total}.` });
     }
     setInlinePhase('idle');
     setInlineScan(null);

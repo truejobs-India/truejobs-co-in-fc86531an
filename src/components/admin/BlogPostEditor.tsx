@@ -614,10 +614,19 @@ export function BlogPostEditor() {
         return;
       }
 
+      // Frontend validation guard for inline model
+      const inlineModelDef = getModelDef(inlineImageModel);
+      if (!inlineModelDef?.capabilities.includes('image')) {
+        toast({ title: 'Invalid model', description: `"${inlineImageModel}" is not an image-capable model.`, variant: 'destructive' });
+        setIsBulkInlineRunning(false);
+        return;
+      }
+
       const total = postsNeedingInline.length;
       let done = 0;
       let failed = 0;
       let skipped = 0;
+      const runtimeModels = new Set<string>();
       setBulkInlineProgress({ total, done, failed, skipped, current: postsNeedingInline[0].title });
 
       for (const post of postsNeedingInline) {
@@ -633,13 +642,22 @@ export function BlogPostEditor() {
           let updatedArticleImages = post.article_images || {};
           let anySuccess = false;
 
+          // Helper to track runtime from response
+          const trackRuntime = (imgData: any) => {
+            const rp = imgData?.resolvedProvider || imgData?.data?.resolvedProvider;
+            const rm = imgData?.resolvedRuntimeModelId || imgData?.data?.resolvedRuntimeModelId || imgData?.model;
+            if (rp && rm) runtimeModels.add(`${rm} (${rp})`);
+            else if (rm) runtimeModels.add(rm);
+          };
+
           // Process slot 1
           if (!status.slot1Filled && status.canPlaceSlot1) {
             const ctx = getContextForSlot(updatedContent, 1, post.title, post.category);
             const { data: imgData, error: imgError } = await supabase.functions.invoke('generate-vertex-image', {
-              body: { slug: post.slug, title: post.title, category: post.category || 'General', tags: post.tags || [], model: inlineImageModel, purpose: 'inline', slotNumber: 1, contextSnippet: ctx.nearbyText, nearbyHeading: ctx.nearbyHeading },
+              body: { slug: post.slug, title: post.title, category: post.category || 'General', tags: post.tags || [], model: inlineImageModel, purpose: 'inline', slotNumber: 1, contextSnippet: ctx.nearbyText, nearbyHeading: ctx.nearbyHeading, strict: true },
             });
             if (!imgError && imgData?.data?.images?.[0]?.url) {
+              trackRuntime(imgData);
               const imgUrl = imgData.data.images[0].url;
               const altText = imgData.data.images[0].altText || `${post.title} - illustration`;
               const result = insertInlineImage(updatedContent, 1, imgUrl, altText);
@@ -655,9 +673,10 @@ export function BlogPostEditor() {
           if (!status.slot2Filled && status.canPlaceSlot2) {
             const ctx = getContextForSlot(updatedContent, 2, post.title, post.category);
             const { data: imgData, error: imgError } = await supabase.functions.invoke('generate-vertex-image', {
-              body: { slug: post.slug, title: post.title, category: post.category || 'General', tags: post.tags || [], model: inlineImageModel, purpose: 'inline', slotNumber: 2, contextSnippet: ctx.nearbyText, nearbyHeading: ctx.nearbyHeading },
+              body: { slug: post.slug, title: post.title, category: post.category || 'General', tags: post.tags || [], model: inlineImageModel, purpose: 'inline', slotNumber: 2, contextSnippet: ctx.nearbyText, nearbyHeading: ctx.nearbyHeading, strict: true },
             });
             if (!imgError && imgData?.data?.images?.[0]?.url) {
+              trackRuntime(imgData);
               const imgUrl = imgData.data.images[0].url;
               const altText = imgData.data.images[0].altText || `${post.title} - illustration`;
               const result = insertInlineImage(updatedContent, 2, imgUrl, altText);
@@ -690,9 +709,12 @@ export function BlogPostEditor() {
       }
 
       if (!bulkInlineAbortRef.current) {
+        const runtimeSummary = runtimeModels.size === 1
+          ? ` via ${[...runtimeModels][0]}`
+          : runtimeModels.size > 1 ? ' (mixed runtime)' : '';
         toast({
           title: '🖼️ Inline image generation complete',
-          description: `${done} done, ${failed} failed, ${skipped} skipped out of ${total} articles.`,
+          description: `${done} done${runtimeSummary}, ${failed} failed, ${skipped} skipped out of ${total} articles.`,
         });
       }
       fetchPosts();

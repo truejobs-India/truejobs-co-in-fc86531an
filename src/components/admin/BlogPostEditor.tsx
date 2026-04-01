@@ -2085,13 +2085,11 @@ export function BlogPostEditor() {
                           <Button variant="ghost" size="icon" className="h-8 w-8" title="Enrich Now" onClick={() => { setEnrichDialogPost(post); setEnrichResult(null); setEnrichWordLimit(1500); }}>
                             <Zap className="h-4 w-4 text-primary" />
                           </Button>
-                          {post.is_published && (
-                            <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
-                              <a href={`/blog/${post.slug}`} target="_blank" rel="noopener noreferrer">
-                                <ExternalLink className="h-4 w-4" />
-                              </a>
-                            </Button>
-                          )}
+                          <Button variant="ghost" size="icon" className="h-8 w-8" asChild title="Preview article">
+                            <a href={`/blog/${post.slug}`} target="_blank" rel="noopener noreferrer">
+                              <ExternalLink className="h-4 w-4" />
+                            </a>
+                          </Button>
                           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => togglePublish(post)}>
                             {post.is_published ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                           </Button>

@@ -64,6 +64,7 @@ import { BlogScoreBreakdown } from './blog/BlogScoreBreakdown';
 import { VertexAITools } from './blog/VertexAITools';
 import { AiModelSelector } from '@/components/admin/AiModelSelector';
 import { getModelDef, getRecommendedModelsForTarget } from '@/lib/aiModels';
+import { useBulkAutoFix } from '@/hooks/useBulkAutoFix';
 
 interface BlogPost {
   id: string;
@@ -84,6 +85,7 @@ interface BlogPost {
   tags: string[] | null;
   faq_count: number | null;
   has_faq_schema: boolean | null;
+  faq_schema: any;
   internal_links: any;
   canonical_url: string | null;
   author_name: string | null;
@@ -203,16 +205,7 @@ export function BlogPostEditor() {
   const [selectedPostIds, setSelectedPostIds] = useState<Set<string>>(new Set());
   const [imageCleanupLoading, setImageCleanupLoading] = useState<'cover' | 'inline' | null>(null);
 
-  // Bulk Fix All by AI state
-  type BulkFixPhase = 'idle' | 'scanning' | 'scanned' | 'fixing' | 'done';
-  type BulkFixScanItem = { postId: string; slug: string; title: string; failCount: number; warnCount: number; failedChecks: { key: string; label: string; detail: string; recommendation?: string }[] };
-  type BulkFixResultItem = { postId: string; slug: string; title: string; autoFixed: number; reviewRequired: number; error?: string };
-  const [bulkFixPhase, setBulkFixPhase] = useState<BulkFixPhase>('idle');
-  const [bulkFixScanResults, setBulkFixScanResults] = useState<BulkFixScanItem[]>([]);
-  const [bulkFixResults, setBulkFixResults] = useState<BulkFixResultItem[]>([]);
-  const [bulkFixProgress, setBulkFixProgress] = useState<{ done: number; total: number; current: string }>({ done: 0, total: 0, current: '' });
-  const bulkFixAbortRef = useRef(false);
-  const [showBulkFixDialog, setShowBulkFixDialog] = useState(false);
+  // Bulk Fix All by AI — hook initialized after fetchPosts below
 
   // Autosave
   const autosaveTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -270,6 +263,9 @@ export function BlogPostEditor() {
     }
     setIsLoading(false);
   };
+
+  // Bulk Fix All by AI — autonomous pipeline
+  const bulkAutoFix = useBulkAutoFix(posts, blogTextModel, fetchPosts);
 
   const resetForm = () => {
     setFormData({
@@ -1145,123 +1141,10 @@ export function BlogPostEditor() {
     setFixAllRunning(false);
   };
 
-  // ── Bulk Fix All by AI: Phase 1 — Scan ──
-  const handleBulkFixScan = async () => {
+  // ── Bulk Fix All by AI: now handled by useBulkAutoFix hook ──
+  const handleBulkFixScan = () => {
     const selectedPosts = posts.filter(p => selectedPostIds.has(p.id));
-    if (selectedPosts.length === 0) return;
-    setShowBulkFixDialog(true);
-    setBulkFixPhase('scanning');
-    setBulkFixScanResults([]);
-    setBulkFixResults([]);
-
-    const needsFix: BulkFixScanItem[] = [];
-    for (const post of selectedPosts) {
-      const meta = blogPostToMetadata(post);
-      const compliance = analyzePublishCompliance(meta);
-      const failedChecks = compliance.checks.filter(c => c.status === 'fail' || c.status === 'warn');
-      if (failedChecks.length > 0) {
-        needsFix.push({
-          postId: post.id,
-          slug: post.slug,
-          title: post.title,
-          failCount: failedChecks.filter(c => c.status === 'fail').length,
-          warnCount: failedChecks.filter(c => c.status === 'warn').length,
-          failedChecks: failedChecks.map(c => ({ key: c.key, label: c.label, detail: c.detail, recommendation: c.recommendation })),
-        });
-      }
-    }
-    setBulkFixScanResults(needsFix);
-    setBulkFixPhase('scanned');
-    if (needsFix.length === 0) {
-      toast({ title: '✅ All selected articles pass compliance', description: 'No fixes needed.' });
-    }
-  };
-
-  // ── Bulk Fix All by AI: Phase 2 — Fix ──
-  const handleBulkFixExecute = async () => {
-    if (bulkFixScanResults.length === 0) return;
-    bulkFixAbortRef.current = false;
-    setBulkFixPhase('fixing');
-    setBulkFixResults([]);
-    setBulkFixProgress({ done: 0, total: bulkFixScanResults.length, current: '' });
-
-    const results: BulkFixResultItem[] = [];
-    for (let i = 0; i < bulkFixScanResults.length; i++) {
-      if (bulkFixAbortRef.current) {
-        for (let j = i; j < bulkFixScanResults.length; j++) {
-          results.push({ postId: bulkFixScanResults[j].postId, slug: bulkFixScanResults[j].slug, title: bulkFixScanResults[j].title, autoFixed: 0, reviewRequired: 0, error: 'Stopped by user' });
-        }
-        break;
-      }
-      const item = bulkFixScanResults[i];
-      const post = posts.find(p => p.id === item.postId);
-      if (!post) { results.push({ postId: item.postId, slug: item.slug, title: item.title, autoFixed: 0, reviewRequired: 0, error: 'Post not found' }); continue; }
-      setBulkFixProgress({ done: i, total: bulkFixScanResults.length, current: item.title });
-
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) throw new Error('Not authenticated');
-        const meta = blogPostToMetadata(post);
-        const { data, error } = await supabase.functions.invoke('analyze-blog-compliance-fixes', {
-          body: {
-            title: post.title, content: post.content, slug: post.slug,
-            aiModel: blogTextModel,
-            issues: item.failedChecks,
-            existingMeta: {
-              meta_title: post.meta_title, meta_description: post.meta_description, excerpt: post.excerpt,
-              featured_image_alt: post.featured_image_alt, author_name: post.author_name, canonical_url: post.canonical_url,
-              hasCoverImage: !!post.cover_image_url, hasIntro: meta.hasIntro, hasConclusion: meta.hasConclusion,
-              headings: meta.headings, wordCount: meta.wordCount, featured_image: post.cover_image_url,
-              faqCount: post.faq_count ?? 0, internalLinkCount: meta.internalLinks?.length ?? 0,
-            },
-          },
-        });
-        if (error) throw new Error(error.message);
-
-        const fixes: any[] = Array.isArray(data?.fixes) ? data.fixes : [];
-        const updatePayload: Record<string, string> = {};
-        let autoFixed = 0;
-        let reviewRequired = 0;
-        for (const fix of fixes) {
-          const mode = fix.applyMode || 'advisory';
-          if (mode === 'apply_field' && fix.field && SAFE_METADATA_FIELDS.has(fix.field) && fix.suggestedValue) {
-            const currentVal = (post as any)[fix.field] || '';
-            if (!currentVal || currentVal.length < 3) {
-              updatePayload[fix.field] = fix.suggestedValue;
-              autoFixed++;
-            } else {
-              reviewRequired++;
-            }
-          } else if (mode !== 'advisory' && fix.confidence !== 'low') {
-            reviewRequired++;
-          }
-        }
-
-        if (Object.keys(updatePayload).length > 0) {
-          const { word_count, reading_time } = wordCountFields(post.content);
-          (updatePayload as any).word_count = word_count;
-          (updatePayload as any).reading_time = reading_time;
-          await supabase.from('blog_posts').update(updatePayload).eq('id', post.id);
-        }
-        await supabase.from('blog_posts').update({ ai_fixed_at: new Date().toISOString() } as any).eq('id', post.id);
-        results.push({ postId: item.postId, slug: item.slug, title: item.title, autoFixed, reviewRequired });
-      } catch (err: any) {
-        results.push({ postId: item.postId, slug: item.slug, title: item.title, autoFixed: 0, reviewRequired: 0, error: err.message });
-      }
-
-      setBulkFixResults([...results]);
-      // Throttle: 3s between AI calls to avoid rate limits
-      if (i < bulkFixScanResults.length - 1 && !bulkFixAbortRef.current) {
-        await new Promise(r => setTimeout(r, 3000));
-      }
-    }
-
-    setBulkFixProgress({ done: bulkFixScanResults.length, total: bulkFixScanResults.length, current: '' });
-    setBulkFixPhase('done');
-    await fetchPosts();
-    const totalFixed = results.reduce((s, r) => s + r.autoFixed, 0);
-    const totalFailed = results.filter(r => r.error).length;
-    toast({ title: `Bulk Fix complete`, description: `${totalFixed} fixes applied across ${results.length - totalFailed} articles. ${totalFailed > 0 ? `${totalFailed} failed.` : ''}` });
+    bulkAutoFix.scanAll(selectedPosts.length > 0 ? selectedPosts : undefined);
   };
 
   // ── Enrich Now handler (from list view) ──
@@ -2082,9 +1965,9 @@ export function BlogPostEditor() {
                   </AlertDialogFooter>
                 </AlertDialogContent>
               </AlertDialog>
-              <Button size="sm" className="text-xs gap-1" disabled={selectedPostIds.size === 0 || bulkFixPhase === 'scanning' || bulkFixPhase === 'fixing'} onClick={handleBulkFixScan}>
-                {bulkFixPhase === 'scanning' ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-                Bulk Fix All by AI ({selectedPostIds.size})
+              <Button size="sm" className="text-xs gap-1" disabled={bulkAutoFix.phase === 'scanning' || bulkAutoFix.phase === 'fixing'} onClick={handleBulkFixScan}>
+                {bulkAutoFix.phase === 'scanning' ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                Scan & Auto-Fix by AI {selectedPostIds.size > 0 ? `(${selectedPostIds.size})` : '(All)'}
               </Button>
               {selectedPostIds.size > 0 && (
                 <Button variant="ghost" size="sm" className="text-xs" onClick={() => setSelectedPostIds(new Set())}>
@@ -2386,41 +2269,52 @@ export function BlogPostEditor() {
       </DialogContent>
     </Dialog>
 
-    {/* ── Bulk Fix All by AI Dialog ── */}
-    <Dialog open={showBulkFixDialog} onOpenChange={(open) => { if (!open && bulkFixPhase !== 'fixing') { setShowBulkFixDialog(false); setBulkFixPhase('idle'); setBulkFixScanResults([]); setBulkFixResults([]); } }}>
+    {/* ── Bulk Auto-Fix Dialog ── */}
+    <Dialog open={bulkAutoFix.showDialog} onOpenChange={(open) => { if (!open) bulkAutoFix.resetDialog(); }}>
       <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><Sparkles className="h-4 w-4" /> Bulk Fix All by AI</DialogTitle>
+          <DialogTitle className="flex items-center gap-2"><Sparkles className="h-4 w-4" /> Scan & Auto-Fix by AI</DialogTitle>
           <DialogDescription>
-            {bulkFixPhase === 'scanning' && 'Scanning selected articles for compliance issues…'}
-            {bulkFixPhase === 'scanned' && `${bulkFixScanResults.length} article(s) need fixing out of ${selectedPostIds.size} scanned.`}
-            {bulkFixPhase === 'fixing' && `Fixing ${bulkFixProgress.done}/${bulkFixProgress.total}… ${bulkFixProgress.current}`}
-            {bulkFixPhase === 'done' && `Complete — ${bulkFixResults.filter(r => !r.error).length} succeeded, ${bulkFixResults.filter(r => r.error).length} failed.`}
+            {bulkAutoFix.phase === 'scanning' && 'Scanning articles for compliance issues…'}
+            {bulkAutoFix.phase === 'scanned' && bulkAutoFix.scanReport && `${bulkAutoFix.scanReport.totalFixable} fixable, ${bulkAutoFix.scanReport.totalClean} clean, ${bulkAutoFix.scanReport.totalSkipped} skipped out of ${bulkAutoFix.scanReport.totalScanned} scanned.`}
+            {bulkAutoFix.phase === 'fixing' && `Fixing ${bulkAutoFix.progress.done}/${bulkAutoFix.progress.total}…`}
+            {bulkAutoFix.phase === 'done' && bulkAutoFix.summary && `Complete — ${bulkAutoFix.summary.totalFixed} fixed, ${bulkAutoFix.summary.totalPartial} partial, ${bulkAutoFix.summary.totalSkipped} skipped, ${bulkAutoFix.summary.totalFailed} failed.`}
           </DialogDescription>
         </DialogHeader>
 
-        {bulkFixPhase === 'scanning' && (
+        {bulkAutoFix.phase === 'scanning' && (
           <div className="flex items-center gap-2 py-6 justify-center text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" /> Scanning {selectedPostIds.size} articles…
+            <Loader2 className="h-4 w-4 animate-spin" /> Scanning articles…
           </div>
         )}
 
-        {bulkFixPhase === 'scanned' && bulkFixScanResults.length > 0 && (
+        {bulkAutoFix.phase === 'scanned' && bulkAutoFix.scanReport && bulkAutoFix.scanReport.totalFixable > 0 && (
           <div className="space-y-3">
             <div className="text-xs font-medium text-muted-foreground">
               Using: {getModelDef(blogTextModel)?.label || blogTextModel}
             </div>
-            <ScrollArea className="max-h-[350px]">
+            <div className="grid grid-cols-4 gap-2 text-center">
+              <div className="bg-muted rounded p-2"><div className="text-lg font-bold">{bulkAutoFix.scanReport.totalScanned}</div><div className="text-[10px] text-muted-foreground">Scanned</div></div>
+              <div className="bg-green-500/10 rounded p-2"><div className="text-lg font-bold text-green-700 dark:text-green-400">{bulkAutoFix.scanReport.totalClean}</div><div className="text-[10px] text-muted-foreground">Clean</div></div>
+              <div className="bg-primary/10 rounded p-2"><div className="text-lg font-bold text-primary">{bulkAutoFix.scanReport.totalFixable}</div><div className="text-[10px] text-muted-foreground">Fixable</div></div>
+              <div className="bg-muted rounded p-2"><div className="text-lg font-bold">{bulkAutoFix.scanReport.totalSkipped}</div><div className="text-[10px] text-muted-foreground">Skipped</div></div>
+            </div>
+            {Object.keys(bulkAutoFix.scanReport.issueBreakdown).length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {Object.entries(bulkAutoFix.scanReport.issueBreakdown).map(([key, count]) => (
+                  <Badge key={key} variant="outline" className="text-[10px]">{key}: {count}</Badge>
+                ))}
+              </div>
+            )}
+            <ScrollArea className="max-h-[250px]">
               <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="text-xs">Article</TableHead>
-                    <TableHead className="text-xs w-20">Fails</TableHead>
-                    <TableHead className="text-xs w-20">Warnings</TableHead>
-                  </TableRow>
-                </TableHeader>
+                <TableHeader><TableRow>
+                  <TableHead className="text-xs">Article</TableHead>
+                  <TableHead className="text-xs w-16">Fails</TableHead>
+                  <TableHead className="text-xs w-16">Warns</TableHead>
+                </TableRow></TableHeader>
                 <TableBody>
-                  {bulkFixScanResults.map(item => (
+                  {bulkAutoFix.scanReport.fixableItems.map(item => (
                     <TableRow key={item.postId}>
                       <TableCell className="text-xs truncate max-w-[300px]">{item.title}</TableCell>
                       <TableCell><Badge variant="destructive" className="text-[10px]">{item.failCount}</Badge></TableCell>
@@ -2431,59 +2325,83 @@ export function BlogPostEditor() {
               </Table>
             </ScrollArea>
             <div className="flex gap-2">
-              <Button onClick={handleBulkFixExecute} className="gap-1">
-                <Sparkles className="h-4 w-4" /> Fix {bulkFixScanResults.length} Article(s) Now
+              <Button onClick={() => bulkAutoFix.executeAutoFix()} className="gap-1">
+                <Sparkles className="h-4 w-4" /> Auto-Fix {bulkAutoFix.scanReport.totalFixable} Article(s)
               </Button>
-              <Button variant="outline" onClick={() => { setShowBulkFixDialog(false); setBulkFixPhase('idle'); }}>
-                Cancel
-              </Button>
+              <Button variant="outline" onClick={() => bulkAutoFix.resetDialog()}>Cancel</Button>
             </div>
           </div>
         )}
 
-        {bulkFixPhase === 'scanned' && bulkFixScanResults.length === 0 && (
+        {bulkAutoFix.phase === 'scanned' && bulkAutoFix.scanReport && bulkAutoFix.scanReport.totalFixable === 0 && (
           <div className="text-center py-6 text-sm text-muted-foreground">
-            ✅ All selected articles pass compliance — no fixes needed.
+            ✅ All articles pass compliance — no fixes needed.
           </div>
         )}
 
-        {(bulkFixPhase === 'fixing' || bulkFixPhase === 'done') && (
+        {(bulkAutoFix.phase === 'fixing' || bulkAutoFix.phase === 'done') && (
           <div className="space-y-3">
-            {bulkFixPhase === 'fixing' && (
+            {bulkAutoFix.phase === 'fixing' && (
               <div className="space-y-2">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  <span>Processing: {bulkFixProgress.current}</span>
+                  <span className="truncate">Processing: {bulkAutoFix.progress.current}</span>
                 </div>
                 <div className="w-full bg-muted rounded-full h-2">
-                  <div className="bg-primary rounded-full h-2 transition-all" style={{ width: `${(bulkFixProgress.done / bulkFixProgress.total) * 100}%` }} />
+                  <div className="bg-primary rounded-full h-2 transition-all" style={{ width: `${bulkAutoFix.progress.total > 0 ? (bulkAutoFix.progress.done / bulkAutoFix.progress.total) * 100 : 0}%` }} />
                 </div>
-                <div className="text-xs text-muted-foreground">{bulkFixProgress.done}/{bulkFixProgress.total} completed</div>
-                <Button variant="destructive" size="sm" onClick={() => { bulkFixAbortRef.current = true; }}>
+                <div className="text-xs text-muted-foreground">{bulkAutoFix.progress.done}/{bulkAutoFix.progress.total} completed</div>
+                <Button variant="destructive" size="sm" onClick={() => bulkAutoFix.requestStop()}>
                   <Square className="h-3 w-3 mr-1" /> Stop
                 </Button>
               </div>
             )}
-            <ScrollArea className="max-h-[350px]">
+            {bulkAutoFix.phase === 'done' && bulkAutoFix.summary && (
+              <div className="grid grid-cols-5 gap-2 text-center text-xs">
+                <div className="bg-green-500/10 rounded p-2"><div className="font-bold text-green-700 dark:text-green-400">{bulkAutoFix.summary.totalFixed}</div>Fixed</div>
+                <div className="bg-blue-500/10 rounded p-2"><div className="font-bold text-blue-700 dark:text-blue-400">{bulkAutoFix.summary.totalPartial}</div>Partial</div>
+                <div className="bg-muted rounded p-2"><div className="font-bold">{bulkAutoFix.summary.totalSkipped}</div>Skipped</div>
+                <div className="bg-destructive/10 rounded p-2"><div className="font-bold text-destructive">{bulkAutoFix.summary.totalFailed}</div>Failed</div>
+                <div className="bg-muted rounded p-2"><div className="font-bold">{bulkAutoFix.summary.totalStopped}</div>Stopped</div>
+              </div>
+            )}
+            {bulkAutoFix.phase === 'done' && bulkAutoFix.summary && Object.keys(bulkAutoFix.summary.fieldBreakdown).length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {Object.entries(bulkAutoFix.summary.fieldBreakdown).map(([field, count]) => (
+                  <Badge key={field} variant="outline" className="text-[10px]">{field}: {count}</Badge>
+                ))}
+              </div>
+            )}
+            <ScrollArea className="max-h-[300px]">
               <div className="space-y-1">
-                {bulkFixResults.map((r, i) => (
-                  <div key={i} className="flex items-center gap-2 text-xs py-1 border-b border-border/50">
-                    {r.error ? (
-                      <Badge variant="destructive" className="text-[10px] shrink-0"><X className="h-2.5 w-2.5 mr-0.5" />Failed</Badge>
-                    ) : (
-                      <Badge className="text-[10px] bg-green-500/15 text-green-700 dark:text-green-400 shrink-0"><Check className="h-2.5 w-2.5 mr-0.5" />{r.autoFixed} fixed</Badge>
-                    )}
-                    <span className="truncate max-w-[250px]">{r.title}</span>
-                    {r.reviewRequired > 0 && <span className="text-amber-600 text-[10px]">{r.reviewRequired} review</span>}
-                    {r.error && <span className="text-destructive text-[10px] truncate max-w-[150px]">{r.error}</span>}
-                  </div>
+                {bulkAutoFix.results.map((r, i) => (
+                  <Collapsible key={i}>
+                    <CollapsibleTrigger className="flex items-center gap-2 text-xs py-1.5 border-b border-border/50 w-full text-left hover:bg-muted/50 px-1 rounded">
+                      {r.status === 'fixed' && <Badge className="text-[10px] bg-green-500/15 text-green-700 dark:text-green-400 shrink-0"><Check className="h-2.5 w-2.5 mr-0.5" />Fixed</Badge>}
+                      {r.status === 'partially_fixed' && <Badge className="text-[10px] bg-blue-500/15 text-blue-700 dark:text-blue-400 shrink-0"><Check className="h-2.5 w-2.5 mr-0.5" />Partial</Badge>}
+                      {r.status === 'skipped' && <Badge variant="secondary" className="text-[10px] shrink-0">Skipped</Badge>}
+                      {r.status === 'failed' && <Badge variant="destructive" className="text-[10px] shrink-0"><X className="h-2.5 w-2.5 mr-0.5" />Failed</Badge>}
+                      {r.status === 'stopped' && <Badge variant="secondary" className="text-[10px] shrink-0">Stopped</Badge>}
+                      <span className="truncate max-w-[250px]">{r.title}</span>
+                      {r.fixesApplied.length > 0 && <span className="text-green-600 text-[10px] shrink-0">{r.fixesApplied.length} applied</span>}
+                      {r.fixesSkipped.length > 0 && <span className="text-muted-foreground text-[10px] shrink-0">{r.fixesSkipped.length} skipped</span>}
+                      <ChevronDown className="h-3 w-3 ml-auto shrink-0" />
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="pl-4 py-1 space-y-0.5">
+                      {r.error && <div className="text-[10px] text-destructive">Error: {r.error}</div>}
+                      {r.fixesApplied.map((f, j) => (
+                        <div key={`a-${j}`} className="text-[10px] text-green-700 dark:text-green-400">✓ {f.field}: {f.afterValue}</div>
+                      ))}
+                      {r.fixesSkipped.map((f, j) => (
+                        <div key={`s-${j}`} className="text-[10px] text-muted-foreground">⊘ {f.field}: {f.reason}</div>
+                      ))}
+                    </CollapsibleContent>
+                  </Collapsible>
                 ))}
               </div>
             </ScrollArea>
-            {bulkFixPhase === 'done' && (
-              <Button variant="outline" onClick={() => { setShowBulkFixDialog(false); setBulkFixPhase('idle'); setBulkFixScanResults([]); setBulkFixResults([]); }}>
-                Close
-              </Button>
+            {bulkAutoFix.phase === 'done' && (
+              <Button variant="outline" onClick={() => bulkAutoFix.resetDialog()}>Close</Button>
             )}
           </div>
         )}

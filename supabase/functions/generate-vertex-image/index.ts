@@ -891,6 +891,9 @@ async function generateViaImagen(
         clearTimeout(timer);
         const isTimeout = fetchErr?.name === 'AbortError';
         console.error(`[vertex-imagen] ${isTimeout ? 'timeout' : 'fetch error'} on attempt ${attempt}: ${fetchErr.message}`);
+        if (strict) {
+          return buildStrictErrorResponse(isTimeout ? 504 : 502, `Imagen ${isTimeout ? 'timeout' : 'fetch error'}: ${fetchErr.message}. No fallback was used.`, { selectedModelKey: 'vertex-imagen', resolvedProvider: 'vertex-ai-direct', resolvedRuntimeModelId: IMAGEN_MODEL });
+        }
         return await generateViaLovableGatewayImage(body, slug, imagePrompt, adminClient, startMs, isTimeout ? 'imagen-timeout' : 'imagen-fetch-error');
       } finally {
         clearTimeout(timer);

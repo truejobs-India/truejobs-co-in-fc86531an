@@ -1025,7 +1025,16 @@ serve(async (req) => {
 
     // ── Helper: check if model should use Lovable Gateway ──
     const isGatewayModel = (model: string) => model in GATEWAY_IMAGE_MODELS && GATEWAY_IMAGE_MODELS[model] !== '__vertex_direct__';
-    const isVertexDirectImageModel = (model: string) => model === 'vertex-3-pro-image';
+    const isVertexDirectImageModel = (model: string) => model === 'vertex-3-pro-image' || model === 'vertex-3.1-flash-image';
+    const resolveVertexDirectRuntimeModel = (model: string) => {
+      switch (model) {
+        case 'vertex-3.1-flash-image':
+          return 'gemini-3.1-flash-image-preview';
+        case 'vertex-3-pro-image':
+        default:
+          return 'gemini-3-pro-image-preview';
+      }
+    };
 
     const generateViaGatewayModel = (model: string, bodyOverride: any, imagePrompt: string) => {
       const gatewayModelId = GATEWAY_IMAGE_MODELS[model] || LOVABLE_GATEWAY_IMAGE_MODEL;
@@ -1042,7 +1051,7 @@ serve(async (req) => {
         return await generateViaImagen(body, slug, imagePrompt, 1, aspectRatio, adminClient, startMs, strict);
       }
       if (isVertexDirectImageModel(selectedCoverModel)) {
-        return await generateViaVertexDirectImage(body, slug, imagePrompt, adminClient, startMs, 'gemini-3-pro-image-preview');
+        return await generateViaVertexDirectImage(body, slug, imagePrompt, adminClient, startMs, resolveVertexDirectRuntimeModel(selectedCoverModel));
       }
       if (isGatewayModel(selectedCoverModel) && selectedCoverModel !== 'gemini-flash-image') {
         return await generateViaGatewayModel(selectedCoverModel, body, imagePrompt);
@@ -1066,7 +1075,7 @@ serve(async (req) => {
         return await generateViaImagen(body, slug, imagePrompt, 1, aspectRatio, adminClient, startMs, strict);
       }
       if (isVertexDirectImageModel(selectedInlineModel)) {
-        return await generateViaVertexDirectImage({ ...body, purpose: 'inline' }, slug, imagePrompt, adminClient, startMs, 'gemini-3-pro-image-preview');
+        return await generateViaVertexDirectImage({ ...body, purpose: 'inline' }, slug, imagePrompt, adminClient, startMs, resolveVertexDirectRuntimeModel(selectedInlineModel));
       }
       if (isGatewayModel(selectedInlineModel) && selectedInlineModel !== 'gemini-flash-image') {
         return await generateViaGatewayModel(selectedInlineModel, { ...body, purpose: 'inline' }, imagePrompt);
@@ -1091,7 +1100,7 @@ serve(async (req) => {
       return await generateViaImagen(body, slug, imagePrompt, imageCount, aspectRatio, adminClient, startMs, strict);
     }
     if (isVertexDirectImageModel(selectedModel)) {
-      return await generateViaVertexDirectImage(body, slug, imagePrompt, adminClient, startMs, 'gemini-3-pro-image-preview');
+      return await generateViaVertexDirectImage(body, slug, imagePrompt, adminClient, startMs, resolveVertexDirectRuntimeModel(selectedModel));
     }
     if (isGatewayModel(selectedModel) && selectedModel !== 'gemini-flash-image') {
       return await generateViaGatewayModel(selectedModel, body, imagePrompt);

@@ -1,6 +1,6 @@
 /**
- * Phase 2: CSV Import UI for the Intake Pipeline.
- * Parses CSV, previews rows, detects duplicates/stale/generic titles,
+ * Phase 2: CSV + JSON Import UI for the Intake Pipeline.
+ * Parses CSV or JSON, previews rows, detects duplicates/stale/generic titles,
  * and imports rows into intake_drafts.
  */
 import { useState, useRef } from 'react';
@@ -28,7 +28,9 @@ interface ImportSummary {
   errors: number;
 }
 
-// Column mapping: CSV column name → intake_drafts field
+type FileType = 'csv' | 'json' | null;
+
+// Column mapping: CSV/JSON column name → intake_drafts field
 const COLUMN_MAP_OPTIONS: { label: string; value: string }[] = [
   { label: '— Skip —', value: '__skip__' },
   { label: 'Raw Title', value: 'raw_title' },
@@ -51,7 +53,9 @@ const AUTO_MAP: Record<string, string> = {
   link: 'source_url',
   domain: 'source_domain',
   source_domain: 'source_domain',
+  host: 'source_domain',
   source_name: 'source_name',
+  sourcename: 'source_name',
   source: 'source_name',
   text: 'raw_text',
   raw_text: 'raw_text',
@@ -60,6 +64,7 @@ const AUTO_MAP: Record<string, string> = {
   raw_html: 'raw_html',
   file_url: 'raw_file_url',
   raw_file_url: 'raw_file_url',
+  filetype: 'raw_file_type',
   file_type: 'raw_file_type',
   raw_file_type: 'raw_file_type',
   type: 'source_type',
@@ -70,20 +75,6 @@ const AUTO_MAP: Record<string, string> = {
 const GENERIC_TITLE_PATTERNS = /^(advertisement|notice|notification|corrigendum|file|download|document|circular|detailed\s+notification|recruitment)\b.*\.pdf$/i;
 
 const TIME_SENSITIVE_TERMS = /\b(result|merit\s+list|shortlist|admit\s+card|hall\s+ticket|call\s+letter|answer\s+key|correction\s+notice|interview\s+schedule|cut[\s-]?off)\b/i;
-
-function parseCSVWithPapa(text: string): { headers: string[]; rows: ParsedRow[]; warnings: number } {
-  const result = Papa.parse<ParsedRow>(text, {
-    header: true,
-    skipEmptyLines: 'greedy',
-    transformHeader: (h: string) => h.trim(),
-  });
-
-  const headers = result.meta.fields || [];
-  const rows = result.data;
-  const warnings = result.errors.length;
-
-  return { headers, rows, warnings };
-}
 
 function normalizeUrl(url: string): string {
   return url.trim().toLowerCase().replace(/\/+$/, '');
@@ -105,12 +96,10 @@ function detectTags(title: string, rawText: string, fileUrl: string): string[] {
   const years = extractYears(combined);
   const maxYear = years.length > 0 ? Math.max(...years) : null;
 
-  // Generic title
   if (GENERIC_TITLE_PATTERNS.test(title.trim())) {
     tags.push('generic_title');
   }
 
-  // Stale content
   if (maxYear !== null) {
     if (maxYear <= currentYear - 2) {
       tags.push('old_year', 'stale_content');
@@ -119,12 +108,10 @@ function detectTags(title: string, rawText: string, fileUrl: string): string[] {
     }
   }
 
-  // PDF-led
   if (fileUrl && /\.pdf$/i.test(fileUrl) && title.split(/\s+/).length <= 5) {
     tags.push('pdf_only');
   }
 
-  // Weak evidence
   if (!title || title.split(/\s+/).length <= 3) {
     tags.push('weak_evidence');
   }
@@ -132,34 +119,161 @@ function detectTags(title: string, rawText: string, fileUrl: string): string[] {
   return tags;
 }
 
+/** Flatten a JSON object's values to strings for preview display only */
+function flattenForPreview(obj: Record<string, unknown>): ParsedRow {
+  const row: ParsedRow = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value === null || value === undefined) {
+      row[key] = '';
+    } else if (typeof value === 'object') {
+      row[key] = JSON.stringify(value);
+    } else {
+      row[key] = String(value);
+    }
+  }
+  return row;
+}
+
+/** Parse JSON text into the same { headers, rows } shape as CSV, plus original objects */
+function parseJSONFile(text: string): {
+  headers: string[];
+  rows: ParsedRow[];
+  originalItems: Record<string, unknown>[];
+  skippedNonObjects: number;
+} {
+  const parsed = JSON.parse(text);
+
+  if (!Array.isArray(parsed)) {
+    throw new Error('JSON must be an array of objects');
+  }
+  if (parsed.length === 0) {
+    throw new Error('JSON array is empty');
+  }
+
+  const validItems: Record<string, unknown>[] = [];
+  let skippedNonObjects = 0;
+
+  for (const item of parsed) {
+    if (typeof item === 'object' && item !== null && !Array.isArray(item)) {
+      validItems.push(item as Record<string, unknown>);
+    } else {
+      skippedNonObjects++;
+    }
+  }
+
+  if (validItems.length === 0) {
+    throw new Error('No valid object rows found in JSON array');
+  }
+
+  // Collect union of all top-level keys as headers
+  const keySet = new Set<string>();
+  for (const item of validItems) {
+    for (const key of Object.keys(item)) {
+      keySet.add(key);
+    }
+  }
+  const headers = Array.from(keySet);
+
+  // Flatten each item for preview
+  const rows = validItems.map(flattenForPreview);
+
+  return { headers, rows, originalItems: validItems, skippedNonObjects };
+}
+
+function getFileExtension(filename: string): string {
+  return (filename.split('.').pop() || '').toLowerCase();
+}
+
 export function IntakeCsvUploader({ onImportComplete }: { onImportComplete?: () => void }) {
   const { toast } = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
   const [parsedData, setParsedData] = useState<{ headers: string[]; rows: ParsedRow[] } | null>(null);
+  const [originalJsonItems, setOriginalJsonItems] = useState<Record<string, unknown>[] | null>(null);
+  const [fileType, setFileType] = useState<FileType>(null);
   const [columnMapping, setColumnMapping] = useState<Record<string, string>>({});
   const [isImporting, setIsImporting] = useState(false);
   const [summary, setSummary] = useState<ImportSummary | null>(null);
   const [parseWarnings, setParseWarnings] = useState(0);
 
+  const resetState = () => {
+    setParsedData(null);
+    setOriginalJsonItems(null);
+    setFileType(null);
+    setSummary(null);
+    setParseWarnings(0);
+  };
+
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setSummary(null);
-    setParseWarnings(0);
+    resetState();
+
+    const ext = getFileExtension(file.name);
+
+    if (ext !== 'csv' && ext !== 'json') {
+      toast({ title: 'Unsupported File', description: 'Please upload a CSV or JSON file.', variant: 'destructive' });
+      return;
+    }
 
     const reader = new FileReader();
     reader.onload = (ev) => {
       const text = ev.target?.result as string;
-      const { headers, rows, warnings } = parseCSVWithPapa(text);
 
-      if (headers.length === 0 || rows.length === 0) {
-        toast({ title: 'Invalid CSV', description: 'No headers or rows detected. Check the file format.', variant: 'destructive' });
-        setParsedData(null);
-        return;
+      if (ext === 'json') {
+        handleJsonParse(text);
+      } else {
+        handleCsvParse(text);
       }
+    };
+    reader.readAsText(file);
+  };
 
+  const handleCsvParse = (text: string) => {
+    const result = Papa.parse<ParsedRow>(text, {
+      header: true,
+      skipEmptyLines: 'greedy',
+      transformHeader: (h: string) => h.trim(),
+    });
+
+    const headers = result.meta.fields || [];
+    const rows = result.data;
+    const warnings = result.errors.length;
+
+    if (headers.length === 0 || rows.length === 0) {
+      toast({ title: 'Invalid CSV', description: 'No headers or rows detected. Check the file format.', variant: 'destructive' });
+      setParsedData(null);
+      return;
+    }
+
+    setFileType('csv');
+    setParsedData({ headers, rows });
+    setParseWarnings(warnings);
+    setOriginalJsonItems(null);
+
+    // Auto-map columns
+    const mapping: Record<string, string> = {};
+    headers.forEach(h => {
+      const key = h.trim().toLowerCase().replace(/\s+/g, '_');
+      mapping[h] = AUTO_MAP[key] || '__skip__';
+    });
+    setColumnMapping(mapping);
+  };
+
+  const handleJsonParse = (text: string) => {
+    try {
+      JSON.parse(text);
+    } catch {
+      toast({ title: 'Invalid JSON', description: 'File could not be parsed as JSON. Check the file format.', variant: 'destructive' });
+      return;
+    }
+
+    try {
+      const { headers, rows, originalItems, skippedNonObjects } = parseJSONFile(text);
+
+      setFileType('json');
       setParsedData({ headers, rows });
-      setParseWarnings(warnings);
+      setOriginalJsonItems(originalItems);
+      setParseWarnings(skippedNonObjects);
 
       // Auto-map columns
       const mapping: Record<string, string> = {};
@@ -168,8 +282,10 @@ export function IntakeCsvUploader({ onImportComplete }: { onImportComplete?: () 
         mapping[h] = AUTO_MAP[key] || '__skip__';
       });
       setColumnMapping(mapping);
-    };
-    reader.readAsText(file);
+    } catch (err: any) {
+      toast({ title: 'Invalid JSON', description: err.message || 'Could not parse JSON file.', variant: 'destructive' });
+      setParsedData(null);
+    }
   };
 
   const handleImport = async () => {
@@ -202,16 +318,58 @@ export function IntakeCsvUploader({ onImportComplete }: { onImportComplete?: () 
 
       const batchRows: any[] = [];
 
-      for (const row of parsedData.rows) {
+      for (let rowIdx = 0; rowIdx < parsedData.rows.length; rowIdx++) {
+        const row = parsedData.rows[rowIdx];
         const mapped: Record<string, any> = {
           processing_status: 'imported',
           review_status: 'pending',
         };
 
-        // Apply column mapping
-        for (const [csvCol, dbField] of Object.entries(columnMapping)) {
-          if (dbField !== '__skip__' && row[csvCol]) {
-            mapped[dbField] = row[csvCol];
+        if (fileType === 'json' && originalJsonItems) {
+          // JSON import: use original object as source of truth
+          const originalItem = originalJsonItems[rowIdx];
+
+          // Apply column mapping from flattened preview row
+          for (const [csvCol, dbField] of Object.entries(columnMapping)) {
+            if (dbField !== '__skip__' && row[csvCol]) {
+              mapped[dbField] = row[csvCol];
+            }
+          }
+
+          // Override with precise JSON-specific mapping from original object
+          if (originalItem.url && typeof originalItem.url === 'string') {
+            mapped.source_url = originalItem.url;
+          }
+          if (originalItem.sourceName && typeof originalItem.sourceName === 'string') {
+            mapped.source_name = originalItem.sourceName;
+          }
+          if (originalItem.host && typeof originalItem.host === 'string') {
+            mapped.source_domain = originalItem.host;
+          }
+          if (originalItem.title && typeof originalItem.title === 'string') {
+            mapped.raw_title = originalItem.title;
+          }
+          if (originalItem.isFile === true && originalItem.url && typeof originalItem.url === 'string') {
+            mapped.raw_file_url = originalItem.url;
+          }
+          if (originalItem.isFile === true && originalItem.fileType && typeof originalItem.fileType === 'string') {
+            mapped.raw_file_type = originalItem.fileType;
+          }
+
+          // Set source_type for JSON crawler imports
+          if (!mapped.source_type) {
+            mapped.source_type = 'crawler';
+          }
+
+          // Store full original object as plain object (jsonb auto-serialization)
+          mapped.structured_data_json = originalItem;
+
+        } else {
+          // CSV import: apply column mapping
+          for (const [csvCol, dbField] of Object.entries(columnMapping)) {
+            if (dbField !== '__skip__' && row[csvCol]) {
+              mapped[dbField] = row[csvCol];
+            }
           }
         }
 
@@ -242,7 +400,6 @@ export function IntakeCsvUploader({ onImportComplete }: { onImportComplete?: () 
             tags.push('duplicate_risk');
             stats.taggedDuplicateRisk++;
           }
-          // Add to set for intra-batch dedup
           existingTitleDomains.add(titleDomainKey);
         }
 
@@ -290,7 +447,7 @@ export function IntakeCsvUploader({ onImportComplete }: { onImportComplete?: () 
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Upload className="h-5 w-5" />
-          CSV Import
+          Intake Import
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -299,27 +456,32 @@ export function IntakeCsvUploader({ onImportComplete }: { onImportComplete?: () 
           <input
             ref={fileRef}
             type="file"
-            accept=".csv"
+            accept=".csv,.json"
             onChange={handleFileSelect}
             className="hidden"
           />
           <Button variant="outline" onClick={() => fileRef.current?.click()}>
             <FileText className="h-4 w-4 mr-2" />
-            Select CSV File
+            Select File (CSV / JSON)
           </Button>
         </div>
 
         {/* Preview */}
         {parsedData && (
           <>
-            <div className="text-sm text-muted-foreground">
-              Detected {parsedData.headers.length} columns, {parsedData.rows.length} rows
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span>Detected {parsedData.headers.length} fields, {parsedData.rows.length} rows</span>
+              {fileType && (
+                <Badge variant="outline" className="text-xs uppercase">{fileType}</Badge>
+              )}
             </div>
 
             {parseWarnings > 0 && (
               <div className="flex items-center gap-2 rounded-md border border-yellow-500/50 bg-yellow-500/10 p-3 text-sm text-yellow-700 dark:text-yellow-400">
                 <AlertTriangle className="h-4 w-4 shrink-0" />
-                {parseWarnings} row(s) had formatting issues (e.g. inconsistent columns). Review the preview carefully before importing.
+                {fileType === 'json'
+                  ? `${parseWarnings} non-object item(s) skipped from JSON array.`
+                  : `${parseWarnings} row(s) had formatting issues. Review the preview carefully before importing.`}
               </div>
             )}
 

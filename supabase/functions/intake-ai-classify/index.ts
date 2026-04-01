@@ -1,7 +1,6 @@
 /**
- * Phase 3: AI Classification Edge Function for Intake Drafts.
- * Reuses the same multi-provider callAI dispatcher pattern from firecrawl-ai-enrich.
- * No hidden fallbacks — uses exactly the model passed via aiModel.
+ * AI Classification Edge Function for Intake Drafts.
+ * Supports retry_enhanced mode for second-pass aggressive extraction.
  */
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -41,7 +40,6 @@ function json(data: any, status = 200) {
 
 function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
 
-// ── Multi-provider callAI dispatcher (same pattern as firecrawl-ai-enrich) ──
 async function callAI(
   apiKey: string,
   systemPrompt: string,
@@ -51,7 +49,6 @@ async function callAI(
 ): Promise<any> {
   const modelKey = aiModel || '';
 
-  // Vertex AI route
   const vertexDef = VERTEX_MODEL_MAP[modelKey];
   if (vertexDef) {
     console.log(`[intake-ai-classify] routing to Vertex AI: ${vertexDef.vertexModel}`);
@@ -63,7 +60,6 @@ async function callAI(
     throw new Error('Vertex AI did not return valid JSON');
   }
 
-  // Bedrock route
   if (BEDROCK_MODELS.has(modelKey)) {
     const fullPrompt = `${systemPrompt}\n\n${userPrompt}\n\nReturn valid JSON matching this schema:\n${JSON.stringify(toolDef.parameters, null, 2)}`;
     if (modelKey === 'mistral') {
@@ -92,7 +88,6 @@ async function callAI(
     }
   }
 
-  // Lovable AI Gateway (default)
   const gatewayModelId = GATEWAY_MODEL_MAP[modelKey] || DEFAULT_MODEL;
   console.log(`[intake-ai-classify] routing to AI Gateway: ${gatewayModelId}`);
 
@@ -142,7 +137,6 @@ const CLASSIFICATION_TOOL = {
       content_type: {
         type: 'string',
         enum: ['job', 'result', 'admit_card', 'answer_key', 'exam', 'notification', 'scholarship', 'certificate', 'marksheet', 'not_publishable'],
-        description: 'The type of content this record represents',
       },
       primary_status: {
         type: 'string',
@@ -154,22 +148,14 @@ const CLASSIFICATION_TOOL = {
         enum: ['jobs', 'results', 'admit_cards', 'answer_keys', 'exams', 'notifications', 'scholarships', 'certificates', 'marksheets', 'none'],
       },
       confidence_score: { type: 'number', description: '0-100 confidence in classification' },
-      classification_reason: { type: 'string', description: 'Brief explanation of classification decision' },
-      secondary_tags: {
-        type: 'array',
-        items: { type: 'string' },
-        description: 'Tags like generic_title, pdf_only, old_year, stale_content, missing_org, missing_dates, weak_evidence, etc.',
-      },
-      publish_blockers: {
-        type: 'array',
-        items: { type: 'string' },
-        description: 'Critical issues that must be resolved before publishing',
-      },
-      normalized_title: { type: 'string', description: 'Clean, human-readable title' },
+      classification_reason: { type: 'string' },
+      secondary_tags: { type: 'array', items: { type: 'string' } },
+      publish_blockers: { type: 'array', items: { type: 'string' } },
+      normalized_title: { type: 'string' },
       seo_title: { type: 'string', description: 'SEO-optimized title under 60 chars' },
-      slug: { type: 'string', description: 'URL-safe slug' },
+      slug: { type: 'string' },
       meta_description: { type: 'string', description: 'SEO meta description under 160 chars' },
-      summary: { type: 'string', description: 'Brief 2-3 sentence summary' },
+      summary: { type: 'string' },
       organisation_name: { type: 'string' },
       department_name: { type: 'string' },
       post_name: { type: 'string' },
@@ -195,7 +181,7 @@ const CLASSIFICATION_TOOL = {
       admit_card_link: { type: 'string' },
       answer_key_link: { type: 'string' },
       key_points: { type: 'array', items: { type: 'string' } },
-      draft_content_html: { type: 'string', description: 'Structured HTML draft content for admin review' },
+      draft_content_html: { type: 'string', description: 'Structured HTML draft content' },
     },
     required: ['content_type', 'primary_status', 'publish_target', 'confidence_score', 'classification_reason', 'secondary_tags', 'publish_blockers'],
   },
@@ -225,6 +211,18 @@ CLASSIFICATION:
 - "notification" = meaningful public notice not fitting other types
 - "not_publishable" = junk, irrelevant, or insufficient evidence`;
 
+const RETRY_ENHANCED_PREFIX = `SECOND-PASS EXTRACTION MODE:
+This record was already classified once but had insufficient evidence. Try harder with these techniques:
+- Extract organisation name from URL patterns (e.g. "upsc.gov.in" → UPSC), domain name, and page title context
+- Reconstruct dates from surrounding text, PDF filenames, URL date patterns (e.g. "/2025/03/" → March 2025)
+- Infer post names and exam names from title fragments and file naming conventions
+- Extract links more aggressively from raw_text and raw_html
+- Look for advertisement numbers and reference numbers in any available text
+
+CRITICAL: Do NOT lower your readiness threshold. If evidence remains insufficient after deeper extraction, keep primary_status="manual_check". Only upgrade to "publish_ready" if you found genuinely new evidence this pass.
+
+`;
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
@@ -234,7 +232,6 @@ Deno.serve(async (req) => {
   if (!lovableKey) return json({ error: 'LOVABLE_API_KEY not configured' }, 500);
 
   try {
-    // Auth-first
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) return json({ error: 'Missing Authorization' }, 401);
 
@@ -247,10 +244,10 @@ Deno.serve(async (req) => {
       .from('user_roles').select('role').eq('user_id', user.id).eq('role', 'admin').maybeSingle();
     if (!roleData) return json({ error: 'Admin required' }, 403);
 
-    // Parse body
     const body = await req.json().catch(() => ({}));
     const draftIds = body.draft_ids as string[];
     const aiModel = (body.aiModel as string) || '';
+    const retryEnhanced = body.retry_enhanced === true;
 
     if (!draftIds || !Array.isArray(draftIds) || draftIds.length === 0) {
       return json({ error: 'Missing draft_ids array' }, 400);
@@ -262,21 +259,19 @@ Deno.serve(async (req) => {
     const client = createClient(supabaseUrl, serviceRoleKey);
     const results: { id: string; status: string; error?: string }[] = [];
 
+    // Build system prompt based on mode
+    const systemPrompt = retryEnhanced ? RETRY_ENHANCED_PREFIX + SYSTEM_PROMPT : SYSTEM_PROMPT;
+
     for (const draftId of draftIds) {
       try {
-        // Fetch draft
         const { data: draft, error: fetchErr } = await client
-          .from('intake_drafts')
-          .select('*')
-          .eq('id', draftId)
-          .single();
+          .from('intake_drafts').select('*').eq('id', draftId).single();
 
         if (fetchErr || !draft) {
           results.push({ id: draftId, status: 'error', error: 'Draft not found' });
           continue;
         }
 
-        // Build user prompt with available evidence
         const evidence = [
           draft.raw_title ? `Title: ${draft.raw_title}` : '',
           draft.source_url ? `Source URL: ${draft.source_url}` : '',
@@ -284,21 +279,23 @@ Deno.serve(async (req) => {
           draft.raw_file_url ? `File URL: ${draft.raw_file_url}` : '',
           draft.raw_text ? `Content:\n${(draft.raw_text as string).slice(0, 4000)}` : '',
           draft.secondary_tags && (draft.secondary_tags as any[]).length > 0
-            ? `Import tags: ${(draft.secondary_tags as string[]).join(', ')}`
-            : '',
+            ? `Import tags: ${(draft.secondary_tags as string[]).join(', ')}` : '',
+          // For retry, include previously extracted fields as additional context
+          retryEnhanced && draft.normalized_title ? `Previous title extraction: ${draft.normalized_title}` : '',
+          retryEnhanced && draft.organisation_name ? `Previous org extraction: ${draft.organisation_name}` : '',
+          retryEnhanced && draft.classification_reason ? `Previous classification note: ${draft.classification_reason}` : '',
         ].filter(Boolean).join('\n\n');
 
-        const userPrompt = `Classify this scraped record:\n\n${evidence}`;
+        const userPrompt = retryEnhanced
+          ? `SECOND-PASS: Re-classify this record with deeper extraction:\n\n${evidence}`
+          : `Classify this scraped record:\n\n${evidence}`;
 
-        // Call AI
-        const aiResult = await callAI(lovableKey, SYSTEM_PROMPT, userPrompt, CLASSIFICATION_TOOL, aiModel);
+        const aiResult = await callAI(lovableKey, systemPrompt, userPrompt, CLASSIFICATION_TOOL, aiModel);
 
-        // Merge existing import tags with AI tags
         const existingTags = Array.isArray(draft.secondary_tags) ? draft.secondary_tags as string[] : [];
         const aiTags = Array.isArray(aiResult.secondary_tags) ? aiResult.secondary_tags : [];
         const mergedTags = [...new Set([...existingTags, ...aiTags])];
 
-        // Build update
         const update: Record<string, any> = {
           content_type: aiResult.content_type,
           primary_status: aiResult.primary_status,
@@ -312,7 +309,6 @@ Deno.serve(async (req) => {
           ai_processed_at: new Date().toISOString(),
         };
 
-        // Optional extracted fields
         const optionalFields = [
           'normalized_title', 'seo_title', 'slug', 'meta_description', 'summary',
           'organisation_name', 'department_name', 'post_name', 'exam_name',
@@ -330,15 +326,9 @@ Deno.serve(async (req) => {
           }
         }
 
-        if (aiResult.key_points) {
-          update.key_points_json = aiResult.key_points;
-        }
+        if (aiResult.key_points) update.key_points_json = aiResult.key_points;
 
-        const { error: updateErr } = await client
-          .from('intake_drafts')
-          .update(update)
-          .eq('id', draftId);
-
+        const { error: updateErr } = await client.from('intake_drafts').update(update).eq('id', draftId);
         if (updateErr) {
           results.push({ id: draftId, status: 'error', error: updateErr.message });
         } else {
@@ -350,7 +340,6 @@ Deno.serve(async (req) => {
         results.push({ id: draftId, status: 'error', error: msg });
       }
 
-      // Delay between calls
       if (draftIds.indexOf(draftId) < draftIds.length - 1) {
         await sleep(2000);
       }

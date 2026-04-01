@@ -1,19 +1,20 @@
 /**
- * Phase 4: Admin Review UI for Intake Drafts.
- * Dashboard cards, filters, table, and row actions.
+ * AI-First Intake Dashboard: Draft-first, approval-focused.
+ * Auto-processes imports, shows Ready Drafts as default view.
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Progress } from '@/components/ui/progress';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import {
   FileText, CheckCircle2, AlertTriangle, XCircle, Upload as UploadIcon,
-  RefreshCw, Search, Eye, RotateCcw, Check, ArrowRightCircle, Loader2, Send, Trash2,
+  RefreshCw, Search, Eye, Loader2, Send, Trash2, Play, Square, Zap,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
@@ -39,124 +40,242 @@ type IntakeDraft = {
   post_name: string | null;
   exam_name: string | null;
   normalized_title: string | null;
+  closing_date: string | null;
+  scrape_run_id: string | null;
   created_at: string;
 };
 
-const STATUS_COLORS: Record<string, string> = {
-  publish_ready: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-  manual_check: 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200',
-  reject: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
+type TabKey = 'ready' | 'low_confidence' | 'published' | 'rejected';
+
+const TAB_LABELS: Record<TabKey, string> = {
+  ready: 'Ready Drafts',
+  low_confidence: 'Low Confidence',
+  published: 'Published',
+  rejected: 'Rejected',
 };
 
-const PROCESSING_COLORS: Record<string, string> = {
-  imported: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
-  ai_processed: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
-  reviewed: 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200',
-  published: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-  publish_failed: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
-};
+function isLowConfidence(d: IntakeDraft): boolean {
+  const score = d.confidence_score;
+  const blockers = Array.isArray(d.publish_blockers) ? d.publish_blockers : [];
+  const tags = Array.isArray(d.secondary_tags) ? d.secondary_tags : [];
+
+  if (score !== null && score < 50) return true;
+  if (blockers.length > 0) return true;
+  if (d.primary_status === 'manual_check') return true;
+  if (tags.includes('stale_content') || tags.includes('old_year')) return true;
+  if (tags.includes('generic_title') && !d.normalized_title) return true;
+  if (tags.includes('exact_duplicate') || tags.includes('probable_duplicate')) return true;
+
+  // Missing core fields for publishable content
+  const isJob = d.publish_target === 'jobs' || d.content_type === 'job';
+  if (isJob && !d.organisation_name) return true;
+  const isExam = ['results', 'admit_cards', 'answer_keys', 'exams'].includes(d.publish_target || '');
+  if (isExam && !d.exam_name) return true;
+
+  return false;
+}
+
+function filterDrafts(drafts: IntakeDraft[], tab: TabKey, searchQuery: string): IntakeDraft[] {
+  let filtered: IntakeDraft[];
+  switch (tab) {
+    case 'ready':
+      filtered = drafts.filter(d =>
+        d.primary_status === 'publish_ready' &&
+        d.processing_status === 'ai_processed' &&
+        d.review_status === 'pending' &&
+        !isLowConfidence(d)
+      );
+      break;
+    case 'low_confidence':
+      filtered = drafts.filter(d =>
+        d.processing_status === 'ai_processed' &&
+        d.processing_status !== 'published' &&
+        d.primary_status !== 'reject' &&
+        isLowConfidence(d)
+      );
+      break;
+    case 'published':
+      filtered = drafts.filter(d => d.processing_status === 'published');
+      break;
+    case 'rejected':
+      filtered = drafts.filter(d => d.primary_status === 'reject');
+      break;
+  }
+
+  if (searchQuery.trim()) {
+    const q = searchQuery.toLowerCase();
+    filtered = filtered.filter(d =>
+      (d.normalized_title || d.raw_title || '').toLowerCase().includes(q) ||
+      (d.organisation_name || '').toLowerCase().includes(q) ||
+      (d.source_url || '').toLowerCase().includes(q)
+    );
+  }
+
+  return filtered;
+}
 
 export function IntakeDraftsManager() {
   const { toast } = useToast();
-  const [drafts, setDrafts] = useState<IntakeDraft[]>([]);
+  const [allDrafts, setAllDrafts] = useState<IntakeDraft[]>([]);
   const [loading, setLoading] = useState(true);
-  const [counts, setCounts] = useState({ total: 0, imported: 0, publishReady: 0, manualCheck: 0, reject: 0, published: 0 });
-  const [filterStatus, setFilterStatus] = useState('all');
-  const [filterTarget, setFilterTarget] = useState('all');
-  const [filterProcessing, setFilterProcessing] = useState('all');
+  const [activeTab, setActiveTab] = useState<TabKey>('ready');
   const [searchQuery, setSearchQuery] = useState('');
   const [aiModel, setAiModel] = useState(() => getLastUsedModel('text', 'gemini-flash'));
-  const [classifyingIds, setClassifyingIds] = useState<Set<string>>(new Set());
-  const [publishingIds, setPublishingIds] = useState<Set<string>>(new Set());
   const [selectedDraft, setSelectedDraft] = useState<IntakeDraft | null>(null);
   const [showUploader, setShowUploader] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // Processing state
+  const processingRef = useRef(false);
+  const [processing, setProcessing] = useState(false);
+  const [processProgress, setProcessProgress] = useState({ current: 0, total: 0, phase: '' });
+
+  // Bulk action state
+  const [bulkActioning, setBulkActioning] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleteScope, setDeleteScope] = useState<'selected' | 'all'>('selected');
 
   const fetchDrafts = useCallback(async () => {
     setLoading(true);
     try {
-      let query = supabase.from('intake_drafts').select('*').order('created_at', { ascending: false }).limit(200);
-
-      if (filterStatus !== 'all') {
-        if (filterStatus === 'unclassified') {
-          query = query.is('primary_status', null);
-        } else {
-          query = query.eq('primary_status', filterStatus);
-        }
-      }
-      if (filterTarget !== 'all') query = query.eq('publish_target', filterTarget);
-      if (filterProcessing !== 'all') query = query.eq('processing_status', filterProcessing);
-      if (searchQuery.trim()) {
-        const s = `%${searchQuery.trim()}%`;
-        query = query.or(`raw_title.ilike.${s},normalized_title.ilike.${s},organisation_name.ilike.${s},source_url.ilike.${s}`);
-      }
-
-      const { data, error } = await query;
+      // Fetch all non-imported drafts (AI processed or beyond) + any recently imported
+      const { data, error } = await supabase
+        .from('intake_drafts')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(1000);
       if (error) throw error;
-      setDrafts((data || []) as any);
-
-      // Fetch counts
-      const [total, imported, publishReady, manualCheck, reject, published] = await Promise.all([
-        supabase.from('intake_drafts').select('id', { count: 'exact', head: true }),
-        supabase.from('intake_drafts').select('id', { count: 'exact', head: true }).eq('processing_status', 'imported'),
-        supabase.from('intake_drafts').select('id', { count: 'exact', head: true }).eq('primary_status', 'publish_ready'),
-        supabase.from('intake_drafts').select('id', { count: 'exact', head: true }).eq('primary_status', 'manual_check'),
-        supabase.from('intake_drafts').select('id', { count: 'exact', head: true }).eq('primary_status', 'reject'),
-        supabase.from('intake_drafts').select('id', { count: 'exact', head: true }).eq('processing_status', 'published'),
-      ]);
-      setCounts({
-        total: total.count || 0,
-        imported: imported.count || 0,
-        publishReady: publishReady.count || 0,
-        manualCheck: manualCheck.count || 0,
-        reject: reject.count || 0,
-        published: published.count || 0,
-      });
+      setAllDrafts((data || []) as any);
     } catch (err) {
       toast({ title: 'Error loading drafts', description: String(err), variant: 'destructive' });
     } finally {
       setLoading(false);
     }
-  }, [filterStatus, filterTarget, filterProcessing, searchQuery, toast]);
+  }, [toast]);
 
   useEffect(() => { fetchDrafts(); }, [fetchDrafts]);
 
-  const handleClassify = async (ids: string[]) => {
-    setClassifyingIds(prev => new Set([...prev, ...ids]));
+  // Auto-processing loop
+  const runAutoProcessing = async (importedIds: string[], scrapeRunId: string) => {
+    if (processingRef.current) return;
+    processingRef.current = true;
+    setProcessing(true);
+
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) throw new Error('Not authenticated');
 
-      const resp = await supabase.functions.invoke('intake-ai-classify', {
-        body: { draft_ids: ids, aiModel },
-        headers: { Authorization: `Bearer ${session.access_token}` },
-      });
+      // Pass 1: Classify all imported rows
+      let remainingIds = [...importedIds];
+      const totalPass1 = remainingIds.length;
+      setProcessProgress({ current: 0, total: totalPass1, phase: 'AI Classification (Pass 1)' });
 
-      if (resp.error) throw resp.error;
-      toast({ title: 'AI Classification Complete', description: `Processed ${ids.length} draft(s)` });
-      fetchDrafts();
+      while (remainingIds.length > 0 && processingRef.current) {
+        const batch = remainingIds.slice(0, 15);
+        remainingIds = remainingIds.slice(15);
+
+        try {
+          await supabase.functions.invoke('intake-ai-classify', {
+            body: { draft_ids: batch, aiModel },
+            headers: { Authorization: `Bearer ${session.access_token}` },
+          });
+        } catch (err) {
+          console.error('Classification batch error:', err);
+        }
+
+        setProcessProgress(prev => ({ ...prev, current: totalPass1 - remainingIds.length }));
+
+        if (remainingIds.length > 0 && processingRef.current) {
+          await new Promise(r => setTimeout(r, 1500));
+        }
+      }
+
+      if (!processingRef.current) {
+        toast({ title: 'Processing Stopped', description: 'You can resume by re-importing or refreshing.' });
+        return;
+      }
+
+      // Pass 2: Retry weak rows with enhanced extraction
+      const { data: weakRows } = await supabase
+        .from('intake_drafts')
+        .select('id')
+        .eq('scrape_run_id', scrapeRunId)
+        .eq('primary_status', 'manual_check')
+        .gt('confidence_score', 30);
+
+      const retryIds = (weakRows || []).map((r: any) => r.id);
+
+      if (retryIds.length > 0 && processingRef.current) {
+        let retryRemaining = [...retryIds];
+        setProcessProgress({ current: 0, total: retryIds.length, phase: 'AI Retry (Pass 2 — Enhanced)' });
+
+        while (retryRemaining.length > 0 && processingRef.current) {
+          const batch = retryRemaining.slice(0, 15);
+          retryRemaining = retryRemaining.slice(15);
+
+          try {
+            await supabase.functions.invoke('intake-ai-classify', {
+              body: { draft_ids: batch, aiModel, retry_enhanced: true },
+              headers: { Authorization: `Bearer ${session.access_token}` },
+            });
+          } catch (err) {
+            console.error('Retry batch error:', err);
+          }
+
+          setProcessProgress(prev => ({ ...prev, current: retryIds.length - retryRemaining.length }));
+
+          if (retryRemaining.length > 0 && processingRef.current) {
+            await new Promise(r => setTimeout(r, 1500));
+          }
+        }
+      }
+
+      toast({ title: 'AI Processing Complete', description: `Processed ${totalPass1} rows. ${retryIds.length} retried.` });
     } catch (err) {
-      toast({ title: 'Classification Failed', description: String(err), variant: 'destructive' });
+      toast({ title: 'Processing Error', description: String(err), variant: 'destructive' });
     } finally {
-      setClassifyingIds(prev => { const s = new Set(prev); ids.forEach(id => s.delete(id)); return s; });
-    }
-  };
-
-  const handleStatusUpdate = async (id: string, updates: Record<string, any>) => {
-    const { error } = await supabase.from('intake_drafts').update(updates as any).eq('id', id);
-    if (error) {
-      toast({ title: 'Update failed', description: error.message, variant: 'destructive' });
-    } else {
+      processingRef.current = false;
+      setProcessing(false);
+      setProcessProgress({ current: 0, total: 0, phase: '' });
       fetchDrafts();
     }
   };
 
-  const handlePublish = async (id: string) => {
-    setPublishingIds(prev => new Set([...prev, id]));
+  // Resume processing for interrupted imports
+  const handleResumeProcessing = async () => {
+    const { data: unprocessed } = await supabase
+      .from('intake_drafts')
+      .select('id, scrape_run_id')
+      .eq('processing_status', 'imported')
+      .order('created_at', { ascending: false })
+      .limit(500);
+
+    if (!unprocessed || unprocessed.length === 0) {
+      toast({ title: 'Nothing to Resume', description: 'No unprocessed imports found.' });
+      return;
+    }
+
+    const scrapeRunId = unprocessed[0].scrape_run_id || 'resume';
+    const ids = unprocessed.map((r: any) => r.id);
+    runAutoProcessing(ids, scrapeRunId);
+  };
+
+  const stopProcessing = () => {
+    processingRef.current = false;
+  };
+
+  // Approve & Publish single
+  const handleApproveAndPublish = async (id: string) => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) throw new Error('Not authenticated');
+
+      await supabase.from('intake_drafts').update({
+        review_status: 'approved',
+        processing_status: 'reviewed',
+      } as any).eq('id', id);
 
       const resp = await supabase.functions.invoke('intake-publish', {
         body: { draft_id: id },
@@ -168,50 +287,72 @@ export function IntakeDraftsManager() {
       if (result?.error) {
         toast({ title: 'Publish Blocked', description: result.error, variant: 'destructive' });
       } else {
-        toast({ title: 'Published Successfully', description: `Published to ${result?.table || 'live table'}` });
+        toast({ title: 'Published', description: `Published to ${result?.table || 'live table'}` });
       }
       fetchDrafts();
     } catch (err) {
       toast({ title: 'Publish Failed', description: String(err), variant: 'destructive' });
+    }
+  };
+
+  // Bulk approve & publish
+  const handleBulkApprovePublish = async (ids: string[]) => {
+    if (ids.length === 0) return;
+    setBulkActioning(true);
+    let success = 0;
+    let failed = 0;
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error('Not authenticated');
+
+      for (const id of ids) {
+        try {
+          await supabase.from('intake_drafts').update({
+            review_status: 'approved',
+            processing_status: 'reviewed',
+          } as any).eq('id', id);
+
+          const resp = await supabase.functions.invoke('intake-publish', {
+            body: { draft_id: id },
+            headers: { Authorization: `Bearer ${session.access_token}` },
+          });
+
+          if (resp.error || resp.data?.error) failed++;
+          else success++;
+        } catch {
+          failed++;
+        }
+      }
+
+      toast({
+        title: 'Bulk Publish Complete',
+        description: `${success} published, ${failed} failed`,
+        variant: failed > 0 ? 'destructive' : 'default',
+      });
+      fetchDrafts();
+    } catch (err) {
+      toast({ title: 'Bulk action failed', description: String(err), variant: 'destructive' });
     } finally {
-      setPublishingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
-    }
-  };
-
-  const handleClassifyAll = () => {
-    const importedIds = drafts
-      .filter(d => d.processing_status === 'imported')
-      .map(d => d.id)
-      .slice(0, 15);
-    if (importedIds.length === 0) {
-      toast({ title: 'Nothing to classify', description: 'No imported rows found' });
-      return;
-    }
-    handleClassify(importedIds);
-  };
-
-  const toggleSelect = (id: string) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  };
-
-  const toggleAll = () => {
-    if (selectedIds.size === drafts.length && drafts.length > 0) {
+      setBulkActioning(false);
       setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(drafts.map(d => d.id)));
     }
   };
 
-  const handleDeleteSelected = async () => {
-    if (selectedIds.size === 0) return;
+  // Reject single
+  const handleReject = async (id: string) => {
+    await supabase.from('intake_drafts').update({
+      primary_status: 'reject',
+      review_status: 'rejected',
+    } as any).eq('id', id);
+    fetchDrafts();
+  };
+
+  // Delete permanently
+  const handleDeleteIds = async (ids: string[]) => {
+    if (ids.length === 0) return;
     setDeleting(true);
     try {
-      const ids = Array.from(selectedIds);
-      // Delete in batches of 50
       for (let i = 0; i < ids.length; i += 50) {
         const batch = ids.slice(i, i + 50);
         const { error } = await supabase.from('intake_drafts').delete().in('id', batch);
@@ -227,26 +368,108 @@ export function IntakeDraftsManager() {
     }
   };
 
-  const dashCards = [
-    { label: 'Total', count: counts.total, icon: FileText, color: 'text-foreground' },
-    { label: 'Imported', count: counts.imported, icon: UploadIcon, color: 'text-blue-600' },
-    { label: 'Publish Ready', count: counts.publishReady, icon: CheckCircle2, color: 'text-green-600' },
-    { label: 'Manual Check', count: counts.manualCheck, icon: AlertTriangle, color: 'text-amber-600' },
-    { label: 'Reject', count: counts.reject, icon: XCircle, color: 'text-red-600' },
-    { label: 'Published', count: counts.published, icon: Send, color: 'text-emerald-600' },
-  ];
+  const visibleDrafts = filterDrafts(allDrafts, activeTab, searchQuery);
+
+  const tabCounts = {
+    ready: filterDrafts(allDrafts, 'ready', '').length,
+    low_confidence: filterDrafts(allDrafts, 'low_confidence', '').length,
+    published: filterDrafts(allDrafts, 'published', '').length,
+    rejected: filterDrafts(allDrafts, 'rejected', '').length,
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (selectedIds.size === visibleDrafts.length && visibleDrafts.length > 0) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(visibleDrafts.map(d => d.id)));
+    }
+  };
+
+  // Import handler
+  const onImportComplete = (importedIds: string[], scrapeRunId: string) => {
+    setShowUploader(false);
+    if (importedIds.length > 0) {
+      runAutoProcessing(importedIds, scrapeRunId);
+    }
+  };
+
+  // Unprocessed count for resume button
+  const unprocessedCount = allDrafts.filter(d => d.processing_status === 'imported').length;
+
+  // Delete all scope label
+  const deleteAllLabel = `Delete All ${TAB_LABELS[activeTab]}${searchQuery.trim() ? ' (filtered)' : ''}`;
+  const deleteAllCount = visibleDrafts.length;
+
+  const confirmDeleteAll = () => {
+    setDeleteScope('all');
+    setDeleteConfirmText('');
+    setDeleteConfirmOpen(true);
+  };
+
+  const confirmDeleteSelected = () => {
+    setDeleteScope('selected');
+    setDeleteConfirmText('');
+    setDeleteConfirmOpen(true);
+  };
+
+  const executeDelete = () => {
+    if (deleteScope === 'all') {
+      handleDeleteIds(visibleDrafts.map(d => d.id));
+    } else {
+      handleDeleteIds(Array.from(selectedIds));
+    }
+    setDeleteConfirmOpen(false);
+    setDeleteConfirmText('');
+  };
+
+  const deleteCount = deleteScope === 'all' ? deleteAllCount : selectedIds.size;
+  const deleteScopeLabel = deleteScope === 'all'
+    ? `${deleteAllCount} ${TAB_LABELS[activeTab].toLowerCase()}${searchQuery.trim() ? ' matching your filter' : ''}`
+    : `${selectedIds.size} selected draft(s)`;
 
   return (
     <div className="space-y-4">
-      {/* Dashboard Cards */}
-      <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
-        {dashCards.map(c => (
-          <Card key={c.label}>
+      {/* Processing Banner */}
+      {processing && (
+        <Card className="border-primary/30 bg-primary/5">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                {processProgress.phase}: {processProgress.current} / {processProgress.total}
+              </div>
+              <Button variant="outline" size="sm" onClick={stopProcessing}>
+                <Square className="h-3 w-3 mr-1" /> Stop
+              </Button>
+            </div>
+            <Progress value={processProgress.total > 0 ? (processProgress.current / processProgress.total) * 100 : 0} className="h-2" />
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {([
+          { key: 'ready' as TabKey, icon: CheckCircle2, color: 'text-green-600' },
+          { key: 'low_confidence' as TabKey, icon: AlertTriangle, color: 'text-amber-600' },
+          { key: 'published' as TabKey, icon: Send, color: 'text-emerald-600' },
+          { key: 'rejected' as TabKey, icon: XCircle, color: 'text-red-600' },
+        ]).map(c => (
+          <Card key={c.key} className={`cursor-pointer transition-colors ${activeTab === c.key ? 'ring-2 ring-primary' : ''}`}
+            onClick={() => setActiveTab(c.key)}>
             <CardContent className="p-3 flex items-center gap-2">
               <c.icon className={`h-4 w-4 ${c.color}`} />
               <div>
-                <div className="text-lg font-bold">{c.count}</div>
-                <div className="text-[10px] text-muted-foreground">{c.label}</div>
+                <div className="text-lg font-bold">{tabCounts[c.key]}</div>
+                <div className="text-[10px] text-muted-foreground">{TAB_LABELS[c.key]}</div>
               </div>
             </CardContent>
           </Card>
@@ -257,235 +480,217 @@ export function IntakeDraftsManager() {
       <div className="flex flex-wrap items-center gap-2">
         <Button variant="outline" size="sm" onClick={() => setShowUploader(!showUploader)}>
           <UploadIcon className="h-4 w-4 mr-1" />
-          {showUploader ? 'Hide Uploader' : 'Import CSV'}
+          {showUploader ? 'Hide Uploader' : 'Import File'}
         </Button>
 
-        <div className="flex items-center gap-1">
-          <AiModelSelector value={aiModel} onValueChange={setAiModel} capability="text" size="sm" triggerClassName="w-[180px] h-8 text-xs" />
-          <Button variant="outline" size="sm" onClick={handleClassifyAll} disabled={classifyingIds.size > 0}>
-            {classifyingIds.size > 0 ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RotateCcw className="h-4 w-4 mr-1" />}
-            Classify Imported
+        {unprocessedCount > 0 && !processing && (
+          <Button variant="outline" size="sm" onClick={handleResumeProcessing}>
+            <Play className="h-4 w-4 mr-1" />
+            Resume Processing ({unprocessedCount})
           </Button>
-        </div>
-
-        <Button variant="ghost" size="sm" onClick={fetchDrafts}>
-          <RefreshCw className="h-4 w-4" />
-        </Button>
-
-        {selectedIds.size > 0 && (
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="destructive" size="sm" disabled={deleting}>
-                {deleting ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Trash2 className="h-4 w-4 mr-1" />}
-                Delete Selected ({selectedIds.size})
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Permanently delete {selectedIds.size} draft(s)?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  This action cannot be undone. The selected drafts will be permanently removed from the database.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={handleDeleteSelected} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                  Delete Permanently
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
         )}
 
-        {/* Filters */}
-        <Select value={filterStatus} onValueChange={setFilterStatus}>
-          <SelectTrigger className="h-8 text-xs w-[130px]"><SelectValue placeholder="Status" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all" className="text-xs">All Status</SelectItem>
-            <SelectItem value="unclassified" className="text-xs">Unclassified</SelectItem>
-            <SelectItem value="publish_ready" className="text-xs">Publish Ready</SelectItem>
-            <SelectItem value="manual_check" className="text-xs">Manual Check</SelectItem>
-            <SelectItem value="reject" className="text-xs">Reject</SelectItem>
-          </SelectContent>
-        </Select>
+        <AiModelSelector value={aiModel} onValueChange={setAiModel} capability="text" size="sm" triggerClassName="w-[180px] h-8 text-xs" />
 
-        <Select value={filterTarget} onValueChange={setFilterTarget}>
-          <SelectTrigger className="h-8 text-xs w-[120px]"><SelectValue placeholder="Target" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all" className="text-xs">All Targets</SelectItem>
-            <SelectItem value="jobs" className="text-xs">Jobs</SelectItem>
-            <SelectItem value="results" className="text-xs">Results</SelectItem>
-            <SelectItem value="admit_cards" className="text-xs">Admit Cards</SelectItem>
-            <SelectItem value="answer_keys" className="text-xs">Answer Keys</SelectItem>
-            <SelectItem value="exams" className="text-xs">Exams</SelectItem>
-            <SelectItem value="notifications" className="text-xs">Notifications</SelectItem>
-          </SelectContent>
-        </Select>
+        <Button variant="ghost" size="sm" onClick={fetchDrafts} disabled={loading}>
+          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+        </Button>
 
-        <Select value={filterProcessing} onValueChange={setFilterProcessing}>
-          <SelectTrigger className="h-8 text-xs w-[130px]"><SelectValue placeholder="Processing" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all" className="text-xs">All Processing</SelectItem>
-            <SelectItem value="imported" className="text-xs">Imported</SelectItem>
-            <SelectItem value="ai_processed" className="text-xs">AI Processed</SelectItem>
-            <SelectItem value="reviewed" className="text-xs">Reviewed</SelectItem>
-            <SelectItem value="published" className="text-xs">Published</SelectItem>
-            <SelectItem value="publish_failed" className="text-xs">Failed</SelectItem>
-          </SelectContent>
-        </Select>
-
-        <div className="relative">
+        <div className="relative ml-auto">
           <Search className="absolute left-2 top-2 h-3.5 w-3.5 text-muted-foreground" />
           <Input
-            placeholder="Search..."
+            placeholder="Search drafts..."
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            className="h-8 text-xs pl-7 w-[160px]"
+            className="h-8 text-xs pl-7 w-[200px]"
           />
         </div>
       </div>
 
-      {/* CSV Uploader */}
-      {showUploader && <IntakeCsvUploader onImportComplete={() => { setShowUploader(false); fetchDrafts(); }} />}
+      {/* Uploader */}
+      {showUploader && <IntakeCsvUploader onImportComplete={onImportComplete} />}
 
-      {/* Table */}
-      <div className="border rounded-md overflow-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-10">
-                <Checkbox
-                  checked={selectedIds.size === drafts.length && drafts.length > 0}
-                  onCheckedChange={toggleAll}
-                />
-              </TableHead>
-              <TableHead className="text-xs">Status</TableHead>
-              <TableHead className="text-xs">Target</TableHead>
-              <TableHead className="text-xs">Type</TableHead>
-              <TableHead className="text-xs">Title</TableHead>
-              <TableHead className="text-xs">Org</TableHead>
-              <TableHead className="text-xs">Confidence</TableHead>
-              <TableHead className="text-xs">Tags</TableHead>
-              <TableHead className="text-xs">Processing</TableHead>
-              <TableHead className="text-xs">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
-              <TableRow><TableCell colSpan={10} className="text-center py-8"><Loader2 className="h-5 w-5 animate-spin mx-auto" /></TableCell></TableRow>
-            ) : drafts.length === 0 ? (
-              <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">No drafts found</TableCell></TableRow>
-            ) : drafts.map(d => {
-              const title = (d as any).normalized_title || d.raw_title || '(no title)';
-              const tags = Array.isArray(d.secondary_tags) ? d.secondary_tags : [];
+      {/* Action Bar */}
+      <div className="flex flex-wrap items-center gap-2">
+        {activeTab === 'ready' && visibleDrafts.length > 0 && (
+          <Button size="sm" onClick={() => handleBulkApprovePublish(visibleDrafts.map(d => d.id))} disabled={bulkActioning}>
+            {bulkActioning ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Zap className="h-4 w-4 mr-1" />}
+            Approve & Publish All Ready ({tabCounts.ready})
+          </Button>
+        )}
 
-              return (
-                <TableRow key={d.id}>
-                  <TableCell>
-                    <Checkbox
-                      checked={selectedIds.has(d.id)}
-                      onCheckedChange={() => toggleSelect(d.id)}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    {d.primary_status ? (
-                      <Badge className={`text-[10px] ${STATUS_COLORS[d.primary_status] || ''}`}>
-                        {d.primary_status.replace('_', ' ')}
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline" className="text-[10px]">—</Badge>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {d.publish_target && d.publish_target !== 'none' ? (
-                      <Badge variant="outline" className="text-[10px]">{d.publish_target}</Badge>
-                    ) : '—'}
-                  </TableCell>
-                  <TableCell className="text-xs">{d.content_type || '—'}</TableCell>
-                  <TableCell className="text-xs max-w-[200px] truncate" title={title}>{title}</TableCell>
-                  <TableCell className="text-xs max-w-[120px] truncate">{(d as any).organisation_name || '—'}</TableCell>
-                  <TableCell className="text-xs">{d.confidence_score != null ? `${d.confidence_score}%` : '—'}</TableCell>
-                  <TableCell>
-                    <div className="flex flex-wrap gap-0.5">
-                      {tags.slice(0, 3).map((t: string) => (
-                        <Badge key={t} variant="outline" className="text-[9px] px-1 py-0">{t}</Badge>
-                      ))}
-                      {tags.length > 3 && <Badge variant="outline" className="text-[9px] px-1 py-0">+{tags.length - 3}</Badge>}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge className={`text-[10px] ${PROCESSING_COLORS[d.processing_status] || ''}`}>
-                      {d.processing_status.replace('_', ' ')}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1">
-                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setSelectedDraft(d)} title="View">
-                        <Eye className="h-3 w-3" />
-                      </Button>
-                      {d.processing_status === 'imported' && (
-                        <Button
-                          variant="ghost" size="icon" className="h-6 w-6"
-                          onClick={() => handleClassify([d.id])}
-                          disabled={classifyingIds.has(d.id)}
-                          title="Run AI"
-                        >
-                          {classifyingIds.has(d.id) ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
-                        </Button>
-                      )}
-                      {d.processing_status !== 'published' && d.review_status !== 'approved' && (
-                        <Button
-                          variant="ghost" size="icon" className="h-6 w-6"
-                          onClick={() => handleStatusUpdate(d.id, { review_status: 'approved', processing_status: 'reviewed' })}
-                          title="Approve"
-                        >
-                          <Check className="h-3 w-3 text-green-600" />
-                        </Button>
-                      )}
-                      {d.primary_status !== 'manual_check' && d.processing_status !== 'published' && (
-                        <Button
-                          variant="ghost" size="icon" className="h-6 w-6"
-                          onClick={() => handleStatusUpdate(d.id, { primary_status: 'manual_check' })}
-                          title="Manual Check"
-                        >
-                          <AlertTriangle className="h-3 w-3 text-amber-600" />
-                        </Button>
-                      )}
-                      {d.primary_status !== 'reject' && d.processing_status !== 'published' && (
-                        <Button
-                          variant="ghost" size="icon" className="h-6 w-6"
-                          onClick={() => handleStatusUpdate(d.id, { primary_status: 'reject', review_status: 'rejected' })}
-                          title="Reject"
-                        >
-                          <XCircle className="h-3 w-3 text-red-600" />
-                        </Button>
-                      )}
-                      {d.primary_status === 'publish_ready' && d.review_status === 'approved' && d.processing_status !== 'published' && (
-                        <Button
-                          variant="ghost" size="icon" className="h-6 w-6"
-                          onClick={() => handlePublish(d.id)}
-                          disabled={publishingIds.has(d.id)}
-                          title="Publish"
-                        >
-                          {publishingIds.has(d.id) ? <Loader2 className="h-3 w-3 animate-spin" /> : <ArrowRightCircle className="h-3 w-3 text-emerald-600" />}
-                        </Button>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
+        {selectedIds.size > 0 && (
+          <>
+            <Button size="sm" variant="default" onClick={() => handleBulkApprovePublish(Array.from(selectedIds))} disabled={bulkActioning}>
+              {bulkActioning ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Send className="h-4 w-4 mr-1" />}
+              Approve & Publish Selected ({selectedIds.size})
+            </Button>
+            <Button size="sm" variant="destructive" onClick={confirmDeleteSelected} disabled={deleting}>
+              <Trash2 className="h-4 w-4 mr-1" />
+              Delete Selected ({selectedIds.size})
+            </Button>
+          </>
+        )}
+
+        {visibleDrafts.length > 0 && (
+          <Button size="sm" variant="outline" className="text-destructive border-destructive/30"
+            onClick={confirmDeleteAll} disabled={deleting}>
+            <Trash2 className="h-4 w-4 mr-1" />
+            {deleteAllLabel}
+          </Button>
+        )}
       </div>
+
+      {/* Tabs */}
+      <Tabs value={activeTab} onValueChange={v => { setActiveTab(v as TabKey); setSelectedIds(new Set()); }}>
+        <TabsList className="w-full">
+          {(Object.keys(TAB_LABELS) as TabKey[]).map(k => (
+            <TabsTrigger key={k} value={k} className="text-xs flex-1">
+              {TAB_LABELS[k]} ({tabCounts[k]})
+            </TabsTrigger>
+          ))}
+        </TabsList>
+
+        {(Object.keys(TAB_LABELS) as TabKey[]).map(tab => (
+          <TabsContent key={tab} value={tab}>
+            <div className="border rounded-md overflow-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-10">
+                      <Checkbox
+                        checked={selectedIds.size === visibleDrafts.length && visibleDrafts.length > 0}
+                        onCheckedChange={toggleAll}
+                      />
+                    </TableHead>
+                    <TableHead className="text-xs">Title</TableHead>
+                    <TableHead className="text-xs">Target</TableHead>
+                    <TableHead className="text-xs">Organisation</TableHead>
+                    <TableHead className="text-xs">Date</TableHead>
+                    <TableHead className="text-xs">Confidence</TableHead>
+                    <TableHead className="text-xs">Tags</TableHead>
+                    <TableHead className="text-xs">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {loading ? (
+                    <TableRow><TableCell colSpan={8} className="text-center py-8"><Loader2 className="h-5 w-5 animate-spin mx-auto" /></TableCell></TableRow>
+                  ) : visibleDrafts.length === 0 ? (
+                    <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No drafts in this view</TableCell></TableRow>
+                  ) : visibleDrafts.map(d => {
+                    const title = d.normalized_title || d.raw_title || '(no title)';
+                    const tags = Array.isArray(d.secondary_tags) ? d.secondary_tags : [];
+
+                    return (
+                      <TableRow key={d.id}>
+                        <TableCell>
+                          <Checkbox checked={selectedIds.has(d.id)} onCheckedChange={() => toggleSelect(d.id)} />
+                        </TableCell>
+                        <TableCell className="text-xs max-w-[250px] truncate" title={title}>{title}</TableCell>
+                        <TableCell>
+                          {d.publish_target && d.publish_target !== 'none'
+                            ? <Badge variant="outline" className="text-[10px]">{d.publish_target}</Badge>
+                            : '—'}
+                        </TableCell>
+                        <TableCell className="text-xs max-w-[120px] truncate">{d.organisation_name || '—'}</TableCell>
+                        <TableCell className="text-xs">{d.closing_date || '—'}</TableCell>
+                        <TableCell className="text-xs">
+                          {d.confidence_score != null ? (
+                            <Badge variant={d.confidence_score >= 70 ? 'default' : d.confidence_score >= 50 ? 'secondary' : 'destructive'} className="text-[10px]">
+                              {d.confidence_score}%
+                            </Badge>
+                          ) : '—'}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-wrap gap-0.5">
+                            {tags.slice(0, 3).map((t: string) => (
+                              <Badge key={t} variant="outline" className="text-[9px] px-1 py-0">{t}</Badge>
+                            ))}
+                            {tags.length > 3 && <Badge variant="outline" className="text-[9px] px-1 py-0">+{tags.length - 3}</Badge>}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setSelectedDraft(d)} title="View">
+                              <Eye className="h-3 w-3" />
+                            </Button>
+                            {d.processing_status !== 'published' && (
+                              <Button variant="ghost" size="icon" className="h-6 w-6"
+                                onClick={() => handleApproveAndPublish(d.id)} title="Approve & Publish">
+                                <Send className="h-3 w-3 text-green-600" />
+                              </Button>
+                            )}
+                            {d.primary_status !== 'reject' && d.processing_status !== 'published' && (
+                              <Button variant="ghost" size="icon" className="h-6 w-6"
+                                onClick={() => handleReject(d.id)} title="Reject">
+                                <XCircle className="h-3 w-3 text-red-600" />
+                              </Button>
+                            )}
+                            <Button variant="ghost" size="icon" className="h-6 w-6"
+                              onClick={() => handleDeleteIds([d.id])} title="Delete Permanently">
+                              <Trash2 className="h-3 w-3 text-destructive" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          </TabsContent>
+        ))}
+      </Tabs>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="text-destructive">Permanently Delete Drafts</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm">
+              This will permanently delete <strong>{deleteCount}</strong> {deleteScopeLabel}.
+            </p>
+            {activeTab === 'published' && deleteScope === 'all' && (
+              <p className="text-xs text-muted-foreground">
+                Note: This deletes draft records only. Already published live content will NOT be affected.
+              </p>
+            )}
+            <p className="text-sm">Type <strong>DELETE</strong> to confirm:</p>
+            <Input
+              value={deleteConfirmText}
+              onChange={e => setDeleteConfirmText(e.target.value)}
+              placeholder="Type DELETE"
+              className="font-mono"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteConfirmOpen(false)}>Cancel</Button>
+            <Button variant="destructive" disabled={deleteConfirmText !== 'DELETE' || deleting} onClick={executeDelete}>
+              {deleting ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Trash2 className="h-4 w-4 mr-1" />}
+              Delete Permanently
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Detail Dialog */}
       {selectedDraft && (
         <IntakeDraftDetailDialog
           draft={selectedDraft}
-          onClose={() => setSelectedDraft(null)}
+          onClose={() => { setSelectedDraft(null); fetchDrafts(); }}
           onSave={async (updates) => {
-            await handleStatusUpdate(selectedDraft.id, updates);
+            await supabase.from('intake_drafts').update(updates as any).eq('id', selectedDraft.id);
+            setSelectedDraft(null);
+            fetchDrafts();
+          }}
+          onApprovePublish={async () => {
+            await handleApproveAndPublish(selectedDraft.id);
+            setSelectedDraft(null);
+          }}
+          onDelete={async () => {
+            await handleDeleteIds([selectedDraft.id]);
             setSelectedDraft(null);
           }}
         />

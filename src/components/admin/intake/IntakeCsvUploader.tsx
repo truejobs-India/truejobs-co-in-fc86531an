@@ -259,10 +259,12 @@ export function IntakeCsvUploader({ onImportComplete }: { onImportComplete?: (im
 
     const stats: ImportSummary = {
       total: parsedData.rows.length, imported: 0, skippedExactDupes: 0,
-      taggedDuplicateRisk: 0, taggedGenericTitle: 0, taggedStaleContent: 0, errors: 0,
+      skippedPublishedDupes: 0, taggedDuplicateRisk: 0, taggedPublishedDupeRisk: 0,
+      taggedGenericTitle: 0, taggedStaleContent: 0, errors: 0,
     };
 
     try {
+      // Fetch existing draft URLs and title+domain sets
       const { data: existingUrls } = await supabase
         .from('intake_drafts').select('source_url, raw_title, source_domain');
       const existingUrlSet = new Set(
@@ -272,6 +274,34 @@ export function IntakeCsvUploader({ onImportComplete }: { onImportComplete?: (im
         (existingUrls || []).filter(r => r.raw_title && r.source_domain)
           .map(r => `${normalizeTitle(r.raw_title!)}||${(r.source_domain || '').toLowerCase()}`)
       );
+
+      // Fetch published URLs from employment_news_jobs and govt_exams
+      const [{ data: enjUrls }, { data: geUrls }] = await Promise.all([
+        supabase.from('employment_news_jobs').select('apply_link, post, org_name'),
+        supabase.from('govt_exams').select('apply_link, official_notification_url, exam_name, conducting_body'),
+      ]);
+
+      const publishedUrlSet = new Set<string>();
+      for (const r of (enjUrls || [])) {
+        if (r.apply_link) publishedUrlSet.add(normalizeUrl(r.apply_link));
+      }
+      for (const r of (geUrls || [])) {
+        if (r.apply_link) publishedUrlSet.add(normalizeUrl(r.apply_link));
+        if (r.official_notification_url) publishedUrlSet.add(normalizeUrl(r.official_notification_url));
+      }
+
+      // Build strict published identifier set (exact normalized post+org / exam+body)
+      const publishedIdentifierSet = new Set<string>();
+      for (const r of (enjUrls || [])) {
+        if (r.post && r.org_name) {
+          publishedIdentifierSet.add(`${normalizeTitle(r.post)}||${normalizeTitle(r.org_name)}`);
+        }
+      }
+      for (const r of (geUrls || [])) {
+        if (r.exam_name && r.conducting_body) {
+          publishedIdentifierSet.add(`${normalizeTitle(r.exam_name)}||${normalizeTitle(r.conducting_body)}`);
+        }
+      }
 
       const batchRows: any[] = [];
 

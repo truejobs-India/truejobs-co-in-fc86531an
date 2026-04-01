@@ -29,10 +29,50 @@ const GATEWAY_IMAGE_MODELS: Record<string, string> = {
   'gemini-flash-image-2': 'google/gemini-3.1-flash-image-preview',
   'vertex-3-pro-image': '__vertex_direct__',
 };
+// Must stay aligned with image-capable models in src/lib/aiModels.ts
+const KNOWN_IMAGE_MODEL_KEYS = new Set([
+  ...Object.keys(GATEWAY_IMAGE_MODELS),
+  'vertex-imagen',
+  'vertex-3-pro-image',
+  'vertex-3.1-flash-image',
+  'vertex-pro', // has image capability in aiModels.ts
+]);
+
 const IMAGEN_TIMEOUT_MS = 45_000;
 const GATEWAY_TIMEOUT_MS = 55_000;
 const MAX_RETRIES = 3;
 const RETRY_BASE_MS = 2000; // 2s, 4s, 8s exponential backoff
+
+// ── Strict mode helpers ──
+
+interface StrictMeta {
+  selectedModelKey: string;
+  resolvedProvider?: string;
+  resolvedRuntimeModelId?: string;
+}
+
+function buildStrictErrorResponse(status: number, error: string, meta: StrictMeta): Response {
+  return new Response(JSON.stringify({
+    success: false,
+    error,
+    strict: true,
+    noFallbackUsed: true,
+    selectedModelKey: meta.selectedModelKey,
+    resolvedProvider: meta.resolvedProvider || 'unknown',
+    resolvedRuntimeModelId: meta.resolvedRuntimeModelId || 'unknown',
+  }), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+}
+
+function addStrictMetadata(responseBody: Record<string, unknown>, meta: StrictMeta & { strict: boolean }): Record<string, unknown> {
+  if (!meta.strict) return responseBody;
+  return {
+    ...responseBody,
+    selectedModelKey: meta.selectedModelKey,
+    resolvedProvider: meta.resolvedProvider || 'unknown',
+    resolvedRuntimeModelId: meta.resolvedRuntimeModelId || 'unknown',
+    strict: true,
+  };
+}
 
 const ASPECT_RATIOS: Record<string, string> = {
   '1:1': '1:1',
@@ -221,6 +261,7 @@ async function generateViaGeminiFlashImage(
   imagePrompt: string,
   adminClient: any,
   startMs: number,
+  strict = false,
 ): Promise<Response> {
   const projectId = Deno.env.get('GCP_PROJECT_ID');
   const location = Deno.env.get('GCP_LOCATION') || 'us-central1';
@@ -273,7 +314,9 @@ async function generateViaGeminiFlashImage(
         clearTimeout(timer);
         const isTimeout = fetchErr?.name === 'AbortError';
         console.error(`[gemini-flash-image] ${isTimeout ? 'timeout' : 'fetch error'} on attempt ${attempt}: ${fetchErr.message}`);
-        // On timeout or network error, fall back to gateway
+        if (strict) {
+          return buildStrictErrorResponse(isTimeout ? 504 : 502, `Vertex AI ${isTimeout ? 'timeout' : 'fetch error'}: ${fetchErr.message}. No fallback was used.`, { selectedModelKey: 'gemini-flash-image', resolvedProvider: 'vertex-ai-direct', resolvedRuntimeModelId: GEMINI_IMAGE_MODEL });
+        }
         return await generateViaLovableGatewayImage(body, slug, imagePrompt, adminClient, startMs, isTimeout ? 'vertex-timeout' : 'vertex-fetch-error');
       } finally {
         clearTimeout(timer);
@@ -282,6 +325,9 @@ async function generateViaGeminiFlashImage(
       if (attempt === MAX_RETRIES) {
         const errText = await resp.text();
         console.error(`[gemini-flash-image] 429 exhausted retries: ${errText.substring(0, 200)}`);
+        if (strict) {
+          return buildStrictErrorResponse(429, `Vertex AI rate-limited after ${MAX_RETRIES} retries. No fallback was used.`, { selectedModelKey: 'gemini-flash-image', resolvedProvider: 'vertex-ai-direct', resolvedRuntimeModelId: GEMINI_IMAGE_MODEL });
+        }
         return await generateViaLovableGatewayImage(body, slug, imagePrompt, adminClient, startMs, 'vertex-429');
       }
     }
@@ -290,6 +336,9 @@ async function generateViaGeminiFlashImage(
       const errText = await resp!.text();
       console.error(`[gemini-flash-image] Vertex error [${resp!.status}]: ${errText.substring(0, 300)}`);
       if (resp!.status === 429) {
+        if (strict) {
+          return buildStrictErrorResponse(429, `Vertex AI rate-limited. No fallback was used.`, { selectedModelKey: 'gemini-flash-image', resolvedProvider: 'vertex-ai-direct', resolvedRuntimeModelId: GEMINI_IMAGE_MODEL });
+        }
         return await generateViaLovableGatewayImage(body, slug, imagePrompt, adminClient, startMs, 'vertex-429');
       }
       return new Response(JSON.stringify({ success: false, error: `Vertex AI error (${resp!.status}): ${errText.substring(0, 200)}`, model: GEMINI_IMAGE_MODEL }),
@@ -332,7 +381,7 @@ async function generateViaGeminiFlashImage(
     const elapsed = Date.now() - startMs;
     console.log(`[gemini-flash-image] completed in ${elapsed}ms via Vertex AI`);
 
-    return new Response(JSON.stringify({
+    const successBody = addStrictMetadata({
       success: true,
       data: {
         images: [{
@@ -349,7 +398,9 @@ async function generateViaGeminiFlashImage(
       action: 'generate-image',
       purpose,
       elapsedMs: elapsed,
-    }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }, { strict, selectedModelKey: 'gemini-flash-image', resolvedProvider: 'vertex-ai-direct', resolvedRuntimeModelId: GEMINI_IMAGE_MODEL });
+
+    return new Response(JSON.stringify(successBody), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 }
 
@@ -792,6 +843,7 @@ async function generateViaImagen(
   aspectRatio: string,
   adminClient: any,
   startMs: number,
+  strict = false,
 ): Promise<Response> {
   const purpose = body.purpose || 'unspecified';
   const slotNumber = body.slotNumber || 0;
@@ -839,6 +891,9 @@ async function generateViaImagen(
         clearTimeout(timer);
         const isTimeout = fetchErr?.name === 'AbortError';
         console.error(`[vertex-imagen] ${isTimeout ? 'timeout' : 'fetch error'} on attempt ${attempt}: ${fetchErr.message}`);
+        if (strict) {
+          return buildStrictErrorResponse(isTimeout ? 504 : 502, `Imagen ${isTimeout ? 'timeout' : 'fetch error'}: ${fetchErr.message}. No fallback was used.`, { selectedModelKey: 'vertex-imagen', resolvedProvider: 'vertex-ai-direct', resolvedRuntimeModelId: IMAGEN_MODEL });
+        }
         return await generateViaLovableGatewayImage(body, slug, imagePrompt, adminClient, startMs, isTimeout ? 'imagen-timeout' : 'imagen-fetch-error');
       } finally {
         clearTimeout(timer);
@@ -848,6 +903,9 @@ async function generateViaImagen(
       if (attempt === MAX_RETRIES) {
         const errText = await resp.text();
         console.error(`[vertex-imagen] 429 exhausted retries: ${errText.substring(0, 200)}`);
+        if (strict) {
+          return buildStrictErrorResponse(429, `Imagen rate-limited after ${MAX_RETRIES} retries. No fallback was used.`, { selectedModelKey: 'vertex-imagen', resolvedProvider: 'vertex-ai-direct', resolvedRuntimeModelId: IMAGEN_MODEL });
+        }
         return await generateViaLovableGatewayImage(body, slug, imagePrompt, adminClient, startMs, 'imagen-429');
       }
     }
@@ -936,7 +994,10 @@ async function generateViaImagen(
         model: IMAGEN_MODEL,
       }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
-    // Safety-filtered: fallback to Gemini Flash Image
+    // Safety-filtered: fallback to Gemini Flash Image (blocked in strict mode)
+    if (strict) {
+      return buildStrictErrorResponse(422, 'All images were safety-filtered by Imagen. No fallback was used.', { selectedModelKey: 'vertex-imagen', resolvedProvider: 'vertex-ai-direct', resolvedRuntimeModelId: IMAGEN_MODEL });
+    }
     console.log(`[vertex-imagen] Safety-filtered, falling back to Gemini Flash Image for slug=${slug}`);
     return await generateViaGeminiFlashImage(body, slug, imagePrompt, adminClient, startMs);
   }
@@ -944,7 +1005,7 @@ async function generateViaImagen(
   const elapsed = Date.now() - startMs;
   console.log(`[vertex-imagen] completed in ${elapsed}ms, ${images.length} images uploaded, purpose=${purpose}`);
 
-  return new Response(JSON.stringify({
+  const successBody = addStrictMetadata({
     success: true,
     data: { images, promptUsed: imagePrompt },
     model: IMAGEN_MODEL,
@@ -952,7 +1013,9 @@ async function generateViaImagen(
     purpose,
     slotNumber,
     elapsedMs: elapsed,
-  }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  }, { strict, selectedModelKey: 'vertex-imagen', resolvedProvider: 'vertex-ai-direct', resolvedRuntimeModelId: IMAGEN_MODEL });
+
+  return new Response(JSON.stringify(successBody), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -971,8 +1034,14 @@ serve(async (req) => {
     const body = await req.json();
     const slug = body.slug || 'untitled';
     const purpose = body.purpose; // "cover" | "inline" | undefined
+    const strict = body.strict === true;
 
-    console.log(`[generate-vertex-image] Routing: purpose=${purpose || 'none'}, model=${body.model || 'none'}, slug=${slug}`);
+    console.log(`[generate-vertex-image] Routing: purpose=${purpose || 'none'}, model=${body.model || 'none'}, slug=${slug}, strict=${strict}`);
+
+    // ── Strict mode: validate model key is a known image model ──
+    if (strict && body.model && !KNOWN_IMAGE_MODEL_KEYS.has(body.model)) {
+      return buildStrictErrorResponse(400, `Unknown image model key "${body.model}". No fallback was used.`, { selectedModelKey: body.model });
+    }
 
     // ── Helper: check if model should use Lovable Gateway ──
     const isGatewayModel = (model: string) => model in GATEWAY_IMAGE_MODELS && GATEWAY_IMAGE_MODELS[model] !== '__vertex_direct__';
@@ -990,13 +1059,20 @@ serve(async (req) => {
       console.log(`[generate-vertex-image] purpose=cover → ${selectedCoverModel}`);
       if (selectedCoverModel === 'vertex-imagen') {
         const aspectRatio = ASPECT_RATIOS[body.aspectRatio || '16:9'] || '16:9';
-        return await generateViaImagen(body, slug, imagePrompt, 1, aspectRatio, adminClient, startMs);
+        return await generateViaImagen(body, slug, imagePrompt, 1, aspectRatio, adminClient, startMs, strict);
       }
       if (isVertexDirectImageModel(selectedCoverModel)) {
         return await generateViaVertexDirectImage(body, slug, imagePrompt, adminClient, startMs, 'gemini-3-pro-image-preview');
       }
       if (isGatewayModel(selectedCoverModel) && selectedCoverModel !== 'gemini-flash-image') {
         return await generateViaGatewayModel(selectedCoverModel, body, imagePrompt);
+      }
+      if (selectedCoverModel === 'gemini-flash-image') {
+        return await generateViaGeminiFlashImage(body, slug, imagePrompt, adminClient, startMs, strict);
+      }
+      // Strict mode: reject unresolved routing
+      if (strict) {
+        return buildStrictErrorResponse(400, `Cannot resolve cover model "${selectedCoverModel}" to a known route. No fallback was used.`, { selectedModelKey: selectedCoverModel });
       }
       return await generateViaGeminiFlashImage(body, slug, imagePrompt, adminClient, startMs);
     }
@@ -1007,7 +1083,7 @@ serve(async (req) => {
       const aspectRatio = '4:3';
       console.log(`[generate-vertex-image] ENFORCED: purpose=inline → ${selectedInlineModel}, slot=${body.slotNumber}`);
       if (selectedInlineModel === 'vertex-imagen') {
-        return await generateViaImagen(body, slug, imagePrompt, 1, aspectRatio, adminClient, startMs);
+        return await generateViaImagen(body, slug, imagePrompt, 1, aspectRatio, adminClient, startMs, strict);
       }
       if (isVertexDirectImageModel(selectedInlineModel)) {
         return await generateViaVertexDirectImage({ ...body, purpose: 'inline' }, slug, imagePrompt, adminClient, startMs, 'gemini-3-pro-image-preview');
@@ -1016,7 +1092,11 @@ serve(async (req) => {
         return await generateViaGatewayModel(selectedInlineModel, { ...body, purpose: 'inline' }, imagePrompt);
       }
       if (selectedInlineModel === 'gemini-flash-image') {
-        return await generateViaGeminiFlashImage({ ...body, purpose: 'inline' }, slug, imagePrompt, adminClient, startMs);
+        return await generateViaGeminiFlashImage({ ...body, purpose: 'inline' }, slug, imagePrompt, adminClient, startMs, strict);
+      }
+      // Strict mode: reject catch-all default
+      if (strict) {
+        return buildStrictErrorResponse(400, `Cannot resolve inline model "${selectedInlineModel}" to a known route. No fallback was used.`, { selectedModelKey: selectedInlineModel });
       }
       return await generateViaImagen(body, slug, imagePrompt, 1, aspectRatio, adminClient, startMs);
     }
@@ -1028,7 +1108,7 @@ serve(async (req) => {
     const imagePrompt = buildCoverImagePrompt(body);
 
     if (selectedModel === 'vertex-imagen') {
-      return await generateViaImagen(body, slug, imagePrompt, imageCount, aspectRatio, adminClient, startMs);
+      return await generateViaImagen(body, slug, imagePrompt, imageCount, aspectRatio, adminClient, startMs, strict);
     }
     if (isVertexDirectImageModel(selectedModel)) {
       return await generateViaVertexDirectImage(body, slug, imagePrompt, adminClient, startMs, 'gemini-3-pro-image-preview');
@@ -1037,10 +1117,13 @@ serve(async (req) => {
       return await generateViaGatewayModel(selectedModel, body, imagePrompt);
     }
     if (selectedModel === 'gemini-flash-image') {
-      return await generateViaGeminiFlashImage(body, slug, imagePrompt, adminClient, startMs);
-    } else {
-      return await generateViaImagen(body, slug, imagePrompt, imageCount, aspectRatio, adminClient, startMs);
+      return await generateViaGeminiFlashImage(body, slug, imagePrompt, adminClient, startMs, strict);
     }
+    // Strict mode: reject unresolved catch-all
+    if (strict) {
+      return buildStrictErrorResponse(400, `Cannot resolve model "${selectedModel}" to a known route. No fallback was used.`, { selectedModelKey: selectedModel });
+    }
+    return await generateViaImagen(body, slug, imagePrompt, imageCount, aspectRatio, adminClient, startMs);
 
   } catch (err) {
     const elapsed = Date.now() - startMs;

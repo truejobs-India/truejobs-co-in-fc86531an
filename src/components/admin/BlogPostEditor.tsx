@@ -202,8 +202,6 @@ export function BlogPostEditor() {
   // Image cleanup selection state
   const [selectedPostIds, setSelectedPostIds] = useState<Set<string>>(new Set());
   const [imageCleanupLoading, setImageCleanupLoading] = useState<'cover' | 'inline' | null>(null);
-  const [showDeleteCoverConfirm, setShowDeleteCoverConfirm] = useState(false);
-  const [showDeleteInlineConfirm, setShowDeleteInlineConfirm] = useState(false);
 
   // Autosave
   const autosaveTimerRef = useRef<NodeJS.Timeout | null>(null);

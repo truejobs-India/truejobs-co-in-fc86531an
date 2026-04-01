@@ -1034,8 +1034,14 @@ serve(async (req) => {
     const body = await req.json();
     const slug = body.slug || 'untitled';
     const purpose = body.purpose; // "cover" | "inline" | undefined
+    const strict = body.strict === true;
 
-    console.log(`[generate-vertex-image] Routing: purpose=${purpose || 'none'}, model=${body.model || 'none'}, slug=${slug}`);
+    console.log(`[generate-vertex-image] Routing: purpose=${purpose || 'none'}, model=${body.model || 'none'}, slug=${slug}, strict=${strict}`);
+
+    // ── Strict mode: validate model key is a known image model ──
+    if (strict && body.model && !KNOWN_IMAGE_MODEL_KEYS.has(body.model)) {
+      return buildStrictErrorResponse(400, `Unknown image model key "${body.model}". No fallback was used.`, { selectedModelKey: body.model });
+    }
 
     // ── Helper: check if model should use Lovable Gateway ──
     const isGatewayModel = (model: string) => model in GATEWAY_IMAGE_MODELS && GATEWAY_IMAGE_MODELS[model] !== '__vertex_direct__';
@@ -1053,13 +1059,20 @@ serve(async (req) => {
       console.log(`[generate-vertex-image] purpose=cover → ${selectedCoverModel}`);
       if (selectedCoverModel === 'vertex-imagen') {
         const aspectRatio = ASPECT_RATIOS[body.aspectRatio || '16:9'] || '16:9';
-        return await generateViaImagen(body, slug, imagePrompt, 1, aspectRatio, adminClient, startMs);
+        return await generateViaImagen(body, slug, imagePrompt, 1, aspectRatio, adminClient, startMs, strict);
       }
       if (isVertexDirectImageModel(selectedCoverModel)) {
         return await generateViaVertexDirectImage(body, slug, imagePrompt, adminClient, startMs, 'gemini-3-pro-image-preview');
       }
       if (isGatewayModel(selectedCoverModel) && selectedCoverModel !== 'gemini-flash-image') {
         return await generateViaGatewayModel(selectedCoverModel, body, imagePrompt);
+      }
+      if (selectedCoverModel === 'gemini-flash-image') {
+        return await generateViaGeminiFlashImage(body, slug, imagePrompt, adminClient, startMs, strict);
+      }
+      // Strict mode: reject unresolved routing
+      if (strict) {
+        return buildStrictErrorResponse(400, `Cannot resolve cover model "${selectedCoverModel}" to a known route. No fallback was used.`, { selectedModelKey: selectedCoverModel });
       }
       return await generateViaGeminiFlashImage(body, slug, imagePrompt, adminClient, startMs);
     }
@@ -1070,7 +1083,7 @@ serve(async (req) => {
       const aspectRatio = '4:3';
       console.log(`[generate-vertex-image] ENFORCED: purpose=inline → ${selectedInlineModel}, slot=${body.slotNumber}`);
       if (selectedInlineModel === 'vertex-imagen') {
-        return await generateViaImagen(body, slug, imagePrompt, 1, aspectRatio, adminClient, startMs);
+        return await generateViaImagen(body, slug, imagePrompt, 1, aspectRatio, adminClient, startMs, strict);
       }
       if (isVertexDirectImageModel(selectedInlineModel)) {
         return await generateViaVertexDirectImage({ ...body, purpose: 'inline' }, slug, imagePrompt, adminClient, startMs, 'gemini-3-pro-image-preview');
@@ -1079,7 +1092,11 @@ serve(async (req) => {
         return await generateViaGatewayModel(selectedInlineModel, { ...body, purpose: 'inline' }, imagePrompt);
       }
       if (selectedInlineModel === 'gemini-flash-image') {
-        return await generateViaGeminiFlashImage({ ...body, purpose: 'inline' }, slug, imagePrompt, adminClient, startMs);
+        return await generateViaGeminiFlashImage({ ...body, purpose: 'inline' }, slug, imagePrompt, adminClient, startMs, strict);
+      }
+      // Strict mode: reject catch-all default
+      if (strict) {
+        return buildStrictErrorResponse(400, `Cannot resolve inline model "${selectedInlineModel}" to a known route. No fallback was used.`, { selectedModelKey: selectedInlineModel });
       }
       return await generateViaImagen(body, slug, imagePrompt, 1, aspectRatio, adminClient, startMs);
     }
@@ -1091,7 +1108,7 @@ serve(async (req) => {
     const imagePrompt = buildCoverImagePrompt(body);
 
     if (selectedModel === 'vertex-imagen') {
-      return await generateViaImagen(body, slug, imagePrompt, imageCount, aspectRatio, adminClient, startMs);
+      return await generateViaImagen(body, slug, imagePrompt, imageCount, aspectRatio, adminClient, startMs, strict);
     }
     if (isVertexDirectImageModel(selectedModel)) {
       return await generateViaVertexDirectImage(body, slug, imagePrompt, adminClient, startMs, 'gemini-3-pro-image-preview');
@@ -1100,9 +1117,13 @@ serve(async (req) => {
       return await generateViaGatewayModel(selectedModel, body, imagePrompt);
     }
     if (selectedModel === 'gemini-flash-image') {
-      return await generateViaGeminiFlashImage(body, slug, imagePrompt, adminClient, startMs);
-    } else {
-      return await generateViaImagen(body, slug, imagePrompt, imageCount, aspectRatio, adminClient, startMs);
+      return await generateViaGeminiFlashImage(body, slug, imagePrompt, adminClient, startMs, strict);
+    }
+    // Strict mode: reject unresolved catch-all
+    if (strict) {
+      return buildStrictErrorResponse(400, `Cannot resolve model "${selectedModel}" to a known route. No fallback was used.`, { selectedModelKey: selectedModel });
+    }
+    return await generateViaImagen(body, slug, imagePrompt, imageCount, aspectRatio, adminClient, startMs);
     }
 
   } catch (err) {

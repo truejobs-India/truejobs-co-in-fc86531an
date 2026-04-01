@@ -72,6 +72,7 @@ function isLowConfidence(d: IntakeDraft): boolean {
   if (tags.includes('stale_content') || tags.includes('old_year')) return true;
   if (tags.includes('generic_title') && !d.normalized_title) return true;
   if (tags.includes('exact_duplicate') || tags.includes('probable_duplicate')) return true;
+  if (tags.includes('published_duplicate_risk')) return true;
 
   // Missing core fields for publishable content
   const isJob = d.publish_target === 'jobs' || d.content_type === 'job';

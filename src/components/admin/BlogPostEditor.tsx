@@ -513,9 +513,18 @@ export function BlogPostEditor() {
         return;
       }
 
+      // Frontend validation guard
+      const coverModelDef = getModelDef(coverImageModel);
+      if (!coverModelDef?.capabilities.includes('image')) {
+        toast({ title: 'Invalid model', description: `"${coverImageModel}" is not an image-capable model.`, variant: 'destructive' });
+        setIsBulkCoverRunning(false);
+        return;
+      }
+
       const total = noCoverPosts.length;
       let done = 0;
       let failed = 0;
+      const runtimeModels = new Set<string>();
       setBulkCoverProgress({ total, done, failed, current: noCoverPosts[0].title });
 
       for (const post of noCoverPosts) {
@@ -525,9 +534,8 @@ export function BlogPostEditor() {
         }
         setBulkCoverProgress({ total, done, failed, current: post.title });
         try {
-          // Use selected cover image model
           const { data: imgData, error: imgError } = await supabase.functions.invoke('generate-vertex-image', {
-            body: { slug: post.slug, title: post.title, category: post.category || 'General', tags: post.tags || [], model: coverImageModel, purpose: 'cover', imageCount: 1, aspectRatio: '16:9' },
+            body: { slug: post.slug, title: post.title, category: post.category || 'General', tags: post.tags || [], model: coverImageModel, purpose: 'cover', imageCount: 1, aspectRatio: '16:9', strict: true },
           });
           if (imgError || !imgData?.data?.images?.[0]?.url) {
             console.warn(`Cover image failed for "${post.title}":`, imgError?.message || imgData?.error || 'No image returned');
@@ -536,6 +544,11 @@ export function BlogPostEditor() {
           }
           const coverUrl = imgData.data.images[0].url;
           const coverAlt = imgData.data.images[0].altText || post.title;
+          // Track runtime metadata
+          const rp = imgData.resolvedProvider || imgData.data?.resolvedProvider;
+          const rm = imgData.resolvedRuntimeModelId || imgData.data?.resolvedRuntimeModelId || imgData.model;
+          if (rp && rm) runtimeModels.add(`${rm} (${rp})`);
+          else if (rm) runtimeModels.add(rm);
 
           await supabase.from('blog_posts').update({
             cover_image_url: coverUrl,
@@ -554,9 +567,12 @@ export function BlogPostEditor() {
       }
 
       if (!bulkCoverAbortRef.current) {
+        const runtimeSummary = runtimeModels.size === 1
+          ? ` via ${[...runtimeModels][0]}`
+          : runtimeModels.size > 1 ? ' (mixed runtime)' : '';
         toast({
           title: '🖼️ Cover image generation complete',
-          description: `${done} generated, ${failed} failed out of ${total} articles.`,
+          description: `${done} generated${runtimeSummary}, ${failed} failed out of ${total} articles.`,
         });
       }
       fetchPosts();

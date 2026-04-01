@@ -717,6 +717,27 @@ export function IntakeDraftsManager() {
         </DialogContent>
       </Dialog>
 
+      {/* Single Delete Confirmation */}
+      <AlertDialog open={!!singleDeleteId} onOpenChange={(open) => { if (!open) setSingleDeleteId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Permanently delete this draft?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. The draft will be permanently removed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => { if (singleDeleteId) { handleDeleteIds([singleDeleteId]); setSingleDeleteId(null); } }}
+            >
+              Delete Permanently
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Detail Dialog */}
       {selectedDraft && (
         <IntakeDraftDetailDialog
@@ -732,8 +753,7 @@ export function IntakeDraftsManager() {
             setSelectedDraft(null);
           }}
           onDelete={async () => {
-            await handleDeleteIds([selectedDraft.id]);
-            setSelectedDraft(null);
+            setSingleDeleteId(selectedDraft.id);
           }}
         />
       )}

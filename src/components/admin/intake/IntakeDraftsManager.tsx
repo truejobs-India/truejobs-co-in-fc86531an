@@ -7,11 +7,13 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import {
   FileText, CheckCircle2, AlertTriangle, XCircle, Upload as UploadIcon,
-  RefreshCw, Search, Eye, RotateCcw, Check, ArrowRightCircle, Loader2, Send,
+  RefreshCw, Search, Eye, RotateCcw, Check, ArrowRightCircle, Loader2, Send, Trash2,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
@@ -68,6 +70,8 @@ export function IntakeDraftsManager() {
   const [publishingIds, setPublishingIds] = useState<Set<string>>(new Set());
   const [selectedDraft, setSelectedDraft] = useState<IntakeDraft | null>(null);
   const [showUploader, setShowUploader] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState(false);
 
   const fetchDrafts = useCallback(async () => {
     setLoading(true);
@@ -178,12 +182,49 @@ export function IntakeDraftsManager() {
     const importedIds = drafts
       .filter(d => d.processing_status === 'imported')
       .map(d => d.id)
-      .slice(0, 15); // Limit per edge function timeout
+      .slice(0, 15);
     if (importedIds.length === 0) {
       toast({ title: 'Nothing to classify', description: 'No imported rows found' });
       return;
     }
     handleClassify(importedIds);
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (selectedIds.size === drafts.length && drafts.length > 0) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(drafts.map(d => d.id)));
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedIds.size === 0) return;
+    setDeleting(true);
+    try {
+      const ids = Array.from(selectedIds);
+      // Delete in batches of 50
+      for (let i = 0; i < ids.length; i += 50) {
+        const batch = ids.slice(i, i + 50);
+        const { error } = await supabase.from('intake_drafts').delete().in('id', batch);
+        if (error) throw error;
+      }
+      toast({ title: 'Deleted', description: `Permanently deleted ${ids.length} draft(s)` });
+      setSelectedIds(new Set());
+      fetchDrafts();
+    } catch (err) {
+      toast({ title: 'Delete failed', description: String(err), variant: 'destructive' });
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const dashCards = [
@@ -230,6 +271,31 @@ export function IntakeDraftsManager() {
         <Button variant="ghost" size="sm" onClick={fetchDrafts}>
           <RefreshCw className="h-4 w-4" />
         </Button>
+
+        {selectedIds.size > 0 && (
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="destructive" size="sm" disabled={deleting}>
+                {deleting ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Trash2 className="h-4 w-4 mr-1" />}
+                Delete Selected ({selectedIds.size})
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Permanently delete {selectedIds.size} draft(s)?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This action cannot be undone. The selected drafts will be permanently removed from the database.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={handleDeleteSelected} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                  Delete Permanently
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        )}
 
         {/* Filters */}
         <Select value={filterStatus} onValueChange={setFilterStatus}>
@@ -287,6 +353,12 @@ export function IntakeDraftsManager() {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-10">
+                <Checkbox
+                  checked={selectedIds.size === drafts.length && drafts.length > 0}
+                  onCheckedChange={toggleAll}
+                />
+              </TableHead>
               <TableHead className="text-xs">Status</TableHead>
               <TableHead className="text-xs">Target</TableHead>
               <TableHead className="text-xs">Type</TableHead>
@@ -300,15 +372,21 @@ export function IntakeDraftsManager() {
           </TableHeader>
           <TableBody>
             {loading ? (
-              <TableRow><TableCell colSpan={9} className="text-center py-8"><Loader2 className="h-5 w-5 animate-spin mx-auto" /></TableCell></TableRow>
+              <TableRow><TableCell colSpan={10} className="text-center py-8"><Loader2 className="h-5 w-5 animate-spin mx-auto" /></TableCell></TableRow>
             ) : drafts.length === 0 ? (
-              <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">No drafts found</TableCell></TableRow>
+              <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">No drafts found</TableCell></TableRow>
             ) : drafts.map(d => {
               const title = (d as any).normalized_title || d.raw_title || '(no title)';
               const tags = Array.isArray(d.secondary_tags) ? d.secondary_tags : [];
 
               return (
                 <TableRow key={d.id}>
+                  <TableCell>
+                    <Checkbox
+                      checked={selectedIds.has(d.id)}
+                      onCheckedChange={() => toggleSelect(d.id)}
+                    />
+                  </TableCell>
                   <TableCell>
                     {d.primary_status ? (
                       <Badge className={`text-[10px] ${STATUS_COLORS[d.primary_status] || ''}`}>

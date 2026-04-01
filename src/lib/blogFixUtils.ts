@@ -5,7 +5,9 @@
  */
 
 import { supabase } from '@/integrations/supabase/client';
+// isValidInternalPagePath is re-exported for consumers that need link validation alongside these utils
 import { isValidInternalPagePath } from '@/lib/blogLinkValidator';
+export { isValidInternalPagePath };
 
 // ── Constants ──
 
@@ -39,10 +41,10 @@ export const BULK_ALLOWED_APPLY_MODES = new Set([
 
 // Apply modes forbidden in bulk with reasons
 export const BULK_FORBIDDEN_APPLY_MODES: Record<string, string> = {
-  'replace_section': 'Section replacement not safe in bulk mode',
-  'review_replacement': 'Requires manual review — not supported in bulk mode',
+  'replace_section': 'Not auto-applied in bulk mode — section replacement needs editor context',
+  'review_replacement': 'Not auto-applied in bulk mode — requires editor context',
   'advisory': 'Advisory only — no actionable fix',
-  'prepend_content': 'Prepend not supported in bulk mode',
+  'prepend_content': 'Blocked in bulk mode for safety',
 };
 
 // ── Legacy applyMode normalization ──

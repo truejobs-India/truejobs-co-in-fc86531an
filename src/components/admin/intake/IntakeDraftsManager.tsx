@@ -387,6 +387,7 @@ export function IntakeDraftsManager() {
                       onCheckedChange={() => toggleSelect(d.id)}
                     />
                   </TableCell>
+                  <TableCell>
                     {d.primary_status ? (
                       <Badge className={`text-[10px] ${STATUS_COLORS[d.primary_status] || ''}`}>
                         {d.primary_status.replace('_', ' ')}

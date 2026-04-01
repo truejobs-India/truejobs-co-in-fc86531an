@@ -1005,7 +1005,7 @@ async function generateViaImagen(
   const elapsed = Date.now() - startMs;
   console.log(`[vertex-imagen] completed in ${elapsed}ms, ${images.length} images uploaded, purpose=${purpose}`);
 
-  return new Response(JSON.stringify({
+  const successBody = addStrictMetadata({
     success: true,
     data: { images, promptUsed: imagePrompt },
     model: IMAGEN_MODEL,
@@ -1013,7 +1013,9 @@ async function generateViaImagen(
     purpose,
     slotNumber,
     elapsedMs: elapsed,
-  }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  }, { strict, selectedModelKey: 'vertex-imagen', resolvedProvider: 'vertex-ai-direct', resolvedRuntimeModelId: IMAGEN_MODEL });
+
+  return new Response(JSON.stringify(successBody), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 }
 
 // ═══════════════════════════════════════════════════════════════

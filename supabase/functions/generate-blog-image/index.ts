@@ -1,6 +1,7 @@
 // Uses Lovable AI gateway with gemini-2.5-flash-image for image generation.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { buildBlogCoverPrompt } from "../_shared/blog-image-prompt-policy.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -73,7 +74,11 @@ Deno.serve(async (req) => {
     }
 
     const keywordList = Array.isArray(keywords) ? keywords.join(", ") : "";
-    const imagePrompt = `Create a clean, professional editorial illustration for a blog article titled "${title}" about ${category || "government jobs and exams"}.${keywordList ? ` Related topics: ${keywordList}.` : ""} Style: modern flat illustration, suitable for an Indian government jobs and exam preparation portal. Landscape format 1200x630 pixels. Use warm, professional colors. Do not include any text overlays, official government seals, emblems, or logos. Do not include any misleading official symbols. The image should be abstract and editorial in nature.`;
+    const imagePrompt = buildBlogCoverPrompt({
+      title,
+      category: category || "government jobs and exams",
+      tags: keywords,
+    });
 
     const modelUsed = "google/gemini-3.1-flash-image-preview";
     let imageBase64 = "";

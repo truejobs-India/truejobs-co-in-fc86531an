@@ -1,169 +1,76 @@
 
 
-# Bulk Fix All by AI — Full Auto-Fix Pipeline Implementation
+# Final Cleanup & Hardening Pass — Bulk Auto-Fix
 
-## Summary
+## 1. DRY Refactor: BlogAITools.tsx
 
-Replace the current manual-review-dependent bulk fix with a fully autonomous 2-step pipeline: Scan → Auto-Fix. No "review required" state. Every fix ends as fixed, skipped (with reason), or failed.
+**File:** `src/components/admin/blog/BlogAITools.tsx`
 
-## Architecture
+### Functions to replace with imports from `@/lib/blogFixUtils`
 
-4 files changed:
-1. **`src/lib/blogFixUtils.ts`** (NEW) — shared deterministic helpers extracted from BlogAITools.tsx
-2. **`src/hooks/useBulkAutoFix.ts`** (NEW) — pipeline hook with scan + execute logic
-3. **`src/components/admin/BlogPostEditor.tsx`** (MODIFIED) — replace old bulk fix state/handlers/dialog with new hook + improved UI
-4. **`src/components/admin/blog/BlogAITools.tsx`** (MODIFIED) — import shared helpers from blogFixUtils.ts instead of defining inline
+All of these are duplicated verbatim or near-verbatim and can be replaced by imports:
 
-## File 1: `src/lib/blogFixUtils.ts`
+| Function/Constant | Lines (approx) | Notes |
+|---|---|---|
+| `EDITABLE_FIELDS` | 73 | Identical |
+| `APPLY_MODE_LEGACY_MAP` | 76-81 | Identical |
+| `normalizeApplyMode` | 83-86 | Identical |
+| `VALID_FIX_TYPES` | 89-95 | Identical |
+| `VALID_APPLY_MODES` | 96-100 | Identical |
+| `trackBlogToolEvent` | 103-111 | Identical |
+| `logBlogAiAudit` | 113-126 | Identical |
+| `hasExistingIntro` | 143-149 | Identical |
+| `hasExistingConclusion` | 151-153 | Identical |
+| `contentBlockAlreadyExists` | 160-165 | Identical |
+| `hasFaqHeading` | 198-200 | Identical |
+| `MAX_AUTO_LINKS` | 203 | Identical |
+| `extractHrefsFromHtml` | 205-213 | Identical (already in blogFixUtils) |
+| `linkAlreadyInContent` | 215-218 | Identical |
+| `hasRelatedResourcesBlock` | 220-222 | Identical |
+| `sanitizeLinkBlockHtml` | 224-232 | Minor diff: BlogAITools allows `h3` only, blogFixUtils allows `h2-h4`. The blogFixUtils version is a superset — safe to use. |
+| `buildCleanLinkBlock` | 234-237 | Identical |
+| `isValidCanonicalUrl` | 240-258 | Identical |
+| `validateFieldValue` | 261-291 | Minor diff: blogFixUtils has extra keyword-stuffing + truncation checks. blogFixUtils is strictly better. |
+| `shouldAutoOverwriteField` | 294-316 | **Different signature**: BlogAITools has 2 params, blogFixUtils has 3 (with optional `context`). blogFixUtils is a superset — 2-arg calls work fine (context is optional). BUT: blogFixUtils also checks `isPlaceholderOrGeneric` for `featured_image_alt` and context-based dedup for `meta_title`/`excerpt`. These are **improvements**, not behavioral regressions. Safe to adopt. |
+| `validateFaqSchema` | 319-326 | Identical |
+| `normalizeComplianceFixes` | 168-195 | Identical (already exported from blogFixUtils) |
 
-Extracts these functions from BlogAITools.tsx for shared use:
-- `trackBlogToolEvent`, `logBlogAiAudit` — telemetry/audit (fire-and-forget)
-- `normalizeApplyMode` — legacy mode mapping
-- `shouldAutoOverwriteField` — overwrite decision with concrete rules
-- `validateFieldValue` — length/format validation per field
-- `isValidCanonicalUrl` — strict TrueJobs canonical check
-- `hasExistingIntro`, `hasExistingConclusion`, `hasFaqHeading`, `hasRelatedResourcesBlock` — duplication guards
-- `contentBlockAlreadyExists`, `linkAlreadyInContent` — content dedup
-- `sanitizeLinkBlockHtml`, `buildCleanLinkBlock` — safe link block construction
-- `validateFaqSchema` — FAQ array validation
-- Constants: `EDITABLE_FIELDS`, `VALID_FIX_TYPES`, `VALID_APPLY_MODES`, `MAX_AUTO_LINKS`
+### Functions that stay in BlogAITools.tsx (not moveable)
 
-Additionally adds bulk-specific helpers:
-- `insertBeforeFirstHeadingRaw(content: string, html: string): string` — string-based (no TipTap)
-- `isPlaceholderOrGeneric(field, value)` — checks for placeholder-like values (e.g., "image", "photo", meta_title === title)
+| Function | Reason |
+|---|---|
+| `insertBeforeFirstHeading(editor, html)` | Uses TipTap `Editor` instance — different from the raw string version in blogFixUtils. Single-article flow only. |
+| `sentenceAlreadyExists` | Only used in BlogAITools single-article flow. Could be moved but isn't duplicated in blogFixUtils, so leave for now. |
+| Status derivation functions (`deriveSeoStatus`, etc.) | UI-specific, not shared logic. |
 
-### Concrete overwrite rules (v1 — conservative)
+### Implementation
 
-| Field | Overwrite if empty | Overwrite if bad | Bad criteria | Keep if |
-|---|---|---|---|---|
-| meta_title | Yes | Yes | < 15 chars OR > 60 chars OR identical to `title` | 15-60 chars and distinct from title |
-| meta_description | Yes | Yes | < 50 chars OR > 155 chars | 50-155 chars |
-| excerpt | Yes | Yes | < 20 chars OR > 320 chars | 20-320 chars |
-| featured_image_alt | Yes | Yes | < 5 chars OR generic word | ≥ 5 chars and not generic |
-| canonical_url | Yes | Yes | Fails isValidCanonicalUrl() | Already valid |
-| slug | Only if empty | Only if malformed | Uppercase, double hyphens, non-alphanum-hyphen | Published OR valid format |
-| author_name | Only if empty | Never | — | Any existing value |
+Replace lines 72-326 in BlogAITools.tsx with a single import block from `@/lib/blogFixUtils`, keeping only `insertBeforeFirstHeading` and `sentenceAlreadyExists` as local functions. Update the one call site of `shouldAutoOverwriteField` at line 691 — it currently passes 2 args; after refactor it will still work since the third `context` param is optional. However, we should **enhance** it by passing context where available (the `formData` has `title` and `meta_description`).
 
-## File 2: `src/hooks/useBulkAutoFix.ts`
+## 2. Post-Save Compliance Recheck
 
-### Types
+**Decision: Intentionally NOT added.**
 
-```typescript
-type BulkAutoFixPhase = 'idle' | 'scanning' | 'scanned' | 'fixing' | 'done';
+Reasons:
+- `analyzePublishCompliance` requires a full `ArticleMetadata` object built by `blogPostToMetadata`. After the DB write, we'd need to reconstruct this from the modified in-memory post snapshot — the DB write already happened but `fetchPosts()` hasn't returned yet.
+- Running it for every article in a 20+ article batch adds ~50ms per article of synchronous computation, plus complexity to merge partial in-memory state with partial DB state.
+- The current result classification (`fixed`/`partially_fixed`/`skipped`/`failed`) is already **honest and deterministic** — it's based on exactly which fixes were applied vs skipped, not on a re-run score.
+- Adding a recheck that might disagree with the apply/skip counts would create confusing UX ("3 fixes applied but still showing issues").
 
-type ScanClassification = 'clean' | 'fixable' | 'skipped';
+The current approach is simpler, faster, and more predictable. A recheck can be added later as a "verify" button in the summary if needed.
 
-type ScanItem = {
-  postId: string; slug: string; title: string;
-  classification: ScanClassification;
-  failCount: number; warnCount: number;
-  issuesByType: Record<string, number>;
-  skipReason?: string;
-};
+## 3. Bulk-Mode Manual-Review Wording Check
 
-type FixApplied = { field: string; fixType: string; beforeValue: string; afterValue: string };
-type FixSkipped = { field: string; fixType: string; reason: string };
+**Bulk flow (`useBulkAutoFix.ts` + bulk dialog in `BlogPostEditor.tsx`):** Verified clean. Zero occurrences of "review", "review required", "needs manual review", or "manual review" in the bulk auto-fix hook or bulk dialog.
 
-type ArticleResult = {
-  postId: string; slug: string; title: string;
-  status: 'fixed' | 'partially_fixed' | 'skipped' | 'failed' | 'stopped';
-  issuesFound: number;
-  fixesApplied: FixApplied[];
-  fixesSkipped: FixSkipped[];
-  error?: string;
-};
-```
+**Single-article flow:** Contains `reviewRequired` state and "Review Required" UI text. This is correct and expected — the single-article "Fix All by AI" flow (lines 1060-1141, dialog lines 2150-2220) is a separate flow that uses TipTap and is designed for interactive review. Not part of this cleanup scope.
 
-### Scan logic
+**One item in `blogFixUtils.ts` line 43:** `'review_replacement': 'Requires manual review — not supported in bulk mode'`. This is a **skip reason** (the fix is being skipped, not sent for review). The wording is technically safe since it explains WHY it's skipped, but it could be cleaner. Will change to: `'Not auto-applied in bulk mode — requires editor context'`.
 
-- Accepts either selected posts or all posts
-- For each post: run `analyzePublishCompliance(blogPostToMetadata(post))`
-- Classify: `clean` (0 fail+warn), `fixable` (has fail/warn), `skipped` (no title or no content)
-- Count issues by type for summary badges
-- Auto-select only `fixable` articles
+## 4. Files Changed
 
-### Fix logic (per article, sequential, 3s throttle)
+1. **`src/components/admin/blog/BlogAITools.tsx`** — Remove ~250 lines of duplicated helpers, replace with imports from `@/lib/blogFixUtils`. Keep `insertBeforeFirstHeading` (TipTap-specific) and `sentenceAlreadyExists` local.
+2. **`src/lib/blogFixUtils.ts`** — Minor wording fix in `BULK_FORBIDDEN_APPLY_MODES` for `review_replacement`.
 
-1. Call `analyze-blog-compliance-fixes` edge function (same as current)
-2. Process each returned fix:
-
-**Allowed apply modes:**
-- `apply_field` — metadata via `shouldAutoOverwriteField` + `validateFieldValue`
-- `append_content` — FAQ, conclusion, internal links (with guards)
-- `insert_before_first_heading` — intro/H1 (with guards)
-
-**Forbidden apply modes (skipped with reason):**
-- `replace_section` — "Section replacement not safe in bulk mode"
-- `review_replacement` — "Requires manual review"
-- `advisory` — "Advisory only"
-- `prepend_content` — "Prepend not supported in bulk mode"
-
-**Content fixes (DB-direct, no TipTap):**
-- FAQ: guard with `hasFaqHeading`, sanitize, append to content + write `faq_schema`/`has_faq_schema`/`faq_count`
-- Conclusion: guard with `hasExistingConclusion`, sanitize, append
-- Internal links: guard with `hasRelatedResourcesBlock`, validate each link via `isValidInternalPagePath`, build clean block via `buildCleanLinkBlock`, append
-- Intro/H1: guard with `hasExistingIntro`, use `insertBeforeFirstHeadingRaw`
-
-All content blocks: reject if empty/near-empty (< 20 chars stripped), reject duplicates, sanitize via `sanitizeLinkBlockHtml`
-
-3. Single DB `.update()` per article (metadata + modified content + word_count + reading_time)
-4. Audit: `logBlogAiAudit` per applied fix, `trackBlogToolEvent` per article
-5. `ai_fixed_at` stamped ONLY when ≥1 fix applied
-
-**Slug protection:** If `post.is_published === true`, skip slug rewrite with reason "Published slug — no redirect support"
-
-**Result classification:**
-- `fixed` — fixesApplied > 0 AND fixesSkipped === 0
-- `partially_fixed` — fixesApplied > 0 AND fixesSkipped > 0
-- `skipped` — fixesApplied === 0
-- `failed` — error during processing
-
-**Stop:** Finish current article, mark remaining as `{ status: 'stopped' }`
-
-## File 3: `src/components/admin/BlogPostEditor.tsx`
-
-### Remove
-- Old types: `BulkFixPhase`, `BulkFixScanItem`, `BulkFixResultItem` (lines 207-209)
-- Old state: `bulkFixPhase`, `bulkFixScanResults`, `bulkFixResults`, `bulkFixProgress`, `bulkFixAbortRef`, `showBulkFixDialog` (lines 210-215)
-- Old handlers: `handleBulkFixScan` (lines 1148-1178), `handleBulkFixExecute` (lines 1180-1265)
-- Old dialog (lines 2389-2491)
-
-### Add
-- Import `useBulkAutoFix` hook
-- Wire button to `scan(selectedPosts)` or `scan(allPosts)` when none selected
-- New dialog with phases:
-  - **Scanning**: spinner
-  - **Scanned**: Summary cards (Total/Clean/Fixable/Skipped) + issue type badges + "Auto-Fix N Articles" button
-  - **Fixing**: Progress bar + live results + Stop button
-  - **Done**: Full summary (fixed/partial/skipped/failed counts) + field-level breakdown + per-article expandable rows with applied fixes and skip reasons
-
-### Button behavior change
-- Label remains "Bulk Fix All by AI" or "Scan & Auto-Fix"
-- If selected > 0: scan those; else: scan all posts
-- No "review required" badge anywhere
-
-## File 4: `src/components/admin/blog/BlogAITools.tsx`
-
-- Replace inline definitions of shared functions with imports from `@/lib/blogFixUtils`
-- No behavioral change to single-article flow
-- Functions moved: `normalizeApplyMode`, `shouldAutoOverwriteField`, `validateFieldValue`, `isValidCanonicalUrl`, `hasExistingIntro`, `hasExistingConclusion`, `hasFaqHeading`, `hasRelatedResourcesBlock`, `contentBlockAlreadyExists`, `linkAlreadyInContent`, `sanitizeLinkBlockHtml`, `buildCleanLinkBlock`, `validateFaqSchema`, `trackBlogToolEvent`, `logBlogAiAudit`, constants
-
-## Edge Function Verification
-
-The edge function `analyze-blog-compliance-fixes` already returns structured fixes with: `fixType`, `applyMode`, `field`, `suggestedValue`, `confidence`, `explanation`, `issueKey`, `issueLabel`, `faqSchemaEligible`, `faqSchema`. The server-side `normalizeFix()` enforces whitelists. This is sufficient for bulk auto-apply. No edge function changes needed.
-
-The plan will verify real-world output shapes during implementation by logging the first processed article's raw response for inspection.
-
-## Audit Strategy (No Migration)
-
-- Per-field: `blog_ai_audit_log` table (tool_name = 'bulk_auto_fix')
-- Per-article: `blog_ai_telemetry` table (event_name = 'bulk_auto_fix_complete')
-- `blog_posts.ai_fixed_at` stamped only when ≥1 fix applied
-
-## What Does NOT Change
-
-- Edge function `analyze-blog-compliance-fixes`
-- Single-article "Fix All by AI" flow in BlogAITools (still uses TipTap)
-- Database schema
-- No new tables or columns
+No other files changed. `useBulkAutoFix.ts` and `BlogPostEditor.tsx` are untouched.
 

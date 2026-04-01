@@ -53,10 +53,12 @@ interface BlogPostData {
 
 export default function BlogPostPage() {
   const { slug } = useParams<{ slug: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [post, setPost] = useState<BlogPostData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isPreview, setIsPreview] = useState(false);
 
   useEffect(() => {
     if (!slug) return;
@@ -77,12 +79,21 @@ export default function BlogPostPage() {
 
   const fetchPost = async () => {
     setIsLoading(true);
-    const { data, error } = await supabase
+    const previewId = searchParams.get('preview');
+
+    let query = supabase
       .from('blog_posts')
       .select('*')
-      .eq('slug', slug)
-      .eq('is_published', true)
-      .single();
+      .eq('slug', slug as string);
+
+    // Only filter by is_published when NOT in preview mode
+    if (!previewId) {
+      query = query.eq('is_published', true);
+    }
+
+    const { data, error } = await query.maybeSingle();
+
+    if (previewId) setIsPreview(true);
 
     if (error || !data) {
       setIsLoading(false);

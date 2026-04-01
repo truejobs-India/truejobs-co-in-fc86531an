@@ -72,13 +72,10 @@ type ToolKey = 'seo' | 'faq' | 'internalLinks' | 'structure' | 'rewriteSection' 
 // ── Shared helpers imported from single source of truth ──
 import {
   EDITABLE_FIELDS,
-  VALID_FIX_TYPES,
-  VALID_APPLY_MODES,
   MAX_AUTO_LINKS,
   normalizeApplyMode,
   trackBlogToolEvent,
   logBlogAiAudit,
-  isValidCanonicalUrl,
   validateFieldValue,
   shouldAutoOverwriteField,
   hasExistingIntro,
@@ -87,7 +84,6 @@ import {
   hasRelatedResourcesBlock,
   contentBlockAlreadyExists,
   linkAlreadyInContent,
-  extractHrefsFromHtml,
   sanitizeLinkBlockHtml,
   buildCleanLinkBlock,
   validateFaqSchema,

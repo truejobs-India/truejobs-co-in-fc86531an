@@ -1965,9 +1965,9 @@ export function BlogPostEditor() {
                   </AlertDialogFooter>
                 </AlertDialogContent>
               </AlertDialog>
-              <Button size="sm" className="text-xs gap-1" disabled={selectedPostIds.size === 0 || bulkFixPhase === 'scanning' || bulkFixPhase === 'fixing'} onClick={handleBulkFixScan}>
-                {bulkFixPhase === 'scanning' ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-                Bulk Fix All by AI ({selectedPostIds.size})
+              <Button size="sm" className="text-xs gap-1" disabled={bulkAutoFix.phase === 'scanning' || bulkAutoFix.phase === 'fixing'} onClick={handleBulkFixScan}>
+                {bulkAutoFix.phase === 'scanning' ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                Scan & Auto-Fix by AI {selectedPostIds.size > 0 ? `(${selectedPostIds.size})` : '(All)'}
               </Button>
               {selectedPostIds.size > 0 && (
                 <Button variant="ghost" size="sm" className="text-xs" onClick={() => setSelectedPostIds(new Set())}>

@@ -370,7 +370,17 @@ async function processOneArticle(
 
   const meta = blogPostToMetadata(post);
   const compliance = analyzePublishCompliance(meta);
-  const failedChecks = compliance.checks.filter(c => c.status === 'fail' || c.status === 'warn');
+  const allFailedChecks = compliance.checks.filter(c => c.status === 'fail' || c.status === 'warn');
+  
+  // Only send actionable (auto-fixable) issues to the AI
+  const { actionable: failedChecks } = splitActionableChecks(allFailedChecks);
+  
+  if (failedChecks.length === 0) {
+    return {
+      postId: post.id, slug: post.slug, title: post.title,
+      status: 'skipped', issuesFound: 0, fixesApplied: [], fixesSkipped: [],
+    };
+  }
 
   // Call the edge function
   const { data, error } = await supabase.functions.invoke('analyze-blog-compliance-fixes', {

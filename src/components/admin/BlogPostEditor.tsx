@@ -2333,7 +2333,7 @@ export function BlogPostEditor() {
 
         {bulkAutoFix.phase === 'scanned' && bulkAutoFix.scanReport && bulkAutoFix.scanReport.totalFixable === 0 && (
           <div className="text-center py-6 text-sm text-muted-foreground">
-            ✅ All articles pass compliance — no fixes needed.
+            ✅ All articles pass auto-fixable checks — no fixes needed. Some may still have manual-only warnings.
           </div>
         )}
 

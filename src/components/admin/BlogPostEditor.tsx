@@ -913,6 +913,142 @@ export function BlogPostEditor() {
     return { quality: q.totalScore, seo: s.totalScore, readiness: r, wordCount: liveWc };
   };
 
+  // ── Image cleanup: toggle selection ──
+  const togglePostSelection = (id: string) => {
+    setSelectedPostIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const toggleSelectAllVisible = () => {
+    setSelectedPostIds(prev => {
+      if (prev.size === paginatedPosts.length && paginatedPosts.every(p => prev.has(p.id))) {
+        return new Set();
+      }
+      return new Set(paginatedPosts.map(p => p.id));
+    });
+  };
+
+  // ── Image cleanup: Delete Cover Images ──
+  const handleDeleteCoverImages = async () => {
+    const selected = posts.filter(p => selectedPostIds.has(p.id) && p.cover_image_url);
+    if (selected.length === 0) {
+      toast({ title: 'No selected articles have cover images', variant: 'destructive' });
+      return;
+    }
+    setImageCleanupLoading('cover');
+    try {
+      let deletedFiles = 0;
+      let cleanedDb = 0;
+      const pathsToDelete: string[] = [];
+      const postIdsToClean: string[] = [];
+
+      for (const post of selected) {
+        const path = extractStoragePath(post.cover_image_url!);
+        if (path && path.startsWith('covers/')) {
+          pathsToDelete.push(path);
+          postIdsToClean.push(post.id);
+        }
+      }
+
+      if (pathsToDelete.length > 0) {
+        const { error } = await supabase.storage.from('blog-assets').remove(pathsToDelete);
+        if (error) throw error;
+        deletedFiles = pathsToDelete.length;
+      }
+
+      if (postIdsToClean.length > 0) {
+        const { error: dbError } = await supabase
+          .from('blog_posts')
+          .update({ cover_image_url: null, featured_image_alt: null })
+          .in('id', postIdsToClean);
+        if (dbError) throw dbError;
+        cleanedDb = postIdsToClean.length;
+      }
+
+      toast({ title: `Deleted ${deletedFiles} cover file(s), cleaned ${cleanedDb} DB record(s)` });
+      setSelectedPostIds(new Set());
+      fetchPosts();
+    } catch (e: any) {
+      toast({ title: `Cover delete failed: ${e.message}`, variant: 'destructive' });
+    } finally {
+      setImageCleanupLoading(null);
+    }
+  };
+
+  // ── Image cleanup: Delete Inline Images ──
+  const handleDeleteInlineImages = async () => {
+    const selected = posts.filter(p => selectedPostIds.has(p.id));
+    if (selected.length === 0) return;
+    setImageCleanupLoading('inline');
+    try {
+      let deletedFiles = 0;
+      let cleanedPosts = 0;
+
+      for (const post of selected) {
+        // Collect inline URLs from article_images and content
+        const articleImagesUrls = new Set<string>();
+        if (post.article_images && typeof post.article_images === 'object') {
+          const ai = post.article_images as any;
+          const inlineArr = Array.isArray(ai.inline) ? ai.inline : [];
+          for (const entry of inlineArr) {
+            if (entry?.url && typeof entry.url === 'string' && entry.url.includes('/blog-assets/inline/')) {
+              articleImagesUrls.add(entry.url);
+            }
+          }
+        }
+        const contentUrls = new Set<string>(extractInlineUrlsFromContent(post.content));
+        const allUrls = [...new Set([...articleImagesUrls, ...contentUrls])];
+
+        if (allUrls.length === 0) continue;
+
+        // Delete storage files
+        const paths = allUrls
+          .map(u => extractStoragePath(u))
+          .filter((p): p is string => !!p && p.startsWith('inline/'));
+
+        if (paths.length > 0) {
+          const { error } = await supabase.storage.from('blog-assets').remove(paths);
+          if (error) console.error('Storage delete error:', error);
+          else deletedFiles += paths.length;
+        }
+
+        // Clean article_images JSON
+        let updatedArticleImages = post.article_images;
+        if (updatedArticleImages && typeof updatedArticleImages === 'object') {
+          const ai = updatedArticleImages as any;
+          if (Array.isArray(ai.inline)) {
+            const filtered = ai.inline.filter((entry: any) => !allUrls.includes(entry?.url));
+            const { inline: _, ...rest } = ai;
+            updatedArticleImages = filtered.length > 0 ? { ...rest, inline: filtered } : (Object.keys(rest).length > 0 ? rest : null);
+          }
+        }
+
+        // Clean content HTML
+        let updatedContent = post.content;
+        for (const url of allUrls) {
+          updatedContent = removeInlineImageFromContent(updatedContent, url);
+        }
+
+        const { error: dbError } = await supabase
+          .from('blog_posts')
+          .update({ article_images: updatedArticleImages, content: updatedContent })
+          .eq('id', post.id);
+        if (dbError) throw dbError;
+        cleanedPosts++;
+      }
+
+      toast({ title: `Deleted ${deletedFiles} inline file(s), cleaned ${cleanedPosts} post(s)` });
+      setSelectedPostIds(new Set());
+      fetchPosts();
+    } catch (e: any) {
+      toast({ title: `Inline delete failed: ${e.message}`, variant: 'destructive' });
+    } finally {
+      setImageCleanupLoading(null);
+    }
+  };
+
   // ── Safe metadata fields for auto-apply ──
   const SAFE_METADATA_FIELDS = new Set(['meta_title', 'meta_description', 'excerpt', 'featured_image_alt', 'canonical_url', 'slug', 'author_name']);
 

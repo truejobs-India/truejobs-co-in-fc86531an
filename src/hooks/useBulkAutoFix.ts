@@ -48,9 +48,9 @@ const AUTO_FIXABLE_CHECK_KEYS = new Set([
   'seo-headings', 'seo-excerpt/summary',
 ]);
 
-function splitActionableChecks(checks: Array<{ key: string; status: string }>) {
-  const actionable: typeof checks = [];
-  const nonActionable: typeof checks = [];
+function splitActionableChecks<T extends { key: string; status: string }>(checks: T[]) {
+  const actionable: T[] = [];
+  const nonActionable: T[] = [];
   for (const c of checks) {
     if (AUTO_FIXABLE_CHECK_KEYS.has(c.key)) actionable.push(c);
     else nonActionable.push(c);

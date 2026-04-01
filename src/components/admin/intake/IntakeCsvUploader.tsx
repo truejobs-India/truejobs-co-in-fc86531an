@@ -298,6 +298,8 @@ export function IntakeCsvUploader({ onImportComplete }: { onImportComplete?: (im
           for (const [csvCol, dbField] of Object.entries(columnMapping)) {
             if (dbField !== '__skip__' && row[csvCol]) mapped[dbField] = row[csvCol];
           }
+          // Preserve original row payload for debugging and re-processing
+          mapped.structured_data_json = row;
         }
 
         if (mapped.source_url && !mapped.source_domain) {

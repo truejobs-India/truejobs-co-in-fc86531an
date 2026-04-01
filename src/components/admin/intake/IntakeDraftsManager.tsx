@@ -13,6 +13,10 @@ import { Progress } from '@/components/ui/progress';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
   CheckCircle2, AlertTriangle, XCircle, Upload as UploadIcon,
   RefreshCw, Search, Eye, Loader2, Send, Trash2, Play, Square, Zap,
 } from 'lucide-react';
@@ -42,6 +46,7 @@ type IntakeDraft = {
   normalized_title: string | null;
   closing_date: string | null;
   scrape_run_id: string | null;
+  publish_error: string | null;
   created_at: string;
 };
 
@@ -55,6 +60,8 @@ const TAB_LABELS: Record<TabKey, string> = {
 };
 
 function isLowConfidence(d: IntakeDraft): boolean {
+  if (d.processing_status === 'publish_failed') return true;
+
   const score = d.confidence_score;
   const blockers = Array.isArray(d.publish_blockers) ? d.publish_blockers : [];
   const tags = Array.isArray(d.secondary_tags) ? d.secondary_tags : [];
@@ -88,7 +95,7 @@ function filterDrafts(drafts: IntakeDraft[], tab: TabKey, searchQuery: string): 
       break;
     case 'low_confidence':
       filtered = drafts.filter(d =>
-        d.processing_status === 'ai_processed' &&
+        (d.processing_status === 'ai_processed' || d.processing_status === 'publish_failed') &&
         d.primary_status !== 'reject' &&
         isLowConfidence(d)
       );
@@ -135,6 +142,7 @@ export function IntakeDraftsManager() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deleteScope, setDeleteScope] = useState<'selected' | 'all'>('selected');
+  const [singleDeleteId, setSingleDeleteId] = useState<string | null>(null);
 
   const fetchDrafts = useCallback(async () => {
     setLoading(true);
@@ -271,9 +279,9 @@ export function IntakeDraftsManager() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) throw new Error('Not authenticated');
 
+      // Set approved (edge function requires it)
       await supabase.from('intake_drafts').update({
         review_status: 'approved',
-        processing_status: 'reviewed',
       } as any).eq('id', id);
 
       const resp = await supabase.functions.invoke('intake-publish', {
@@ -281,16 +289,28 @@ export function IntakeDraftsManager() {
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
 
-      if (resp.error) throw resp.error;
-      const result = resp.data;
-      if (result?.error) {
-        toast({ title: 'Publish Blocked', description: result.error, variant: 'destructive' });
+      const errorMsg = resp.error ? String(resp.error) : resp.data?.error;
+      if (errorMsg) {
+        // Revert and mark as publish_failed so row stays visible
+        await supabase.from('intake_drafts').update({
+          review_status: 'pending',
+          processing_status: 'publish_failed',
+          publish_error: String(errorMsg).slice(0, 500),
+        } as any).eq('id', id);
+        toast({ title: 'Publish Failed', description: String(errorMsg), variant: 'destructive' });
       } else {
-        toast({ title: 'Published', description: `Published to ${result?.table || 'live table'}` });
+        toast({ title: 'Published', description: `Published to ${resp.data?.table || 'live table'}` });
       }
       fetchDrafts();
     } catch (err) {
+      // On unexpected error, also mark as publish_failed
+      await supabase.from('intake_drafts').update({
+        review_status: 'pending',
+        processing_status: 'publish_failed',
+        publish_error: String(err).slice(0, 500),
+      } as any).eq('id', id);
       toast({ title: 'Publish Failed', description: String(err), variant: 'destructive' });
+      fetchDrafts();
     }
   };
 
@@ -309,7 +329,6 @@ export function IntakeDraftsManager() {
         try {
           await supabase.from('intake_drafts').update({
             review_status: 'approved',
-            processing_status: 'reviewed',
           } as any).eq('id', id);
 
           const resp = await supabase.functions.invoke('intake-publish', {
@@ -317,9 +336,23 @@ export function IntakeDraftsManager() {
             headers: { Authorization: `Bearer ${session.access_token}` },
           });
 
-          if (resp.error || resp.data?.error) failed++;
-          else success++;
-        } catch {
+          const errorMsg = resp.error ? String(resp.error) : resp.data?.error;
+          if (errorMsg) {
+            await supabase.from('intake_drafts').update({
+              review_status: 'pending',
+              processing_status: 'publish_failed',
+              publish_error: String(errorMsg).slice(0, 500),
+            } as any).eq('id', id);
+            failed++;
+          } else {
+            success++;
+          }
+        } catch (err) {
+          await supabase.from('intake_drafts').update({
+            review_status: 'pending',
+            processing_status: 'publish_failed',
+            publish_error: String(err).slice(0, 500),
+          } as any).eq('id', id);
           failed++;
         }
       }
@@ -602,6 +635,16 @@ export function IntakeDraftsManager() {
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-wrap gap-0.5">
+                            {d.processing_status === 'publish_failed' && (
+                              <Badge variant="destructive" className="text-[9px] px-1 py-0" title={d.publish_error || 'Publish failed'}>
+                                Publish Failed
+                              </Badge>
+                            )}
+                            {d.processing_status === 'publish_failed' && d.publish_error && (
+                              <span className="text-[9px] text-destructive max-w-[120px] truncate" title={d.publish_error}>
+                                {d.publish_error.slice(0, 40)}
+                              </span>
+                            )}
                             {tags.slice(0, 3).map((t: string) => (
                               <Badge key={t} variant="outline" className="text-[9px] px-1 py-0">{t}</Badge>
                             ))}
@@ -626,7 +669,7 @@ export function IntakeDraftsManager() {
                               </Button>
                             )}
                             <Button variant="ghost" size="icon" className="h-6 w-6"
-                              onClick={() => handleDeleteIds([d.id])} title="Delete Permanently">
+                              onClick={() => setSingleDeleteId(d.id)} title="Delete Permanently">
                               <Trash2 className="h-3 w-3 text-destructive" />
                             </Button>
                           </div>
@@ -674,6 +717,27 @@ export function IntakeDraftsManager() {
         </DialogContent>
       </Dialog>
 
+      {/* Single Delete Confirmation */}
+      <AlertDialog open={!!singleDeleteId} onOpenChange={(open) => { if (!open) setSingleDeleteId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Permanently delete this draft?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. The draft will be permanently removed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => { if (singleDeleteId) { handleDeleteIds([singleDeleteId]); setSingleDeleteId(null); } }}
+            >
+              Delete Permanently
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Detail Dialog */}
       {selectedDraft && (
         <IntakeDraftDetailDialog
@@ -689,8 +753,7 @@ export function IntakeDraftsManager() {
             setSelectedDraft(null);
           }}
           onDelete={async () => {
-            await handleDeleteIds([selectedDraft.id]);
-            setSelectedDraft(null);
+            setSingleDeleteId(selectedDraft.id);
           }}
         />
       )}

@@ -89,7 +89,6 @@ function filterDrafts(drafts: IntakeDraft[], tab: TabKey, searchQuery: string): 
     case 'low_confidence':
       filtered = drafts.filter(d =>
         d.processing_status === 'ai_processed' &&
-        d.processing_status !== 'published' &&
         d.primary_status !== 'reject' &&
         isLowConfidence(d)
       );

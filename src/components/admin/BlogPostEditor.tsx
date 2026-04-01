@@ -2385,6 +2385,110 @@ export function BlogPostEditor() {
         </div>
       </DialogContent>
     </Dialog>
+
+    {/* ── Bulk Fix All by AI Dialog ── */}
+    <Dialog open={showBulkFixDialog} onOpenChange={(open) => { if (!open && bulkFixPhase !== 'fixing') { setShowBulkFixDialog(false); setBulkFixPhase('idle'); setBulkFixScanResults([]); setBulkFixResults([]); } }}>
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2"><Sparkles className="h-4 w-4" /> Bulk Fix All by AI</DialogTitle>
+          <DialogDescription>
+            {bulkFixPhase === 'scanning' && 'Scanning selected articles for compliance issues…'}
+            {bulkFixPhase === 'scanned' && `${bulkFixScanResults.length} article(s) need fixing out of ${selectedPostIds.size} scanned.`}
+            {bulkFixPhase === 'fixing' && `Fixing ${bulkFixProgress.done}/${bulkFixProgress.total}… ${bulkFixProgress.current}`}
+            {bulkFixPhase === 'done' && `Complete — ${bulkFixResults.filter(r => !r.error).length} succeeded, ${bulkFixResults.filter(r => r.error).length} failed.`}
+          </DialogDescription>
+        </DialogHeader>
+
+        {bulkFixPhase === 'scanning' && (
+          <div className="flex items-center gap-2 py-6 justify-center text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" /> Scanning {selectedPostIds.size} articles…
+          </div>
+        )}
+
+        {bulkFixPhase === 'scanned' && bulkFixScanResults.length > 0 && (
+          <div className="space-y-3">
+            <div className="text-xs font-medium text-muted-foreground">
+              Using: {getModelDef(blogTextModel)?.label || blogTextModel}
+            </div>
+            <ScrollArea className="max-h-[350px]">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="text-xs">Article</TableHead>
+                    <TableHead className="text-xs w-20">Fails</TableHead>
+                    <TableHead className="text-xs w-20">Warnings</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {bulkFixScanResults.map(item => (
+                    <TableRow key={item.postId}>
+                      <TableCell className="text-xs truncate max-w-[300px]">{item.title}</TableCell>
+                      <TableCell><Badge variant="destructive" className="text-[10px]">{item.failCount}</Badge></TableCell>
+                      <TableCell><Badge variant="secondary" className="text-[10px]">{item.warnCount}</Badge></TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </ScrollArea>
+            <div className="flex gap-2">
+              <Button onClick={handleBulkFixExecute} className="gap-1">
+                <Sparkles className="h-4 w-4" /> Fix {bulkFixScanResults.length} Article(s) Now
+              </Button>
+              <Button variant="outline" onClick={() => { setShowBulkFixDialog(false); setBulkFixPhase('idle'); }}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {bulkFixPhase === 'scanned' && bulkFixScanResults.length === 0 && (
+          <div className="text-center py-6 text-sm text-muted-foreground">
+            ✅ All selected articles pass compliance — no fixes needed.
+          </div>
+        )}
+
+        {(bulkFixPhase === 'fixing' || bulkFixPhase === 'done') && (
+          <div className="space-y-3">
+            {bulkFixPhase === 'fixing' && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Processing: {bulkFixProgress.current}</span>
+                </div>
+                <div className="w-full bg-muted rounded-full h-2">
+                  <div className="bg-primary rounded-full h-2 transition-all" style={{ width: `${(bulkFixProgress.done / bulkFixProgress.total) * 100}%` }} />
+                </div>
+                <div className="text-xs text-muted-foreground">{bulkFixProgress.done}/{bulkFixProgress.total} completed</div>
+                <Button variant="destructive" size="sm" onClick={() => { bulkFixAbortRef.current = true; }}>
+                  <Square className="h-3 w-3 mr-1" /> Stop
+                </Button>
+              </div>
+            )}
+            <ScrollArea className="max-h-[350px]">
+              <div className="space-y-1">
+                {bulkFixResults.map((r, i) => (
+                  <div key={i} className="flex items-center gap-2 text-xs py-1 border-b border-border/50">
+                    {r.error ? (
+                      <Badge variant="destructive" className="text-[10px] shrink-0"><X className="h-2.5 w-2.5 mr-0.5" />Failed</Badge>
+                    ) : (
+                      <Badge className="text-[10px] bg-green-500/15 text-green-700 dark:text-green-400 shrink-0"><Check className="h-2.5 w-2.5 mr-0.5" />{r.autoFixed} fixed</Badge>
+                    )}
+                    <span className="truncate max-w-[250px]">{r.title}</span>
+                    {r.reviewRequired > 0 && <span className="text-amber-600 text-[10px]">{r.reviewRequired} review</span>}
+                    {r.error && <span className="text-destructive text-[10px] truncate max-w-[150px]">{r.error}</span>}
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+            {bulkFixPhase === 'done' && (
+              <Button variant="outline" onClick={() => { setShowBulkFixDialog(false); setBulkFixPhase('idle'); setBulkFixScanResults([]); setBulkFixResults([]); }}>
+                Close
+              </Button>
+            )}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
     </>
   );
 }

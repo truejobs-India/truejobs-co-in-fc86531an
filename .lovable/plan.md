@@ -1,45 +1,54 @@
 
-Root cause confirmed
-- Do I know what the issue is? Yes.
-- The count “398 fixable” is not a stale DB read now; it is a classification bug.
-- In `src/hooks/useBulkAutoFix.ts`, `scanAll()` marks a post as `fixable` if it has **any** `fail` or `warn` from `analyzePublishCompliance(...)`.
-- Many warnings/fails are not actually auto-fixable by this bulk tool (for example missing cover image, policy/risk checks, advisory-only checks), so those posts keep getting counted again on every re-scan even after metadata/content fixes were applied.
 
-What I will change
+# AI-First Intake Pipeline — Final Plan (with two clarifications)
 
-1) Restrict “fixable” to truly bulk-auto-fixable issues
-- File: `src/hooks/useBulkAutoFix.ts`
-- Add a central `AUTO_FIXABLE_CHECK_KEYS` set (only checks this pipeline can actually apply safely: metadata fields, intro/h1, FAQ, internal links, heading structure related checks, etc.).
-- Add helper to split compliance checks into:
-  - actionable (bulk-auto-fixable)
-  - non-actionable (manual/other tools required)
+This is the same approved plan with two points made explicit:
 
-2) Rework scan classification logic
-- File: `src/hooks/useBulkAutoFix.ts`
-- In `scanAll()`:
-  - Keep `clean` only when no fail/warn exists.
-  - Mark `fixable` only when actionable checks exist.
-  - Mark `skipped` when issues exist but none are actionable (with clear skip reason like “non-auto-fixable issues only”).
-- Build `issueBreakdown` from actionable checks only, so totals reflect what this tool can actually process.
+## Clarification 1: Scoping auto-processing to the current import
 
-3) Align execute step with scan step
-- File: `src/hooks/useBulkAutoFix.ts`
-- In `processOneArticle(...)`, filter outgoing issues to only actionable keys before calling `analyze-blog-compliance-fixes`.
-- If no actionable checks remain (post changed since scan), return `skipped` immediately instead of invoking AI.
+After upload, the importer will return the **list of inserted row IDs** (not just a count). The auto-processing loop in `IntakeDraftsManager` will use these specific IDs to call `intake-ai-classify`, not a generic query like "all rows where `processing_status = 'imported'`".
 
-4) Clarify UI wording to avoid future confusion
-- File: `src/components/admin/BlogPostEditor.tsx`
-- Update dialog labels/text from generic “fixable” to “auto-fixable by this tool” so counts are interpreted correctly.
+**Implementation detail:**
+- `IntakeCsvUploader.onImportComplete` callback changes from `(count: number)` → `(importedIds: string[])`
+- The processing loop fetches batches using `.in('id', nextBatchOfIds)` instead of `.eq('processing_status', 'imported')`
+- The AI retry pass similarly scopes to `manual_check` rows **within the same set of IDs**
+- If the page refreshes mid-processing, a "Resume Processing" button will query for rows from this import that are still `processing_status = 'imported'`. To identify them, the importer will tag all rows with a shared `scrape_run_id` (a generated UUID per import session). The resume query uses `.eq('scrape_run_id', sessionId).eq('processing_status', 'imported')`.
 
-Why this fixes your exact symptom
-- Today, the count restarts near the same number because it includes unresolved non-auto-fixable warnings.
-- After this change, the count represents only actionable items this workflow can actually fix, so re-runs won’t keep showing the same inflated number due to unrelated/manual issues.
+This guarantees nearby/older imports are never accidentally mixed into the current processing run.
 
-Verification plan (live)
-1. Run “Scan & Auto-Fix by AI (All)” and record:
-   - scanned / auto-fixable / skipped.
-2. Stop after a few items, run scan again:
-   - auto-fixable should reflect only remaining actionable posts (not inflated by non-actionable warnings).
-3. Confirm posts with only missing cover/policy warnings are now in `skipped`, not `fixable`.
-4. Complete one full run, re-scan:
-   - remaining count should be materially lower and stable with actionable-only logic.
+## Clarification 2: Delete All Permanently — explicit scope labeling
+
+The "Delete All Permanently" button will always state its exact scope in both the button label and the confirmation dialog:
+
+- On the **Ready Drafts** tab → button reads **"Delete All Ready Drafts"**, confirmation says "This will permanently delete X ready drafts."
+- On the **Low Confidence** tab → button reads **"Delete All Low Confidence Drafts"**, confirmation says "This will permanently delete X low-confidence drafts."
+- On the **Published** tab → button reads **"Delete All Published Drafts"** (draft records only, not the live published content — this is stated in the dialog).
+- If a search/filter is active → the label appends **(filtered)** and the confirmation shows the exact count: "This will permanently delete X drafts matching your current filter."
+
+The type-to-confirm ("Type DELETE") safety gate remains for all "Delete All" variants.
+
+There will never be an ambiguous "Delete All" button with unclear scope.
+
+## Everything else: unchanged from the approved plan
+
+### Files changed (4 total)
+| File | Change |
+|------|--------|
+| `IntakeCsvUploader.tsx` | Excel support, auto-skip mapping, return imported IDs + scrape_run_id |
+| `IntakeDraftsManager.tsx` | Draft-first dashboard, ID-scoped auto-processing, bulk approve & publish, scoped delete all |
+| `IntakeDraftDetailDialog.tsx` | Add Approve & Publish + Delete buttons |
+| `intake-ai-classify/index.ts` | Add `retry_enhanced` prompt mode (strict standards) |
+
+### No database changes needed.
+
+### Admin experience
+```text
+Upload Excel → auto-map → auto-import (tagged with scrape_run_id)
+→ auto-AI pass 1 (scoped to imported IDs)
+→ auto-AI pass 2 retry (scoped to same IDs, strict standards)
+→ dashboard shows Ready Drafts tab
+→ Approve & Publish Selected / All Ready
+→ Delete All [tab-specific label] Permanently (with type-to-confirm)
+→ Done
+```
+

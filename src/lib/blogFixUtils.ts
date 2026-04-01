@@ -5,7 +5,9 @@
  */
 
 import { supabase } from '@/integrations/supabase/client';
+// isValidInternalPagePath is re-exported for consumers that need link validation alongside these utils
 import { isValidInternalPagePath } from '@/lib/blogLinkValidator';
+export { isValidInternalPagePath };
 
 // ── Constants ──
 

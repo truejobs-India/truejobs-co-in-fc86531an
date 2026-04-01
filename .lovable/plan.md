@@ -1,41 +1,45 @@
 
+Root cause confirmed
+- Do I know what the issue is? Yes.
+- The count “398 fixable” is not a stale DB read now; it is a classification bug.
+- In `src/hooks/useBulkAutoFix.ts`, `scanAll()` marks a post as `fixable` if it has **any** `fail` or `warn` from `analyzePublishCompliance(...)`.
+- Many warnings/fails are not actually auto-fixable by this bulk tool (for example missing cover image, policy/risk checks, advisory-only checks), so those posts keep getting counted again on every re-scan even after metadata/content fixes were applied.
 
-# Fix: Bulk Auto-Fix Scan Always Shows Stale Count
+What I will change
 
-## Problem
+1) Restrict “fixable” to truly bulk-auto-fixable issues
+- File: `src/hooks/useBulkAutoFix.ts`
+- Add a central `AUTO_FIXABLE_CHECK_KEYS` set (only checks this pipeline can actually apply safely: metadata fields, intro/h1, FAQ, internal links, heading structure related checks, etc.).
+- Add helper to split compliance checks into:
+  - actionable (bulk-auto-fixable)
+  - non-actionable (manual/other tools required)
 
-When you click "Scan and Auto Fix All by AI", the scan always finds ~398 fixable articles — even after most were already fixed — because it scans the **in-memory `posts` array** that was loaded when the page first opened. The fixes were written to the database, but the scan never fetches fresh data before analyzing.
+2) Rework scan classification logic
+- File: `src/hooks/useBulkAutoFix.ts`
+- In `scanAll()`:
+  - Keep `clean` only when no fail/warn exists.
+  - Mark `fixable` only when actionable checks exist.
+  - Mark `skipped` when issues exist but none are actionable (with clear skip reason like “non-auto-fixable issues only”).
+- Build `issueBreakdown` from actionable checks only, so totals reflect what this tool can actually process.
 
-## Root Cause
+3) Align execute step with scan step
+- File: `src/hooks/useBulkAutoFix.ts`
+- In `processOneArticle(...)`, filter outgoing issues to only actionable keys before calling `analyze-blog-compliance-fixes`.
+- If no actionable checks remain (post changed since scan), return `skipped` immediately instead of invoking AI.
 
-In `src/hooks/useBulkAutoFix.ts`, the `scanAll` function (line 134) uses `allPosts` from the React prop/closure. This is stale if the user hasn't manually refreshed or navigated away. Even though `fetchPosts()` is called after fixes complete, the *next* scan still captures whatever `allPosts` was at callback creation time.
+4) Clarify UI wording to avoid future confusion
+- File: `src/components/admin/BlogPostEditor.tsx`
+- Update dialog labels/text from generic “fixable” to “auto-fixable by this tool” so counts are interpreted correctly.
 
-## Fix
+Why this fixes your exact symptom
+- Today, the count restarts near the same number because it includes unresolved non-auto-fixable warnings.
+- After this change, the count represents only actionable items this workflow can actually fix, so re-runs won’t keep showing the same inflated number due to unrelated/manual issues.
 
-**File: `src/hooks/useBulkAutoFix.ts`**
-
-Modify `scanAll` to call `fetchPosts()` first (which refreshes the parent's `posts` state), then use a fresh query from the database directly for scanning — ensuring the scan always operates on current data.
-
-Specifically:
-1. At the start of `scanAll`, before scanning, fetch fresh posts directly from the database via a lightweight Supabase query (select only the columns needed for compliance analysis).
-2. Use that fresh data for the scan loop instead of the stale `allPosts` prop.
-3. Also call `fetchPosts()` so the parent table UI updates simultaneously.
-
-This ensures that even if the user runs scan → fix → scan again without page reload, the second scan reflects all previously applied fixes.
-
-## Technical Detail
-
-```text
-scanAll() current flow:
-  postsToScan = allPosts (stale in-memory)  ← BUG
-  → scan each post locally
-
-scanAll() fixed flow:
-  await fetchPosts()                         ← refresh parent state
-  freshPosts = await supabase.from('blog_posts').select(...)  ← fresh DB read
-  postsToScan = targetPosts ?? freshPosts
-  → scan each post locally with current data
-```
-
-Only `src/hooks/useBulkAutoFix.ts` is changed. No other files affected.
-
+Verification plan (live)
+1. Run “Scan & Auto-Fix by AI (All)” and record:
+   - scanned / auto-fixable / skipped.
+2. Stop after a few items, run scan again:
+   - auto-fixable should reflect only remaining actionable posts (not inflated by non-actionable warnings).
+3. Confirm posts with only missing cover/policy warnings are now in `skipped`, not `fixable`.
+4. Complete one full run, re-scan:
+   - remaining count should be materially lower and stable with actionable-only logic.

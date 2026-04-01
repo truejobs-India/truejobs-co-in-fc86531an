@@ -1,176 +1,169 @@
 
 
-# Centralized Blog Image Prompt Policy — Strict Single Source of Truth
+# Bulk Fix All by AI — Full Auto-Fix Pipeline Implementation
 
-## Problem
+## Summary
 
-The mandatory image rules are about to be duplicated across two separate edge functions. This violates single-source-of-truth. Additionally, `buildCoverImagePrompt` has a `body.prompt` bypass (line 187) that completely skips all rules.
+Replace the current manual-review-dependent bulk fix with a fully autonomous 2-step pipeline: Scan → Auto-Fix. No "review required" state. Every fix ends as fixed, skipped (with reason), or failed.
 
 ## Architecture
 
-### Shared helper file
+4 files changed:
+1. **`src/lib/blogFixUtils.ts`** (NEW) — shared deterministic helpers extracted from BlogAITools.tsx
+2. **`src/hooks/useBulkAutoFix.ts`** (NEW) — pipeline hook with scan + execute logic
+3. **`src/components/admin/BlogPostEditor.tsx`** (MODIFIED) — replace old bulk fix state/handlers/dialog with new hook + improved UI
+4. **`src/components/admin/blog/BlogAITools.tsx`** (MODIFIED) — import shared helpers from blogFixUtils.ts instead of defining inline
 
-**Path:** `supabase/functions/_shared/blog-image-prompt-policy.ts`
+## File 1: `src/lib/blogFixUtils.ts`
 
-This file exports:
-- `BLOG_IMAGE_MANDATORY_RULES` — the policy constant
-- `buildBlogCoverPrompt(body)` — cover image prompt builder
-- `buildBlogInlinePrompt(body)` — inline image prompt builder
+Extracts these functions from BlogAITools.tsx for shared use:
+- `trackBlogToolEvent`, `logBlogAiAudit` — telemetry/audit (fire-and-forget)
+- `normalizeApplyMode` — legacy mode mapping
+- `shouldAutoOverwriteField` — overwrite decision with concrete rules
+- `validateFieldValue` — length/format validation per field
+- `isValidCanonicalUrl` — strict TrueJobs canonical check
+- `hasExistingIntro`, `hasExistingConclusion`, `hasFaqHeading`, `hasRelatedResourcesBlock` — duplication guards
+- `contentBlockAlreadyExists`, `linkAlreadyInContent` — content dedup
+- `sanitizeLinkBlockHtml`, `buildCleanLinkBlock` — safe link block construction
+- `validateFaqSchema` — FAQ array validation
+- Constants: `EDITABLE_FIELDS`, `VALID_FIX_TYPES`, `VALID_APPLY_MODES`, `MAX_AUTO_LINKS`
 
-Both functions always append the mandatory rules. No bypass is possible.
+Additionally adds bulk-specific helpers:
+- `insertBeforeFirstHeadingRaw(content: string, html: string): string` — string-based (no TipTap)
+- `isPlaceholderOrGeneric(field, value)` — checks for placeholder-like values (e.g., "image", "photo", meta_title === title)
 
-### Mandatory rules constant
+### Concrete overwrite rules (v1 — conservative)
 
-```typescript
-export const BLOG_IMAGE_MANDATORY_RULES = `
+| Field | Overwrite if empty | Overwrite if bad | Bad criteria | Keep if |
+|---|---|---|---|---|
+| meta_title | Yes | Yes | < 15 chars OR > 60 chars OR identical to `title` | 15-60 chars and distinct from title |
+| meta_description | Yes | Yes | < 50 chars OR > 155 chars | 50-155 chars |
+| excerpt | Yes | Yes | < 20 chars OR > 320 chars | 20-320 chars |
+| featured_image_alt | Yes | Yes | < 5 chars OR generic word | ≥ 5 chars and not generic |
+| canonical_url | Yes | Yes | Fails isValidCanonicalUrl() | Already valid |
+| slug | Only if empty | Only if malformed | Uppercase, double hyphens, non-alphanum-hyphen | Published OR valid format |
+| author_name | Only if empty | Never | — | Any existing value |
 
-MANDATORY IMAGE RULES (always enforced, cannot be overridden):
-1. Absolutely NO Hindi text, Hinglish text, Devanagari script, or any Indic script anywhere in the image.
-2. If any text is required, it MUST be in English only.
-3. Strongly prefer images with NO visible text at all unless text is truly necessary.
-4. Never use Hindi fonts, Devanagari, or any Indic script in any form.
-5. Where human subjects are appropriate, depict young, very fair, very beautiful and handsome Indian men and women who look well-groomed and aspirational.
-6. The image must be highly relevant to the specific article topic and context provided.
-7. Avoid generic stock-style scenes that do not match the article context.
-8. Do NOT include any text overlays, watermarks, official government seals, emblems, logos, or misleading official symbols.
-9. Use warm, professional colors suitable for an Indian government jobs and exam preparation portal.`;
-```
+## File 2: `src/hooks/useBulkAutoFix.ts`
 
-### Cover prompt builder
-
-```typescript
-export function buildBlogCoverPrompt(body: {
-  title?: string; topic?: string; category?: string;
-  tags?: string[]; excerpt?: string; prompt?: string;
-  visualStyle?: string; brandGuidelines?: string;
-}): string {
-  const title = body.title || body.topic || 'Government Jobs in India';
-  const category = body.category || 'Government Jobs';
-  const tags = Array.isArray(body.tags) ? body.tags.join(', ') : '';
-  const style = body.visualStyle || 'modern flat illustration';
-  const brand = body.brandGuidelines || '';
-  const customContext = body.prompt ? ` Additional context: ${body.prompt}.` : '';
-
-  const base = `Create a clean, professional ${style} for a blog article titled "${title}" about ${category}.${tags ? ` Related topics: ${tags}.` : ''}${brand ? ` Brand guidelines: ${brand}.` : ''}${body.excerpt ? ` Article summary: ${body.excerpt.substring(0, 200)}.` : ''}${customContext}`;
-
-  return base + BLOG_IMAGE_MANDATORY_RULES;
-}
-```
-
-Key change: `body.prompt` is folded in as "Additional context", never used as a replacement.
-
-### Inline prompt builder
+### Types
 
 ```typescript
-export function buildBlogInlinePrompt(body: {
-  title?: string; category?: string; contextSnippet?: string;
-  nearbyHeading?: string; slotNumber?: number; excerpt?: string;
-}): string {
-  const title = body.title || 'Government Jobs';
-  const category = body.category || 'Government Jobs';
-  const contextSnippet = body.contextSnippet || '';
-  const nearbyHeading = body.nearbyHeading || '';
-  const slotNumber = body.slotNumber || 1;
+type BulkAutoFixPhase = 'idle' | 'scanning' | 'scanned' | 'fixing' | 'done';
 
-  const sectionContext = nearbyHeading
-    ? `for a section about "${nearbyHeading}"`
-    : `for section ${slotNumber} of the article`;
+type ScanClassification = 'clean' | 'fixable' | 'skipped';
 
-  const base = `Create a contextual editorial illustration ${sectionContext} in a blog article titled "${title}" about ${category}. ${contextSnippet ? `Nearby content context: ${contextSnippet.substring(0, 250)}.` : ''}${body.excerpt ? ` Article summary: ${body.excerpt.substring(0, 150)}.` : ''} Style: clean, professional infographic or illustration suitable for inline blog placement. Aspect ratio 4:3. This image must be highly relevant to the exact paragraph or section described above, not just broadly relevant to the full article.`;
+type ScanItem = {
+  postId: string; slug: string; title: string;
+  classification: ScanClassification;
+  failCount: number; warnCount: number;
+  issuesByType: Record<string, number>;
+  skipReason?: string;
+};
 
-  return base + BLOG_IMAGE_MANDATORY_RULES;
-}
+type FixApplied = { field: string; fixType: string; beforeValue: string; afterValue: string };
+type FixSkipped = { field: string; fixType: string; reason: string };
+
+type ArticleResult = {
+  postId: string; slug: string; title: string;
+  status: 'fixed' | 'partially_fixed' | 'skipped' | 'failed' | 'stopped';
+  issuesFound: number;
+  fixesApplied: FixApplied[];
+  fixesSkipped: FixSkipped[];
+  error?: string;
+};
 ```
 
-## Files changed
+### Scan logic
 
-### 1. `supabase/functions/_shared/blog-image-prompt-policy.ts` (NEW)
+- Accepts either selected posts or all posts
+- For each post: run `analyzePublishCompliance(blogPostToMetadata(post))`
+- Classify: `clean` (0 fail+warn), `fixable` (has fail/warn), `skipped` (no title or no content)
+- Count issues by type for summary badges
+- Auto-select only `fixable` articles
 
-Exports `BLOG_IMAGE_MANDATORY_RULES`, `buildBlogCoverPrompt`, `buildBlogInlinePrompt`.
+### Fix logic (per article, sequential, 3s throttle)
 
-### 2. `supabase/functions/generate-vertex-image/index.ts`
+1. Call `analyze-blog-compliance-fixes` edge function (same as current)
+2. Process each returned fix:
 
-- **Remove** local `buildCoverImagePrompt` function (lines 186-196)
-- **Remove** local `buildInlineImagePrompt` function (lines 198-210)
-- **Import** `buildBlogCoverPrompt` and `buildBlogInlinePrompt` from `../_shared/blog-image-prompt-policy.ts`
-- Replace call sites: `buildCoverImagePrompt(body)` → `buildBlogCoverPrompt(body)`, `buildInlineImagePrompt(body)` → `buildBlogInlinePrompt(body)`
-- **Critical fix**: The `body.prompt` bypass on line 187 (`if (body.prompt) return body.prompt;`) is eliminated — it no longer exists because the function is removed and replaced by the shared version that treats `body.prompt` as additional context only
+**Allowed apply modes:**
+- `apply_field` — metadata via `shouldAutoOverwriteField` + `validateFieldValue`
+- `append_content` — FAQ, conclusion, internal links (with guards)
+- `insert_before_first_heading` — intro/H1 (with guards)
 
-### 3. `supabase/functions/generate-blog-image/index.ts`
+**Forbidden apply modes (skipped with reason):**
+- `replace_section` — "Section replacement not safe in bulk mode"
+- `review_replacement` — "Requires manual review"
+- `advisory` — "Advisory only"
+- `prepend_content` — "Prepend not supported in bulk mode"
 
-- **Import** `buildBlogCoverPrompt` from `../_shared/blog-image-prompt-policy.ts`
-- **Replace** the hardcoded prompt on line 75-76 with:
-  ```typescript
-  const imagePrompt = buildBlogCoverPrompt({
-    title,
-    category: category || 'government jobs and exams',
-    tags: keywords,
-  });
-  ```
+**Content fixes (DB-direct, no TipTap):**
+- FAQ: guard with `hasFaqHeading`, sanitize, append to content + write `faq_schema`/`has_faq_schema`/`faq_count`
+- Conclusion: guard with `hasExistingConclusion`, sanitize, append
+- Internal links: guard with `hasRelatedResourcesBlock`, validate each link via `isValidInternalPagePath`, build clean block via `buildCleanLinkBlock`, append
+- Intro/H1: guard with `hasExistingIntro`, use `insertBeforeFirstHeadingRaw`
 
-## Verification matrix
+All content blocks: reject if empty/near-empty (< 20 chars stripped), reject duplicates, sanitize via `sanitizeLinkBlockHtml`
 
-### Bypass eliminated
+3. Single DB `.update()` per article (metadata + modified content + word_count + reading_time)
+4. Audit: `logBlogAiAudit` per applied fix, `trackBlogToolEvent` per article
+5. `ai_fixed_at` stamped ONLY when ≥1 fix applied
 
-| Old bypass | Status |
-|---|---|
-| `if (body.prompt) return body.prompt` in `buildCoverImagePrompt` | **Removed** — `body.prompt` becomes "Additional context" only |
-| Hardcoded prompt in `generate-blog-image` without policy | **Replaced** with shared builder |
+**Slug protection:** If `post.is_published === true`, skip slug rewrite with reason "Published slug — no redirect support"
 
-### All backend image generation routes covered
+**Result classification:**
+- `fixed` — fixesApplied > 0 AND fixesSkipped === 0
+- `partially_fixed` — fixesApplied > 0 AND fixesSkipped > 0
+- `skipped` — fixesApplied === 0
+- `failed` — error during processing
 
-| Route | Function | Patched? |
-|---|---|---|
-| `generate-vertex-image` cover path | `buildBlogCoverPrompt` (shared) | Yes |
-| `generate-vertex-image` inline path | `buildBlogInlinePrompt` (shared) | Yes |
-| `generate-blog-image` legacy path | `buildBlogCoverPrompt` (shared) | Yes |
+**Stop:** Finish current article, mark remaining as `{ status: 'stopped' }`
 
-### All frontend callers confirmed covered
+## File 3: `src/components/admin/BlogPostEditor.tsx`
 
-| Caller | Edge function invoked | Covered by patch? |
-|---|---|---|
-| `BlogPostEditor.tsx` (bulk generation via PendingActionsPanel) | `generate-vertex-image` | Yes |
-| `PendingActionsPanel.tsx` (cover + inline) | `generate-vertex-image` | Yes |
-| `FeaturedImageGenerator.tsx` (primary path) | `generate-vertex-image` | Yes |
-| `FeaturedImageGenerator.tsx` (fallback path) | `generate-blog-image` | Yes |
-| `UploadZone.tsx` (bulk upload) | `generate-blog-image` | Yes |
-| `WordFileImporter.tsx` | `generate-blog-image` | Yes |
+### Remove
+- Old types: `BulkFixPhase`, `BulkFixScanItem`, `BulkFixResultItem` (lines 207-209)
+- Old state: `bulkFixPhase`, `bulkFixScanResults`, `bulkFixResults`, `bulkFixProgress`, `bulkFixAbortRef`, `showBulkFixDialog` (lines 210-215)
+- Old handlers: `handleBulkFixScan` (lines 1148-1178), `handleBulkFixExecute` (lines 1180-1265)
+- Old dialog (lines 2389-2491)
 
-### Model switching cannot bypass policy
+### Add
+- Import `useBulkAutoFix` hook
+- Wire button to `scan(selectedPosts)` or `scan(allPosts)` when none selected
+- New dialog with phases:
+  - **Scanning**: spinner
+  - **Scanned**: Summary cards (Total/Clean/Fixable/Skipped) + issue type badges + "Auto-Fix N Articles" button
+  - **Fixing**: Progress bar + live results + Stop button
+  - **Done**: Full summary (fixed/partial/skipped/failed counts) + field-level breakdown + per-article expandable rows with applied fixes and skip reasons
 
-Model selection happens **after** prompt construction in both edge functions. The prompt (with mandatory rules appended) is passed as a string to whichever generator function runs (`generateViaImagen`, `generateViaGeminiFlashImage`, `generateViaLovableGatewayImage`, etc.). No generator function modifies the prompt. Therefore model switching has zero effect on the mandatory policy.
+### Button behavior change
+- Label remains "Bulk Fix All by AI" or "Scan & Auto-Fix"
+- If selected > 0: scan those; else: scan all posts
+- No "review required" badge anywhere
 
-### Custom prompt cannot bypass policy
+## File 4: `src/components/admin/blog/BlogAITools.tsx`
 
-The old `if (body.prompt) return body.prompt;` is removed. In the new shared builder, `body.prompt` is appended as "Additional context:" within a prompt that always ends with `BLOG_IMAGE_MANDATORY_RULES`. No code path can produce a final prompt without the mandatory rules.
+- Replace inline definitions of shared functions with imports from `@/lib/blogFixUtils`
+- No behavioral change to single-article flow
+- Functions moved: `normalizeApplyMode`, `shouldAutoOverwriteField`, `validateFieldValue`, `isValidCanonicalUrl`, `hasExistingIntro`, `hasExistingConclusion`, `hasFaqHeading`, `hasRelatedResourcesBlock`, `contentBlockAlreadyExists`, `linkAlreadyInContent`, `sanitizeLinkBlockHtml`, `buildCleanLinkBlock`, `validateFaqSchema`, `trackBlogToolEvent`, `logBlogAiAudit`, constants
 
-### Final prompt composition
+## Edge Function Verification
 
-**Cover image final prompt:**
-```
-Create a clean, professional {style} for a blog article titled "{title}" about {category}.
-Related topics: {tags}. Brand guidelines: {brand}. Article summary: {excerpt}.
-Additional context: {body.prompt}.
-MANDATORY IMAGE RULES (always enforced, cannot be overridden):
-1. Absolutely NO Hindi text...
-[all 9 rules]
-```
+The edge function `analyze-blog-compliance-fixes` already returns structured fixes with: `fixType`, `applyMode`, `field`, `suggestedValue`, `confidence`, `explanation`, `issueKey`, `issueLabel`, `faqSchemaEligible`, `faqSchema`. The server-side `normalizeFix()` enforces whitelists. This is sufficient for bulk auto-apply. No edge function changes needed.
 
-**Inline image final prompt:**
-```
-Create a contextual editorial illustration for a section about "{nearbyHeading}" in a blog
-article titled "{title}" about {category}. Nearby content context: {contextSnippet}.
-Article summary: {excerpt}. Style: clean, professional... This image must be highly relevant
-to the exact paragraph or section described above...
-MANDATORY IMAGE RULES (always enforced, cannot be overridden):
-1. Absolutely NO Hindi text...
-[all 9 rules]
-```
+The plan will verify real-world output shapes during implementation by logging the first processed article's raw response for inspection.
 
-## What does NOT change
+## Audit Strategy (No Migration)
 
-- No frontend files modified
-- No model routing logic modified
-- No storage or DB changes
-- No other edge functions affected (resource images, board result images have their own separate flows)
+- Per-field: `blog_ai_audit_log` table (tool_name = 'bulk_auto_fix')
+- Per-article: `blog_ai_telemetry` table (event_name = 'bulk_auto_fix_complete')
+- `blog_posts.ai_fixed_at` stamped only when ≥1 fix applied
+
+## What Does NOT Change
+
+- Edge function `analyze-blog-compliance-fixes`
+- Single-article "Fix All by AI" flow in BlogAITools (still uses TipTap)
+- Database schema
+- No new tables or columns
 

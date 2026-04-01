@@ -14,6 +14,7 @@ import {
   detectInlineSlots, insertInlineImage, getContextForSlot,
   buildArticleImagesMetadata, isInvalidImageUrl,
 } from '@/lib/blogInlineImages';
+import { getModelDef } from '@/lib/aiModels';
 
 interface PendingActionsPanelProps {
   blogTextModel: string;

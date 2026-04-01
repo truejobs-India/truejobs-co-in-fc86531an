@@ -1,87 +1,74 @@
 
 
-# Blog Image Cleanup — Two Separate Admin Functions (Revised)
+# Fix Blog Image Cleanup — Use Existing Article Table
 
-## Overview
+## Problem
+The current `BlogImageCleanup` component has its own separate article list with search and checkboxes. The user wants to use the **existing article table** in `BlogPostEditor.tsx` instead, with two direct action buttons.
 
-Two separate, isolated admin functions for safely deleting blog images for selected articles. One for cover images, one for inline images. Both support mandatory dry-run audit before actual deletion.
+## Changes
 
-## Architecture
+### File 1: `src/components/admin/BlogPostEditor.tsx`
 
-New component `BlogImageCleanup.tsx` in `src/components/admin/blog/`, rendered as a collapsible section in `BlogPostEditor.tsx`. Provides article multi-select, two separate audit buttons, dry-run display, and confirmed delete actions.
+**Add selection state:**
+- Add `selectedPostIds` as a `Set<string>` state
+- Add `imageCleanupLoading` state for tracking deletion progress
 
-### Shared Utility
+**Add checkbox column to the existing article table (line ~1773):**
+- Add a `<TableHead>` with a select-all checkbox as the first column
+- Add a `<TableCell>` with per-row checkboxes to each `paginatedPosts.map()` row
+- Select-all toggles all currently visible (filtered) posts
 
-```typescript
-function extractStoragePath(publicUrl: string): string | null {
-  const marker = '/blog-assets/';
-  const idx = publicUrl.indexOf(marker);
-  return idx === -1 ? null : publicUrl.substring(idx + marker.length);
-}
-```
+**Add two action buttons above the table (near line ~1770):**
+- "Delete Cover Images (N)" — destructive variant, disabled when no posts selected or loading
+- "Delete Inline Images (N)" — destructive variant, disabled when no posts selected or loading
+- Each button triggers an `AlertDialog` confirmation before executing
+- Show selected count in button label
 
-## Function 1: Delete Cover Images
+**Add deletion logic (imported from cleaned-up BlogImageCleanup utilities):**
+- `handleDeleteCoverImages`: For each selected post that has a `cover_image_url`, extract storage path, delete from storage, then set `cover_image_url = null` and `featured_image_alt = null` in DB. Show toast with results.
+- `handleDeleteInlineImages`: For each selected post, collect inline URLs from `article_images` and content HTML, delete from storage, clean `article_images` JSON, remove matching `<figure>`/`<img>` from content. Show toast with results.
 
-**Input:** Array of blog post IDs
+Both functions use the same safe utilities already in `BlogImageCleanup.tsx`: `extractStoragePath`, `extractInlineUrlsFromContent`, `removeInlineImageFromContent`.
 
-**Dry-run output shape:**
+### File 2: `src/components/admin/blog/BlogImageCleanup.tsx`
 
-| Post ID | Slug | Cover URL | Storage Path | File Exists |
-|---------|------|-----------|-------------|-------------|
+- Export the three utility functions (`extractStoragePath`, `extractInlineUrlsFromContent`, `removeInlineImageFromContent`) so they can be imported by `BlogPostEditor.tsx`
+- Remove the entire component UI (the collapsible panel with its own article list, audit tables, etc.)
+- Keep the file as a utility-only module, or move utilities to a small helper file
 
-**Delete logic:**
-1. `supabase.storage.from('blog-assets').remove([storagePath])` for each verified match
-2. Set `cover_image_url = null`, `featured_image_alt = null` for matched posts
-3. Does NOT touch: inline images, `article_images`, `content` HTML
+### File 3: Remove `BlogImageCleanup` component usage
 
-## Function 2: Delete Inline Images
-
-**Input:** Array of blog post IDs
-
-**Dry-run output shape:**
-
-| Post ID | Slug | Inline URL | Storage Path | File Exists | Reference Source |
-|---------|------|-----------|-------------|-------------|-----------------|
-
-The **Reference Source** column shows where the inline image was found: `article_images`, `content`, or `both`. This is derived during audit by checking whether the URL appears in the `article_images.inline` JSON array, in `<img>` tags within `content` HTML, or in both locations.
-
-**Delete logic:**
-1. `supabase.storage.from('blog-assets').remove([storagePath])` for each verified match
-2. Remove matching entries from `article_images.inline` array
-3. Remove `<figure data-inline-slot="N">` blocks (or standalone `<img>` tags) from `content` where `src` matches deleted URL
-4. Does NOT touch: cover images, `cover_image_url`, `featured_image_alt`
+- Remove the `<BlogImageCleanup />` render from `BlogPostEditor.tsx` (line ~1474)
+- Remove or update the import
 
 ## UI Flow
 
 ```text
-[Image Cleanup] (collapsible)
-  ┌─ Search articles... ──────────────────────────┐
-  │ ☑ ssc-cgl-2026-notification    (has cover ✓)  │
-  │ ☑ upsc-preparation-tips        (has cover ✓)  │
-  │ ☐ railway-group-d-vacancy      (no cover)     │
-  └────────────────────────────────────────────────┘
-  [Audit Cover Images]  [Audit Inline Images]
-  
-  ── Dry-Run: Inline Images ───────────────────────
-  | Slug                      | Storage Path          | Exists | Ref Source      |
-  | ssc-cgl-2026-notification | inline/ssc-...-s1.png | Yes    | both            |
-  | ssc-cgl-2026-notification | inline/ssc-...-s2.png | Yes    | article_images  |
-  Total: 2 inline images to delete
-  [Confirm Delete Inline Images]
+Existing article table:
+┌──┬─────────────────────────┬────────┬───────┬─────┬─────┬───────┬───────┬─────────┬─────────┐
+│☑ │ Title                   │ Status │ Words │ Qly │ SEO │ Cover │Inline │ Updated │ Actions │
+├──┼─────────────────────────┼────────┼───────┼─────┼─────┼───────┼───────┼─────────┼─────────┤
+│☑ │ SSC CGL 2026...         │ Draft  │ 1200  │ 75  │ 80  │  ✓    │  2/2  │ 2h ago  │ ...     │
+│☑ │ UPSC Preparation...     │ Draft  │ 900   │ 65  │ 70  │  ✓    │  1/2  │ 3h ago  │ ...     │
+│☐ │ Railway Group D...      │ Pub    │ 1500  │ 82  │ 85  │  ✓    │  2/2  │ 1d ago  │ ...     │
+└──┴─────────────────────────┴────────┴───────┴─────┴─────┴───────┴───────┴─────────┴─────────┘
+
+  [🗑 Delete Cover Images (2)]  [🗑 Delete Inline Images (2)]    ← only when selection > 0
 ```
+
+Clicking either button shows a confirmation dialog, then executes the deletion and refreshes the post list.
+
+## Safety
+
+- Confirmation dialog required before any deletion
+- Only selected posts are affected
+- Cover delete never touches inline images and vice versa
+- Storage path validation (`covers/` or `inline/` prefix) preserved
+- Toast reports exact counts of deleted files and cleaned DB records
+- Post list auto-refreshes after deletion
 
 ## Files Changed
 
-1. **`src/components/admin/blog/BlogImageCleanup.tsx`** — New component with both cleanup functions, article selector, dry-run display with reference source column for inline, and confirmed delete actions
-2. **`src/components/admin/BlogPostEditor.tsx`** — Import and render `BlogImageCleanup` in toolbar area
-
-## Safety Guarantees
-
-- Cover and inline functions are completely separate — no shared delete path
-- Dry-run is mandatory before delete
-- Only selected article IDs are queried
-- Storage path must start with `covers/` (function 1) or `inline/` (function 2)
-- Missing storage files reported; DB references still cleaned if ownership is certain
-- Published status never changed
-- No changes to public rendering, SEO, AdSense, or sitemaps beyond cleaning broken image URLs
+1. `src/components/admin/BlogPostEditor.tsx` — add checkboxes, selection state, two delete buttons with confirmation, deletion logic
+2. `src/components/admin/blog/BlogImageCleanup.tsx` — convert to utility-only exports, remove component UI
 

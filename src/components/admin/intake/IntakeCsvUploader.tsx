@@ -343,12 +343,27 @@ export function IntakeCsvUploader({ onImportComplete }: { onImportComplete?: (im
           continue;
         }
 
+        // Skip exact URL duplicates against published tables
+        if (mapped.source_url && publishedUrlSet.has(normalizeUrl(mapped.source_url))) {
+          stats.skippedPublishedDupes++;
+          continue;
+        }
+
         const tags = detectTags(mapped.raw_title || '', mapped.raw_text || '', mapped.raw_file_url || '');
 
         if (mapped.raw_title && mapped.source_domain) {
           const titleDomainKey = `${normalizeTitle(mapped.raw_title)}||${mapped.source_domain.toLowerCase()}`;
           if (existingTitleDomains.has(titleDomainKey)) { tags.push('duplicate_risk'); stats.taggedDuplicateRisk++; }
           existingTitleDomains.add(titleDomainKey);
+        }
+
+        // Tag exact identifier matches against published items (conservative: no fuzzy)
+        if (mapped.raw_title && mapped.source_domain) {
+          const pubIdKey = `${normalizeTitle(mapped.raw_title)}||${normalizeTitle(mapped.source_domain)}`;
+          if (publishedIdentifierSet.has(pubIdKey)) {
+            tags.push('published_duplicate_risk');
+            stats.taggedPublishedDupeRisk++;
+          }
         }
 
         if (tags.includes('generic_title')) stats.taggedGenericTitle++;

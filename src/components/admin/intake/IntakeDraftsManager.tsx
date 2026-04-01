@@ -382,6 +382,11 @@ export function IntakeDraftsManager() {
               return (
                 <TableRow key={d.id}>
                   <TableCell>
+                    <Checkbox
+                      checked={selectedIds.has(d.id)}
+                      onCheckedChange={() => toggleSelect(d.id)}
+                    />
+                  </TableCell>
                     {d.primary_status ? (
                       <Badge className={`text-[10px] ${STATUS_COLORS[d.primary_status] || ''}`}>
                         {d.primary_status.replace('_', ' ')}

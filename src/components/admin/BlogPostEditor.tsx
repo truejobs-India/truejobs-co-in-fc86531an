@@ -266,6 +266,7 @@ export function BlogPostEditor() {
   // Bulk Fix All by AI — autonomous pipeline
   const bulkAutoFix = useBulkAutoFix(posts, blogTextModel, fetchPosts);
 
+  const resetForm = () => {
     setFormData({
       title: '', slug: '', content: '', excerpt: '',
       cover_image_url: '', featured_image_alt: '', is_published: false,

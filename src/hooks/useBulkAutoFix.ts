@@ -187,8 +187,27 @@ export function useBulkAutoFix(
         continue; // Don't add to items — it's clean
       }
 
+      // Split into actionable (auto-fixable) vs non-actionable
+      const { actionable, nonActionable } = splitActionableChecks(failedChecks);
+
+      if (actionable.length === 0) {
+        // Has issues but none are auto-fixable by this tool
+        items.push({
+          postId: post.id,
+          slug: post.slug,
+          title: post.title,
+          classification: 'skipped',
+          failCount: failedChecks.filter(c => c.status === 'fail').length,
+          warnCount: failedChecks.filter(c => c.status === 'warn').length,
+          issuesByType: {},
+          skipReason: `${nonActionable.length} issue(s) require manual review (e.g. ${nonActionable[0]?.key})`,
+        });
+        skippedCount++;
+        continue;
+      }
+
       const byType: Record<string, number> = {};
-      for (const c of failedChecks) {
+      for (const c of actionable) {
         byType[c.key] = (byType[c.key] || 0) + 1;
         issueBreakdown[c.key] = (issueBreakdown[c.key] || 0) + 1;
       }
@@ -198,8 +217,8 @@ export function useBulkAutoFix(
         slug: post.slug,
         title: post.title,
         classification: 'fixable',
-        failCount: failedChecks.filter(c => c.status === 'fail').length,
-        warnCount: failedChecks.filter(c => c.status === 'warn').length,
+        failCount: actionable.filter(c => c.status === 'fail').length,
+        warnCount: actionable.filter(c => c.status === 'warn').length,
         issuesByType: byType,
       });
     }

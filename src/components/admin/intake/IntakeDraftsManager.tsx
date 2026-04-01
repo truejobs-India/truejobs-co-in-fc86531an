@@ -95,7 +95,7 @@ function filterDrafts(drafts: IntakeDraft[], tab: TabKey, searchQuery: string): 
       break;
     case 'low_confidence':
       filtered = drafts.filter(d =>
-        d.processing_status === 'ai_processed' &&
+        (d.processing_status === 'ai_processed' || d.processing_status === 'publish_failed') &&
         d.primary_status !== 'reject' &&
         isLowConfidence(d)
       );

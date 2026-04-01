@@ -353,6 +353,12 @@ export function IntakeDraftsManager() {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-10">
+                <Checkbox
+                  checked={selectedIds.size === drafts.length && drafts.length > 0}
+                  onCheckedChange={toggleAll}
+                />
+              </TableHead>
               <TableHead className="text-xs">Status</TableHead>
               <TableHead className="text-xs">Target</TableHead>
               <TableHead className="text-xs">Type</TableHead>

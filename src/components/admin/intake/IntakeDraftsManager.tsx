@@ -372,9 +372,9 @@ export function IntakeDraftsManager() {
           </TableHeader>
           <TableBody>
             {loading ? (
-              <TableRow><TableCell colSpan={9} className="text-center py-8"><Loader2 className="h-5 w-5 animate-spin mx-auto" /></TableCell></TableRow>
+              <TableRow><TableCell colSpan={10} className="text-center py-8"><Loader2 className="h-5 w-5 animate-spin mx-auto" /></TableCell></TableRow>
             ) : drafts.length === 0 ? (
-              <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">No drafts found</TableCell></TableRow>
+              <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">No drafts found</TableCell></TableRow>
             ) : drafts.map(d => {
               const title = (d as any).normalized_title || d.raw_title || '(no title)';
               const tags = Array.isArray(d.secondary_tags) ? d.secondary_tags : [];

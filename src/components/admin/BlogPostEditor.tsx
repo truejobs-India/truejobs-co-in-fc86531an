@@ -2294,7 +2294,7 @@ export function BlogPostEditor() {
             <div className="grid grid-cols-4 gap-2 text-center">
               <div className="bg-muted rounded p-2"><div className="text-lg font-bold">{bulkAutoFix.scanReport.totalScanned}</div><div className="text-[10px] text-muted-foreground">Scanned</div></div>
               <div className="bg-green-500/10 rounded p-2"><div className="text-lg font-bold text-green-700 dark:text-green-400">{bulkAutoFix.scanReport.totalClean}</div><div className="text-[10px] text-muted-foreground">Clean</div></div>
-              <div className="bg-primary/10 rounded p-2"><div className="text-lg font-bold text-primary">{bulkAutoFix.scanReport.totalFixable}</div><div className="text-[10px] text-muted-foreground">Fixable</div></div>
+              <div className="bg-primary/10 rounded p-2"><div className="text-lg font-bold text-primary">{bulkAutoFix.scanReport.totalFixable}</div><div className="text-[10px] text-muted-foreground">Auto-Fixable</div></div>
               <div className="bg-muted rounded p-2"><div className="text-lg font-bold">{bulkAutoFix.scanReport.totalSkipped}</div><div className="text-[10px] text-muted-foreground">Skipped</div></div>
             </div>
             {Object.keys(bulkAutoFix.scanReport.issueBreakdown).length > 0 && (

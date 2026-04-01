@@ -2274,7 +2274,7 @@ export function BlogPostEditor() {
           <DialogTitle className="flex items-center gap-2"><Sparkles className="h-4 w-4" /> Scan & Auto-Fix by AI</DialogTitle>
           <DialogDescription>
             {bulkAutoFix.phase === 'scanning' && 'Scanning articles for compliance issues…'}
-            {bulkAutoFix.phase === 'scanned' && bulkAutoFix.scanReport && `${bulkAutoFix.scanReport.totalFixable} fixable, ${bulkAutoFix.scanReport.totalClean} clean, ${bulkAutoFix.scanReport.totalSkipped} skipped out of ${bulkAutoFix.scanReport.totalScanned} scanned.`}
+            {bulkAutoFix.phase === 'scanned' && bulkAutoFix.scanReport && `${bulkAutoFix.scanReport.totalFixable} auto-fixable, ${bulkAutoFix.scanReport.totalClean} clean, ${bulkAutoFix.scanReport.totalSkipped} skipped out of ${bulkAutoFix.scanReport.totalScanned} scanned.`}
             {bulkAutoFix.phase === 'fixing' && `Fixing ${bulkAutoFix.progress.done}/${bulkAutoFix.progress.total}…`}
             {bulkAutoFix.phase === 'done' && bulkAutoFix.summary && `Complete — ${bulkAutoFix.summary.totalFixed} fixed, ${bulkAutoFix.summary.totalPartial} partial, ${bulkAutoFix.summary.totalSkipped} skipped, ${bulkAutoFix.summary.totalFailed} failed.`}
           </DialogDescription>
@@ -2294,7 +2294,7 @@ export function BlogPostEditor() {
             <div className="grid grid-cols-4 gap-2 text-center">
               <div className="bg-muted rounded p-2"><div className="text-lg font-bold">{bulkAutoFix.scanReport.totalScanned}</div><div className="text-[10px] text-muted-foreground">Scanned</div></div>
               <div className="bg-green-500/10 rounded p-2"><div className="text-lg font-bold text-green-700 dark:text-green-400">{bulkAutoFix.scanReport.totalClean}</div><div className="text-[10px] text-muted-foreground">Clean</div></div>
-              <div className="bg-primary/10 rounded p-2"><div className="text-lg font-bold text-primary">{bulkAutoFix.scanReport.totalFixable}</div><div className="text-[10px] text-muted-foreground">Fixable</div></div>
+              <div className="bg-primary/10 rounded p-2"><div className="text-lg font-bold text-primary">{bulkAutoFix.scanReport.totalFixable}</div><div className="text-[10px] text-muted-foreground">Auto-Fixable</div></div>
               <div className="bg-muted rounded p-2"><div className="text-lg font-bold">{bulkAutoFix.scanReport.totalSkipped}</div><div className="text-[10px] text-muted-foreground">Skipped</div></div>
             </div>
             {Object.keys(bulkAutoFix.scanReport.issueBreakdown).length > 0 && (
@@ -2333,7 +2333,7 @@ export function BlogPostEditor() {
 
         {bulkAutoFix.phase === 'scanned' && bulkAutoFix.scanReport && bulkAutoFix.scanReport.totalFixable === 0 && (
           <div className="text-center py-6 text-sm text-muted-foreground">
-            ✅ All articles pass compliance — no fixes needed.
+            ✅ All articles pass auto-fixable checks — no fixes needed. Some may still have manual-only warnings.
           </div>
         )}
 

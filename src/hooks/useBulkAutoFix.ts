@@ -39,6 +39,25 @@ import {
   MAX_AUTO_LINKS,
 } from '@/lib/blogFixUtils';
 
+// ── Check keys that this bulk pipeline can actually auto-fix ──
+const AUTO_FIXABLE_CHECK_KEYS = new Set([
+  'meta-title', 'meta-description', 'missing-canonical', 'missing-slug',
+  'excerpt', 'image-alt', 'missing-author',
+  'h1-present', 'heading-hierarchy', 'faq-schema',
+  'seo-meta-title', 'seo-meta-description', 'seo-internal-links',
+  'seo-headings', 'seo-excerpt/summary',
+]);
+
+function splitActionableChecks<T extends { key: string; status: string }>(checks: T[]) {
+  const actionable: T[] = [];
+  const nonActionable: T[] = [];
+  for (const c of checks) {
+    if (AUTO_FIXABLE_CHECK_KEYS.has(c.key)) actionable.push(c);
+    else nonActionable.push(c);
+  }
+  return { actionable, nonActionable };
+}
+
 // ── Types ──
 
 export type BulkAutoFixPhase = 'idle' | 'scanning' | 'scanned' | 'fixing' | 'done';
@@ -187,8 +206,27 @@ export function useBulkAutoFix(
         continue; // Don't add to items — it's clean
       }
 
+      // Split into actionable (auto-fixable) vs non-actionable
+      const { actionable, nonActionable } = splitActionableChecks(failedChecks);
+
+      if (actionable.length === 0) {
+        // Has issues but none are auto-fixable by this tool
+        items.push({
+          postId: post.id,
+          slug: post.slug,
+          title: post.title,
+          classification: 'skipped',
+          failCount: failedChecks.filter(c => c.status === 'fail').length,
+          warnCount: failedChecks.filter(c => c.status === 'warn').length,
+          issuesByType: {},
+          skipReason: `${nonActionable.length} issue(s) require manual review (e.g. ${nonActionable[0]?.key})`,
+        });
+        skippedCount++;
+        continue;
+      }
+
       const byType: Record<string, number> = {};
-      for (const c of failedChecks) {
+      for (const c of actionable) {
         byType[c.key] = (byType[c.key] || 0) + 1;
         issueBreakdown[c.key] = (issueBreakdown[c.key] || 0) + 1;
       }
@@ -198,8 +236,8 @@ export function useBulkAutoFix(
         slug: post.slug,
         title: post.title,
         classification: 'fixable',
-        failCount: failedChecks.filter(c => c.status === 'fail').length,
-        warnCount: failedChecks.filter(c => c.status === 'warn').length,
+        failCount: actionable.filter(c => c.status === 'fail').length,
+        warnCount: actionable.filter(c => c.status === 'warn').length,
         issuesByType: byType,
       });
     }
@@ -332,7 +370,17 @@ async function processOneArticle(
 
   const meta = blogPostToMetadata(post);
   const compliance = analyzePublishCompliance(meta);
-  const failedChecks = compliance.checks.filter(c => c.status === 'fail' || c.status === 'warn');
+  const allFailedChecks = compliance.checks.filter(c => c.status === 'fail' || c.status === 'warn');
+  
+  // Only send actionable (auto-fixable) issues to the AI
+  const { actionable: failedChecks } = splitActionableChecks(allFailedChecks);
+  
+  if (failedChecks.length === 0) {
+    return {
+      postId: post.id, slug: post.slug, title: post.title,
+      status: 'skipped', issuesFound: 0, fixesApplied: [], fixesSkipped: [],
+    };
+  }
 
   // Call the edge function
   const { data, error } = await supabase.functions.invoke('analyze-blog-compliance-fixes', {

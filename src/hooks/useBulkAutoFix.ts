@@ -39,6 +39,25 @@ import {
   MAX_AUTO_LINKS,
 } from '@/lib/blogFixUtils';
 
+// ── Check keys that this bulk pipeline can actually auto-fix ──
+const AUTO_FIXABLE_CHECK_KEYS = new Set([
+  'meta-title', 'meta-description', 'missing-canonical', 'missing-slug',
+  'excerpt', 'image-alt', 'missing-author',
+  'h1-present', 'heading-hierarchy', 'faq-schema',
+  'seo-meta-title', 'seo-meta-description', 'seo-internal-links',
+  'seo-headings', 'seo-excerpt/summary',
+]);
+
+function splitActionableChecks(checks: Array<{ key: string; status: string }>) {
+  const actionable: typeof checks = [];
+  const nonActionable: typeof checks = [];
+  for (const c of checks) {
+    if (AUTO_FIXABLE_CHECK_KEYS.has(c.key)) actionable.push(c);
+    else nonActionable.push(c);
+  }
+  return { actionable, nonActionable };
+}
+
 // ── Types ──
 
 export type BulkAutoFixPhase = 'idle' | 'scanning' | 'scanned' | 'fixing' | 'done';

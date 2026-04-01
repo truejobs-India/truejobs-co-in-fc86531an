@@ -388,7 +388,7 @@ export function IntakeCsvUploader({ onImportComplete }: { onImportComplete?: (im
       }
 
       setSummary(stats);
-      toast({ title: 'Import Complete', description: `${stats.imported} rows imported, ${stats.skippedExactDupes} exact dupes skipped` });
+      toast({ title: 'Import Complete', description: `${stats.imported} imported, ${stats.skippedExactDupes} draft dupes skipped, ${stats.skippedPublishedDupes} published dupes skipped` });
       onImportComplete?.(allInsertedIds, scrapeRunId);
     } catch (err) {
       console.error('Import error:', err);

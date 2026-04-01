@@ -264,6 +264,16 @@ export default function BlogPostPage() {
 
   return (
     <Layout>
+      {isPreview && (
+        <>
+          <Helmet>
+            <meta name="robots" content="noindex, nofollow" />
+          </Helmet>
+          <div className="bg-amber-500 text-white text-center py-2 text-sm font-medium">
+            ⚠️ Preview Mode — This article is not published yet
+          </div>
+        </>
+      )}
       <SEO 
         title={post.meta_title || post.title}
         description={post.meta_description || post.excerpt || ''}
@@ -275,6 +285,7 @@ export default function BlogPostPage() {
         author={post.author_name || 'TrueJobs Editorial Team'}
         articleSection={post.category || 'Career Advice'}
         articleTags={post.tags || undefined}
+        {...(isPreview ? { noindex: true } : {})}
       />
 
       {/* Additional structured data */}

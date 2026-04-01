@@ -132,12 +132,29 @@ export function useBulkAutoFix(
 
   // ── Phase 1: Scan ──
   const scanAll = useCallback(async (targetPosts?: BlogPost[]) => {
-    const postsToScan = targetPosts && targetPosts.length > 0 ? targetPosts : allPosts;
     setShowDialog(true);
     setPhase('scanning');
     setScanReport(null);
     setResults([]);
     stopRef.current = false;
+
+    // Always fetch fresh data from DB to avoid stale counts
+    let postsToScan: BlogPost[];
+    if (targetPosts && targetPosts.length > 0) {
+      postsToScan = targetPosts;
+    } else {
+      // Refresh parent state + fetch fresh from DB
+      fetchPosts();
+      const { data: freshPosts, error: fetchErr } = await supabase
+        .from('blog_posts')
+        .select('id, title, slug, content, excerpt, cover_image_url, featured_image_alt, is_published, meta_title, meta_description, canonical_url, author_name, faq_count, has_faq_schema, faq_schema, internal_links, word_count');
+      if (fetchErr || !freshPosts) {
+        console.error('[BULK_AUTO_FIX] Failed to fetch fresh posts:', fetchErr);
+        postsToScan = allPosts; // fallback to in-memory
+      } else {
+        postsToScan = freshPosts as BlogPost[];
+      }
+    }
 
     const items: ScanItem[] = [];
     const issueBreakdown: Record<string, number> = {};
@@ -198,7 +215,7 @@ export function useBulkAutoFix(
 
     setScanReport(report);
     setPhase('scanned');
-  }, [allPosts]);
+  }, [allPosts, fetchPosts]);
 
   // ── Phase 2: Execute Auto-Fix ──
   const executeAutoFix = useCallback(async () => {
@@ -230,7 +247,13 @@ export function useBulkAutoFix(
       }
 
       const item = fixableItems[i];
-      const post = allPosts.find(p => p.id === item.postId);
+      // Fetch fresh post data from DB for each article to avoid stale content
+      const { data: freshPost, error: fetchErr } = await supabase
+        .from('blog_posts')
+        .select('*')
+        .eq('id', item.postId)
+        .single();
+      const post = fetchErr || !freshPost ? allPosts.find(p => p.id === item.postId) : freshPost as BlogPost;
       if (!post) {
         allResults.push({
           postId: item.postId, slug: item.slug, title: item.title,

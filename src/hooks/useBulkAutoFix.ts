@@ -247,7 +247,13 @@ export function useBulkAutoFix(
       }
 
       const item = fixableItems[i];
-      const post = allPosts.find(p => p.id === item.postId);
+      // Fetch fresh post data from DB for each article to avoid stale content
+      const { data: freshPost, error: fetchErr } = await supabase
+        .from('blog_posts')
+        .select('*')
+        .eq('id', item.postId)
+        .single();
+      const post = fetchErr || !freshPost ? allPosts.find(p => p.id === item.postId) : freshPost as BlogPost;
       if (!post) {
         allResults.push({
           postId: item.postId, slug: item.slug, title: item.title,

@@ -27,6 +27,7 @@ const GATEWAY_IMAGE_MODELS: Record<string, string> = {
   'gemini-flash-image': 'google/gemini-2.5-flash-image',
   'gemini-pro-image': 'google/gemini-3-pro-image-preview',
   'gemini-flash-image-2': 'google/gemini-3.1-flash-image-preview',
+  'vertex-3.1-flash-image': 'google/gemini-3.1-flash-image-preview',
   'vertex-3-pro-image': '__vertex_direct__',
 };
 // Must stay aligned with image-capable models in src/lib/aiModels.ts

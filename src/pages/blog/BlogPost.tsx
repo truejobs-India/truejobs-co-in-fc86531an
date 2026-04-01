@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Layout } from '@/components/layout/Layout';
 import { SEO } from '@/components/SEO';
 import { Badge } from '@/components/ui/badge';
@@ -53,10 +53,12 @@ interface BlogPostData {
 
 export default function BlogPostPage() {
   const { slug } = useParams<{ slug: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [post, setPost] = useState<BlogPostData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isPreview, setIsPreview] = useState(false);
 
   useEffect(() => {
     if (!slug) return;
@@ -77,12 +79,21 @@ export default function BlogPostPage() {
 
   const fetchPost = async () => {
     setIsLoading(true);
-    const { data, error } = await supabase
+    const previewId = searchParams.get('preview');
+
+    let query = supabase
       .from('blog_posts')
       .select('*')
-      .eq('slug', slug)
-      .eq('is_published', true)
-      .single();
+      .eq('slug', slug as string);
+
+    // Only filter by is_published when NOT in preview mode
+    if (!previewId) {
+      query = query.eq('is_published', true);
+    }
+
+    const { data, error } = await query.maybeSingle();
+
+    if (previewId) setIsPreview(true);
 
     if (error || !data) {
       setIsLoading(false);
@@ -253,6 +264,16 @@ export default function BlogPostPage() {
 
   return (
     <Layout>
+      {isPreview && (
+        <>
+          <Helmet>
+            <meta name="robots" content="noindex, nofollow" />
+          </Helmet>
+          <div className="bg-amber-500 text-white text-center py-2 text-sm font-medium">
+            ⚠️ Preview Mode — This article is not published yet
+          </div>
+        </>
+      )}
       <SEO 
         title={post.meta_title || post.title}
         description={post.meta_description || post.excerpt || ''}
@@ -264,6 +285,7 @@ export default function BlogPostPage() {
         author={post.author_name || 'TrueJobs Editorial Team'}
         articleSection={post.category || 'Career Advice'}
         articleTags={post.tags || undefined}
+        {...(isPreview ? { noindex: true } : {})}
       />
 
       {/* Additional structured data */}

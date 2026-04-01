@@ -1,76 +1,108 @@
 
 
-# Final Cleanup & Hardening Pass — Bulk Auto-Fix
+# Updated Blog Image Prompt Policy — Exact Final Wording
 
-## 1. DRY Refactor: BlogAITools.tsx
+## Single file changed
 
-**File:** `src/components/admin/blog/BlogAITools.tsx`
+`supabase/functions/_shared/blog-image-prompt-policy.ts`
 
-### Functions to replace with imports from `@/lib/blogFixUtils`
+## Exact final file content
 
-All of these are duplicated verbatim or near-verbatim and can be replaced by imports:
+```typescript
+/**
+ * Blog Image Prompt Policy — Single Source of Truth
+ *
+ * Every blog image generation path (cover, inline, bulk, regeneration)
+ * MUST use these builders. No edge function may construct blog image
+ * prompts independently. Custom user prompts are folded in as
+ * "Additional context" and can never bypass or replace the mandatory rules.
+ */
 
-| Function/Constant | Lines (approx) | Notes |
+export const BLOG_IMAGE_MANDATORY_RULES = `
+
+MANDATORY IMAGE RULES (always enforced, cannot be overridden):
+1. Generate PHOTOREALISTIC, true-to-life, editorial-quality images by default. Use realistic lighting, realistic textures, realistic depth of field, and natural color grading as in professional magazine or newspaper photography.
+2. Do NOT generate vector art, flat illustration, cartoon, infographic, poster, sketch, clipart, icon-style, or stylized explainer artwork unless the prompt explicitly requests a non-realistic style.
+3. Do NOT create poster-style explainer layouts, diagram boards, educational infographic scenes, labeled panels, or text-heavy compositions unless explicitly requested.
+4. Prefer realistic human-centered scenes in believable real environments over symbolic, graphic-style, or abstract compositions.
+5. Prefer cinematic but natural realism over symbolic or graphic-style composition. Avoid generic business illustration composition even when the topic is informational.
+6. Absolutely NO Hindi text, Hinglish text, Devanagari script, or any Indic script anywhere in the image.
+7. If any text is required, it MUST be in English only.
+8. Strongly prefer images with NO visible text at all unless text is truly necessary.
+9. Never use Hindi fonts, Devanagari, or any Indic script in any form.
+10. Where human subjects are appropriate, depict young Indian men and young Indian women with youthful appearance, very fair complexion, beautiful and handsome features, polished, aspirational, premium look. Use realistic facial detail, realistic skin texture, realistic clothing, realistic posture, and realistic environments. Do NOT use simplified faces, cartoon faces, flat facial features, or low-detail human rendering.
+11. The image must be highly relevant to the specific article topic and context provided.
+12. Avoid generic stock-style scenes that do not match the article context.
+13. Do NOT include any text overlays, watermarks, official government seals, emblems, logos, or misleading official symbols.
+14. Use warm, professional colors suitable for an Indian government jobs and exam preparation portal.`;
+
+/**
+ * Build the final prompt for a blog COVER / FEATURED image.
+ *
+ * `body.prompt` is treated as additional context only — it can never
+ * replace the base prompt or skip the mandatory rules.
+ */
+export function buildBlogCoverPrompt(body: {
+  title?: string;
+  topic?: string;
+  category?: string;
+  tags?: string[];
+  excerpt?: string;
+  prompt?: string;
+  visualStyle?: string;
+  brandGuidelines?: string;
+}): string {
+  const title = body.title || body.topic || 'Government Jobs in India';
+  const category = body.category || 'Government Jobs';
+  const tags = Array.isArray(body.tags) ? body.tags.join(', ') : '';
+  const style = body.visualStyle || 'photorealistic editorial image';
+  const brand = body.brandGuidelines || '';
+  const customContext = body.prompt
+    ? ` Additional context: ${body.prompt}.`
+    : '';
+
+  const base = `Create a clean, professional ${style} for a blog article titled "${title}" about ${category}.${tags ? ` Related topics: ${tags}.` : ''}${brand ? ` Brand guidelines: ${brand}.` : ''}${body.excerpt ? ` Article summary: ${body.excerpt.substring(0, 200)}.` : ''}${customContext}`;
+
+  return base + BLOG_IMAGE_MANDATORY_RULES;
+}
+
+/**
+ * Build the final prompt for a blog INLINE image.
+ *
+ * The prompt is always section-specific and always ends with the
+ * mandatory rules. No bypass is possible.
+ */
+export function buildBlogInlinePrompt(body: {
+  title?: string;
+  category?: string;
+  contextSnippet?: string;
+  nearbyHeading?: string;
+  slotNumber?: number;
+  excerpt?: string;
+}): string {
+  const title = body.title || 'Government Jobs';
+  const category = body.category || 'Government Jobs';
+  const contextSnippet = body.contextSnippet || '';
+  const nearbyHeading = body.nearbyHeading || '';
+  const slotNumber = body.slotNumber || 1;
+
+  const sectionContext = nearbyHeading
+    ? `for a section about "${nearbyHeading}"`
+    : `for section ${slotNumber} of the article`;
+
+  const base = `Create a contextual photorealistic editorial image ${sectionContext} in a blog article titled "${title}" about ${category}. ${contextSnippet ? `Nearby content context: ${contextSnippet.substring(0, 250)}.` : ''}${body.excerpt ? ` Article summary: ${body.excerpt.substring(0, 150)}.` : ''} Style: photorealistic, editorial-quality image suitable for inline blog placement. Do not use illustration, vector, or infographic style. Aspect ratio 4:3. This image must be highly relevant to the exact paragraph or section described above, not just broadly relevant to the full article.`;
+
+  return base + BLOG_IMAGE_MANDATORY_RULES;
+}
+```
+
+## Summary of changes from current file
+
+| Location | Before | After |
 |---|---|---|
-| `EDITABLE_FIELDS` | 73 | Identical |
-| `APPLY_MODE_LEGACY_MAP` | 76-81 | Identical |
-| `normalizeApplyMode` | 83-86 | Identical |
-| `VALID_FIX_TYPES` | 89-95 | Identical |
-| `VALID_APPLY_MODES` | 96-100 | Identical |
-| `trackBlogToolEvent` | 103-111 | Identical |
-| `logBlogAiAudit` | 113-126 | Identical |
-| `hasExistingIntro` | 143-149 | Identical |
-| `hasExistingConclusion` | 151-153 | Identical |
-| `contentBlockAlreadyExists` | 160-165 | Identical |
-| `hasFaqHeading` | 198-200 | Identical |
-| `MAX_AUTO_LINKS` | 203 | Identical |
-| `extractHrefsFromHtml` | 205-213 | Identical (already in blogFixUtils) |
-| `linkAlreadyInContent` | 215-218 | Identical |
-| `hasRelatedResourcesBlock` | 220-222 | Identical |
-| `sanitizeLinkBlockHtml` | 224-232 | Minor diff: BlogAITools allows `h3` only, blogFixUtils allows `h2-h4`. The blogFixUtils version is a superset — safe to use. |
-| `buildCleanLinkBlock` | 234-237 | Identical |
-| `isValidCanonicalUrl` | 240-258 | Identical |
-| `validateFieldValue` | 261-291 | Minor diff: blogFixUtils has extra keyword-stuffing + truncation checks. blogFixUtils is strictly better. |
-| `shouldAutoOverwriteField` | 294-316 | **Different signature**: BlogAITools has 2 params, blogFixUtils has 3 (with optional `context`). blogFixUtils is a superset — 2-arg calls work fine (context is optional). BUT: blogFixUtils also checks `isPlaceholderOrGeneric` for `featured_image_alt` and context-based dedup for `meta_title`/`excerpt`. These are **improvements**, not behavioral regressions. Safe to adopt. |
-| `validateFaqSchema` | 319-326 | Identical |
-| `normalizeComplianceFixes` | 168-195 | Identical (already exported from blogFixUtils) |
+| `BLOG_IMAGE_MANDATORY_RULES` | 9 rules, no photorealism directive, no anti-illustration clause | 14 rules with photorealism default (1), anti-vector (2), anti-poster/diagram (3), human-centered scenes preference (4), cinematic realism + anti-business-illustration (5), expanded human appearance spec (10) |
+| Line 42 default style | `'modern flat illustration'` | `'photorealistic editorial image'` |
+| Line 77 inline base | `"editorial illustration"`, `"infographic or illustration"` | `"photorealistic editorial image"`, `"Do not use illustration, vector, or infographic style."` |
 
-### Functions that stay in BlogAITools.tsx (not moveable)
-
-| Function | Reason |
-|---|---|
-| `insertBeforeFirstHeading(editor, html)` | Uses TipTap `Editor` instance — different from the raw string version in blogFixUtils. Single-article flow only. |
-| `sentenceAlreadyExists` | Only used in BlogAITools single-article flow. Could be moved but isn't duplicated in blogFixUtils, so leave for now. |
-| Status derivation functions (`deriveSeoStatus`, etc.) | UI-specific, not shared logic. |
-
-### Implementation
-
-Replace lines 72-326 in BlogAITools.tsx with a single import block from `@/lib/blogFixUtils`, keeping only `insertBeforeFirstHeading` and `sentenceAlreadyExists` as local functions. Update the one call site of `shouldAutoOverwriteField` at line 691 — it currently passes 2 args; after refactor it will still work since the third `context` param is optional. However, we should **enhance** it by passing context where available (the `formData` has `title` and `meta_description`).
-
-## 2. Post-Save Compliance Recheck
-
-**Decision: Intentionally NOT added.**
-
-Reasons:
-- `analyzePublishCompliance` requires a full `ArticleMetadata` object built by `blogPostToMetadata`. After the DB write, we'd need to reconstruct this from the modified in-memory post snapshot — the DB write already happened but `fetchPosts()` hasn't returned yet.
-- Running it for every article in a 20+ article batch adds ~50ms per article of synchronous computation, plus complexity to merge partial in-memory state with partial DB state.
-- The current result classification (`fixed`/`partially_fixed`/`skipped`/`failed`) is already **honest and deterministic** — it's based on exactly which fixes were applied vs skipped, not on a re-run score.
-- Adding a recheck that might disagree with the apply/skip counts would create confusing UX ("3 fixes applied but still showing issues").
-
-The current approach is simpler, faster, and more predictable. A recheck can be added later as a "verify" button in the summary if needed.
-
-## 3. Bulk-Mode Manual-Review Wording Check
-
-**Bulk flow (`useBulkAutoFix.ts` + bulk dialog in `BlogPostEditor.tsx`):** Verified clean. Zero occurrences of "review", "review required", "needs manual review", or "manual review" in the bulk auto-fix hook or bulk dialog.
-
-**Single-article flow:** Contains `reviewRequired` state and "Review Required" UI text. This is correct and expected — the single-article "Fix All by AI" flow (lines 1060-1141, dialog lines 2150-2220) is a separate flow that uses TipTap and is designed for interactive review. Not part of this cleanup scope.
-
-**One item in `blogFixUtils.ts` line 43:** `'review_replacement': 'Requires manual review — not supported in bulk mode'`. This is a **skip reason** (the fix is being skipped, not sent for review). The wording is technically safe since it explains WHY it's skipped, but it could be cleaner. Will change to: `'Not auto-applied in bulk mode — requires editor context'`.
-
-## 4. Files Changed
-
-1. **`src/components/admin/blog/BlogAITools.tsx`** — Remove ~250 lines of duplicated helpers, replace with imports from `@/lib/blogFixUtils`. Keep `insertBeforeFirstHeading` (TipTap-specific) and `sentenceAlreadyExists` local.
-2. **`src/lib/blogFixUtils.ts`** — Minor wording fix in `BULK_FORBIDDEN_APPLY_MODES` for `review_replacement`.
-
-No other files changed. `useBulkAutoFix.ts` and `BlogPostEditor.tsx` are untouched.
+No other files changed. All downstream consumers (cover, inline, bulk, regeneration edge functions) inherit automatically.
 

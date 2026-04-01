@@ -635,6 +635,16 @@ export function IntakeDraftsManager() {
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-wrap gap-0.5">
+                            {d.processing_status === 'publish_failed' && (
+                              <Badge variant="destructive" className="text-[9px] px-1 py-0" title={d.publish_error || 'Publish failed'}>
+                                Publish Failed
+                              </Badge>
+                            )}
+                            {d.processing_status === 'publish_failed' && d.publish_error && (
+                              <span className="text-[9px] text-destructive max-w-[120px] truncate" title={d.publish_error}>
+                                {d.publish_error.slice(0, 40)}
+                              </span>
+                            )}
                             {tags.slice(0, 3).map((t: string) => (
                               <Badge key={t} variant="outline" className="text-[9px] px-1 py-0">{t}</Badge>
                             ))}

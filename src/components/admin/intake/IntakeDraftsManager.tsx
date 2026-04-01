@@ -172,8 +172,15 @@ export function IntakeDraftsManager() {
     setProcessing(true);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) throw new Error('Not authenticated');
+      // Use refreshSession to ensure we have a valid, non-expired token
+      const { data: { session: refreshedSession } } = await supabase.auth.refreshSession();
+      const session = refreshedSession;
+      if (!session?.access_token) {
+        // Fallback to getSession if refresh fails (e.g. token still valid)
+        const { data: { session: fallbackSession } } = await supabase.auth.getSession();
+        if (!fallbackSession?.access_token) throw new Error('Not authenticated');
+        Object.assign(session || {}, fallbackSession);
+      }
 
       // Pass 1: Classify all imported rows
       let remainingIds = [...importedIds];

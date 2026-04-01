@@ -278,9 +278,9 @@ export function IntakeDraftsManager() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) throw new Error('Not authenticated');
 
+      // Set approved (edge function requires it)
       await supabase.from('intake_drafts').update({
         review_status: 'approved',
-        processing_status: 'reviewed',
       } as any).eq('id', id);
 
       const resp = await supabase.functions.invoke('intake-publish', {
@@ -288,16 +288,28 @@ export function IntakeDraftsManager() {
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
 
-      if (resp.error) throw resp.error;
-      const result = resp.data;
-      if (result?.error) {
-        toast({ title: 'Publish Blocked', description: result.error, variant: 'destructive' });
+      const errorMsg = resp.error ? String(resp.error) : resp.data?.error;
+      if (errorMsg) {
+        // Revert and mark as publish_failed so row stays visible
+        await supabase.from('intake_drafts').update({
+          review_status: 'pending',
+          processing_status: 'publish_failed',
+          publish_error: String(errorMsg).slice(0, 500),
+        } as any).eq('id', id);
+        toast({ title: 'Publish Failed', description: String(errorMsg), variant: 'destructive' });
       } else {
-        toast({ title: 'Published', description: `Published to ${result?.table || 'live table'}` });
+        toast({ title: 'Published', description: `Published to ${resp.data?.table || 'live table'}` });
       }
       fetchDrafts();
     } catch (err) {
+      // On unexpected error, also mark as publish_failed
+      await supabase.from('intake_drafts').update({
+        review_status: 'pending',
+        processing_status: 'publish_failed',
+        publish_error: String(err).slice(0, 500),
+      } as any).eq('id', id);
       toast({ title: 'Publish Failed', description: String(err), variant: 'destructive' });
+      fetchDrafts();
     }
   };
 

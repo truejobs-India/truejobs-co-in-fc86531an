@@ -203,12 +203,19 @@ export function PendingActionsPanel({
 
   const executeCover = useCallback(async () => {
     if (!coverScan || coverScan.count === 0) return;
+    // Frontend validation guard
+    const coverModelDef = getModelDef(coverImageModel);
+    if (!coverModelDef?.capabilities.includes('image')) {
+      toast({ title: 'Invalid model', description: `"${coverImageModel}" is not an image-capable model.`, variant: 'destructive' });
+      return;
+    }
     coverAbortRef.current = false;
     setCoverPhase('executing');
     const items = coverScan.items;
     const total = items.length;
     let done = 0;
     let failed = 0;
+    const runtimeModels = new Set<string>();
     setCoverProgress({ done: 0, total, failed: 0, current: items[0]?.title || '' });
 
     for (const post of items) {
@@ -219,12 +226,18 @@ export function PendingActionsPanel({
       setCoverProgress({ done, total, failed, current: post.title });
       try {
         const { data: imgData, error: imgError } = await supabase.functions.invoke('generate-vertex-image', {
-          body: { slug: post.slug, title: post.title, category: post.category || 'General', tags: post.tags || [], model: coverImageModel, purpose: 'cover', imageCount: 1, aspectRatio: '16:9' },
+          body: { slug: post.slug, title: post.title, category: post.category || 'General', tags: post.tags || [], model: coverImageModel, purpose: 'cover', imageCount: 1, aspectRatio: '16:9', strict: true },
         });
         if (imgError || !imgData?.data?.images?.[0]?.url) {
           failed++;
           continue;
         }
+        // Track runtime metadata
+        const rp = imgData.resolvedProvider || imgData.data?.resolvedProvider;
+        const rm = imgData.resolvedRuntimeModelId || imgData.data?.resolvedRuntimeModelId || imgData.model;
+        if (rp && rm) runtimeModels.add(`${rm} (${rp})`);
+        else if (rm) runtimeModels.add(rm);
+
         await supabase.from('blog_posts').update({
           cover_image_url: imgData.data.images[0].url,
           featured_image_alt: imgData.data.images[0].altText || post.title,
@@ -239,7 +252,10 @@ export function PendingActionsPanel({
     }
 
     if (!coverAbortRef.current) {
-      toast({ title: '🖼️ Cover image generation complete', description: `${done} generated, ${failed} failed out of ${total}.` });
+      const runtimeSummary = runtimeModels.size === 1
+        ? ` via ${[...runtimeModels][0]}`
+        : runtimeModels.size > 1 ? ' (mixed runtime)' : '';
+      toast({ title: '🖼️ Cover image generation complete', description: `${done} generated${runtimeSummary}, ${failed} failed out of ${total}.` });
     }
     setCoverPhase('idle');
     setCoverScan(null);

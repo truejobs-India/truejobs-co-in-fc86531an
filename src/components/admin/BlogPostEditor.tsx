@@ -85,6 +85,7 @@ interface BlogPost {
   tags: string[] | null;
   faq_count: number | null;
   has_faq_schema: boolean | null;
+  faq_schema: any;
   internal_links: any;
   canonical_url: string | null;
   author_name: string | null;

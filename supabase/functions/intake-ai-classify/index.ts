@@ -278,8 +278,13 @@ Deno.serve(async (req) => {
           draft.source_domain ? `Source Domain: ${draft.source_domain}` : '',
           draft.raw_file_url ? `File URL: ${draft.raw_file_url}` : '',
           draft.raw_text ? `Content:\n${(draft.raw_text as string).slice(0, 4000)}` : '',
-          draft.secondary_tags && (draft.secondary_tags as any[]).length > 0
-            ? `Import tags: ${(draft.secondary_tags as string[]).join(', ')}` : '',
+          (() => {
+            const rawTags = draft.secondary_tags;
+            const parsedTags = Array.isArray(rawTags)
+              ? rawTags
+              : (typeof rawTags === 'string' ? (() => { try { return JSON.parse(rawTags); } catch { return []; } })() : []);
+            return parsedTags.length > 0 ? `Import tags: ${parsedTags.join(', ')}` : '';
+          })(),
           // For retry, include previously extracted fields as additional context
           retryEnhanced && draft.normalized_title ? `Previous title extraction: ${draft.normalized_title}` : '',
           retryEnhanced && draft.organisation_name ? `Previous org extraction: ${draft.organisation_name}` : '',
@@ -292,7 +297,10 @@ Deno.serve(async (req) => {
 
         const aiResult = await callAI(lovableKey, systemPrompt, userPrompt, CLASSIFICATION_TOOL, aiModel);
 
-        const existingTags = Array.isArray(draft.secondary_tags) ? draft.secondary_tags as string[] : [];
+        const rawExistingTags = draft.secondary_tags;
+        const existingTags: string[] = Array.isArray(rawExistingTags)
+          ? rawExistingTags
+          : (typeof rawExistingTags === 'string' ? (() => { try { const v = JSON.parse(rawExistingTags); return Array.isArray(v) ? v : []; } catch { return []; } })() : []);
         const aiTags = Array.isArray(aiResult.secondary_tags) ? aiResult.secondary_tags : [];
         const mergedTags = [...new Set([...existingTags, ...aiTags])];
 

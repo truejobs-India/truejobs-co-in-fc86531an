@@ -46,6 +46,7 @@ type IntakeDraft = {
   normalized_title: string | null;
   closing_date: string | null;
   scrape_run_id: string | null;
+  publish_error: string | null;
   created_at: string;
 };
 

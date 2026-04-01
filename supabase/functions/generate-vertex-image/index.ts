@@ -381,7 +381,7 @@ async function generateViaGeminiFlashImage(
     const elapsed = Date.now() - startMs;
     console.log(`[gemini-flash-image] completed in ${elapsed}ms via Vertex AI`);
 
-    return new Response(JSON.stringify({
+    const successBody = addStrictMetadata({
       success: true,
       data: {
         images: [{
@@ -398,7 +398,9 @@ async function generateViaGeminiFlashImage(
       action: 'generate-image',
       purpose,
       elapsedMs: elapsed,
-    }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }, { strict, selectedModelKey: 'gemini-flash-image', resolvedProvider: 'vertex-ai-direct', resolvedRuntimeModelId: GEMINI_IMAGE_MODEL });
+
+    return new Response(JSON.stringify(successBody), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 }
 

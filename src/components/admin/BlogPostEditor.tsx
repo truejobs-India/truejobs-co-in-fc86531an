@@ -1986,6 +1986,12 @@ export function BlogPostEditor() {
                   return (
                     <TableRow key={post.id}>
                       <TableCell>
+                        <Checkbox
+                          checked={selectedPostIds.has(post.id)}
+                          onCheckedChange={() => togglePostSelection(post.id)}
+                        />
+                      </TableCell>
+                      <TableCell>
                         <div className="max-w-[280px]">
                           <div className="font-medium truncate">{post.title}</div>
                           <div className="flex items-center gap-1.5 mt-0.5">

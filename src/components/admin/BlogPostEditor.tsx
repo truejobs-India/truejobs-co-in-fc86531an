@@ -2083,6 +2083,10 @@ export function BlogPostEditor() {
                     </AlertDialogFooter>
                   </AlertDialogContent>
                 </AlertDialog>
+                <Button size="sm" className="text-xs gap-1" disabled={bulkFixPhase === 'scanning' || bulkFixPhase === 'fixing'} onClick={handleBulkFixScan}>
+                  {bulkFixPhase === 'scanning' ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                  Bulk Fix All by AI ({selectedPostIds.size})
+                </Button>
                 <Button variant="ghost" size="sm" className="text-xs" onClick={() => setSelectedPostIds(new Set())}>
                   Clear selection
                 </Button>

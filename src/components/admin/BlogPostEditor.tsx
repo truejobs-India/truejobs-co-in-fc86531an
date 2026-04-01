@@ -2086,7 +2086,7 @@ export function BlogPostEditor() {
                             <Zap className="h-4 w-4 text-primary" />
                           </Button>
                           <Button variant="ghost" size="icon" className="h-8 w-8" asChild title="Preview article">
-                            <a href={`/blog/${post.slug}`} target="_blank" rel="noopener noreferrer">
+                            <a href={`/blog/${post.slug}?preview=${post.id}`} target="_blank" rel="noopener noreferrer">
                               <ExternalLink className="h-4 w-4" />
                             </a>
                           </Button>

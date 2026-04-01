@@ -1470,8 +1470,7 @@ export function BlogPostEditor() {
       {/* ── Search & Enrich by Word Count ── */}
       <BulkEnrichByWordCount blogTextModel={blogTextModel} onComplete={fetchPosts} />
 
-      {/* ── Image Cleanup (Cover & Inline) ── */}
-      <BlogImageCleanup />
+      {/* Image cleanup buttons are now inline in the article table */}
 
       {/* ── Bulk Article Generator ── */}
       <div className="px-6 pb-4 border-b">

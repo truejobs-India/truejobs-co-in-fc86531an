@@ -29,10 +29,50 @@ const GATEWAY_IMAGE_MODELS: Record<string, string> = {
   'gemini-flash-image-2': 'google/gemini-3.1-flash-image-preview',
   'vertex-3-pro-image': '__vertex_direct__',
 };
+// Must stay aligned with image-capable models in src/lib/aiModels.ts
+const KNOWN_IMAGE_MODEL_KEYS = new Set([
+  ...Object.keys(GATEWAY_IMAGE_MODELS),
+  'vertex-imagen',
+  'vertex-3-pro-image',
+  'vertex-3.1-flash-image',
+  'vertex-pro', // has image capability in aiModels.ts
+]);
+
 const IMAGEN_TIMEOUT_MS = 45_000;
 const GATEWAY_TIMEOUT_MS = 55_000;
 const MAX_RETRIES = 3;
 const RETRY_BASE_MS = 2000; // 2s, 4s, 8s exponential backoff
+
+// ── Strict mode helpers ──
+
+interface StrictMeta {
+  selectedModelKey: string;
+  resolvedProvider?: string;
+  resolvedRuntimeModelId?: string;
+}
+
+function buildStrictErrorResponse(status: number, error: string, meta: StrictMeta): Response {
+  return new Response(JSON.stringify({
+    success: false,
+    error,
+    strict: true,
+    noFallbackUsed: true,
+    selectedModelKey: meta.selectedModelKey,
+    resolvedProvider: meta.resolvedProvider || 'unknown',
+    resolvedRuntimeModelId: meta.resolvedRuntimeModelId || 'unknown',
+  }), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+}
+
+function addStrictMetadata(responseBody: Record<string, unknown>, meta: StrictMeta & { strict: boolean }): Record<string, unknown> {
+  if (!meta.strict) return responseBody;
+  return {
+    ...responseBody,
+    selectedModelKey: meta.selectedModelKey,
+    resolvedProvider: meta.resolvedProvider || 'unknown',
+    resolvedRuntimeModelId: meta.resolvedRuntimeModelId || 'unknown',
+    strict: true,
+  };
+}
 
 const ASPECT_RATIOS: Record<string, string> = {
   '1:1': '1:1',

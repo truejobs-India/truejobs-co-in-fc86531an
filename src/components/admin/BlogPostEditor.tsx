@@ -153,7 +153,18 @@ export function BlogPostEditor() {
 
   // Image model selectors (separate for cover and inline)
   const [coverImageModel, setCoverImageModel] = useState<string>(() => {
-    try { return localStorage.getItem('blog_cover_image_model') || 'gemini-flash-image'; } catch { return 'gemini-flash-image'; }
+    try {
+      const migrationKey = 'blog_cover_model_migrated_v1';
+      const stored = localStorage.getItem('blog_cover_image_model');
+      if (!localStorage.getItem(migrationKey)) {
+        localStorage.setItem(migrationKey, '1');
+        if (!stored || stored === 'gemini-flash-image') {
+          localStorage.setItem('blog_cover_image_model', 'gemini-pro-image');
+          return 'gemini-pro-image';
+        }
+      }
+      return stored || 'gemini-pro-image';
+    } catch { return 'gemini-pro-image'; }
   });
   const [inlineImageModel, setInlineImageModel] = useState<string>(() => {
     try { return localStorage.getItem('blog_inline_image_model') || 'vertex-imagen'; } catch { return 'vertex-imagen'; }

@@ -659,7 +659,7 @@ export function IntakeDraftsManager() {
                               </Button>
                             )}
                             <Button variant="ghost" size="icon" className="h-6 w-6"
-                              onClick={() => handleDeleteIds([d.id])} title="Delete Permanently">
+                              onClick={() => setSingleDeleteId(d.id)} title="Delete Permanently">
                               <Trash2 className="h-3 w-3 text-destructive" />
                             </Button>
                           </div>

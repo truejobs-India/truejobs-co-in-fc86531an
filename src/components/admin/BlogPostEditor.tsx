@@ -59,7 +59,7 @@ import { BulkWorkflowPanel } from './blog/BulkWorkflowPanel';
 import { PendingActionsPanel } from './blog/PendingActionsPanel';
 import { SeoMetadataWorkflowPanel } from './blog/SeoMetadataWorkflowPanel';
 import { BulkEnrichByWordCount } from './blog/BulkEnrichByWordCount';
-import { BlogImageCleanup } from './blog/BlogImageCleanup';
+import { extractStoragePath, extractInlineUrlsFromContent, removeInlineImageFromContent } from './blog/BlogImageCleanup';
 import { BlogScoreBreakdown } from './blog/BlogScoreBreakdown';
 import { VertexAITools } from './blog/VertexAITools';
 import { AiModelSelector } from '@/components/admin/AiModelSelector';
@@ -198,6 +198,10 @@ export function BlogPostEditor() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'published' | 'draft'>('all');
   const [currentPage, setCurrentPage] = useState(1);
+
+  // Image cleanup selection state
+  const [selectedPostIds, setSelectedPostIds] = useState<Set<string>>(new Set());
+  const [imageCleanupLoading, setImageCleanupLoading] = useState<'cover' | 'inline' | null>(null);
 
   // Autosave
   const autosaveTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -907,6 +911,142 @@ export function BlogPostEditor() {
     return { quality: q.totalScore, seo: s.totalScore, readiness: r, wordCount: liveWc };
   };
 
+  // ── Image cleanup: toggle selection ──
+  const togglePostSelection = (id: string) => {
+    setSelectedPostIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const toggleSelectAllVisible = () => {
+    setSelectedPostIds(prev => {
+      if (prev.size === paginatedPosts.length && paginatedPosts.every(p => prev.has(p.id))) {
+        return new Set();
+      }
+      return new Set(paginatedPosts.map(p => p.id));
+    });
+  };
+
+  // ── Image cleanup: Delete Cover Images ──
+  const handleDeleteCoverImages = async () => {
+    const selected = posts.filter(p => selectedPostIds.has(p.id) && p.cover_image_url);
+    if (selected.length === 0) {
+      toast({ title: 'No selected articles have cover images', variant: 'destructive' });
+      return;
+    }
+    setImageCleanupLoading('cover');
+    try {
+      let deletedFiles = 0;
+      let cleanedDb = 0;
+      const pathsToDelete: string[] = [];
+      const postIdsToClean: string[] = [];
+
+      for (const post of selected) {
+        const path = extractStoragePath(post.cover_image_url!);
+        if (path && path.startsWith('covers/')) {
+          pathsToDelete.push(path);
+          postIdsToClean.push(post.id);
+        }
+      }
+
+      if (pathsToDelete.length > 0) {
+        const { error } = await supabase.storage.from('blog-assets').remove(pathsToDelete);
+        if (error) throw error;
+        deletedFiles = pathsToDelete.length;
+      }
+
+      if (postIdsToClean.length > 0) {
+        const { error: dbError } = await supabase
+          .from('blog_posts')
+          .update({ cover_image_url: null, featured_image_alt: null })
+          .in('id', postIdsToClean);
+        if (dbError) throw dbError;
+        cleanedDb = postIdsToClean.length;
+      }
+
+      toast({ title: `Deleted ${deletedFiles} cover file(s), cleaned ${cleanedDb} DB record(s)` });
+      setSelectedPostIds(new Set());
+      fetchPosts();
+    } catch (e: any) {
+      toast({ title: `Cover delete failed: ${e.message}`, variant: 'destructive' });
+    } finally {
+      setImageCleanupLoading(null);
+    }
+  };
+
+  // ── Image cleanup: Delete Inline Images ──
+  const handleDeleteInlineImages = async () => {
+    const selected = posts.filter(p => selectedPostIds.has(p.id));
+    if (selected.length === 0) return;
+    setImageCleanupLoading('inline');
+    try {
+      let deletedFiles = 0;
+      let cleanedPosts = 0;
+
+      for (const post of selected) {
+        // Collect inline URLs from article_images and content
+        const articleImagesUrls = new Set<string>();
+        if (post.article_images && typeof post.article_images === 'object') {
+          const ai = post.article_images as any;
+          const inlineArr = Array.isArray(ai.inline) ? ai.inline : [];
+          for (const entry of inlineArr) {
+            if (entry?.url && typeof entry.url === 'string' && entry.url.includes('/blog-assets/inline/')) {
+              articleImagesUrls.add(entry.url);
+            }
+          }
+        }
+        const contentUrls = new Set<string>(extractInlineUrlsFromContent(post.content));
+        const allUrls = [...new Set([...articleImagesUrls, ...contentUrls])];
+
+        if (allUrls.length === 0) continue;
+
+        // Delete storage files
+        const paths = allUrls
+          .map(u => extractStoragePath(u))
+          .filter((p): p is string => !!p && p.startsWith('inline/'));
+
+        if (paths.length > 0) {
+          const { error } = await supabase.storage.from('blog-assets').remove(paths);
+          if (error) console.error('Storage delete error:', error);
+          else deletedFiles += paths.length;
+        }
+
+        // Clean article_images JSON
+        let updatedArticleImages = post.article_images;
+        if (updatedArticleImages && typeof updatedArticleImages === 'object') {
+          const ai = updatedArticleImages as any;
+          if (Array.isArray(ai.inline)) {
+            const filtered = ai.inline.filter((entry: any) => !allUrls.includes(entry?.url));
+            const { inline: _, ...rest } = ai;
+            updatedArticleImages = filtered.length > 0 ? { ...rest, inline: filtered } : (Object.keys(rest).length > 0 ? rest : null);
+          }
+        }
+
+        // Clean content HTML
+        let updatedContent = post.content;
+        for (const url of allUrls) {
+          updatedContent = removeInlineImageFromContent(updatedContent, url);
+        }
+
+        const { error: dbError } = await supabase
+          .from('blog_posts')
+          .update({ article_images: updatedArticleImages, content: updatedContent })
+          .eq('id', post.id);
+        if (dbError) throw dbError;
+        cleanedPosts++;
+      }
+
+      toast({ title: `Deleted ${deletedFiles} inline file(s), cleaned ${cleanedPosts} post(s)` });
+      setSelectedPostIds(new Set());
+      fetchPosts();
+    } catch (e: any) {
+      toast({ title: `Inline delete failed: ${e.message}`, variant: 'destructive' });
+    } finally {
+      setImageCleanupLoading(null);
+    }
+  };
+
   // ── Safe metadata fields for auto-apply ──
   const SAFE_METADATA_FIELDS = new Set(['meta_title', 'meta_description', 'excerpt', 'featured_image_alt', 'canonical_url', 'slug', 'author_name']);
 
@@ -1470,8 +1610,7 @@ export function BlogPostEditor() {
       {/* ── Search & Enrich by Word Count ── */}
       <BulkEnrichByWordCount blogTextModel={blogTextModel} onComplete={fetchPosts} />
 
-      {/* ── Image Cleanup (Cover & Inline) ── */}
-      <BlogImageCleanup />
+      {/* Image cleanup buttons are now inline in the article table */}
 
       {/* ── Bulk Article Generator ── */}
       <div className="px-6 pb-4 border-b">
@@ -1768,9 +1907,66 @@ export function BlogPostEditor() {
           </div>
         ) : (
           <>
+            {/* Image cleanup action buttons */}
+            {selectedPostIds.size > 0 && (
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-xs text-muted-foreground">{selectedPostIds.size} selected</span>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="destructive" size="sm" disabled={imageCleanupLoading !== null} className="text-xs gap-1">
+                      <Trash2 className="h-3 w-3" /> Delete Cover Images ({selectedPostIds.size})
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Delete cover images?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This will permanently delete cover image files from storage and clear DB references for {selectedPostIds.size} selected article(s). This cannot be undone.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={handleDeleteCoverImages} className="bg-destructive text-destructive-foreground">
+                        Delete Cover Images
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="destructive" size="sm" disabled={imageCleanupLoading !== null} className="text-xs gap-1">
+                      <Trash2 className="h-3 w-3" /> Delete Inline Images ({selectedPostIds.size})
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Delete inline images?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This will permanently delete inline image files from storage, clean article_images metadata, and remove matching image tags from content HTML for {selectedPostIds.size} selected article(s). This cannot be undone.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={handleDeleteInlineImages} className="bg-destructive text-destructive-foreground">
+                        Delete Inline Images
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+                <Button variant="ghost" size="sm" className="text-xs" onClick={() => setSelectedPostIds(new Set())}>
+                  Clear selection
+                </Button>
+              </div>
+            )}
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={paginatedPosts.length > 0 && paginatedPosts.every(p => selectedPostIds.has(p.id))}
+                      onCheckedChange={toggleSelectAllVisible}
+                    />
+                  </TableHead>
                   <TableHead>Title</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Words</TableHead>
@@ -1787,6 +1983,12 @@ export function BlogPostEditor() {
                   const scores = getPostScores(post);
                   return (
                     <TableRow key={post.id}>
+                      <TableCell>
+                        <Checkbox
+                          checked={selectedPostIds.has(post.id)}
+                          onCheckedChange={() => togglePostSelection(post.id)}
+                        />
+                      </TableCell>
                       <TableCell>
                         <div className="max-w-[280px]">
                           <div className="font-medium truncate">{post.title}</div>

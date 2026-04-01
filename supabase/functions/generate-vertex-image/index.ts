@@ -261,6 +261,7 @@ async function generateViaGeminiFlashImage(
   imagePrompt: string,
   adminClient: any,
   startMs: number,
+  strict = false,
 ): Promise<Response> {
   const projectId = Deno.env.get('GCP_PROJECT_ID');
   const location = Deno.env.get('GCP_LOCATION') || 'us-central1';

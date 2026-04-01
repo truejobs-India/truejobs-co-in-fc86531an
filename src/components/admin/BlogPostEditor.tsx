@@ -50,6 +50,7 @@ import {
   analyzePublishCompliance, getComplianceReadinessStatus,
 } from '@/lib/blogComplianceAnalyzer';
 import { ComplianceReadinessBadge } from './blog/ComplianceReadinessBadge';
+import { getModelDef } from '@/lib/aiModels';
 import { BlogComplianceChecklist } from './blog/BlogComplianceChecklist';
 import { BlogPolicyWarnings } from './blog/BlogPolicyWarnings';
 import { Checkbox } from '@/components/ui/checkbox';

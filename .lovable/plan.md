@@ -1,54 +1,38 @@
 
 
-# AI-First Intake Pipeline — Final Plan (with two clarifications)
+# Fix 3 Issues + Surface Publish Error Reason
 
-This is the same approved plan with two points made explicit:
+## File 1: `IntakeDraftsManager.tsx`
 
-## Clarification 1: Scoping auto-processing to the current import
+### Fix 1: Safe publish failure handling (lines 269-295, 308-324)
 
-After upload, the importer will return the **list of inserted row IDs** (not just a count). The auto-processing loop in `IntakeDraftsManager` will use these specific IDs to call `intake-ai-classify`, not a generic query like "all rows where `processing_status = 'imported'`".
+**`handleApproveAndPublish`**: Set `review_status: 'approved'` (edge function requires it), call `intake-publish`. On failure: set `processing_status: 'publish_failed'` and `publish_error` with the error message, revert `review_status: 'pending'`. On success: leave as-is (edge function already sets `processing_status: 'published'`).
 
-**Implementation detail:**
-- `IntakeCsvUploader.onImportComplete` callback changes from `(count: number)` → `(importedIds: string[])`
-- The processing loop fetches batches using `.in('id', nextBatchOfIds)` instead of `.eq('processing_status', 'imported')`
-- The AI retry pass similarly scopes to `manual_check` rows **within the same set of IDs**
-- If the page refreshes mid-processing, a "Resume Processing" button will query for rows from this import that are still `processing_status = 'imported'`. To identify them, the importer will tag all rows with a shared `scrape_run_id` (a generated UUID per import session). The resume query uses `.eq('scrape_run_id', sessionId).eq('processing_status', 'imported')`.
+**`handleBulkApprovePublish`**: Same pattern per row — on failure, revert and store error.
 
-This guarantees nearby/older imports are never accidentally mixed into the current processing run.
+### Fix 2: `publish_failed` rows visible in Low Confidence with badge + error reason
 
-## Clarification 2: Delete All Permanently — explicit scope labeling
+- Add `publish_error` to `IntakeDraft` type (line ~45)
+- In `isLowConfidence` (line 57): add `if (d.processing_status === 'publish_failed') return true;`
+- In `filterDrafts` `low_confidence` case (line 89-94): change filter to also include `d.processing_status === 'publish_failed'`
+- In table row rendering (line 603-609 area): after existing tag badges, add a red "Publish Failed" badge when `processing_status === 'publish_failed'`, and if `publish_error` is present, show it as a truncated tooltip/subtitle
 
-The "Delete All Permanently" button will always state its exact scope in both the button label and the confirmation dialog:
+### Fix 3: Single-row delete confirmation (line 628-631)
 
-- On the **Ready Drafts** tab → button reads **"Delete All Ready Drafts"**, confirmation says "This will permanently delete X ready drafts."
-- On the **Low Confidence** tab → button reads **"Delete All Low Confidence Drafts"**, confirmation says "This will permanently delete X low-confidence drafts."
-- On the **Published** tab → button reads **"Delete All Published Drafts"** (draft records only, not the live published content — this is stated in the dialog).
-- If a search/filter is active → the label appends **(filtered)** and the confirmation shows the exact count: "This will permanently delete X drafts matching your current filter."
+- Add `singleDeleteId` state
+- Change trash icon onClick to `setSingleDeleteId(d.id)` instead of `handleDeleteIds([d.id])`
+- Add a simple `AlertDialog` (or reuse existing `Dialog`): "Permanently delete this draft? This cannot be undone." with Cancel / Delete buttons
 
-The type-to-confirm ("Type DELETE") safety gate remains for all "Delete All" variants.
+### Fix 4: Preserve original payload for Excel/CSV
 
-There will never be an ambiguous "Delete All" button with unclear scope.
+**File 2: `IntakeCsvUploader.tsx` (line ~300)**
 
-## Everything else: unchanged from the approved plan
+Add `mapped.structured_data_json = row;` after the column mapping loop in the `else` branch (non-JSON imports).
 
-### Files changed (4 total)
-| File | Change |
-|------|--------|
-| `IntakeCsvUploader.tsx` | Excel support, auto-skip mapping, return imported IDs + scrape_run_id |
-| `IntakeDraftsManager.tsx` | Draft-first dashboard, ID-scoped auto-processing, bulk approve & publish, scoped delete all |
-| `IntakeDraftDetailDialog.tsx` | Add Approve & Publish + Delete buttons |
-| `intake-ai-classify/index.ts` | Add `retry_enhanced` prompt mode (strict standards) |
+## Summary of changes
 
-### No database changes needed.
-
-### Admin experience
-```text
-Upload Excel → auto-map → auto-import (tagged with scrape_run_id)
-→ auto-AI pass 1 (scoped to imported IDs)
-→ auto-AI pass 2 retry (scoped to same IDs, strict standards)
-→ dashboard shows Ready Drafts tab
-→ Approve & Publish Selected / All Ready
-→ Delete All [tab-specific label] Permanently (with type-to-confirm)
-→ Done
-```
+| File | Changes |
+|------|---------|
+| `IntakeDraftsManager.tsx` | Safe publish flow with rollback + error storage, publish_failed in Low Confidence with error reason badge, single-delete confirmation dialog |
+| `IntakeCsvUploader.tsx` | Add `structured_data_json = row` for Excel/CSV |
 

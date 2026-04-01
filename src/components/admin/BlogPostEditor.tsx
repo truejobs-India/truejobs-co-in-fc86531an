@@ -59,6 +59,7 @@ import { BulkWorkflowPanel } from './blog/BulkWorkflowPanel';
 import { PendingActionsPanel } from './blog/PendingActionsPanel';
 import { SeoMetadataWorkflowPanel } from './blog/SeoMetadataWorkflowPanel';
 import { BulkEnrichByWordCount } from './blog/BulkEnrichByWordCount';
+import { BlogImageCleanup } from './blog/BlogImageCleanup';
 import { BlogScoreBreakdown } from './blog/BlogScoreBreakdown';
 import { VertexAITools } from './blog/VertexAITools';
 import { AiModelSelector } from '@/components/admin/AiModelSelector';
@@ -1468,6 +1469,9 @@ export function BlogPostEditor() {
 
       {/* ── Search & Enrich by Word Count ── */}
       <BulkEnrichByWordCount blogTextModel={blogTextModel} onComplete={fetchPosts} />
+
+      {/* ── Image Cleanup (Cover & Inline) ── */}
+      <BlogImageCleanup />
 
       {/* ── Bulk Article Generator ── */}
       <div className="px-6 pb-4 border-b">

@@ -1470,6 +1470,9 @@ export function BlogPostEditor() {
       {/* ── Search & Enrich by Word Count ── */}
       <BulkEnrichByWordCount blogTextModel={blogTextModel} onComplete={fetchPosts} />
 
+      {/* ── Image Cleanup (Cover & Inline) ── */}
+      <BlogImageCleanup />
+
       {/* ── Bulk Article Generator ── */}
       <div className="px-6 pb-4 border-b">
         <Collapsible open={showBulkGenerator} onOpenChange={setShowBulkGenerator}>

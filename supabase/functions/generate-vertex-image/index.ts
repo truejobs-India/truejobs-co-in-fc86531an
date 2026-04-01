@@ -994,7 +994,10 @@ async function generateViaImagen(
         model: IMAGEN_MODEL,
       }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
-    // Safety-filtered: fallback to Gemini Flash Image
+    // Safety-filtered: fallback to Gemini Flash Image (blocked in strict mode)
+    if (strict) {
+      return buildStrictErrorResponse(422, 'All images were safety-filtered by Imagen. No fallback was used.', { selectedModelKey: 'vertex-imagen', resolvedProvider: 'vertex-ai-direct', resolvedRuntimeModelId: IMAGEN_MODEL });
+    }
     console.log(`[vertex-imagen] Safety-filtered, falling back to Gemini Flash Image for slug=${slug}`);
     return await generateViaGeminiFlashImage(body, slug, imagePrompt, adminClient, startMs);
   }

@@ -328,7 +328,6 @@ export function IntakeDraftsManager() {
         try {
           await supabase.from('intake_drafts').update({
             review_status: 'approved',
-            processing_status: 'reviewed',
           } as any).eq('id', id);
 
           const resp = await supabase.functions.invoke('intake-publish', {
@@ -336,9 +335,23 @@ export function IntakeDraftsManager() {
             headers: { Authorization: `Bearer ${session.access_token}` },
           });
 
-          if (resp.error || resp.data?.error) failed++;
-          else success++;
-        } catch {
+          const errorMsg = resp.error ? String(resp.error) : resp.data?.error;
+          if (errorMsg) {
+            await supabase.from('intake_drafts').update({
+              review_status: 'pending',
+              processing_status: 'publish_failed',
+              publish_error: String(errorMsg).slice(0, 500),
+            } as any).eq('id', id);
+            failed++;
+          } else {
+            success++;
+          }
+        } catch (err) {
+          await supabase.from('intake_drafts').update({
+            review_status: 'pending',
+            processing_status: 'publish_failed',
+            publish_error: String(err).slice(0, 500),
+          } as any).eq('id', id);
           failed++;
         }
       }

@@ -903,6 +903,9 @@ async function generateViaImagen(
       if (attempt === MAX_RETRIES) {
         const errText = await resp.text();
         console.error(`[vertex-imagen] 429 exhausted retries: ${errText.substring(0, 200)}`);
+        if (strict) {
+          return buildStrictErrorResponse(429, `Imagen rate-limited after ${MAX_RETRIES} retries. No fallback was used.`, { selectedModelKey: 'vertex-imagen', resolvedProvider: 'vertex-ai-direct', resolvedRuntimeModelId: IMAGEN_MODEL });
+        }
         return await generateViaLovableGatewayImage(body, slug, imagePrompt, adminClient, startMs, 'imagen-429');
       }
     }

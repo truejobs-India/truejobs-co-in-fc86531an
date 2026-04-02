@@ -1833,6 +1833,17 @@ export function BlogPostEditor() {
                   )}
                 </div>
               </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Output Language</Label>
+                <Select value={outputLanguage} onValueChange={handleOutputLanguageChange}>
+                  <SelectTrigger className="w-[120px] h-8 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="auto">Auto</SelectItem>
+                    <SelectItem value="english">English</SelectItem>
+                    <SelectItem value="hindi">Hindi</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="flex items-center gap-1.5">
                 <Badge variant="outline" className="text-[10px] h-5 px-1.5">Using: {getModelDef(blogTextModel)?.label || blogTextModel}</Badge>
               </div>

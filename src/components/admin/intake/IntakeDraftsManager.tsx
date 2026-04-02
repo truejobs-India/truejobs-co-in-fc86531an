@@ -130,6 +130,7 @@ export function IntakeDraftsManager() {
   const [searchQuery, setSearchQuery] = useState('');
   const [aiModel, setAiModel] = useState(() => getLastUsedModel('text', 'gemini-flash'));
   const [selectedDraft, setSelectedDraft] = useState<IntakeDraft | null>(null);
+  const [previewDraftId, setPreviewDraftId] = useState<string | null>(null);
   const [showUploader, setShowUploader] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 

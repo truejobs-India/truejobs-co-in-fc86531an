@@ -64,7 +64,7 @@ function splitActionableChecks<T extends { key: string; status: string }>(checks
 export type BulkAutoFixPhase = 'idle' | 'scanning' | 'scanned' | 'fixing' | 'done';
 export type ScanClassification = 'clean' | 'fixable' | 'skipped';
 export type BulkScanScope = 'smart' | 'all' | 'failed_partial' | 'selected';
-export type BulkFixStatus = 'fixed' | 'partially_fixed' | 'skipped' | 'failed' | 'no_action_taken';
+export type BulkFixStatus = 'fixed' | 'partially_fixed' | 'skipped' | 'failed' | 'no_action_taken' | 'baseline';
 
 export interface ScanStateBreakdown {
   neverBulkFixed: number;

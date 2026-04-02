@@ -2026,10 +2026,25 @@ export function BlogPostEditor() {
                   </AlertDialogFooter>
                 </AlertDialogContent>
               </AlertDialog>
-              <Button size="sm" className="text-xs gap-1" disabled={bulkAutoFix.phase === 'scanning' || bulkAutoFix.phase === 'fixing'} onClick={handleBulkFixScan}>
-                {bulkAutoFix.phase === 'scanning' ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-                Scan & Auto-Fix by AI {selectedPostIds.size > 0 ? `(${selectedPostIds.size})` : '(All)'}
-              </Button>
+              <div className="flex items-center gap-1">
+                <Select value={bulkScanScope} onValueChange={(v: any) => setBulkScanScope(v)}>
+                  <SelectTrigger className="h-7 text-[10px] w-[160px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="smart" className="text-xs">Never Fixed / Changed / Failed</SelectItem>
+                    <SelectItem value="all" className="text-xs">All Articles</SelectItem>
+                    <SelectItem value="failed_partial" className="text-xs">Failed / Partial Only</SelectItem>
+                    {selectedPostIds.size > 0 && (
+                      <SelectItem value="selected" className="text-xs">Selected Only ({selectedPostIds.size})</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+                <Button size="sm" className="text-xs gap-1" disabled={bulkAutoFix.phase === 'scanning' || bulkAutoFix.phase === 'fixing'} onClick={() => handleBulkFixScan()}>
+                  {bulkAutoFix.phase === 'scanning' ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                  Scan & Fix
+                </Button>
+              </div>
               <AlertDialog>
                 <AlertDialogTrigger asChild>
                   <Button size="sm" className="text-xs gap-1" disabled={isPublishingAllDrafts || posts.filter(p => !p.is_published).length === 0}>

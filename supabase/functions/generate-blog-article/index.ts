@@ -708,13 +708,29 @@ Deno.serve(async (req) => {
     const authResult = await verifyAdmin(req);
     if (authResult instanceof Response) return authResult;
 
-    const { topic, category, tags, targetWordCount, aiModel } = await req.json();
+    const { topic, category, tags, targetWordCount, aiModel, outputLanguage: rawOutputLang } = await req.json();
     if (!topic || typeof topic !== 'string') {
       return new Response(JSON.stringify({ error: 'topic is required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     useModel = aiModel || 'gemini';
-    console.log(`[generate-blog-article] Using model: ${useModel}`);
+    const outputLanguage = rawOutputLang || 'auto';
+    let resolvedLang: 'english' | 'hindi';
+    let autoDetected = false;
+
+    if (outputLanguage === 'english' || outputLanguage === 'hindi') {
+      resolvedLang = outputLanguage;
+    } else {
+      autoDetected = true;
+      const devCount = (topic.match(/[\u0900-\u097F]/g) || []).length;
+      resolvedLang = devCount >= 3 ? 'hindi' : 'english';
+    }
+
+    const langInstruction = resolvedLang === 'english'
+      ? 'LANGUAGE RULE: Write the entire output in English only. Do not write in Hindi or Devanagari. Do not switch languages. This applies to ALL fields: title, content, meta description, excerpt, FAQ — everything must be in English.'
+      : 'LANGUAGE RULE: पूरी सामग्री हिन्दी (देवनागरी) में लिखें। लेख को अंग्रेज़ी में न लिखें। केवल आवश्यक technical terms जैसे SSC, UPSC, salary, notification आदि स्वाभाविक रूप में रखे जा सकते हैं। यह नियम सभी fields पर लागू है: title, content, meta description, excerpt, FAQ — सब कुछ हिन्दी में होना चाहिए।';
+
+    console.log(`[generate-blog-article] model=${useModel} outputLanguage=${outputLanguage} resolvedLang=${resolvedLang} autoDetected=${autoDetected} topicPreview="${topic.substring(0, 60)}"`);
 
     const wordTarget = Math.min(Math.max(Number(targetWordCount) || 1500, 800), 3000);
     let prompt: string;
@@ -722,7 +738,9 @@ Deno.serve(async (req) => {
     if (useModel === 'gemini' || useModel === 'mistral') {
       // Gemini and Mistral use simplified user prompts — the system prompt handles all writing rules
       const tagsList = Array.isArray(tags) && tags.length > 0 ? `\nTags: ${tags.join(', ')}` : '';
-      prompt = `Write a complete, SEO-optimized blog article on the following topic:
+      prompt = `${langInstruction}
+
+Write a complete, SEO-optimized blog article on the following topic:
 
 Topic: ${topic}${category ? `\nCategory: ${category}` : ''}${tagsList}
 
@@ -731,7 +749,9 @@ Follow all the writing rules and output format specified in your instructions. R
       // Claude uses the system prompt in top-level "system" field (handled by callClaude)
       // The user prompt here only contains the task-specific instructions
       const tagsList = Array.isArray(tags) && tags.length > 0 ? tags.join(', ') : '';
-      prompt = `Write a complete article for the following input.
+      prompt = `${langInstruction}
+
+Write a complete article for the following input.
 
 Topic: ${topic}
 ${category ? `Category: ${category}` : ''}
@@ -761,7 +781,7 @@ ${tagsList ? `Tags: ${tagsList}` : ''}
 Target word count: ~${wordTarget} words
 
 REQUIREMENTS:
-1. Write in Hindi or English — match the language of the topic
+1. ${langInstruction}
 2. Use proper HTML structure: H1 for title, H2/H3 for sections, <p> for paragraphs, <ul>/<ol> for lists, <table> for tabular data
 3. Include 5-8 H2 sections covering the topic comprehensively
 4. Include an introduction paragraph before the first H2
@@ -832,6 +852,56 @@ No markdown code blocks. Return ONLY the JSON object.`;
       return new Response(JSON.stringify({ error: 'AI response missing title or content' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
+    // ── Language validation + one retry ──
+    function checkLanguageMismatch(content: string, expected: 'english' | 'hindi'): boolean {
+      const devChars = (content.match(/[\u0900-\u097F]/g) || []).length;
+      const totalChars = content.replace(/\s|<[^>]*>/g, '').length;
+      if (totalChars === 0) return false;
+      const devRatio = devChars / totalChars;
+      if (expected === 'english') return devRatio > 0.15;
+      if (expected === 'hindi') return devRatio < 0.40;
+      return false;
+    }
+
+    let languageMismatch = checkLanguageMismatch(parsed.content, resolvedLang);
+    let retried = false;
+
+    if (languageMismatch) {
+      console.warn(`[generate-blog-article] Language mismatch detected (expected=${resolvedLang}), retrying once...`);
+      try {
+        const correctionPrefix = resolvedLang === 'english'
+          ? 'CRITICAL: Your previous output was in the WRONG language. You MUST write in ENGLISH ONLY. No Hindi. No Devanagari. This is your final attempt.\n\n'
+          : 'CRITICAL: आपका पिछला output गलत भाषा में था। आपको केवल हिन्दी (देवनागरी) में लिखना होगा। अंग्रेज़ी में न लिखें। यह आपका अंतिम प्रयास है।\n\n';
+        const retryRaw = await callAI(useModel, correctionPrefix + prompt, wordTarget);
+        const retryCleaned = retryRaw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+        let retryParsed: any;
+        try { retryParsed = JSON.parse(retryCleaned); } catch {
+          const m = retryCleaned.match(/\{[\s\S]*\}/);
+          if (m) try { retryParsed = JSON.parse(m[0]); } catch {}
+        }
+        if (retryParsed?.title && retryParsed?.content) {
+          const stillMismatch = checkLanguageMismatch(retryParsed.content, resolvedLang);
+          if (!stillMismatch) {
+            parsed = retryParsed;
+            languageMismatch = false;
+          } else {
+            // Use retry output anyway — it may be closer
+            parsed = retryParsed;
+            languageMismatch = true;
+          }
+        }
+        retried = true;
+      } catch (retryErr) {
+        console.error('[generate-blog-article] Language retry failed:', retryErr);
+        retried = true;
+      }
+    }
+
+    const devCharsCheck = (parsed.content.match(/[\u0900-\u097F]/g) || []).length;
+    const totalCharsCheck = parsed.content.replace(/\s|<[^>]*>/g, '').length;
+    const devRatioFinal = totalCharsCheck > 0 ? (devCharsCheck / totalCharsCheck).toFixed(2) : '0';
+    console.log(`[generate-blog-article] languageCheck: expected=${resolvedLang} devRatio=${devRatioFinal} mismatch=${languageMismatch} retried=${retried}`);
+
     const slug = (parsed.slug || parsed.title)
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
@@ -870,6 +940,12 @@ No markdown code blocks. Return ONLY the JSON object.`;
       actualProviderUsed: providerInfo.provider,
       actualModelUsed: providerInfo.apiModel,
       wordCountValidation: wcValidation,
+      languageValidation: {
+        requested: outputLanguage,
+        resolved: resolvedLang,
+        mismatch: languageMismatch,
+        retried,
+      },
     }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   } catch (err) {
     console.error('generate-blog-article error:', err);

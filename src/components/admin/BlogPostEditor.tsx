@@ -142,6 +142,14 @@ export function BlogPostEditor() {
   const [blogTextModel, setBlogTextModel] = useState<string>(() => {
     try { return localStorage.getItem('blog_text_ai_model') || 'gemini-flash'; } catch { return 'gemini-flash'; }
   });
+  const [outputLanguage, setOutputLanguage] = useState<'auto' | 'english' | 'hindi'>(() => {
+    try { return (localStorage.getItem('blog_output_language') as 'auto' | 'english' | 'hindi') || 'auto'; } catch { return 'auto'; }
+  });
+  const handleOutputLanguageChange = useCallback((v: string) => {
+    const val = v as 'auto' | 'english' | 'hindi';
+    setOutputLanguage(val);
+    try { localStorage.setItem('blog_output_language', val); } catch {}
+  }, []);
   const [blogImageModel, setBlogImageModel] = useState<string>(() => {
     try { return localStorage.getItem('blog_image_ai_model') || 'vertex-imagen'; } catch { return 'vertex-imagen'; }
   });
@@ -1245,7 +1253,7 @@ export function BlogPostEditor() {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) throw new Error('Not authenticated');
         const { data, error } = await supabase.functions.invoke('generate-blog-article', {
-          body: { topic: topics[i], category: bulkCategory, targetWordCount: bulkWordCount, aiModel: blogTextModel },
+          body: { topic: topics[i], category: bulkCategory, targetWordCount: bulkWordCount, aiModel: blogTextModel, outputLanguage },
         });
         if (error) throw new Error(error.message);
         if (!data?.title || !data?.content) throw new Error('Invalid AI response');
@@ -1306,7 +1314,7 @@ export function BlogPostEditor() {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) throw new Error('Not authenticated');
         const { data, error } = await supabase.functions.invoke('generate-blog-article', {
-          body: { topic: item.topic, category: bulkCategory, targetWordCount: bulkWordCount, aiModel: blogTextModel },
+          body: { topic: item.topic, category: bulkCategory, targetWordCount: bulkWordCount, aiModel: blogTextModel, outputLanguage },
         });
         if (error) throw new Error(error.message);
         if (!data?.title || !data?.content) throw new Error('Invalid AI response');
@@ -1824,6 +1832,17 @@ export function BlogPostEditor() {
                     />
                   )}
                 </div>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Output Language</Label>
+                <Select value={outputLanguage} onValueChange={handleOutputLanguageChange}>
+                  <SelectTrigger className="w-[120px] h-8 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="auto">Auto</SelectItem>
+                    <SelectItem value="english">English</SelectItem>
+                    <SelectItem value="hindi">Hindi</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="flex items-center gap-1.5">
                 <Badge variant="outline" className="text-[10px] h-5 px-1.5">Using: {getModelDef(blogTextModel)?.label || blogTextModel}</Badge>

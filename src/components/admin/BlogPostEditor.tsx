@@ -2005,6 +2005,28 @@ export function BlogPostEditor() {
                 {bulkAutoFix.phase === 'scanning' ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
                 Scan & Auto-Fix by AI {selectedPostIds.size > 0 ? `(${selectedPostIds.size})` : '(All)'}
               </Button>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button size="sm" className="text-xs gap-1" disabled={isPublishingAllDrafts || posts.filter(p => !p.is_published).length === 0}>
+                    {isPublishingAllDrafts ? <Loader2 className="h-3 w-3 animate-spin" /> : <Eye className="h-3 w-3" />}
+                    Publish All Drafts ({posts.filter(p => !p.is_published).length})
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Publish all drafts?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will publish {posts.filter(p => !p.is_published).length} draft article(s) immediately. They will become visible to all users.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handlePublishAllDrafts}>
+                      Publish All
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
               {selectedPostIds.size > 0 && (
                 <Button variant="ghost" size="sm" className="text-xs" onClick={() => setSelectedPostIds(new Set())}>
                   Clear selection

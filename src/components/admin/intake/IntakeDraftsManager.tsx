@@ -25,6 +25,7 @@ import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
 import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSelector';
 import { IntakeCsvUploader } from './IntakeCsvUploader';
 import { IntakeDraftDetailDialog } from './IntakeDraftDetailDialog';
+import { IntakeDraftPreviewDialog } from './IntakeDraftPreviewDialog';
 
 type IntakeDraft = {
   id: string;

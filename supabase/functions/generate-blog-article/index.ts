@@ -852,6 +852,56 @@ No markdown code blocks. Return ONLY the JSON object.`;
       return new Response(JSON.stringify({ error: 'AI response missing title or content' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
+    // ── Language validation + one retry ──
+    function checkLanguageMismatch(content: string, expected: 'english' | 'hindi'): boolean {
+      const devChars = (content.match(/[\u0900-\u097F]/g) || []).length;
+      const totalChars = content.replace(/\s|<[^>]*>/g, '').length;
+      if (totalChars === 0) return false;
+      const devRatio = devChars / totalChars;
+      if (expected === 'english') return devRatio > 0.15;
+      if (expected === 'hindi') return devRatio < 0.40;
+      return false;
+    }
+
+    let languageMismatch = checkLanguageMismatch(parsed.content, resolvedLang);
+    let retried = false;
+
+    if (languageMismatch) {
+      console.warn(`[generate-blog-article] Language mismatch detected (expected=${resolvedLang}), retrying once...`);
+      try {
+        const correctionPrefix = resolvedLang === 'english'
+          ? 'CRITICAL: Your previous output was in the WRONG language. You MUST write in ENGLISH ONLY. No Hindi. No Devanagari. This is your final attempt.\n\n'
+          : 'CRITICAL: आपका पिछला output गलत भाषा में था। आपको केवल हिन्दी (देवनागरी) में लिखना होगा। अंग्रेज़ी में न लिखें। यह आपका अंतिम प्रयास है।\n\n';
+        const retryRaw = await callAI(useModel, correctionPrefix + prompt, wordTarget);
+        const retryCleaned = retryRaw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+        let retryParsed: any;
+        try { retryParsed = JSON.parse(retryCleaned); } catch {
+          const m = retryCleaned.match(/\{[\s\S]*\}/);
+          if (m) try { retryParsed = JSON.parse(m[0]); } catch {}
+        }
+        if (retryParsed?.title && retryParsed?.content) {
+          const stillMismatch = checkLanguageMismatch(retryParsed.content, resolvedLang);
+          if (!stillMismatch) {
+            parsed = retryParsed;
+            languageMismatch = false;
+          } else {
+            // Use retry output anyway — it may be closer
+            parsed = retryParsed;
+            languageMismatch = true;
+          }
+        }
+        retried = true;
+      } catch (retryErr) {
+        console.error('[generate-blog-article] Language retry failed:', retryErr);
+        retried = true;
+      }
+    }
+
+    const devCharsCheck = (parsed.content.match(/[\u0900-\u097F]/g) || []).length;
+    const totalCharsCheck = parsed.content.replace(/\s|<[^>]*>/g, '').length;
+    const devRatioFinal = totalCharsCheck > 0 ? (devCharsCheck / totalCharsCheck).toFixed(2) : '0';
+    console.log(`[generate-blog-article] languageCheck: expected=${resolvedLang} devRatio=${devRatioFinal} mismatch=${languageMismatch} retried=${retried}`);
+
     const slug = (parsed.slug || parsed.title)
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
@@ -890,6 +940,12 @@ No markdown code blocks. Return ONLY the JSON object.`;
       actualProviderUsed: providerInfo.provider,
       actualModelUsed: providerInfo.apiModel,
       wordCountValidation: wcValidation,
+      languageValidation: {
+        requested: outputLanguage,
+        resolved: resolvedLang,
+        mismatch: languageMismatch,
+        retried,
+      },
     }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   } catch (err) {
     console.error('generate-blog-article error:', err);

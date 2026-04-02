@@ -2039,9 +2039,7 @@ export function BlogPostEditor() {
                     <SelectItem value="smart" className="text-xs">Never Fixed / Changed / Failed</SelectItem>
                     <SelectItem value="all" className="text-xs">All Articles</SelectItem>
                     <SelectItem value="failed_partial" className="text-xs">Failed / Partial Only</SelectItem>
-                    {selectedPostIds.size > 0 && (
-                      <SelectItem value="selected" className="text-xs">Selected Only ({selectedPostIds.size})</SelectItem>
-                    )}
+                    <SelectItem value="selected" className="text-xs">Selected ({selectedPostIds.size})</SelectItem>
                   </SelectContent>
                 </Select>
                 <Button size="sm" className="text-xs gap-1" disabled={bulkAutoFix.phase === 'scanning' || bulkAutoFix.phase === 'fixing'} onClick={() => handleBulkFixScan()}>

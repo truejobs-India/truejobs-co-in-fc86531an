@@ -447,24 +447,11 @@ export function useBulkAutoFix(
     setIsBaselining(true);
     setBaselineResult(null);
     try {
-      const now = new Date().toISOString();
-      const updatePayload = {
-        last_bulk_scanned_at: now,
-        last_bulk_fix_status: 'baseline' as string,
-        remaining_auto_fixable_count: 0,
-      };
-
-      let query = supabase.from('blog_posts').update(updatePayload).select('id');
-
-      if (targetIds && targetIds.length > 0) {
-        query = query.in('id', targetIds);
-      } else {
-        query = query.is('last_bulk_scanned_at', null);
-      }
-
-      const { data, error } = await query;
+      const { data, error } = await supabase.rpc('baseline_mark_posts' as any, {
+        p_post_ids: targetIds?.length ? targetIds : null,
+      });
       if (error) throw error;
-      const count = data?.length ?? 0;
+      const count = typeof data === 'number' ? data : 0;
       setBaselineResult({ count });
       return count;
     } catch (err) {
@@ -499,22 +486,12 @@ async function stampBulkFixStatus(
   status: BulkFixStatus,
   remainingAutoFixableCount: number | null,
 ) {
-  const now = new Date().toISOString();
-  const updateData: Record<string, any> = {
-    last_bulk_scanned_at: now,
-    last_bulk_fix_status: status,
-    remaining_auto_fixable_count: remainingAutoFixableCount,
-  };
-  
-  // Only stamp last_bulk_fixed_at when fully fixed
-  if (status === 'fixed') {
-    updateData.last_bulk_fixed_at = now;
-  }
-
-  await supabase
-    .from('blog_posts')
-    .update(updateData)
-    .eq('id', postId);
+  await supabase.rpc('stamp_bulk_fix_status' as any, {
+    p_post_id: postId,
+    p_status: status,
+    p_remaining_count: remainingAutoFixableCount ?? 0,
+    p_is_fixed: status === 'fixed',
+  });
 }
 
 // ── Count remaining auto-fixable issues on content ──
@@ -721,6 +698,16 @@ async function processOneArticle(
       const cleanBlock = buildCleanLinkBlock(validLinks);
       modifiedContent = modifiedContent + cleanBlock;
       contentChanged = true;
+
+      // Sync structured internal_links jsonb field
+      const existingLinks: Array<{ path: string; anchorText: string }> =
+        Array.isArray(post.internal_links) ? post.internal_links as any : [];
+      const existingPaths = new Set(existingLinks.map((l) => l.path));
+      const newStructuredLinks = validLinks
+        .filter((l) => !existingPaths.has(l.href))
+        .map((l) => ({ path: l.href, anchorText: l.text }));
+      updatePayload.internal_links = [...existingLinks, ...newStructuredLinks] as any;
+
       fixesApplied.push({ field: 'content (Internal Links)', fixType, beforeValue: '(no Related Resources)', afterValue: `Added ${validLinks.length} internal links` });
       logBlogAiAudit({ tool_name: 'bulk_auto_fix', before_value: '(no links block)', after_value: cleanBlock.substring(0, 200), apply_mode: applyMode, target_field: 'internal_links', slug: post.slug });
       continue;

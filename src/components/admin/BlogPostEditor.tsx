@@ -1189,8 +1189,12 @@ export function BlogPostEditor() {
   const [bulkScanScope, setBulkScanScope] = useState<'smart' | 'all' | 'failed_partial' | 'selected'>('smart');
   const handleBulkFixScan = (scopeOverride?: 'smart' | 'all' | 'failed_partial' | 'selected') => {
     const scope = scopeOverride || bulkScanScope;
-    const selectedPosts = posts.filter(p => selectedPostIds.has(p.id));
-    if (scope === 'selected' && selectedPosts.length > 0) {
+    if (scope === 'selected') {
+      const selectedPosts = posts.filter(p => selectedPostIds.has(p.id));
+      if (selectedPosts.length === 0) {
+        toast({ title: 'No articles selected', description: 'Select articles from the table first.', variant: 'destructive' });
+        return;
+      }
       bulkAutoFix.scanAll('selected', selectedPosts);
     } else {
       bulkAutoFix.scanAll(scope);

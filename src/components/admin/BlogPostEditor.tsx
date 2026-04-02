@@ -1189,8 +1189,12 @@ export function BlogPostEditor() {
   const [bulkScanScope, setBulkScanScope] = useState<'smart' | 'all' | 'failed_partial' | 'selected'>('smart');
   const handleBulkFixScan = (scopeOverride?: 'smart' | 'all' | 'failed_partial' | 'selected') => {
     const scope = scopeOverride || bulkScanScope;
-    const selectedPosts = posts.filter(p => selectedPostIds.has(p.id));
-    if (scope === 'selected' && selectedPosts.length > 0) {
+    if (scope === 'selected') {
+      const selectedPosts = posts.filter(p => selectedPostIds.has(p.id));
+      if (selectedPosts.length === 0) {
+        toast({ title: 'No articles selected', description: 'Select articles from the table first.', variant: 'destructive' });
+        return;
+      }
       bulkAutoFix.scanAll('selected', selectedPosts);
     } else {
       bulkAutoFix.scanAll(scope);
@@ -2035,12 +2039,10 @@ export function BlogPostEditor() {
                     <SelectItem value="smart" className="text-xs">Never Fixed / Changed / Failed</SelectItem>
                     <SelectItem value="all" className="text-xs">All Articles</SelectItem>
                     <SelectItem value="failed_partial" className="text-xs">Failed / Partial Only</SelectItem>
-                    {selectedPostIds.size > 0 && (
-                      <SelectItem value="selected" className="text-xs">Selected Only ({selectedPostIds.size})</SelectItem>
-                    )}
+                    <SelectItem value="selected" className="text-xs">Selected ({selectedPostIds.size})</SelectItem>
                   </SelectContent>
                 </Select>
-                <Button size="sm" className="text-xs gap-1" disabled={bulkAutoFix.phase === 'scanning' || bulkAutoFix.phase === 'fixing'} onClick={() => handleBulkFixScan()}>
+                <Button size="sm" className="text-xs gap-1" disabled={bulkAutoFix.phase === 'scanning' || bulkAutoFix.phase === 'fixing' || (bulkScanScope === 'selected' && selectedPostIds.size === 0)} onClick={() => handleBulkFixScan()}>
                   {bulkAutoFix.phase === 'scanning' ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
                   Scan & Fix
                 </Button>

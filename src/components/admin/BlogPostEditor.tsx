@@ -935,6 +935,42 @@ export function BlogPostEditor() {
     });
   };
 
+  // ── Publish All Drafts ──
+  const [isPublishingAllDrafts, setIsPublishingAllDrafts] = useState(false);
+  const handlePublishAllDrafts = async () => {
+    const drafts = posts.filter(p => !p.is_published);
+    if (drafts.length === 0) {
+      toast({ title: 'No drafts to publish', variant: 'destructive' });
+      return;
+    }
+    setIsPublishingAllDrafts(true);
+    let successCount = 0;
+    let failCount = 0;
+    for (const draft of drafts) {
+      try {
+        const { error } = await supabase
+          .from('blog_posts')
+          .update({
+            is_published: true,
+            status: 'published',
+            published_at: draft.published_at || new Date().toISOString(),
+          })
+          .eq('id', draft.id);
+        if (error) throw error;
+        successCount++;
+      } catch (err) {
+        console.error('Failed to publish draft:', draft.slug, err);
+        failCount++;
+      }
+    }
+    setIsPublishingAllDrafts(false);
+    toast({
+      title: `Published ${successCount} draft(s)${failCount > 0 ? `, ${failCount} failed` : ''}`,
+      variant: failCount > 0 ? 'destructive' : 'default',
+    });
+    if (successCount > 0) fetchPosts();
+  };
+
   // ── Image cleanup: Delete Cover Images ──
   const handleDeleteCoverImages = async () => {
     const selected = posts.filter(p => selectedPostIds.has(p.id) && p.cover_image_url);
@@ -1969,6 +2005,28 @@ export function BlogPostEditor() {
                 {bulkAutoFix.phase === 'scanning' ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
                 Scan & Auto-Fix by AI {selectedPostIds.size > 0 ? `(${selectedPostIds.size})` : '(All)'}
               </Button>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button size="sm" className="text-xs gap-1" disabled={isPublishingAllDrafts || posts.filter(p => !p.is_published).length === 0}>
+                    {isPublishingAllDrafts ? <Loader2 className="h-3 w-3 animate-spin" /> : <Eye className="h-3 w-3" />}
+                    Publish All Drafts ({posts.filter(p => !p.is_published).length})
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Publish all drafts?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will publish {posts.filter(p => !p.is_published).length} draft article(s) immediately. They will become visible to all users.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handlePublishAllDrafts}>
+                      Publish All
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
               {selectedPostIds.size > 0 && (
                 <Button variant="ghost" size="sm" className="text-xs" onClick={() => setSelectedPostIds(new Set())}>
                   Clear selection

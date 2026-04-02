@@ -2487,10 +2487,11 @@ export function BlogPostEditor() {
               </div>
             )}
             {bulkAutoFix.phase === 'done' && bulkAutoFix.summary && (
-              <div className="grid grid-cols-5 gap-2 text-center text-xs">
+              <div className="grid grid-cols-6 gap-1.5 text-center text-xs">
                 <div className="bg-green-500/10 rounded p-2"><div className="font-bold text-green-700 dark:text-green-400">{bulkAutoFix.summary.totalFixed}</div>Fixed</div>
                 <div className="bg-blue-500/10 rounded p-2"><div className="font-bold text-blue-700 dark:text-blue-400">{bulkAutoFix.summary.totalPartial}</div>Partial</div>
                 <div className="bg-muted rounded p-2"><div className="font-bold">{bulkAutoFix.summary.totalSkipped}</div>Skipped</div>
+                <div className="bg-amber-500/10 rounded p-2"><div className="font-bold text-amber-700 dark:text-amber-400">{bulkAutoFix.summary.totalNoAction}</div>No Action</div>
                 <div className="bg-destructive/10 rounded p-2"><div className="font-bold text-destructive">{bulkAutoFix.summary.totalFailed}</div>Failed</div>
                 <div className="bg-muted rounded p-2"><div className="font-bold">{bulkAutoFix.summary.totalStopped}</div>Stopped</div>
               </div>

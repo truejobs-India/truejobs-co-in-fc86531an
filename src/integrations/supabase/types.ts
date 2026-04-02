@@ -4745,6 +4745,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      baseline_mark_posts: { Args: { p_post_ids?: string[] }; Returns: number }
       cleanup_expired_otp_sessions: { Args: never; Returns: undefined }
       delete_employment_news_edition: {
         Args: { p_batch_id: string }
@@ -4831,6 +4832,15 @@ export type Database = {
       }
       resync_batch_counters: {
         Args: { p_batch_id: string }
+        Returns: undefined
+      }
+      stamp_bulk_fix_status: {
+        Args: {
+          p_is_fixed: boolean
+          p_post_id: string
+          p_remaining_count: number
+          p_status: string
+        }
         Returns: undefined
       }
       sync_rss_review_status: {

@@ -781,7 +781,7 @@ ${tagsList ? `Tags: ${tagsList}` : ''}
 Target word count: ~${wordTarget} words
 
 REQUIREMENTS:
-1. Write in Hindi or English — match the language of the topic
+1. ${langInstruction}
 2. Use proper HTML structure: H1 for title, H2/H3 for sections, <p> for paragraphs, <ul>/<ol> for lists, <table> for tabular data
 3. Include 5-8 H2 sections covering the topic comprehensively
 4. Include an introduction paragraph before the first H2

@@ -1,6 +1,8 @@
 /**
  * AI Classification Edge Function for Intake Drafts.
  * Supports retry_enhanced mode for second-pass aggressive extraction.
+ * v2: Strengthened extraction with deterministic pre-extraction, expanded evidence,
+ *     fill-empty-fields second pass, and publish-critical blockers.
  */
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -39,6 +41,143 @@ function json(data: any, status = 200) {
 }
 
 function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
+
+// ─── Deterministic Pre-Extraction ───────────────────────────────────────────
+
+interface PreExtracted {
+  advertisement_no?: string;
+  reference_no?: string;
+  application_mode?: string;
+  official_website_link?: string;
+  official_notification_link?: string;
+  official_apply_link?: string;
+  result_link?: string;
+  notification_date?: string;
+  [key: string]: string | undefined;
+}
+
+function deterministicExtract(draft: any): PreExtracted {
+  const result: PreExtracted = {};
+  const title = (draft.raw_title || '') as string;
+  const rawText = ((draft.raw_text || '') as string).slice(0, 5000);
+  const sourceUrl = (draft.source_url || '') as string;
+  const sourceDomain = (draft.source_domain || '') as string;
+  const combined = `${title}\n${rawText}`;
+
+  // 1. Advertisement / Reference number extraction
+  const advtPatterns = [
+    /Advt\.?\s*No\.?\s*[:.]?\s*([\w\/-]+\d[\w\/-]*)/i,
+    /Advertisement\s*No\.?\s*[:.]?\s*([\w\/-]+\d[\w\/-]*)/i,
+    /No\.\s*([A-Z][\w.\/-]*\d[\w.\/-]*\/\d{4})/i,
+    /Ref\.?\s*[:.]?\s*([\w\/-]+\d[\w\/-]*\/\d{4})/i,
+    /Notification\s*No\.?\s*[:.]?\s*([\w\/-]+\d[\w\/-]*)/i,
+  ];
+  for (const pat of advtPatterns) {
+    const m = combined.match(pat);
+    if (m && m[1] && m[1].length >= 3 && m[1].length <= 50) {
+      result.advertisement_no = m[1].trim();
+      break;
+    }
+  }
+
+  // Reference number (if different from advt no)
+  const refPatterns = [
+    /Ref(?:erence)?\s*No\.?\s*[:.]?\s*([\w\/-]+\d[\w\/-]*)/i,
+    /File\s*No\.?\s*[:.]?\s*([\w.\/-]+\d[\w.\/-]*)/i,
+  ];
+  if (!result.advertisement_no) {
+    for (const pat of refPatterns) {
+      const m = combined.match(pat);
+      if (m && m[1] && m[1].length >= 3 && m[1].length <= 50) {
+        result.reference_no = m[1].trim();
+        break;
+      }
+    }
+  }
+
+  // 2. Dates from URL path segments
+  const urlDateMatch = sourceUrl.match(/\/(\d{4})\/(\d{1,2})\/(\d{1,2})\//);
+  if (urlDateMatch) {
+    const [, y, m, d] = urlDateMatch;
+    const yr = parseInt(y), mo = parseInt(m), dy = parseInt(d);
+    if (yr >= 2020 && yr <= 2030 && mo >= 1 && mo <= 12 && dy >= 1 && dy <= 31) {
+      result.notification_date = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+    }
+  }
+
+  // 3. Application mode keyword detection
+  const modePatterns: [RegExp, string][] = [
+    [/\bapply\s+online\b/i, 'online'],
+    [/\bonline\s+application\b/i, 'online'],
+    [/\bwalk[\s-]?in\b/i, 'walk_in'],
+    [/\boffline\s+application\b/i, 'offline'],
+    [/\bapply\s+offline\b/i, 'offline'],
+    [/\bsend\s+by\s+post\b/i, 'offline'],
+    [/\bemail\s+application\b/i, 'email'],
+    [/\bapply\s+(?:through|via)\s+email\b/i, 'email'],
+  ];
+  for (const [pat, mode] of modePatterns) {
+    if (pat.test(combined)) {
+      result.application_mode = mode;
+      break;
+    }
+  }
+
+  // 4. Official website from trusted domain (conservative)
+  if (sourceDomain) {
+    const parts = sourceDomain.split('.');
+    const isTrusted = (
+      (sourceDomain.endsWith('.gov.in') || sourceDomain.endsWith('.nic.in')) &&
+      parts.length <= 3 &&
+      !sourceDomain.startsWith('cdn.') &&
+      !sourceDomain.startsWith('mail.') &&
+      !sourceDomain.startsWith('www.') &&
+      !/^\d+\.\d+\.\d+\.\d+$/.test(sourceDomain) &&
+      sourceDomain !== 'localhost'
+    );
+    if (isTrusted) {
+      result.official_website_link = `https://${sourceDomain}`;
+    }
+  }
+
+  // 5. Links from structured_data_json
+  let structuredData: any = null;
+  if (draft.structured_data_json) {
+    try {
+      structuredData = typeof draft.structured_data_json === 'string'
+        ? JSON.parse(draft.structured_data_json)
+        : draft.structured_data_json;
+    } catch { /* ignore */ }
+  }
+  if (structuredData && typeof structuredData === 'object') {
+    const linkMap: Record<string, string> = {
+      applyLink: 'official_apply_link',
+      apply_link: 'official_apply_link',
+      apply_url: 'official_apply_link',
+      notificationLink: 'official_notification_link',
+      notification_link: 'official_notification_link',
+      notification_url: 'official_notification_link',
+      resultLink: 'result_link',
+      result_link: 'result_link',
+      result_url: 'result_link',
+      websiteLink: 'official_website_link',
+      website_link: 'official_website_link',
+      website_url: 'official_website_link',
+      officialLink: 'official_notification_link',
+      official_link: 'official_notification_link',
+    };
+    for (const [srcKey, dstKey] of Object.entries(linkMap)) {
+      const val = structuredData[srcKey];
+      if (typeof val === 'string' && val.startsWith('http') && !result[dstKey]) {
+        result[dstKey] = val;
+      }
+    }
+  }
+
+  return result;
+}
+
+// ─── AI Call ────────────────────────────────────────────────────────────────
 
 async function callAI(
   apiKey: string,
@@ -128,6 +267,8 @@ async function callAI(
   throw new Error('AI did not return structured output');
 }
 
+// ─── Tool Schema ────────────────────────────────────────────────────────────
+
 const CLASSIFICATION_TOOL = {
   name: 'classify_intake_draft',
   description: 'Classify a scraped record and extract structured fields for the Indian government jobs portal TrueJobs.co.in',
@@ -158,14 +299,17 @@ const CLASSIFICATION_TOOL = {
       summary: { type: 'string' },
       organisation_name: { type: 'string' },
       department_name: { type: 'string' },
+      ministry_name: { type: 'string' },
       post_name: { type: 'string' },
       exam_name: { type: 'string' },
       advertisement_no: { type: 'string' },
+      reference_no: { type: 'string' },
       job_location: { type: 'string' },
       application_mode: { type: 'string', enum: ['online', 'offline', 'walk_in', 'email', 'unknown'] },
       notification_date: { type: 'string' },
       opening_date: { type: 'string' },
       closing_date: { type: 'string' },
+      correction_last_date: { type: 'string' },
       exam_date: { type: 'string' },
       result_date: { type: 'string' },
       admit_card_date: { type: 'string' },
@@ -174,6 +318,9 @@ const CLASSIFICATION_TOOL = {
       qualification_text: { type: 'string' },
       age_limit_text: { type: 'string' },
       salary_text: { type: 'string' },
+      application_fee_text: { type: 'string' },
+      selection_process_text: { type: 'string' },
+      how_to_apply_text: { type: 'string' },
       official_notification_link: { type: 'string' },
       official_apply_link: { type: 'string' },
       official_website_link: { type: 'string' },
@@ -187,9 +334,11 @@ const CLASSIFICATION_TOOL = {
   },
 };
 
+// ─── System Prompts ─────────────────────────────────────────────────────────
+
 const SYSTEM_PROMPT = `You are an expert classifier for TrueJobs.co.in, an Indian government jobs portal.
 
-Your task: Analyze scraped records and classify them accurately.
+Your task: Analyze scraped records and classify them accurately. Extract ALL available structured fields.
 
 RULES:
 1. NEVER invent facts not present in the evidence
@@ -201,6 +350,14 @@ RULES:
 7. Do NOT stuff keywords
 8. Generate draft_content_html only from real extracted evidence
 9. Add appropriate secondary_tags and publish_blockers
+
+EXTRACTION RULES (CRITICAL):
+10. You MUST attempt to fill EVERY field where evidence exists. Leaving a field empty when the evidence contains the answer is a failure.
+11. Check the Original Import Payload carefully — it often contains structured fields the scraper already extracted (dates, links, org names, post names, vacancies, etc.)
+12. Check Source HTML for links, dates, and structured data the plain text may have lost.
+13. Extract dates in YYYY-MM-DD format when possible. If only month/year is available, use YYYY-MM-01.
+14. Extract all official links you can find — notification PDF links, apply links, website links, result links.
+15. If Pre-extracted Hints are provided, validate them against the evidence and use them if they appear correct.
 
 CLASSIFICATION:
 - "job" = recruitment, vacancy, apply online, posts, eligibility, age limit, selection process
@@ -222,6 +379,91 @@ This record was already classified once but had insufficient evidence. Try harde
 CRITICAL: Do NOT lower your readiness threshold. If evidence remains insufficient after deeper extraction, keep primary_status="manual_check". Only upgrade to "publish_ready" if you found genuinely new evidence this pass.
 
 `;
+
+const FILL_EMPTY_FIELDS_PROMPT = `You are a grounded evidence extractor for TrueJobs.co.in.
+
+Your task: Fill ONLY the listed empty fields using ONLY grounded evidence from the provided sources.
+
+RULES:
+1. NEVER invent, guess, or fabricate any value
+2. Only return a value for a field if you found clear evidence for it
+3. Return empty string "" for fields where evidence is insufficient
+4. Check the Original Import Payload first — it often has structured data
+5. Check Source HTML for links and structured data
+6. Extract dates in YYYY-MM-DD format
+7. Do not change classification or status fields — only fill data fields`;
+
+// ─── Important Fields for Second Pass ───────────────────────────────────────
+
+const IMPORTANT_FIELDS = [
+  'organisation_name', 'department_name', 'ministry_name',
+  'post_name', 'exam_name', 'advertisement_no', 'reference_no',
+  'notification_date', 'opening_date', 'closing_date', 'exam_date',
+  'result_date', 'admit_card_date', 'answer_key_date', 'correction_last_date',
+  'official_notification_link', 'official_apply_link', 'official_website_link',
+  'result_link', 'admit_card_link', 'answer_key_link',
+  'vacancy_count', 'qualification_text', 'age_limit_text',
+  'application_fee_text', 'selection_process_text', 'salary_text',
+  'application_mode', 'summary', 'normalized_title', 'seo_title', 'meta_description',
+  'how_to_apply_text',
+];
+
+function getEmptyImportantFields(aiResult: any): string[] {
+  return IMPORTANT_FIELDS.filter(f => {
+    const v = aiResult[f];
+    return v === undefined || v === null || v === '' || (typeof v === 'number' && isNaN(v));
+  });
+}
+
+// ─── Critical Blockers ──────────────────────────────────────────────────────
+
+function getCriticalBlockers(aiResult: any, contentType: string): string[] {
+  const blockers: string[] = [];
+
+  if (!aiResult.organisation_name) {
+    blockers.push('missing_organisation');
+  }
+
+  const needsPostOrExam = ['job', 'result', 'admit_card', 'answer_key', 'exam'].includes(contentType);
+  if (needsPostOrExam && !aiResult.post_name && !aiResult.exam_name) {
+    blockers.push('missing_post_or_exam_name');
+  }
+
+  if (!aiResult.official_notification_link && !aiResult.official_apply_link) {
+    blockers.push('missing_official_link');
+  }
+
+  if (contentType === 'job' && !aiResult.closing_date) {
+    blockers.push('missing_closing_date');
+  }
+
+  return blockers;
+}
+
+// ─── Build Fill-Empty Tool Schema ───────────────────────────────────────────
+
+function buildFillEmptyToolSchema(emptyFields: string[]): any {
+  const props: Record<string, any> = {};
+  for (const f of emptyFields) {
+    const original = (CLASSIFICATION_TOOL.parameters.properties as any)[f];
+    if (original) {
+      props[f] = { ...original };
+    } else {
+      props[f] = { type: 'string' };
+    }
+  }
+  return {
+    name: 'fill_empty_fields',
+    description: 'Fill empty fields using grounded evidence only',
+    parameters: {
+      type: 'object',
+      properties: props,
+      required: emptyFields,
+    },
+  };
+}
+
+// ─── Main Handler ───────────────────────────────────────────────────────────
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
@@ -257,9 +499,8 @@ Deno.serve(async (req) => {
     }
 
     const client = createClient(supabaseUrl, serviceRoleKey);
-    const results: { id: string; status: string; error?: string }[] = [];
+    const results: { id: string; status: string; error?: string; secondPass?: boolean }[] = [];
 
-    // Build system prompt based on mode
     const systemPrompt = retryEnhanced ? RETRY_ENHANCED_PREFIX + SYSTEM_PROMPT : SYSTEM_PROMPT;
 
     for (const draftId of draftIds) {
@@ -272,20 +513,42 @@ Deno.serve(async (req) => {
           continue;
         }
 
+        // ── Deterministic pre-extraction ──
+        const preExtracted = deterministicExtract(draft);
+        const preExtractedHints = Object.entries(preExtracted)
+          .filter(([, v]) => v)
+          .map(([k, v]) => `  ${k}: ${v}`)
+          .join('\n');
+
+        // ── Build evidence with expanded sources ──
+        const rawTags = draft.secondary_tags;
+        const parsedTags = Array.isArray(rawTags)
+          ? rawTags
+          : (typeof rawTags === 'string' ? (() => { try { return JSON.parse(rawTags); } catch { return []; } })() : []);
+
+        let structuredPayload = '';
+        if (draft.structured_data_json) {
+          try {
+            const sd = typeof draft.structured_data_json === 'string'
+              ? draft.structured_data_json
+              : JSON.stringify(draft.structured_data_json);
+            structuredPayload = sd.slice(0, 3000);
+          } catch { /* ignore */ }
+        }
+
+        const rawHtml = draft.raw_html ? (draft.raw_html as string).slice(0, 3000) : '';
+
         const evidence = [
           draft.raw_title ? `Title: ${draft.raw_title}` : '',
           draft.source_url ? `Source URL: ${draft.source_url}` : '',
           draft.source_domain ? `Source Domain: ${draft.source_domain}` : '',
+          draft.source_name ? `Source Name: ${draft.source_name}` : '',
           draft.raw_file_url ? `File URL: ${draft.raw_file_url}` : '',
           draft.raw_text ? `Content:\n${(draft.raw_text as string).slice(0, 4000)}` : '',
-          (() => {
-            const rawTags = draft.secondary_tags;
-            const parsedTags = Array.isArray(rawTags)
-              ? rawTags
-              : (typeof rawTags === 'string' ? (() => { try { return JSON.parse(rawTags); } catch { return []; } })() : []);
-            return parsedTags.length > 0 ? `Import tags: ${parsedTags.join(', ')}` : '';
-          })(),
-          // For retry, include previously extracted fields as additional context
+          parsedTags.length > 0 ? `Import tags: ${parsedTags.join(', ')}` : '',
+          structuredPayload ? `Original Import Payload:\n${structuredPayload}` : '',
+          rawHtml ? `Source HTML (excerpt):\n${rawHtml}` : '',
+          preExtractedHints ? `Pre-extracted Hints (deterministic):\n${preExtractedHints}` : '',
           retryEnhanced && draft.normalized_title ? `Previous title extraction: ${draft.normalized_title}` : '',
           retryEnhanced && draft.organisation_name ? `Previous org extraction: ${draft.organisation_name}` : '',
           retryEnhanced && draft.classification_reason ? `Previous classification note: ${draft.classification_reason}` : '',
@@ -293,10 +556,45 @@ Deno.serve(async (req) => {
 
         const userPrompt = retryEnhanced
           ? `SECOND-PASS: Re-classify this record with deeper extraction:\n\n${evidence}`
-          : `Classify this scraped record:\n\n${evidence}`;
+          : `Classify this scraped record and extract ALL available fields:\n\n${evidence}`;
 
-        const aiResult = await callAI(lovableKey, systemPrompt, userPrompt, CLASSIFICATION_TOOL, aiModel);
+        // ── AI Pass 1 ──
+        let aiResult = await callAI(lovableKey, systemPrompt, userPrompt, CLASSIFICATION_TOOL, aiModel);
 
+        // ── Fill-Empty-Fields Second Pass ──
+        let didSecondPass = false;
+        const emptyFields = getEmptyImportantFields(aiResult);
+        const hasSubstantialEvidence = (draft.raw_text && (draft.raw_text as string).length > 200) || !!structuredPayload;
+
+        if (emptyFields.length >= 3 && hasSubstantialEvidence) {
+          try {
+            console.log(`[intake-ai-classify] ${draftId}: ${emptyFields.length} empty fields, running fill pass`);
+            const fillTool = buildFillEmptyToolSchema(emptyFields);
+            const fillPrompt = `These fields are currently empty and need to be filled if evidence exists:\n${emptyFields.join(', ')}\n\nEvidence:\n${evidence}`;
+
+            const fillResult = await callAI(lovableKey, FILL_EMPTY_FIELDS_PROMPT, fillPrompt, fillTool, aiModel);
+
+            // Merge: only fill fields that were empty
+            for (const f of emptyFields) {
+              const newVal = fillResult[f];
+              if (newVal !== undefined && newVal !== null && newVal !== '') {
+                aiResult[f] = newVal;
+              }
+            }
+            didSecondPass = true;
+          } catch (fillErr) {
+            console.error(`[intake-ai-classify] Fill pass error for ${draftId}:`, fillErr instanceof Error ? fillErr.message : fillErr);
+          }
+        }
+
+        // ── Apply deterministic fallbacks for still-empty fields ──
+        for (const [key, val] of Object.entries(preExtracted)) {
+          if (val && (!aiResult[key] || aiResult[key] === '')) {
+            aiResult[key] = val;
+          }
+        }
+
+        // ── Merge tags ──
         const rawExistingTags = draft.secondary_tags;
         const existingTags: string[] = Array.isArray(rawExistingTags)
           ? rawExistingTags
@@ -304,6 +602,12 @@ Deno.serve(async (req) => {
         const aiTags = Array.isArray(aiResult.secondary_tags) ? aiResult.secondary_tags : [];
         const mergedTags = [...new Set([...existingTags, ...aiTags])];
 
+        // ── Build critical blockers ──
+        const aiBlockers = Array.isArray(aiResult.publish_blockers) ? aiResult.publish_blockers : [];
+        const criticalBlockers = getCriticalBlockers(aiResult, aiResult.content_type || '');
+        const mergedBlockers = [...new Set([...aiBlockers, ...criticalBlockers])];
+
+        // ── Build update ──
         const update: Record<string, any> = {
           content_type: aiResult.content_type,
           primary_status: aiResult.primary_status,
@@ -311,7 +615,7 @@ Deno.serve(async (req) => {
           confidence_score: aiResult.confidence_score,
           classification_reason: aiResult.classification_reason,
           secondary_tags: mergedTags,
-          publish_blockers: aiResult.publish_blockers || [],
+          publish_blockers: mergedBlockers,
           processing_status: 'ai_processed',
           ai_model_used: aiModel || 'default',
           ai_processed_at: new Date().toISOString(),
@@ -319,11 +623,12 @@ Deno.serve(async (req) => {
 
         const optionalFields = [
           'normalized_title', 'seo_title', 'slug', 'meta_description', 'summary',
-          'organisation_name', 'department_name', 'post_name', 'exam_name',
-          'advertisement_no', 'job_location', 'application_mode',
-          'notification_date', 'opening_date', 'closing_date', 'exam_date',
-          'result_date', 'admit_card_date', 'answer_key_date',
+          'organisation_name', 'department_name', 'ministry_name', 'post_name', 'exam_name',
+          'advertisement_no', 'reference_no', 'job_location', 'application_mode',
+          'notification_date', 'opening_date', 'closing_date', 'correction_last_date',
+          'exam_date', 'result_date', 'admit_card_date', 'answer_key_date',
           'vacancy_count', 'qualification_text', 'age_limit_text', 'salary_text',
+          'application_fee_text', 'selection_process_text', 'how_to_apply_text',
           'official_notification_link', 'official_apply_link', 'official_website_link',
           'result_link', 'admit_card_link', 'answer_key_link',
           'draft_content_html',
@@ -340,7 +645,7 @@ Deno.serve(async (req) => {
         if (updateErr) {
           results.push({ id: draftId, status: 'error', error: updateErr.message });
         } else {
-          results.push({ id: draftId, status: 'ok' });
+          results.push({ id: draftId, status: 'ok', secondPass: didSecondPass });
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Unknown error';

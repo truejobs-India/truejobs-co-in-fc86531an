@@ -1,80 +1,134 @@
 
 
-# Strengthen Empty-Field Extraction — Simplified v1
+# Blog Rollout Audit — Revised with Tightened Verification
 
-## Problem
-The `intake-ai-classify` edge function ignores `structured_data_json`, `raw_html`, and `source_name`. The tool schema is missing 6 DB fields. No deterministic pre-extraction runs before the AI call. No second pass targets empty fields. Result: many avoidably empty fields in drafts.
+## Final Verdict
 
-## Single File Changed: `supabase/functions/intake-ai-classify/index.ts`
+No code changes appear required based on current route design and sitemap logic, but live verification is still required before final sign-off. The existing infrastructure should handle the 200 new blog posts correctly across all layers — but this must be confirmed, not assumed.
 
-### 1. Add 6 missing fields to CLASSIFICATION_TOOL schema (line ~184)
-Add properties: `application_fee_text`, `selection_process_text`, `correction_last_date`, `reference_no`, `ministry_name`, `how_to_apply_text`.
+---
 
-### 2. Feed all available evidence to AI (evidence assembly, lines 275-292)
-Add to evidence block:
-- `structured_data_json` — stringify first 3000 chars as "Original Import Payload"
-- `raw_html` — first 3000 chars as "Source HTML"
-- `source_name` as "Source Name"
+## Findings by Section
 
-### 3. Conservative deterministic pre-extraction
-Add a `deterministicExtract(draft)` function before the AI call with only these safe rules:
+### A. Blog Routes — Appears Correct, Needs Live Confirmation
 
-- **Advt/Reference numbers**: regex for patterns like `Advt No. 01/2025`, `No. F.1-12/2025`, `Ref: RRC-01/2025` from title and raw_text
-- **Dates from URL/filename**: extract from URL path segments like `/2025/03/15/` or filenames like `notification-2025-03-15.pdf`
-- **Application mode keywords**: detect "Apply Online", "Walk-in", "Offline", "Deputation" from title/raw_text (case-insensitive exact phrase match only)
-- **Official website from trusted domain**: set `official_website_link` only when `source_domain` is a bare second-level `.gov.in` or `.nic.in` domain (e.g. `upsc.gov.in`, `ssc.nic.in`). Skip subdomains like `cdn.upsc.gov.in`, `mail.xyz.gov.in`, IP addresses, localhost, or any domain with more than 3 dot-separated segments
-- **Links from structured_data_json**: if original payload has keys matching `applyLink`, `apply_link`, `notificationLink`, `notification_link`, `resultLink`, `result_link`, `websiteLink`, extract directly as corresponding official link fields
+The Cloudflare Worker has:
+- `^\/blog\/[a-z0-9][a-z0-9-]*$` in `SEO_ROUTE_PATTERNS` — matches all `/blog/:slug` detail pages
+- `/blog/` in `KNOWN_MULTI_SEGMENT_PREFIXES` — multi-segment blog paths are handled
+- Adding 200 posts under `/blog/:slug` should require zero Worker changes since patterns are generic
 
-Pre-extracted values are passed to AI as hints and used as fallbacks for any field AI leaves empty.
+**Status**: Code-healthy. Live confirmation required.
 
-### 4. Strengthen system prompt (line ~190)
-Add to SYSTEM_PROMPT:
-- "You MUST attempt to fill every field where evidence exists. Leaving a field empty when evidence contains the answer is a failure."
-- "Check the Original Import Payload carefully — it often contains structured fields the scraper already extracted."
-- "Check Source HTML for links, dates, and structured data the plain text may have lost."
+### B. Sitemap — Logic Appears Sound, Two Verifications Needed
 
-### 5. Focused fill-empty-fields second pass (after line ~298)
-After main AI result, check if 3+ important fields are empty AND evidence is substantial (raw_text > 200 chars or structured_data_json exists). If so:
-- Build targeted prompt listing only empty fields + all evidence
-- Call AI with "FILL EMPTY FIELDS ONLY — return values only where grounded evidence exists"
-- Merge: only overwrite fields that were empty and now have non-empty values
-- Apply deterministic fallbacks for any still-empty pre-extracted fields
+**Blog sub-sitemap**: `generateBlogSitemap()` queries `blog_posts` where `is_published = true` and `slug IS NOT NULL`, using `fetchAllRows()` with pagination. Should include all 200+ posts.
 
-### 6. Publish-critical blockers only (after all extraction)
-Add blockers for only these critical fields when empty:
-- `organisation_name` → `missing_organisation`
-- `post_name` or `exam_name` (at least one needed for job/result/admit_card) → `missing_post_or_exam_name`
-- `official_notification_link` or `official_apply_link` (at least one needed) → `missing_official_link`
-- For jobs: `closing_date` empty → `missing_closing_date`
+**Root sitemap index**: `generateSitemapIndex()` includes `sitemap-blog.xml` as a child sitemap with a `lastmod` derived from the latest `blog_posts.updated_at`. This should be correct.
 
-No blocker flooding for optional fields.
+**Must verify live**:
+1. `https://truejobs.co.in/sitemap.xml` returns a valid sitemap index that references `sitemap-blog.xml`
+2. `https://truejobs.co.in/sitemap-blog.xml` returns ~200+ blog URLs with correct `lastmod` values
 
-### 7. Expand optionalFields list (line ~320)
-Add: `application_fee_text`, `selection_process_text`, `correction_last_date`, `reference_no`, `ministry_name`, `how_to_apply_text`.
+**Status**: Code-healthy. Live output verification required for both index and blog sub-sitemap.
 
-## Decision flow after changes
+### C. Robots & Indexability — Appears Correct
 
-```text
-Import row → Store with structured_data_json (already done)
-  → Deterministic pre-extract (advt no, dates, mode, links, trusted-domain website)
-  → AI Pass 1 (full evidence: structured_data_json + raw_html + source_name + pre-extracted hints)
-  → Check empty important fields
-  → If 3+ empty + evidence exists → AI Pass 2 (targeted fill-empty-fields)
-  → Apply deterministic fallbacks for still-empty fields
-  → Add critical-only blockers
-  → Save draft
+- `robots.txt` allows `/blog` and `/blog/*`
+- Worker does not inject `X-Robots-Tag: noindex` for blog routes (only `PRIVATE_PREFIXES`)
+- Blog SEO components use standard `index, follow` by default
+- No noindex logic should affect normal published blog posts
+
+**Status**: Code-healthy. Must verify no accidental noindex on live blog URLs.
+
+### D. SEO Cache — Should Be Sufficient If Rebuild Was Complete
+
+Cache rebuild + Cloudflare purge should be sufficient **if**:
+1. The rebuild actually included the newly published posts (verify a few blog slugs exist in `seo_page_cache`)
+2. Live blog URLs are returning merged SEO HTML correctly (not just SPA shell)
+
+If the rebuild ran before all 200 posts were published, some posts may have been missed. A spot-check of cache presence for recent posts would confirm.
+
+**Status**: Conditional pass. Live HTML verification required.
+
+### E. Cloudflare Worker — No Update Appears Needed
+
+Blog detail pattern is already in `SEO_ROUTE_PATTERNS`. Worker only needs updating when route families change, not when new content is published under existing patterns.
+
+**Status**: Code-healthy. Live `X-Rendered-By` header check required.
+
+---
+
+## Required Actions
+
+### Must Do Now (Mandatory Before Sign-Off)
+
+**Live verification of 3–5 newly published blog URLs:**
+
+For each URL, verify all of the following:
+
 ```
+curl -sI https://truejobs.co.in/blog/YOUR-SLUG
+```
+- [ ] HTTP 200
+- [ ] `X-Rendered-By: sfc-worker` header present
+- [ ] No `X-Robots-Tag: noindex` header
 
-## What stays the same
-- Readiness threshold unchanged
-- No new DB schema or migrations
-- No new edge functions
-- Import flow in `IntakeCsvUploader.tsx` unchanged
-- `IntakeDraftsManager.tsx` unchanged — existing `isLowConfidence()` already routes drafts with blockers to Low Confidence
+```
+curl -s https://truejobs.co.in/blog/YOUR-SLUG | head -150
+```
+- [ ] `<title>` contains actual blog post title (not generic fallback)
+- [ ] `<meta name="description"` present with real content
+- [ ] `<link rel="canonical" href="https://truejobs.co.in/blog/YOUR-SLUG"` correct
+- [ ] Actual server-rendered content visible in raw HTML (not empty `<div id="root">`)
 
-## Files changed
+**Verify root sitemap index:**
+```
+curl -s https://truejobs.co.in/sitemap.xml | grep blog
+```
+- [ ] Output includes `sitemap-blog.xml` reference
 
-| File | Change |
-|------|--------|
-| `supabase/functions/intake-ai-classify/index.ts` | Feed structured_data_json + raw_html + source_name, add 6 tool fields, conservative deterministic pre-extraction (with trusted-domain guard), stronger prompt, fill-empty-fields second pass, publish-critical-only blockers |
+**Verify blog sub-sitemap:**
+```
+curl -s https://truejobs.co.in/sitemap-blog.xml | head -20
+```
+- [ ] Comment shows ~200+ post count
+- [ ] New slugs appear in output
+
+### Must Do Now — GSC
+
+1. Go to **Sitemaps** → confirm `sitemap.xml` is submitted and shows recent fetch
+2. If not recently fetched, click **Resubmit**
+3. Use **URL Inspection** on 3–5 new blog URLs:
+   - Note whether each is: Discovered / Crawled / Indexed
+   - If "URL is not on Google" → click **Request Indexing**
+   - If "URL is on Google" → note coverage status
+4. Check **Pages** report in 48–72 hours for any "Discovered - currently not indexed" entries related to `/blog/`
+
+### Good To Do
+- Spot-check 2–3 blog slugs exist in `seo_page_cache` table to confirm rebuild coverage
+- If any blog URLs return SPA shell instead of merged HTML, re-run cache rebuild for blog type
+
+### Not Required
+- No Worker update (unless live verification reveals a gap)
+- No sitemap code change (unless live output is wrong)
+- No robots.txt change
+
+---
+
+## Files — No Changes Proposed
+
+No code or configuration changes are proposed. If live verification reveals a defect, the specific file and fix will be identified at that point.
+
+---
+
+## Operator Checklist Summary
+
+| Step | Action | Time |
+|------|--------|------|
+| 1 | curl 3–5 new blog URLs — check HTTP 200, X-Rendered-By, no noindex, correct canonical/title/meta, real HTML | 3 min |
+| 2 | curl sitemap.xml — confirm blog sitemap reference | 30 sec |
+| 3 | curl sitemap-blog.xml — confirm 200+ posts listed | 30 sec |
+| 4 | GSC: resubmit sitemap if needed | 1 min |
+| 5 | GSC: URL Inspection on 3–5 blog URLs — note status, request indexing if needed | 3 min |
+| 6 | Report back any failures for targeted fix | — |
 

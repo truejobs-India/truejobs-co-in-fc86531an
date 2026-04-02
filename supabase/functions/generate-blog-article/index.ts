@@ -708,13 +708,29 @@ Deno.serve(async (req) => {
     const authResult = await verifyAdmin(req);
     if (authResult instanceof Response) return authResult;
 
-    const { topic, category, tags, targetWordCount, aiModel } = await req.json();
+    const { topic, category, tags, targetWordCount, aiModel, outputLanguage: rawOutputLang } = await req.json();
     if (!topic || typeof topic !== 'string') {
       return new Response(JSON.stringify({ error: 'topic is required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     useModel = aiModel || 'gemini';
-    console.log(`[generate-blog-article] Using model: ${useModel}`);
+    const outputLanguage = rawOutputLang || 'auto';
+    let resolvedLang: 'english' | 'hindi';
+    let autoDetected = false;
+
+    if (outputLanguage === 'english' || outputLanguage === 'hindi') {
+      resolvedLang = outputLanguage;
+    } else {
+      autoDetected = true;
+      const devCount = (topic.match(/[\u0900-\u097F]/g) || []).length;
+      resolvedLang = devCount >= 3 ? 'hindi' : 'english';
+    }
+
+    const langInstruction = resolvedLang === 'english'
+      ? 'LANGUAGE RULE: Write the entire output in English only. Do not write in Hindi or Devanagari. Do not switch languages. This applies to ALL fields: title, content, meta description, excerpt, FAQ — everything must be in English.'
+      : 'LANGUAGE RULE: पूरी सामग्री हिन्दी (देवनागरी) में लिखें। लेख को अंग्रेज़ी में न लिखें। केवल आवश्यक technical terms जैसे SSC, UPSC, salary, notification आदि स्वाभाविक रूप में रखे जा सकते हैं। यह नियम सभी fields पर लागू है: title, content, meta description, excerpt, FAQ — सब कुछ हिन्दी में होना चाहिए।';
+
+    console.log(`[generate-blog-article] model=${useModel} outputLanguage=${outputLanguage} resolvedLang=${resolvedLang} autoDetected=${autoDetected} topicPreview="${topic.substring(0, 60)}"`);
 
     const wordTarget = Math.min(Math.max(Number(targetWordCount) || 1500, 800), 3000);
     let prompt: string;

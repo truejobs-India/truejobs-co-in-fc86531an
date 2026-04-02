@@ -667,10 +667,14 @@ export type Database = {
           internal_links: Json | null
           is_published: boolean
           language: string | null
+          last_bulk_fix_status: string | null
+          last_bulk_fixed_at: string | null
+          last_bulk_scanned_at: string | null
           meta_description: string | null
           meta_title: string | null
           published_at: string | null
           reading_time: number | null
+          remaining_auto_fixable_count: number | null
           scheduled_at: string | null
           schema_json: string | null
           slug: string
@@ -699,10 +703,14 @@ export type Database = {
           internal_links?: Json | null
           is_published?: boolean
           language?: string | null
+          last_bulk_fix_status?: string | null
+          last_bulk_fixed_at?: string | null
+          last_bulk_scanned_at?: string | null
           meta_description?: string | null
           meta_title?: string | null
           published_at?: string | null
           reading_time?: number | null
+          remaining_auto_fixable_count?: number | null
           scheduled_at?: string | null
           schema_json?: string | null
           slug: string
@@ -731,10 +739,14 @@ export type Database = {
           internal_links?: Json | null
           is_published?: boolean
           language?: string | null
+          last_bulk_fix_status?: string | null
+          last_bulk_fixed_at?: string | null
+          last_bulk_scanned_at?: string | null
           meta_description?: string | null
           meta_title?: string | null
           published_at?: string | null
           reading_time?: number | null
+          remaining_auto_fixable_count?: number | null
           scheduled_at?: string | null
           schema_json?: string | null
           slug?: string

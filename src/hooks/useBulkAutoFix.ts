@@ -439,6 +439,42 @@ export function useBulkAutoFix(
 
   const summary: BulkFixSummary | null = phase === 'done' ? computeSummary(results) : null;
 
+  // ── Baseline marking ──
+  const [isBaselining, setIsBaselining] = useState(false);
+  const [baselineResult, setBaselineResult] = useState<{ count: number } | null>(null);
+
+  const baselineMarkPosts = useCallback(async (targetIds?: string[]) => {
+    setIsBaselining(true);
+    setBaselineResult(null);
+    try {
+      const now = new Date().toISOString();
+      const updatePayload = {
+        last_bulk_scanned_at: now,
+        last_bulk_fix_status: 'baseline' as string,
+        remaining_auto_fixable_count: 0,
+      };
+
+      let query = supabase.from('blog_posts').update(updatePayload).select('id');
+
+      if (targetIds && targetIds.length > 0) {
+        query = query.in('id', targetIds);
+      } else {
+        query = query.is('last_bulk_scanned_at', null);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      const count = data?.length ?? 0;
+      setBaselineResult({ count });
+    } catch (err) {
+      console.error('Baseline marking failed:', err);
+      setBaselineResult({ count: 0 });
+      throw err;
+    } finally {
+      setIsBaselining(false);
+    }
+  }, []);
+
   return {
     phase,
     scanReport,
@@ -450,6 +486,9 @@ export function useBulkAutoFix(
     executeAutoFix,
     requestStop,
     resetDialog,
+    isBaselining,
+    baselineResult,
+    baselineMarkPosts,
   };
 }
 

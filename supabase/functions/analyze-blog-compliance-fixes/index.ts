@@ -206,10 +206,25 @@ Return ONLY a JSON array: [{...}]
 No markdown code blocks.`;
 
     const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-    let raw = await callVertexGemini('gemini-2.5-pro', prompt, 120_000, {
-      maxOutputTokens: 8192,
-      temperature: 0.3,
-    });
+    let raw: string;
+    let timedOut = false;
+
+    try {
+      raw = await callVertexGemini('gemini-2.5-pro', prompt, 90_000, {
+        maxOutputTokens: 8192,
+        temperature: 0.3,
+      });
+    } catch (aiErr) {
+      const msg = aiErr instanceof Error ? aiErr.message : String(aiErr);
+      if (msg.startsWith('VERTEX_TIMEOUT')) {
+        console.warn(`[COMPLIANCE] Vertex AI timed out for "${title}"`);
+        return new Response(JSON.stringify({ fixes: [], truncated: false, parseError: false, recoveryAttempted: false, timedOut: true }), {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      throw aiErr;
+    }
 
     console.log(`[COMPLIANCE] Raw response length: ${raw.length} chars`);
 
@@ -258,7 +273,7 @@ No markdown code blocks.`;
 
     console.log(`[COMPLIANCE] Result: ${fixes.length} fixes, truncated=${truncated}, parseError=${parseError}, recoveryAttempted=${recoveryAttempted}`);
 
-    return new Response(JSON.stringify({ fixes, truncated, parseError, recoveryAttempted }), {
+    return new Response(JSON.stringify({ fixes, truncated, parseError, recoveryAttempted, timedOut }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

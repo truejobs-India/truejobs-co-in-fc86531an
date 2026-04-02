@@ -577,6 +577,16 @@ async function processOneArticle(
 
   if (error) throw new Error(error.message);
 
+  // Handle timeout gracefully — mark as failed so it retries next run
+  if (data?.timedOut) {
+    console.warn(`[BULK_AUTO_FIX] AI timed out for "${post.slug}"`);
+    await stampBulkFixStatus(post.id, 'failed', failedChecks.length);
+    return {
+      postId: post.id, slug: post.slug, title: post.title,
+      status: 'failed' as const, issuesFound: failedChecks.length, fixesApplied: [], fixesSkipped: [],
+    };
+  }
+
   const fixes: any[] = Array.isArray(data?.fixes) ? data.fixes : [];
   const fixesApplied: FixApplied[] = [];
   const fixesSkipped: FixSkipped[] = [];

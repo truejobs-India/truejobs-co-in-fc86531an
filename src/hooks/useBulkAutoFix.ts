@@ -2,10 +2,11 @@
  * useBulkAutoFix — Fully autonomous bulk fix pipeline for blog articles.
  * 
  * 2-step flow:
- * 1. scanAll() — scans articles via local compliance analysis, classifies as clean/fixable/skipped
+ * 1. scanAll(scope) — scans articles via local compliance analysis, classifies as clean/fixable/skipped
  * 2. executeAutoFix() — processes fixable articles sequentially, applies safe fixes, logs everything
  * 
- * No "review required" state. Every fix ends as: fixed, partially_fixed, skipped, failed, or stopped.
+ * Supports change-aware eligibility with 5-status model:
+ *   fixed | partially_fixed | skipped | failed | no_action_taken
  */
 
 import { useState, useRef, useCallback } from 'react';
@@ -62,6 +63,18 @@ function splitActionableChecks<T extends { key: string; status: string }>(checks
 
 export type BulkAutoFixPhase = 'idle' | 'scanning' | 'scanned' | 'fixing' | 'done';
 export type ScanClassification = 'clean' | 'fixable' | 'skipped';
+export type BulkScanScope = 'smart' | 'all' | 'failed_partial' | 'selected';
+export type BulkFixStatus = 'fixed' | 'partially_fixed' | 'skipped' | 'failed' | 'no_action_taken';
+
+export interface ScanStateBreakdown {
+  neverBulkFixed: number;
+  changed: number;
+  failed: number;
+  partial: number;
+  noActionTaken: number;
+  skippedUnchanged: number;
+  alreadyClean: number;
+}
 
 export interface ScanItem {
   postId: string;
@@ -72,6 +85,7 @@ export interface ScanItem {
   warnCount: number;
   issuesByType: Record<string, number>;
   skipReason?: string;
+  eligibilityReason?: string;
 }
 
 export interface FixApplied {
@@ -91,7 +105,7 @@ export interface ArticleResult {
   postId: string;
   slug: string;
   title: string;
-  status: 'fixed' | 'partially_fixed' | 'skipped' | 'failed' | 'stopped';
+  status: 'fixed' | 'partially_fixed' | 'skipped' | 'failed' | 'stopped' | 'no_action_taken';
   issuesFound: number;
   fixesApplied: FixApplied[];
   fixesSkipped: FixSkipped[];
@@ -105,6 +119,8 @@ export interface ScanReport {
   totalSkipped: number;
   fixableItems: ScanItem[];
   issueBreakdown: Record<string, number>;
+  stateBreakdown: ScanStateBreakdown;
+  scope: BulkScanScope;
 }
 
 export interface BulkFixSummary {
@@ -113,6 +129,7 @@ export interface BulkFixSummary {
   totalSkipped: number;
   totalFailed: number;
   totalStopped: number;
+  totalNoAction: number;
   fieldBreakdown: Record<string, number>;
 }
 
@@ -134,7 +151,51 @@ interface BlogPost {
   faq_schema: any;
   internal_links: any;
   word_count: number | null;
+  updated_at?: string;
+  last_bulk_scanned_at?: string | null;
+  last_bulk_fixed_at?: string | null;
+  last_bulk_fix_status?: string | null;
+  remaining_auto_fixable_count?: number | null;
   [key: string]: any;
+}
+
+// ── Eligibility check for smart scope ──
+function isEligibleForSmartScope(post: BlogPost): { eligible: boolean; reason: string } {
+  // Never scanned
+  if (!post.last_bulk_scanned_at) {
+    return { eligible: true, reason: 'neverBulkFixed' };
+  }
+
+  // Content changed since last scan
+  if (post.updated_at && post.last_bulk_scanned_at) {
+    const updatedAt = new Date(post.updated_at).getTime();
+    const scannedAt = new Date(post.last_bulk_scanned_at).getTime();
+    if (updatedAt > scannedAt) {
+      return { eligible: true, reason: 'changed' };
+    }
+  }
+
+  // Technical failure — always retry
+  if (post.last_bulk_fix_status === 'failed') {
+    return { eligible: true, reason: 'failed' };
+  }
+
+  // Partially fixed with remaining issues
+  if (post.last_bulk_fix_status === 'partially_fixed' && (post.remaining_auto_fixable_count ?? 0) > 0) {
+    return { eligible: true, reason: 'partial' };
+  }
+
+  // no_action_taken — only re-eligible if content changed (already covered by changed check above)
+  // If we reach here, content hasn't changed, so don't retry
+  
+  return { eligible: false, reason: 'skippedUnchanged' };
+}
+
+function isEligibleForFailedPartialScope(post: BlogPost): boolean {
+  if (post.last_bulk_fix_status === 'failed') return true;
+  if (post.last_bulk_fix_status === 'partially_fixed' && (post.remaining_auto_fixable_count ?? 0) > 0) return true;
+  if (post.last_bulk_fix_status === 'no_action_taken' && (post.remaining_auto_fixable_count ?? 0) > 0) return true;
+  return false;
 }
 
 export function useBulkAutoFix(
@@ -150,38 +211,71 @@ export function useBulkAutoFix(
   const stopRef = useRef(false);
 
   // ── Phase 1: Scan ──
-  const scanAll = useCallback(async (targetPosts?: BlogPost[]) => {
+  const scanAll = useCallback(async (scope: BulkScanScope = 'smart', targetPosts?: BlogPost[]) => {
     setShowDialog(true);
     setPhase('scanning');
     setScanReport(null);
     setResults([]);
     stopRef.current = false;
 
-    // Always fetch fresh data from DB to avoid stale counts
-    let postsToScan: BlogPost[];
-    if (targetPosts && targetPosts.length > 0) {
-      postsToScan = targetPosts;
+    // Always fetch fresh data from DB including tracking columns
+    let allFetchedPosts: BlogPost[];
+    
+    const { data: freshPosts, error: fetchErr } = await supabase
+      .from('blog_posts')
+      .select('id, title, slug, content, excerpt, cover_image_url, featured_image_alt, is_published, meta_title, meta_description, canonical_url, author_name, faq_count, has_faq_schema, faq_schema, internal_links, word_count, updated_at, last_bulk_scanned_at, last_bulk_fixed_at, last_bulk_fix_status, remaining_auto_fixable_count');
+    
+    if (fetchErr || !freshPosts) {
+      console.error('[BULK_AUTO_FIX] Failed to fetch fresh posts:', fetchErr);
+      allFetchedPosts = allPosts as BlogPost[];
     } else {
-      // Refresh parent state + fetch fresh from DB
-      fetchPosts();
-      const { data: freshPosts, error: fetchErr } = await supabase
-        .from('blog_posts')
-        .select('id, title, slug, content, excerpt, cover_image_url, featured_image_alt, is_published, meta_title, meta_description, canonical_url, author_name, faq_count, has_faq_schema, faq_schema, internal_links, word_count');
-      if (fetchErr || !freshPosts) {
-        console.error('[BULK_AUTO_FIX] Failed to fetch fresh posts:', fetchErr);
-        postsToScan = allPosts; // fallback to in-memory
-      } else {
-        postsToScan = freshPosts as BlogPost[];
+      allFetchedPosts = freshPosts as BlogPost[];
+    }
+
+    // Determine which posts to scan based on scope
+    let postsToScan: BlogPost[];
+    const stateBreakdown: ScanStateBreakdown = {
+      neverBulkFixed: 0,
+      changed: 0,
+      failed: 0,
+      partial: 0,
+      noActionTaken: 0,
+      skippedUnchanged: 0,
+      alreadyClean: 0,
+    };
+
+    if (scope === 'selected' && targetPosts && targetPosts.length > 0) {
+      // For selected scope, use the target post IDs to find fresh data
+      const targetIds = new Set(targetPosts.map(p => p.id));
+      postsToScan = allFetchedPosts.filter(p => targetIds.has(p.id));
+    } else if (scope === 'all') {
+      postsToScan = allFetchedPosts;
+    } else if (scope === 'failed_partial') {
+      postsToScan = allFetchedPosts.filter(p => isEligibleForFailedPartialScope(p));
+    } else {
+      // Smart scope — filter by eligibility
+      postsToScan = [];
+      for (const post of allFetchedPosts) {
+        const { eligible, reason } = isEligibleForSmartScope(post);
+        if (eligible) {
+          postsToScan.push(post);
+          if (reason === 'neverBulkFixed') stateBreakdown.neverBulkFixed++;
+          else if (reason === 'changed') stateBreakdown.changed++;
+          else if (reason === 'failed') stateBreakdown.failed++;
+          else if (reason === 'partial') stateBreakdown.partial++;
+        } else {
+          stateBreakdown.skippedUnchanged++;
+        }
       }
     }
 
+    // Now scan eligible posts for compliance issues
     const items: ScanItem[] = [];
     const issueBreakdown: Record<string, number> = {};
     let cleanCount = 0;
     let skippedCount = 0;
 
     for (const post of postsToScan) {
-      // Skip articles without essential data
       if (!post.title || !post.content || post.content.trim().length < 50) {
         items.push({
           postId: post.id,
@@ -203,14 +297,13 @@ export function useBulkAutoFix(
 
       if (failedChecks.length === 0) {
         cleanCount++;
-        continue; // Don't add to items — it's clean
+        stateBreakdown.alreadyClean++;
+        continue;
       }
 
-      // Split into actionable (auto-fixable) vs non-actionable
       const { actionable, nonActionable } = splitActionableChecks(failedChecks);
 
       if (actionable.length === 0) {
-        // Has issues but none are auto-fixable by this tool
         items.push({
           postId: post.id,
           slug: post.slug,
@@ -249,6 +342,8 @@ export function useBulkAutoFix(
       totalSkipped: skippedCount,
       fixableItems: items.filter(i => i.classification === 'fixable'),
       issueBreakdown,
+      stateBreakdown,
+      scope,
     };
 
     setScanReport(report);
@@ -268,7 +363,6 @@ export function useBulkAutoFix(
     const allResults: ArticleResult[] = [];
 
     for (let i = 0; i < fixableItems.length; i++) {
-      // Check stop
       if (stopRef.current) {
         for (let j = i; j < fixableItems.length; j++) {
           allResults.push({
@@ -285,7 +379,6 @@ export function useBulkAutoFix(
       }
 
       const item = fixableItems[i];
-      // Fetch fresh post data from DB for each article to avoid stale content
       const { data: freshPost, error: fetchErr } = await supabase
         .from('blog_posts')
         .select('*')
@@ -298,6 +391,8 @@ export function useBulkAutoFix(
           status: 'failed', issuesFound: 0, fixesApplied: [], fixesSkipped: [],
           error: 'Post not found in current data',
         });
+        // Stamp failed
+        await stampBulkFixStatus(item.postId, 'failed', null);
         setResults([...allResults]);
         continue;
       }
@@ -314,11 +409,12 @@ export function useBulkAutoFix(
           fixesApplied: [], fixesSkipped: [],
           error: err.message || 'Unknown error',
         });
+        // Stamp technical failure
+        await stampBulkFixStatus(item.postId, 'failed', null);
       }
 
       setResults([...allResults]);
 
-      // Throttle: 3s between AI calls
       if (i < fixableItems.length - 1 && !stopRef.current) {
         await new Promise(r => setTimeout(r, 3000));
       }
@@ -334,14 +430,13 @@ export function useBulkAutoFix(
   }, []);
 
   const resetDialog = useCallback(() => {
-    if (phase === 'fixing') return; // Don't close while fixing
+    if (phase === 'fixing') return;
     setShowDialog(false);
     setPhase('idle');
     setScanReport(null);
     setResults([]);
   }, [phase]);
 
-  // Compute summary from results
   const summary: BulkFixSummary | null = phase === 'done' ? computeSummary(results) : null;
 
   return {
@@ -358,6 +453,39 @@ export function useBulkAutoFix(
   };
 }
 
+// ── Stamp bulk fix tracking columns ──
+async function stampBulkFixStatus(
+  postId: string,
+  status: BulkFixStatus,
+  remainingAutoFixableCount: number | null,
+) {
+  const now = new Date().toISOString();
+  const updateData: Record<string, any> = {
+    last_bulk_scanned_at: now,
+    last_bulk_fix_status: status,
+    remaining_auto_fixable_count: remainingAutoFixableCount,
+  };
+  
+  // Only stamp last_bulk_fixed_at when fully fixed
+  if (status === 'fixed') {
+    updateData.last_bulk_fixed_at = now;
+  }
+
+  await supabase
+    .from('blog_posts')
+    .update(updateData)
+    .eq('id', postId);
+}
+
+// ── Count remaining auto-fixable issues on content ──
+function countAutoFixableIssues(post: BlogPost): number {
+  const meta = blogPostToMetadata(post);
+  const compliance = analyzePublishCompliance(meta);
+  const failedChecks = compliance.checks.filter(c => c.status === 'fail' || c.status === 'warn');
+  const { actionable } = splitActionableChecks(failedChecks);
+  return actionable.length;
+}
+
 // ── Per-article processing ──
 
 async function processOneArticle(
@@ -371,11 +499,10 @@ async function processOneArticle(
   const meta = blogPostToMetadata(post);
   const compliance = analyzePublishCompliance(meta);
   const allFailedChecks = compliance.checks.filter(c => c.status === 'fail' || c.status === 'warn');
-  
-  // Only send actionable (auto-fixable) issues to the AI
   const { actionable: failedChecks } = splitActionableChecks(allFailedChecks);
   
   if (failedChecks.length === 0) {
+    await stampBulkFixStatus(post.id, 'skipped', 0);
     return {
       postId: post.id, slug: post.slug, title: post.title,
       status: 'skipped', issuesFound: 0, fixesApplied: [], fixesSkipped: [],
@@ -417,7 +544,6 @@ async function processOneArticle(
   let modifiedContent = post.content;
   let contentChanged = false;
 
-  // Log first article's raw response for verification
   if (fixes.length > 0) {
     console.log(`[BULK_AUTO_FIX] Article "${post.slug}" received ${fixes.length} fixes. Sample fix shape:`, JSON.stringify(fixes[0]));
   }
@@ -429,33 +555,18 @@ async function processOneArticle(
     const suggestedValue = rawFix.suggestedValue || '';
     const confidence = rawFix.confidence || 'medium';
 
-    // Check forbidden modes
     if (BULK_FORBIDDEN_APPLY_MODES[applyMode]) {
-      fixesSkipped.push({
-        field: field || fixType,
-        fixType,
-        reason: BULK_FORBIDDEN_APPLY_MODES[applyMode],
-      });
+      fixesSkipped.push({ field: field || fixType, fixType, reason: BULK_FORBIDDEN_APPLY_MODES[applyMode] });
       continue;
     }
 
-    // Check allowed modes
     if (!BULK_ALLOWED_APPLY_MODES.has(applyMode)) {
-      fixesSkipped.push({
-        field: field || fixType,
-        fixType,
-        reason: `Apply mode "${applyMode}" not supported in bulk mode`,
-      });
+      fixesSkipped.push({ field: field || fixType, fixType, reason: `Apply mode "${applyMode}" not supported in bulk mode` });
       continue;
     }
 
-    // Skip low confidence
     if (confidence === 'low') {
-      fixesSkipped.push({
-        field: field || fixType,
-        fixType,
-        reason: 'Low confidence — skipped for safety',
-      });
+      fixesSkipped.push({ field: field || fixType, fixType, reason: 'Low confidence — skipped for safety' });
       continue;
     }
 
@@ -466,84 +577,51 @@ async function processOneArticle(
         continue;
       }
 
-      // Slug protection: never rewrite published slugs
       if (field === 'slug' && post.is_published) {
         fixesSkipped.push({ field, fixType, reason: 'Published article — slug rewrite blocked (no automatic redirect support)' });
         continue;
       }
 
       const currentVal = (post as any)[field] || '';
-      const overwriteContext = {
-        title: post.title,
-        metaDescription: post.meta_description || '',
-      };
+      const overwriteContext = { title: post.title, metaDescription: post.meta_description || '' };
 
       if (!shouldAutoOverwriteField(field, currentVal, overwriteContext)) {
         fixesSkipped.push({ field, fixType, reason: `Current value is compliant (${currentVal.length} chars)` });
         continue;
       }
 
-      // Validate the new value
       const validation = validateFieldValue(field, suggestedValue);
       if (!validation.valid) {
         fixesSkipped.push({ field, fixType, reason: `Validation failed: ${validation.reason}` });
         continue;
       }
 
-      // Additional quality checks for meta_title
       if (field === 'meta_title' && suggestedValue.trim() === post.title.trim()) {
         fixesSkipped.push({ field, fixType, reason: 'Suggested meta_title is identical to title' });
         continue;
       }
 
-      // Additional quality check for excerpt matching meta_description
       if (field === 'excerpt' && updatePayload.meta_description && suggestedValue.trim() === updatePayload.meta_description.trim()) {
         fixesSkipped.push({ field, fixType, reason: 'Suggested excerpt is identical to new meta_description' });
         continue;
       }
 
-      // Apply the fix
       updatePayload[field] = suggestedValue;
-      fixesApplied.push({
-        field,
-        fixType,
-        beforeValue: currentVal.substring(0, 100),
-        afterValue: suggestedValue.substring(0, 100),
-      });
-
-      // Audit log
-      logBlogAiAudit({
-        tool_name: 'bulk_auto_fix',
-        before_value: currentVal,
-        after_value: suggestedValue,
-        apply_mode: applyMode,
-        target_field: field,
-        slug: post.slug,
-      });
-
+      fixesApplied.push({ field, fixType, beforeValue: currentVal.substring(0, 100), afterValue: suggestedValue.substring(0, 100) });
+      logBlogAiAudit({ tool_name: 'bulk_auto_fix', before_value: currentVal, after_value: suggestedValue, apply_mode: applyMode, target_field: field, slug: post.slug });
       continue;
     }
 
     // ── APPEND_CONTENT: FAQ ──
     if (applyMode === 'append_content' && fixType === 'faq') {
-      if (hasFaqHeading(modifiedContent)) {
-        fixesSkipped.push({ field: 'faq', fixType, reason: 'FAQ section already exists' });
-        continue;
-      }
-      if (!suggestedValue || stripHtmlLength(suggestedValue) < 20) {
-        fixesSkipped.push({ field: 'faq', fixType, reason: 'FAQ content too short or empty' });
-        continue;
-      }
-      if (contentBlockAlreadyExists(modifiedContent, suggestedValue)) {
-        fixesSkipped.push({ field: 'faq', fixType, reason: 'FAQ content already exists in article' });
-        continue;
-      }
+      if (hasFaqHeading(modifiedContent)) { fixesSkipped.push({ field: 'faq', fixType, reason: 'FAQ section already exists' }); continue; }
+      if (!suggestedValue || stripHtmlLength(suggestedValue) < 20) { fixesSkipped.push({ field: 'faq', fixType, reason: 'FAQ content too short or empty' }); continue; }
+      if (contentBlockAlreadyExists(modifiedContent, suggestedValue)) { fixesSkipped.push({ field: 'faq', fixType, reason: 'FAQ content already exists in article' }); continue; }
 
       const sanitized = sanitizeLinkBlockHtml(suggestedValue);
       modifiedContent = modifiedContent + sanitized;
       contentChanged = true;
 
-      // Write FAQ schema if provided
       if (rawFix.faqSchemaEligible && rawFix.faqSchema) {
         const validSchema = validateFaqSchema(rawFix.faqSchema);
         if (validSchema) {
@@ -553,69 +631,29 @@ async function processOneArticle(
         }
       }
 
-      fixesApplied.push({
-        field: 'content (FAQ)',
-        fixType,
-        beforeValue: '(no FAQ section)',
-        afterValue: `Added FAQ (${stripHtmlLength(sanitized)} chars)`,
-      });
-
-      logBlogAiAudit({
-        tool_name: 'bulk_auto_fix',
-        before_value: '(no FAQ)',
-        after_value: sanitized.substring(0, 200),
-        apply_mode: applyMode,
-        target_field: 'faq',
-        slug: post.slug,
-      });
+      fixesApplied.push({ field: 'content (FAQ)', fixType, beforeValue: '(no FAQ section)', afterValue: `Added FAQ (${stripHtmlLength(sanitized)} chars)` });
+      logBlogAiAudit({ tool_name: 'bulk_auto_fix', before_value: '(no FAQ)', after_value: sanitized.substring(0, 200), apply_mode: applyMode, target_field: 'faq', slug: post.slug });
       continue;
     }
 
     // ── APPEND_CONTENT: Conclusion ──
     if (applyMode === 'append_content' && fixType === 'conclusion') {
-      if (hasExistingConclusion(modifiedContent)) {
-        fixesSkipped.push({ field: 'conclusion', fixType, reason: 'Conclusion already exists' });
-        continue;
-      }
-      if (!suggestedValue || stripHtmlLength(suggestedValue) < 20) {
-        fixesSkipped.push({ field: 'conclusion', fixType, reason: 'Conclusion content too short or empty' });
-        continue;
-      }
-      if (contentBlockAlreadyExists(modifiedContent, suggestedValue)) {
-        fixesSkipped.push({ field: 'conclusion', fixType, reason: 'Conclusion content already exists' });
-        continue;
-      }
+      if (hasExistingConclusion(modifiedContent)) { fixesSkipped.push({ field: 'conclusion', fixType, reason: 'Conclusion already exists' }); continue; }
+      if (!suggestedValue || stripHtmlLength(suggestedValue) < 20) { fixesSkipped.push({ field: 'conclusion', fixType, reason: 'Conclusion content too short or empty' }); continue; }
+      if (contentBlockAlreadyExists(modifiedContent, suggestedValue)) { fixesSkipped.push({ field: 'conclusion', fixType, reason: 'Conclusion content already exists' }); continue; }
 
       const sanitized = sanitizeLinkBlockHtml(suggestedValue);
       modifiedContent = modifiedContent + sanitized;
       contentChanged = true;
-
-      fixesApplied.push({
-        field: 'content (Conclusion)',
-        fixType,
-        beforeValue: '(no conclusion)',
-        afterValue: `Added conclusion (${stripHtmlLength(sanitized)} chars)`,
-      });
-
-      logBlogAiAudit({
-        tool_name: 'bulk_auto_fix',
-        before_value: '(no conclusion)',
-        after_value: sanitized.substring(0, 200),
-        apply_mode: applyMode,
-        target_field: 'conclusion',
-        slug: post.slug,
-      });
+      fixesApplied.push({ field: 'content (Conclusion)', fixType, beforeValue: '(no conclusion)', afterValue: `Added conclusion (${stripHtmlLength(sanitized)} chars)` });
+      logBlogAiAudit({ tool_name: 'bulk_auto_fix', before_value: '(no conclusion)', after_value: sanitized.substring(0, 200), apply_mode: applyMode, target_field: 'conclusion', slug: post.slug });
       continue;
     }
 
     // ── APPEND_CONTENT: Internal Links ──
     if (applyMode === 'append_content' && fixType === 'internal_links') {
-      if (hasRelatedResourcesBlock(modifiedContent)) {
-        fixesSkipped.push({ field: 'internal_links', fixType, reason: 'Related Resources block already exists' });
-        continue;
-      }
+      if (hasRelatedResourcesBlock(modifiedContent)) { fixesSkipped.push({ field: 'internal_links', fixType, reason: 'Related Resources block already exists' }); continue; }
 
-      // Parse links from suggested HTML
       const hrefs = extractHrefsFromHtml(suggestedValue);
       const validLinks: { href: string; text: string }[] = [];
 
@@ -623,95 +661,45 @@ async function processOneArticle(
         if (!isValidInternalPagePath(href)) continue;
         if (linkAlreadyInContent(modifiedContent, href)) continue;
         if (validLinks.length >= MAX_AUTO_LINKS) break;
-
-        // Extract anchor text for this href
         const linkMatch = suggestedValue.match(new RegExp(`<a[^>]*href=["']${href.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["'][^>]*>([^<]*)</a>`, 'i'));
         const text = linkMatch?.[1]?.trim() || href;
         validLinks.push({ href, text });
       }
 
-      if (validLinks.length === 0) {
-        fixesSkipped.push({ field: 'internal_links', fixType, reason: 'No valid internal link targets found' });
-        continue;
-      }
+      if (validLinks.length === 0) { fixesSkipped.push({ field: 'internal_links', fixType, reason: 'No valid internal link targets found' }); continue; }
 
-      // Use template-based clean block instead of raw AI HTML
       const cleanBlock = buildCleanLinkBlock(validLinks);
       modifiedContent = modifiedContent + cleanBlock;
       contentChanged = true;
-
-      fixesApplied.push({
-        field: 'content (Internal Links)',
-        fixType,
-        beforeValue: '(no Related Resources)',
-        afterValue: `Added ${validLinks.length} internal links`,
-      });
-
-      logBlogAiAudit({
-        tool_name: 'bulk_auto_fix',
-        before_value: '(no links block)',
-        after_value: cleanBlock.substring(0, 200),
-        apply_mode: applyMode,
-        target_field: 'internal_links',
-        slug: post.slug,
-      });
+      fixesApplied.push({ field: 'content (Internal Links)', fixType, beforeValue: '(no Related Resources)', afterValue: `Added ${validLinks.length} internal links` });
+      logBlogAiAudit({ tool_name: 'bulk_auto_fix', before_value: '(no links block)', after_value: cleanBlock.substring(0, 200), apply_mode: applyMode, target_field: 'internal_links', slug: post.slug });
       continue;
     }
 
     // ── INSERT_BEFORE_FIRST_HEADING: Intro/H1 ──
     if (applyMode === 'insert_before_first_heading' && (fixType === 'intro' || fixType === 'h1' || fixType === 'heading_structure')) {
-      if (hasExistingIntro(modifiedContent)) {
-        fixesSkipped.push({ field: 'intro', fixType, reason: 'Intro already exists' });
-        continue;
-      }
-      if (!suggestedValue || stripHtmlLength(suggestedValue) < 20) {
-        fixesSkipped.push({ field: 'intro', fixType, reason: 'Intro content too short or empty' });
-        continue;
-      }
-      if (contentBlockAlreadyExists(modifiedContent, suggestedValue)) {
-        fixesSkipped.push({ field: 'intro', fixType, reason: 'Intro content already exists' });
-        continue;
-      }
+      if (hasExistingIntro(modifiedContent)) { fixesSkipped.push({ field: 'intro', fixType, reason: 'Intro already exists' }); continue; }
+      if (!suggestedValue || stripHtmlLength(suggestedValue) < 20) { fixesSkipped.push({ field: 'intro', fixType, reason: 'Intro content too short or empty' }); continue; }
+      if (contentBlockAlreadyExists(modifiedContent, suggestedValue)) { fixesSkipped.push({ field: 'intro', fixType, reason: 'Intro content already exists' }); continue; }
 
       const sanitized = sanitizeLinkBlockHtml(suggestedValue);
       modifiedContent = insertBeforeFirstHeadingRaw(modifiedContent, sanitized);
       contentChanged = true;
-
-      fixesApplied.push({
-        field: 'content (Intro)',
-        fixType,
-        beforeValue: '(no intro)',
-        afterValue: `Added intro (${stripHtmlLength(sanitized)} chars)`,
-      });
-
-      logBlogAiAudit({
-        tool_name: 'bulk_auto_fix',
-        before_value: '(no intro)',
-        after_value: sanitized.substring(0, 200),
-        apply_mode: applyMode,
-        target_field: 'intro',
-        slug: post.slug,
-      });
+      fixesApplied.push({ field: 'content (Intro)', fixType, beforeValue: '(no intro)', afterValue: `Added intro (${stripHtmlLength(sanitized)} chars)` });
+      logBlogAiAudit({ tool_name: 'bulk_auto_fix', before_value: '(no intro)', after_value: sanitized.substring(0, 200), apply_mode: applyMode, target_field: 'intro', slug: post.slug });
       continue;
     }
 
-    // ── Catch-all: any unhandled fix ──
-    fixesSkipped.push({
-      field: field || fixType || 'unknown',
-      fixType,
-      reason: `Unhandled fix type/mode combination: ${fixType}/${applyMode}`,
-    });
+    // ── Catch-all ──
+    fixesSkipped.push({ field: field || fixType || 'unknown', fixType, reason: `Unhandled fix type/mode combination: ${fixType}/${applyMode}` });
   }
 
   // ── Build final DB update ──
   if (contentChanged) {
-    // Verify content is still meaningful
     const finalLength = stripHtmlLength(modifiedContent);
     if (finalLength < 100) {
-      // Content became too short — revert content changes
       modifiedContent = post.content;
       contentChanged = false;
-      // Remove content-related applied fixes
       const contentFields = new Set(['content (FAQ)', 'content (Conclusion)', 'content (Internal Links)', 'content (Intro)']);
       const removedFixes = fixesApplied.filter(f => contentFields.has(f.field));
       for (const rf of removedFixes) {
@@ -729,16 +717,14 @@ async function processOneArticle(
     }
   }
 
-  // Always recalculate word count if metadata changed
   if (Object.keys(updatePayload).length > 0 && !updatePayload.word_count) {
     const { word_count, reading_time } = wordCountFields(updatePayload.content || post.content);
     updatePayload.word_count = word_count;
     updatePayload.reading_time = reading_time;
   }
 
-  // Write to DB
+  // Write content/metadata to DB
   if (Object.keys(updatePayload).length > 0) {
-    // Stamp ai_fixed_at only when fixes were applied
     if (fixesApplied.length > 0) {
       updatePayload.ai_fixed_at = new Date().toISOString();
     }
@@ -749,24 +735,35 @@ async function processOneArticle(
     if (updateError) throw new Error(`DB update failed: ${updateError.message}`);
   }
 
-  // Telemetry per article
-  trackBlogToolEvent({
-    event_name: 'bulk_auto_fix_complete',
-    tool_name: 'bulk_auto_fix',
-    status: fixesApplied.length > 0 ? (fixesSkipped.length > 0 ? 'partially_fixed' : 'fixed') : 'skipped',
-    item_count: fixesApplied.length,
-    slug: post.slug,
-  });
+  // ── Post-fix re-evaluation ──
+  // Build a virtual post with updated fields for re-analysis
+  const updatedPost: BlogPost = { ...post, ...updatePayload };
+  if (contentChanged) updatedPost.content = modifiedContent;
+  const remainingAutoFixable = countAutoFixableIssues(updatedPost);
 
-  // Determine result status
+  // Determine final status using 5-status model
   let status: ArticleResult['status'];
-  if (fixesApplied.length > 0 && fixesSkipped.length === 0) {
+  if (fixesApplied.length > 0 && remainingAutoFixable === 0) {
     status = 'fixed';
-  } else if (fixesApplied.length > 0 && fixesSkipped.length > 0) {
+  } else if (fixesApplied.length > 0 && remainingAutoFixable > 0) {
     status = 'partially_fixed';
+  } else if (fixesApplied.length === 0 && failedChecks.length > 0) {
+    status = 'no_action_taken';
   } else {
     status = 'skipped';
   }
+
+  // Stamp tracking columns
+  await stampBulkFixStatus(post.id, status as BulkFixStatus, remainingAutoFixable);
+
+  // Telemetry
+  trackBlogToolEvent({
+    event_name: 'bulk_auto_fix_complete',
+    tool_name: 'bulk_auto_fix',
+    status,
+    item_count: fixesApplied.length,
+    slug: post.slug,
+  });
 
   return {
     postId: post.id,
@@ -788,6 +785,7 @@ function computeSummary(results: ArticleResult[]): BulkFixSummary {
   let totalSkipped = 0;
   let totalFailed = 0;
   let totalStopped = 0;
+  let totalNoAction = 0;
 
   for (const r of results) {
     switch (r.status) {
@@ -796,11 +794,12 @@ function computeSummary(results: ArticleResult[]): BulkFixSummary {
       case 'skipped': totalSkipped++; break;
       case 'failed': totalFailed++; break;
       case 'stopped': totalStopped++; break;
+      case 'no_action_taken': totalNoAction++; break;
     }
     for (const f of r.fixesApplied) {
       fieldBreakdown[f.field] = (fieldBreakdown[f.field] || 0) + 1;
     }
   }
 
-  return { totalFixed, totalPartial, totalSkipped, totalFailed, totalStopped, fieldBreakdown };
+  return { totalFixed, totalPartial, totalSkipped, totalFailed, totalStopped, totalNoAction, fieldBreakdown };
 }

@@ -2042,7 +2042,7 @@ export function BlogPostEditor() {
                     <SelectItem value="selected" className="text-xs">Selected ({selectedPostIds.size})</SelectItem>
                   </SelectContent>
                 </Select>
-                <Button size="sm" className="text-xs gap-1" disabled={bulkAutoFix.phase === 'scanning' || bulkAutoFix.phase === 'fixing'} onClick={() => handleBulkFixScan()}>
+                <Button size="sm" className="text-xs gap-1" disabled={bulkAutoFix.phase === 'scanning' || bulkAutoFix.phase === 'fixing' || (bulkScanScope === 'selected' && selectedPostIds.size === 0)} onClick={() => handleBulkFixScan()}>
                   {bulkAutoFix.phase === 'scanning' ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
                   Scan & Fix
                 </Button>

@@ -142,6 +142,14 @@ export function BlogPostEditor() {
   const [blogTextModel, setBlogTextModel] = useState<string>(() => {
     try { return localStorage.getItem('blog_text_ai_model') || 'gemini-flash'; } catch { return 'gemini-flash'; }
   });
+  const [outputLanguage, setOutputLanguage] = useState<'auto' | 'english' | 'hindi'>(() => {
+    try { return (localStorage.getItem('blog_output_language') as 'auto' | 'english' | 'hindi') || 'auto'; } catch { return 'auto'; }
+  });
+  const handleOutputLanguageChange = useCallback((v: string) => {
+    const val = v as 'auto' | 'english' | 'hindi';
+    setOutputLanguage(val);
+    try { localStorage.setItem('blog_output_language', val); } catch {}
+  }, []);
   const [blogImageModel, setBlogImageModel] = useState<string>(() => {
     try { return localStorage.getItem('blog_image_ai_model') || 'vertex-imagen'; } catch { return 'vertex-imagen'; }
   });

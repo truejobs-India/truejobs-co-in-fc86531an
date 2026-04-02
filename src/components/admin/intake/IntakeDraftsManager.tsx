@@ -669,8 +669,11 @@ export function IntakeDraftsManager() {
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1">
-                            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setSelectedDraft(d)} title="View">
+                            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setPreviewDraftId(d.id)} title="Preview">
                               <Eye className="h-3 w-3" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setSelectedDraft(d)} title="Edit">
+                              <Search className="h-3 w-3" />
                             </Button>
                             {d.processing_status !== 'published' && (
                               <Button variant="ghost" size="icon" className="h-6 w-6"

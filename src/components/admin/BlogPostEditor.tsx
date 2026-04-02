@@ -2047,6 +2047,40 @@ export function BlogPostEditor() {
               </div>
               <AlertDialog>
                 <AlertDialogTrigger asChild>
+                  <Button variant="outline" size="sm" className="text-xs gap-1" disabled={bulkAutoFix.phase !== 'idle' || bulkAutoFix.isBaselining}>
+                    {bulkAutoFix.isBaselining ? <Loader2 className="h-3 w-3 animate-spin" /> : <Shield className="h-3 w-3" />}
+                    Mark as Baseline
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Mark posts as baseline scanned?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      {selectedPostIds.size > 0
+                        ? `This will mark ${selectedPostIds.size} selected post(s) as baseline scanned.`
+                        : 'This will mark all currently unscanned posts as baseline scanned.'}
+                      {' '}These posts will be skipped in future smart scans unless their content is manually edited. No article content will be modified.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={async () => {
+                      try {
+                        await bulkAutoFix.baselineMarkPosts(selectedPostIds.size > 0 ? [...selectedPostIds] : undefined);
+                        const count = bulkAutoFix.baselineResult?.count ?? 0;
+                        toast({ title: 'Baseline complete', description: `${count} post(s) marked as baseline scanned.` });
+                        fetchPosts();
+                      } catch {
+                        toast({ title: 'Baseline failed', description: 'Could not mark posts as baseline. Check console for details.', variant: 'destructive' });
+                      }
+                    }}>
+                      Confirm Baseline
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
                   <Button size="sm" className="text-xs gap-1" disabled={isPublishingAllDrafts || posts.filter(p => !p.is_published).length === 0}>
                     {isPublishingAllDrafts ? <Loader2 className="h-3 w-3 animate-spin" /> : <Eye className="h-3 w-3" />}
                     Publish All Drafts ({posts.filter(p => !p.is_published).length})

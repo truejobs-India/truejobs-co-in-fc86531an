@@ -443,7 +443,7 @@ export function useBulkAutoFix(
   const [isBaselining, setIsBaselining] = useState(false);
   const [baselineResult, setBaselineResult] = useState<{ count: number } | null>(null);
 
-  const baselineMarkPosts = useCallback(async (targetIds?: string[]) => {
+  const baselineMarkPosts = useCallback(async (targetIds?: string[]): Promise<number> => {
     setIsBaselining(true);
     setBaselineResult(null);
     try {
@@ -466,6 +466,7 @@ export function useBulkAutoFix(
       if (error) throw error;
       const count = data?.length ?? 0;
       setBaselineResult({ count });
+      return count;
     } catch (err) {
       console.error('Baseline marking failed:', err);
       setBaselineResult({ count: 0 });

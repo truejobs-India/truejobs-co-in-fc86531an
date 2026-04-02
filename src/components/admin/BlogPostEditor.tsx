@@ -2066,8 +2066,7 @@ export function BlogPostEditor() {
                     <AlertDialogCancel>Cancel</AlertDialogCancel>
                     <AlertDialogAction onClick={async () => {
                       try {
-                        await bulkAutoFix.baselineMarkPosts(selectedPostIds.size > 0 ? [...selectedPostIds] : undefined);
-                        const count = bulkAutoFix.baselineResult?.count ?? 0;
+                        const count = await bulkAutoFix.baselineMarkPosts(selectedPostIds.size > 0 ? [...selectedPostIds] : undefined);
                         toast({ title: 'Baseline complete', description: `${count} post(s) marked as baseline scanned.` });
                         fetchPosts();
                       } catch {

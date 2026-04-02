@@ -39,7 +39,7 @@ const KNOWN_IMAGE_MODEL_KEYS = new Set([
   'vertex-pro', // has image capability in aiModels.ts
 ]);
 
-const IMAGEN_TIMEOUT_MS = 45_000;
+const IMAGEN_TIMEOUT_MS = 55_000;
 const GATEWAY_TIMEOUT_MS = 55_000;
 const MAX_RETRIES = 3;
 const RETRY_BASE_MS = 2000; // 2s, 4s, 8s exponential backoff

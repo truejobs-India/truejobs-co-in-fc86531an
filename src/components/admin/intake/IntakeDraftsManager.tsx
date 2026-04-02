@@ -25,6 +25,7 @@ import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
 import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSelector';
 import { IntakeCsvUploader } from './IntakeCsvUploader';
 import { IntakeDraftDetailDialog } from './IntakeDraftDetailDialog';
+import { IntakeDraftPreviewDialog } from './IntakeDraftPreviewDialog';
 
 type IntakeDraft = {
   id: string;
@@ -129,6 +130,7 @@ export function IntakeDraftsManager() {
   const [searchQuery, setSearchQuery] = useState('');
   const [aiModel, setAiModel] = useState(() => getLastUsedModel('text', 'gemini-flash'));
   const [selectedDraft, setSelectedDraft] = useState<IntakeDraft | null>(null);
+  const [previewDraftId, setPreviewDraftId] = useState<string | null>(null);
   const [showUploader, setShowUploader] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
@@ -667,8 +669,11 @@ export function IntakeDraftsManager() {
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1">
-                            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setSelectedDraft(d)} title="View">
+                            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setPreviewDraftId(d.id)} title="Preview">
                               <Eye className="h-3 w-3" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setSelectedDraft(d)} title="Edit">
+                              <Search className="h-3 w-3" />
                             </Button>
                             {d.processing_status !== 'published' && (
                               <Button variant="ghost" size="icon" className="h-6 w-6"
@@ -771,6 +776,13 @@ export function IntakeDraftsManager() {
           }}
         />
       )}
+
+      {/* Preview Dialog */}
+      <IntakeDraftPreviewDialog
+        draftId={previewDraftId}
+        open={!!previewDraftId}
+        onClose={() => setPreviewDraftId(null)}
+      />
     </div>
   );
 }

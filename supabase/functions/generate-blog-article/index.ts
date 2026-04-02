@@ -738,7 +738,9 @@ Deno.serve(async (req) => {
     if (useModel === 'gemini' || useModel === 'mistral') {
       // Gemini and Mistral use simplified user prompts — the system prompt handles all writing rules
       const tagsList = Array.isArray(tags) && tags.length > 0 ? `\nTags: ${tags.join(', ')}` : '';
-      prompt = `Write a complete, SEO-optimized blog article on the following topic:
+      prompt = `${langInstruction}
+
+Write a complete, SEO-optimized blog article on the following topic:
 
 Topic: ${topic}${category ? `\nCategory: ${category}` : ''}${tagsList}
 

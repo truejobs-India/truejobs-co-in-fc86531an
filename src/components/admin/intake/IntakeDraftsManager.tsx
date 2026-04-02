@@ -776,6 +776,13 @@ export function IntakeDraftsManager() {
           }}
         />
       )}
+
+      {/* Preview Dialog */}
+      <IntakeDraftPreviewDialog
+        draftId={previewDraftId}
+        open={!!previewDraftId}
+        onClose={() => setPreviewDraftId(null)}
+      />
     </div>
   );
 }

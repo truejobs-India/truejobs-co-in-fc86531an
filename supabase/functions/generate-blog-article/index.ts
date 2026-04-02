@@ -749,7 +749,9 @@ Follow all the writing rules and output format specified in your instructions. R
       // Claude uses the system prompt in top-level "system" field (handled by callClaude)
       // The user prompt here only contains the task-specific instructions
       const tagsList = Array.isArray(tags) && tags.length > 0 ? tags.join(', ') : '';
-      prompt = `Write a complete article for the following input.
+      prompt = `${langInstruction}
+
+Write a complete article for the following input.
 
 Topic: ${topic}
 ${category ? `Category: ${category}` : ''}

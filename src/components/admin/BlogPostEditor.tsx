@@ -1186,9 +1186,15 @@ export function BlogPostEditor() {
   };
 
   // ── Bulk Fix All by AI: now handled by useBulkAutoFix hook ──
-  const handleBulkFixScan = () => {
+  const [bulkScanScope, setBulkScanScope] = useState<'smart' | 'all' | 'failed_partial' | 'selected'>('smart');
+  const handleBulkFixScan = (scopeOverride?: 'smart' | 'all' | 'failed_partial' | 'selected') => {
+    const scope = scopeOverride || bulkScanScope;
     const selectedPosts = posts.filter(p => selectedPostIds.has(p.id));
-    bulkAutoFix.scanAll(selectedPosts.length > 0 ? selectedPosts : undefined);
+    if (scope === 'selected' && selectedPosts.length > 0) {
+      bulkAutoFix.scanAll('selected', selectedPosts);
+    } else {
+      bulkAutoFix.scanAll(scope);
+    }
   };
 
   // ── Enrich Now handler (from list view) ──

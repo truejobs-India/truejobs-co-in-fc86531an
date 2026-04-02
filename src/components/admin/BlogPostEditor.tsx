@@ -2374,7 +2374,7 @@ export function BlogPostEditor() {
             {bulkAutoFix.phase === 'scanning' && 'Scanning articles for compliance issues…'}
             {bulkAutoFix.phase === 'scanned' && bulkAutoFix.scanReport && `${bulkAutoFix.scanReport.totalFixable} auto-fixable, ${bulkAutoFix.scanReport.totalClean} clean, ${bulkAutoFix.scanReport.totalSkipped} skipped out of ${bulkAutoFix.scanReport.totalScanned} scanned.`}
             {bulkAutoFix.phase === 'fixing' && `Fixing ${bulkAutoFix.progress.done}/${bulkAutoFix.progress.total}…`}
-            {bulkAutoFix.phase === 'done' && bulkAutoFix.summary && `Complete — ${bulkAutoFix.summary.totalFixed} fixed, ${bulkAutoFix.summary.totalPartial} partial, ${bulkAutoFix.summary.totalSkipped} skipped, ${bulkAutoFix.summary.totalFailed} failed.`}
+            {bulkAutoFix.phase === 'done' && bulkAutoFix.summary && `Complete — ${bulkAutoFix.summary.totalFixed} fixed, ${bulkAutoFix.summary.totalPartial} partial, ${bulkAutoFix.summary.totalSkipped} skipped, ${bulkAutoFix.summary.totalFailed} failed, ${bulkAutoFix.summary.totalNoAction} no action.`}
           </DialogDescription>
         </DialogHeader>
 
@@ -2386,15 +2386,37 @@ export function BlogPostEditor() {
 
         {bulkAutoFix.phase === 'scanned' && bulkAutoFix.scanReport && bulkAutoFix.scanReport.totalFixable > 0 && (
           <div className="space-y-3">
-            <div className="text-xs font-medium text-muted-foreground">
-              Using: {getModelDef(blogTextModel)?.label || blogTextModel}
+            <div className="flex items-center justify-between">
+              <div className="text-xs font-medium text-muted-foreground">
+                Using: {getModelDef(blogTextModel)?.label || blogTextModel}
+              </div>
+              {bulkAutoFix.scanReport.scope !== 'all' && (
+                <Button variant="outline" size="sm" className="text-[10px] h-6 gap-1" onClick={() => handleBulkFixScan('all')}>
+                  <RotateCcw className="h-3 w-3" /> Force Full Rescan
+                </Button>
+              )}
             </div>
-            <div className="grid grid-cols-4 gap-2 text-center">
-              <div className="bg-muted rounded p-2"><div className="text-lg font-bold">{bulkAutoFix.scanReport.totalScanned}</div><div className="text-[10px] text-muted-foreground">Scanned</div></div>
-              <div className="bg-green-500/10 rounded p-2"><div className="text-lg font-bold text-green-700 dark:text-green-400">{bulkAutoFix.scanReport.totalClean}</div><div className="text-[10px] text-muted-foreground">Clean</div></div>
-              <div className="bg-primary/10 rounded p-2"><div className="text-lg font-bold text-primary">{bulkAutoFix.scanReport.totalFixable}</div><div className="text-[10px] text-muted-foreground">Auto-Fixable</div></div>
-              <div className="bg-muted rounded p-2"><div className="text-lg font-bold">{bulkAutoFix.scanReport.totalSkipped}</div><div className="text-[10px] text-muted-foreground">Skipped</div></div>
-            </div>
+            {/* State breakdown for smart scope */}
+            {bulkAutoFix.scanReport.scope === 'smart' && (
+              <div className="grid grid-cols-7 gap-1 text-center">
+                <div className="bg-blue-500/10 rounded p-1.5"><div className="text-sm font-bold text-blue-700 dark:text-blue-400">{bulkAutoFix.scanReport.stateBreakdown.neverBulkFixed}</div><div className="text-[9px] text-muted-foreground">Never Fixed</div></div>
+                <div className="bg-amber-500/10 rounded p-1.5"><div className="text-sm font-bold text-amber-700 dark:text-amber-400">{bulkAutoFix.scanReport.stateBreakdown.changed}</div><div className="text-[9px] text-muted-foreground">Changed</div></div>
+                <div className="bg-destructive/10 rounded p-1.5"><div className="text-sm font-bold text-destructive">{bulkAutoFix.scanReport.stateBreakdown.failed}</div><div className="text-[9px] text-muted-foreground">Failed</div></div>
+                <div className="bg-orange-500/10 rounded p-1.5"><div className="text-sm font-bold text-orange-700 dark:text-orange-400">{bulkAutoFix.scanReport.stateBreakdown.partial}</div><div className="text-[9px] text-muted-foreground">Partial</div></div>
+                <div className="bg-muted rounded p-1.5"><div className="text-sm font-bold">{bulkAutoFix.scanReport.stateBreakdown.noActionTaken}</div><div className="text-[9px] text-muted-foreground">No Action</div></div>
+                <div className="bg-muted/50 rounded p-1.5"><div className="text-sm font-bold text-muted-foreground">{bulkAutoFix.scanReport.stateBreakdown.skippedUnchanged}</div><div className="text-[9px] text-muted-foreground">Unchanged</div></div>
+                <div className="bg-green-500/10 rounded p-1.5"><div className="text-sm font-bold text-green-700 dark:text-green-400">{bulkAutoFix.scanReport.stateBreakdown.alreadyClean}</div><div className="text-[9px] text-muted-foreground">Clean</div></div>
+              </div>
+            )}
+            {/* Standard summary grid for non-smart scopes */}
+            {bulkAutoFix.scanReport.scope !== 'smart' && (
+              <div className="grid grid-cols-4 gap-2 text-center">
+                <div className="bg-muted rounded p-2"><div className="text-lg font-bold">{bulkAutoFix.scanReport.totalScanned}</div><div className="text-[10px] text-muted-foreground">Scanned</div></div>
+                <div className="bg-green-500/10 rounded p-2"><div className="text-lg font-bold text-green-700 dark:text-green-400">{bulkAutoFix.scanReport.totalClean}</div><div className="text-[10px] text-muted-foreground">Clean</div></div>
+                <div className="bg-primary/10 rounded p-2"><div className="text-lg font-bold text-primary">{bulkAutoFix.scanReport.totalFixable}</div><div className="text-[10px] text-muted-foreground">Auto-Fixable</div></div>
+                <div className="bg-muted rounded p-2"><div className="text-lg font-bold">{bulkAutoFix.scanReport.totalSkipped}</div><div className="text-[10px] text-muted-foreground">Skipped</div></div>
+              </div>
+            )}
             {Object.keys(bulkAutoFix.scanReport.issueBreakdown).length > 0 && (
               <div className="flex flex-wrap gap-1">
                 {Object.entries(bulkAutoFix.scanReport.issueBreakdown).map(([key, count]) => (
@@ -2430,8 +2452,20 @@ export function BlogPostEditor() {
         )}
 
         {bulkAutoFix.phase === 'scanned' && bulkAutoFix.scanReport && bulkAutoFix.scanReport.totalFixable === 0 && (
-          <div className="text-center py-6 text-sm text-muted-foreground">
-            ✅ All articles pass auto-fixable checks — no fixes needed. Some may still have manual-only warnings.
+          <div className="text-center py-6 space-y-3">
+            <div className="text-sm text-muted-foreground">
+              ✅ All {bulkAutoFix.scanReport.scope === 'smart' ? 'eligible' : ''} articles pass auto-fixable checks — no fixes needed.
+            </div>
+            {bulkAutoFix.scanReport.scope === 'smart' && bulkAutoFix.scanReport.stateBreakdown.skippedUnchanged > 0 && (
+              <div className="text-xs text-muted-foreground">
+                {bulkAutoFix.scanReport.stateBreakdown.skippedUnchanged} unchanged article(s) were skipped. Use "Force Full Rescan" to scan all.
+              </div>
+            )}
+            {bulkAutoFix.scanReport.scope !== 'all' && (
+              <Button variant="outline" size="sm" className="text-xs gap-1" onClick={() => handleBulkFixScan('all')}>
+                <RotateCcw className="h-3 w-3" /> Force Full Rescan
+              </Button>
+            )}
           </div>
         )}
 

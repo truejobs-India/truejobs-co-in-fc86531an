@@ -169,6 +169,12 @@ export async function callVertexGemini(
       }
 
       return text;
+    } catch (err) {
+      clearTimeout(timer);
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        throw new Error(`VERTEX_TIMEOUT: Request to ${model} timed out after ${timeoutMs}ms`);
+      }
+      throw err;
     } finally {
       clearTimeout(timer);
     }
@@ -250,6 +256,12 @@ export async function callVertexGeminiWithMeta(
       // Map Vertex finish reasons to normalized values
       const normalizedReason = finishReason === 'MAX_TOKENS' ? 'length' : finishReason === 'STOP' ? 'stop' : finishReason.toLowerCase();
       return { text, finishReason: normalizedReason };
+    } catch (err) {
+      clearTimeout(timer);
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        throw new Error(`VERTEX_TIMEOUT: Request to ${model} timed out after ${timeoutMs}ms`);
+      }
+      throw err;
     } finally {
       clearTimeout(timer);
     }

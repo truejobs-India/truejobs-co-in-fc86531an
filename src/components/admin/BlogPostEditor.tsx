@@ -935,6 +935,42 @@ export function BlogPostEditor() {
     });
   };
 
+  // ── Publish All Drafts ──
+  const [isPublishingAllDrafts, setIsPublishingAllDrafts] = useState(false);
+  const handlePublishAllDrafts = async () => {
+    const drafts = posts.filter(p => !p.is_published);
+    if (drafts.length === 0) {
+      toast({ title: 'No drafts to publish', variant: 'destructive' });
+      return;
+    }
+    setIsPublishingAllDrafts(true);
+    let successCount = 0;
+    let failCount = 0;
+    for (const draft of drafts) {
+      try {
+        const { error } = await supabase
+          .from('blog_posts')
+          .update({
+            is_published: true,
+            status: 'published',
+            published_at: draft.published_at || new Date().toISOString(),
+          })
+          .eq('id', draft.id);
+        if (error) throw error;
+        successCount++;
+      } catch (err) {
+        console.error('Failed to publish draft:', draft.slug, err);
+        failCount++;
+      }
+    }
+    setIsPublishingAllDrafts(false);
+    toast({
+      title: `Published ${successCount} draft(s)${failCount > 0 ? `, ${failCount} failed` : ''}`,
+      variant: failCount > 0 ? 'destructive' : 'default',
+    });
+    if (successCount > 0) fetchPosts();
+  };
+
   // ── Image cleanup: Delete Cover Images ──
   const handleDeleteCoverImages = async () => {
     const selected = posts.filter(p => selectedPostIds.has(p.id) && p.cover_image_url);

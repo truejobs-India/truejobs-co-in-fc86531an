@@ -2513,6 +2513,7 @@ export function BlogPostEditor() {
                       {r.status === 'skipped' && <Badge variant="secondary" className="text-[10px] shrink-0">Skipped</Badge>}
                       {r.status === 'failed' && <Badge variant="destructive" className="text-[10px] shrink-0"><X className="h-2.5 w-2.5 mr-0.5" />Failed</Badge>}
                       {r.status === 'stopped' && <Badge variant="secondary" className="text-[10px] shrink-0">Stopped</Badge>}
+                      {r.status === 'no_action_taken' && <Badge className="text-[10px] bg-amber-500/15 text-amber-700 dark:text-amber-400 shrink-0">No Action</Badge>}
                       <span className="truncate max-w-[250px]">{r.title}</span>
                       {r.fixesApplied.length > 0 && <span className="text-green-600 text-[10px] shrink-0">{r.fixesApplied.length} applied</span>}
                       {r.fixesSkipped.length > 0 && <span className="text-muted-foreground text-[10px] shrink-0">{r.fixesSkipped.length} skipped</span>}

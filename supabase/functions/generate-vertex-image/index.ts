@@ -1109,7 +1109,7 @@ serve(async (req) => {
     if (isGatewayModel(selectedModel) && selectedModel !== 'gemini-flash-image') {
       return await generateViaGatewayModel(selectedModel, body, imagePrompt);
     }
-    if (selectedModel === 'gemini-flash-image') {
+    if (selectedModel === 'gemini-flash-image' || selectedModel === 'vertex-flash-image') {
       return await generateViaGeminiFlashImage(body, slug, imagePrompt, adminClient, startMs, strict);
     }
     // Strict mode: reject unresolved catch-all

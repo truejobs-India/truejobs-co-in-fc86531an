@@ -93,7 +93,19 @@ export function RelatedBlogs({ currentPostId, category, tags, limit = 3 }: Relat
   }
 
   if (posts.length === 0) {
-    return null;
+    return (
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <BookOpen className="h-5 w-5 text-primary" />
+            <CardTitle className="text-xl">Related Articles</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">No related articles found.</p>
+        </CardContent>
+      </Card>
+    );
   }
 
   return (

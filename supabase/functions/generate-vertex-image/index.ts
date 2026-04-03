@@ -1074,7 +1074,7 @@ serve(async (req) => {
       const imagePrompt = buildInlineImagePrompt(body);
       const aspectRatio = '4:3';
       console.log(`[generate-vertex-image] ENFORCED: purpose=inline → ${selectedInlineModel}, slot=${body.slotNumber}`);
-      if (selectedInlineModel === 'vertex-imagen') {
+      if (selectedInlineModel === 'vertex-imagen' || isImagenAliasModel(selectedInlineModel)) {
         return await generateViaImagen(body, slug, imagePrompt, 1, aspectRatio, adminClient, startMs, strict);
       }
       if (isVertexDirectImageModel(selectedInlineModel)) {

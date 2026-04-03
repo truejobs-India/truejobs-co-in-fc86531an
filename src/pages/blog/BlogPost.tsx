@@ -579,30 +579,30 @@ export default function BlogPostPage() {
           </div>
 
           {/* Sidebar */}
-          <aside className="space-y-6">
-            {/* Sidebar Ad Space — sticky */}
-            {post.content?.length > 800 && (
-              <div className="sticky top-24 mt-8">
+          <aside className="hidden lg:block">
+            <div className="sticky top-24 space-y-6">
+              {/* Sidebar Ad Space */}
+              {post.content?.length > 800 && (
                 <AdPlaceholder variant="sidebar" />
-              </div>
-            )}
+              )}
 
-            {/* Distribution Widgets */}
-            <DistributionSidebar />
+              {/* Distribution Widgets */}
+              <DistributionSidebar />
 
-            {/* Related Articles */}
-            <RelatedBlogs 
-              currentPostId={post.id}
-              category={post.category}
-              tags={post.tags}
-              variant="sidebar"
-            />
+              {/* Related Articles */}
+              <RelatedBlogs 
+                currentPostId={post.id}
+                category={post.category}
+                tags={post.tags}
+                variant="sidebar"
+              />
 
-            {/* Related Jobs */}
-            <RelatedJobs 
-              category={post.category}
-              tags={post.tags}
-            />
+              {/* Related Jobs */}
+              <RelatedJobs 
+                category={post.category}
+                tags={post.tags}
+              />
+            </div>
           </aside>
         </div>
       </article>

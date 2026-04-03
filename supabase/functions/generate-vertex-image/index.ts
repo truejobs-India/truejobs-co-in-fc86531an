@@ -1049,7 +1049,7 @@ serve(async (req) => {
       const selectedCoverModel = body.model || 'gemini-flash-image';
       const imagePrompt = buildCoverImagePrompt(body);
       console.log(`[generate-vertex-image] purpose=cover → ${selectedCoverModel}`);
-      if (selectedCoverModel === 'vertex-imagen') {
+      if (selectedCoverModel === 'vertex-imagen' || isImagenAliasModel(selectedCoverModel)) {
         const aspectRatio = ASPECT_RATIOS[body.aspectRatio || '16:9'] || '16:9';
         return await generateViaImagen(body, slug, imagePrompt, 1, aspectRatio, adminClient, startMs, strict);
       }

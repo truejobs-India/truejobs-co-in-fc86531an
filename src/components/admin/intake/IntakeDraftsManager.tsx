@@ -549,6 +549,19 @@ export function IntakeDraftsManager() {
         </Card>
       )}
 
+      {/* Fill Empty Progress Banner */}
+      {fillingEmpty && (
+        <Card className="border-amber-500/30 bg-amber-500/5">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              AI Fill Empty Fields: {fillProgress.current} / {fillProgress.total}
+            </div>
+            <Progress value={fillProgress.total > 0 ? (fillProgress.current / fillProgress.total) * 100 : 0} className="h-2 mt-2" />
+          </CardContent>
+        </Card>
+      )}
+
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {([

@@ -597,7 +597,10 @@ export function IntakeDraftsManager() {
           </Button>
         )}
 
-        <AiModelSelector value={aiModel} onValueChange={setAiModel} capability="text" size="sm" triggerClassName="w-[180px] h-8 text-xs" />
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs text-muted-foreground whitespace-nowrap">Intake AI Model:</span>
+          <AiModelSelector value={aiModel} onValueChange={setAiModel} capability="text" size="sm" triggerClassName="w-[180px] h-8 text-xs" />
+        </div>
 
         <Button variant="ghost" size="sm" onClick={fetchDrafts} disabled={loading}>
           <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />

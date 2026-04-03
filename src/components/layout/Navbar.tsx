@@ -394,6 +394,8 @@ export function Navbar() {
                     src={employerLoginButton} 
                     alt="Employer login - Post jobs and hire talent" 
                     className="h-12 object-contain"
+                    width={120}
+                    height={48}
                   />
                 </button>
                 <button 

@@ -203,6 +203,10 @@ export default function PrivateJobs() {
       <div className="container mx-auto px-4 my-6">
         <AdPlaceholder variant="banner" />
       </div>
+
+      <div className="container mx-auto px-4 mb-6">
+        <AdPlaceholder variant="in-content" />
+      </div>
     </Layout>
   );
 }

@@ -111,6 +111,8 @@ export default function ExamClusterHub() {
           </div>
         </section>
 
+        <AdPlaceholder variant="in-content" />
+
         {/* FAQ */}
         {config.faqs.length > 0 && (
           <FAQAccordion items={config.faqs} title={`${config.examName} – Frequently Asked Questions`} />

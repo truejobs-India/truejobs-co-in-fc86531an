@@ -424,6 +424,8 @@ function ExamDetailView({ slug }: { slug: string | undefined }) {
           </CardContent>
         </Card>
 
+        <AdPlaceholder variant="in-content" />
+
         {faqs.length > 0 && (
           <Card className="mb-6">
             <CardHeader><CardTitle>Frequently Asked Questions</CardTitle></CardHeader>

@@ -214,6 +214,8 @@ export default function BoardResultBoardPage() {
           </section>
         )}
 
+        <AdPlaceholder variant="in-content" />
+
         {/* Bottom CTA */}
         <BoardResultAlertCTA variant="compact" context={boardName || boardDisplay} className="mb-8" />
 

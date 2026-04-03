@@ -1035,6 +1035,9 @@ serve(async (req) => {
           return 'gemini-3-pro-image-preview';
       }
     };
+    // vertex-pro (Gemini 2.5 Pro) has 'image' capability in registry but doesn't
+    // generate images natively — route it through Imagen instead
+    const isImagenAliasModel = (model: string) => model === 'vertex-pro';
 
     const generateViaGatewayModel = (model: string, bodyOverride: any, imagePrompt: string) => {
       const gatewayModelId = GATEWAY_IMAGE_MODELS[model] || LOVABLE_GATEWAY_IMAGE_MODEL;
@@ -1046,7 +1049,7 @@ serve(async (req) => {
       const selectedCoverModel = body.model || 'gemini-flash-image';
       const imagePrompt = buildCoverImagePrompt(body);
       console.log(`[generate-vertex-image] purpose=cover → ${selectedCoverModel}`);
-      if (selectedCoverModel === 'vertex-imagen') {
+      if (selectedCoverModel === 'vertex-imagen' || isImagenAliasModel(selectedCoverModel)) {
         const aspectRatio = ASPECT_RATIOS[body.aspectRatio || '16:9'] || '16:9';
         return await generateViaImagen(body, slug, imagePrompt, 1, aspectRatio, adminClient, startMs, strict);
       }
@@ -1071,7 +1074,7 @@ serve(async (req) => {
       const imagePrompt = buildInlineImagePrompt(body);
       const aspectRatio = '4:3';
       console.log(`[generate-vertex-image] ENFORCED: purpose=inline → ${selectedInlineModel}, slot=${body.slotNumber}`);
-      if (selectedInlineModel === 'vertex-imagen') {
+      if (selectedInlineModel === 'vertex-imagen' || isImagenAliasModel(selectedInlineModel)) {
         return await generateViaImagen(body, slug, imagePrompt, 1, aspectRatio, adminClient, startMs, strict);
       }
       if (isVertexDirectImageModel(selectedInlineModel)) {
@@ -1096,7 +1099,7 @@ serve(async (req) => {
     const aspectRatio = ASPECT_RATIOS[body.aspectRatio || '16:9'] || '16:9';
     const imagePrompt = buildCoverImagePrompt(body);
 
-    if (selectedModel === 'vertex-imagen') {
+    if (selectedModel === 'vertex-imagen' || isImagenAliasModel(selectedModel)) {
       return await generateViaImagen(body, slug, imagePrompt, imageCount, aspectRatio, adminClient, startMs, strict);
     }
     if (isVertexDirectImageModel(selectedModel)) {

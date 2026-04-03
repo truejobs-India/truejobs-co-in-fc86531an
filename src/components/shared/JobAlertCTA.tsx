@@ -199,7 +199,7 @@ function ChannelButton({ type, size = 'default' }: { type: 'whatsapp' | 'telegra
   return (
     <Button asChild className={`${c.bgClass} text-white rounded-xl ${h} flex-1`}>
       <a href={c.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2">
-        <img src={c.logo} alt={type} className={`${imgSize} rounded-sm object-cover`} />
+        <img src={c.logo} alt={type} className={`${imgSize} rounded-sm object-cover`} width={size === 'sm' ? 16 : 20} height={size === 'sm' ? 16 : 20} />
         <span>{c.label}</span>
       </a>
     </Button>

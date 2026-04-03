@@ -121,7 +121,7 @@ function HeroEmailForm() {
         disabled={loading}
         className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-[hsl(4_80%_56%)] text-white text-xs font-semibold hover:bg-[hsl(4_80%_48%)] transition-colors disabled:opacity-50"
       >
-        <img src={CTA_CHANNELS.email.logo} alt="Email" className="h-3.5 w-3.5 rounded-sm" />
+        <img src={CTA_CHANNELS.email.logo} alt="Email" className="h-3.5 w-3.5 rounded-sm" width={14} height={14} />
         {loading ? '…' : 'Subscribe'}
       </button>
     </form>

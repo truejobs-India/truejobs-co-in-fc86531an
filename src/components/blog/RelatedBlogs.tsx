@@ -129,6 +129,8 @@ export function RelatedBlogs({ currentPostId, category, tags, limit = 3 }: Relat
                 alt={`Thumbnail for ${post.title}`}
                 className="h-16 w-16 object-cover rounded shrink-0"
                 loading="lazy"
+                width={64}
+                height={64}
               />
             ) : (
               <div className="h-16 w-16 bg-muted rounded shrink-0 flex items-center justify-center">

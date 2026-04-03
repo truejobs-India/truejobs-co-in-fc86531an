@@ -406,6 +406,8 @@ export function Navbar() {
                     src={candidateLoginButton} 
                     alt="Job seeker login - Find your dream job" 
                     className="h-10 sm:h-12 object-contain"
+                    width={120}
+                    height={40}
                   />
                 </button>
               </div>

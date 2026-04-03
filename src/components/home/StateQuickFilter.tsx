@@ -52,7 +52,7 @@ export function StateQuickFilter() {
               className="flex flex-col items-center gap-2 rounded-2xl bg-card border border-border hover:shadow-medium transition-all text-center group overflow-hidden"
             >
               <div className="w-full aspect-square overflow-hidden bg-secondary/30 group-hover:scale-105 transition-transform">
-                <img src={s.img} alt={s.name} className="w-full h-full object-cover" />
+                <img src={s.img} alt={s.name} className="w-full h-full object-cover" width={200} height={200} loading="lazy" />
               </div>
               <span className="text-sm font-semibold text-foreground pb-3 px-2">{s.name}</span>
             </Link>

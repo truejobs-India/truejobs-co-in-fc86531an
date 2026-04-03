@@ -32,22 +32,22 @@ const SLOT_IDS: Record<AdPlaceholderProps['variant'], string> = {
 const variantConfig = {
   banner: {
     minHeight: 'min-h-[90px]',
-    wrapper: 'w-full my-5 px-4 flex flex-col items-center',
+    wrapper: 'w-full my-5 px-4 flex flex-col items-center min-h-[110px]',
     format: 'horizontal' as const,
   },
   sidebar: {
     minHeight: 'min-h-[250px]',
-    wrapper: 'w-full my-5 px-2 flex flex-col items-center',
+    wrapper: 'w-full my-5 px-2 flex flex-col items-center min-h-[280px]',
     format: 'auto' as const,
   },
   'in-content': {
     minHeight: 'min-h-[250px]',
-    wrapper: 'w-full my-8 px-4 flex flex-col items-center border-t border-b border-muted/20 py-4',
+    wrapper: 'w-full my-8 px-4 flex flex-col items-center border-t border-b border-muted/20 py-4 min-h-[280px]',
     format: 'fluid' as const,
   },
   footer: {
     minHeight: 'min-h-[90px]',
-    wrapper: 'w-full mt-5 mb-[88px] md:mb-5 px-4 flex flex-col items-center',
+    wrapper: 'w-full mt-5 mb-[88px] md:mb-5 px-4 flex flex-col items-center min-h-[110px]',
     format: 'horizontal' as const,
   },
 };

@@ -421,6 +421,8 @@ export default function BlogPostPage() {
                 alt={autoAlt}
                 className="w-full h-auto rounded-xl shadow-lg"
                 loading="eager"
+                width={1200}
+                height={630}
               />
             </figure>
           )}

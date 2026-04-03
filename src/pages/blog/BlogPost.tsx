@@ -379,73 +379,77 @@ export default function BlogPostPage() {
 
       <article className="container mx-auto px-4 py-8">
         <div className="max-w-4xl mx-auto">
-          {/* Back Button */}
-          <Button 
-            variant="ghost" 
+          {/* Back Button — compact */}
+          <button
             onClick={() => navigate('/blog')}
-            className="mb-6"
+            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary transition-colors mb-4"
           >
-            <ArrowLeft className="h-4 w-4 mr-2" />
+            <ArrowLeft className="h-3.5 w-3.5" />
             Back to Blog
-          </Button>
+          </button>
 
           {/* Article Header */}
-          <header className="mb-8">
+          <header className="mb-6">
             {post.category && (
               <Link to={`/blog/category/${categoryToSlug(post.category)}`}>
-                <Badge variant="secondary" className="mb-4 hover:bg-primary/20 transition-colors">
+                <Badge variant="secondary" className="mb-3 hover:bg-primary/20 transition-colors">
                   {post.category}
                 </Badge>
               </Link>
             )}
             
-            <h1 className={`text-3xl md:text-4xl lg:text-5xl font-bold leading-tight mb-6 ${/[\u0900-\u097F]/.test(post.title) ? 'hindi-title' : ''}`}>
+            <h1 className={`text-3xl md:text-4xl lg:text-5xl font-bold leading-tight mb-4 ${/[\u0900-\u097F]/.test(post.title) ? 'hindi-title' : ''}`}>
               {post.title}
             </h1>
 
-            <div className="flex flex-wrap items-center gap-4 text-muted-foreground mb-6">
-              <div className="flex items-center gap-2">
-                <User className="h-4 w-4" />
+            <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground mb-4">
+              <div className="flex items-center gap-1.5">
+                <User className="h-3.5 w-3.5" />
                 <span>{post.author_name || 'TrueJobs Editorial Team'}</span>
               </div>
-              <div className="flex items-center gap-2">
-                <Calendar className="h-4 w-4" />
+              <span className="text-border">•</span>
+              <div className="flex items-center gap-1.5">
+                <Calendar className="h-3.5 w-3.5" />
                 <time dateTime={publishDate.toISOString()}>
                   {format(publishDate, 'MMMM d, yyyy')}
                 </time>
               </div>
               {post.reading_time && (
-                <div className="flex items-center gap-2">
-                  <Clock className="h-4 w-4" />
-                  <span>{post.reading_time} min read</span>
-                </div>
+                <>
+                  <span className="text-border">•</span>
+                  <div className="flex items-center gap-1.5">
+                    <Clock className="h-3.5 w-3.5" />
+                    <span>{post.reading_time} min read</span>
+                  </div>
+                </>
               )}
-              <Button 
-                variant="ghost" 
-                size="sm" 
+              <button
                 onClick={handleShare}
-                className="ml-auto"
+                className="ml-auto flex items-center gap-1.5 text-muted-foreground hover:text-primary transition-colors"
               >
-                <Share2 className="h-4 w-4 mr-2" />
-                Share
-              </Button>
+                <Share2 className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Share</span>
+              </button>
             </div>
 
             {post.tags && post.tags.length > 0 && (
-              <div className="flex flex-wrap items-center gap-2">
-                <Tag className="h-4 w-4 text-muted-foreground" />
-                {post.tags.map((tag, i) => (
-                  <Badge key={i} variant="outline" className="text-xs">
-                    {tag}
-                  </Badge>
-                ))}
-              </div>
+              <>
+                <Separator className="mb-3" />
+                <div className="flex flex-wrap items-center gap-2">
+                  <Tag className="h-3.5 w-3.5 text-muted-foreground" />
+                  {post.tags.map((tag, i) => (
+                    <Badge key={i} variant="outline" className="text-xs">
+                      {tag}
+                    </Badge>
+                  ))}
+                </div>
+              </>
             )}
           </header>
 
           {/* Featured Image */}
           {post.cover_image_url && (
-            <figure className="mb-10 aspect-[1200/630] overflow-hidden">
+            <figure className="mb-8 aspect-[1200/630] overflow-hidden">
               <img
                 src={post.cover_image_url}
                 alt={autoAlt}
@@ -461,6 +465,18 @@ export default function BlogPostPage() {
         {/* Main Content with Sidebar */}
         <div className="grid lg:grid-cols-[1fr_300px] gap-8 max-w-6xl mx-auto">
           <div className="max-w-4xl content-area">
+            {/* Intro Summary */}
+            {post.excerpt && post.excerpt.length > 80 && (
+              <div className="article-intro">
+                {post.excerpt}
+              </div>
+            )}
+
+            {/* Inline Table of Contents */}
+            {headings.length >= 3 && (
+              <TableOfContents headings={headings} inline />
+            )}
+
             {/* Article Content */}
             <div 
               className="prose prose-lg max-w-none dark:prose-invert"
@@ -479,9 +495,9 @@ export default function BlogPostPage() {
                 <h2 className="text-2xl font-bold mb-6">Frequently Asked Questions</h2>
                 <div className="space-y-4">
                   {parsedFaqSchema.map((faq, index) => (
-                    <div key={index} className="border rounded-lg p-4">
+                    <div key={index} className="faq-item">
                       <h3 className="font-semibold text-lg mb-2">{faq.question}</h3>
-                      <p className="text-muted-foreground">{faq.answer}</p>
+                      <p className="text-foreground/80 leading-relaxed">{faq.answer}</p>
                     </div>
                   ))}
                 </div>

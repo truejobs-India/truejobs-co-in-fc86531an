@@ -496,7 +496,7 @@ export default function BlogPostPage() {
                   {parsedFaqSchema.map((faq, index) => (
                     <div key={index} className="faq-item">
                       <h3 className="font-semibold text-lg mb-2">{faq.question}</h3>
-                      <p className="text-foreground/80 leading-relaxed">{faq.answer}</p>
+                      <p className="text-foreground leading-relaxed">{faq.answer}</p>
                     </div>
                   ))}
                 </div>

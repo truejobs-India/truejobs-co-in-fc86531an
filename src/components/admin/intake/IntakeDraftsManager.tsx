@@ -761,6 +761,12 @@ export function IntakeDraftsManager() {
                             </Button>
                             {d.processing_status !== 'published' && (
                               <Button variant="ghost" size="icon" className="h-6 w-6"
+                                onClick={() => handleFillEmpty([d.id])} title="AI Fill Empty Fields" disabled={fillingEmpty}>
+                                <Zap className="h-3 w-3 text-amber-600" />
+                              </Button>
+                            )}
+                            {d.processing_status !== 'published' && (
+                              <Button variant="ghost" size="icon" className="h-6 w-6"
                                 onClick={() => handleApproveAndPublish(d.id)} title="Approve & Publish">
                                 <Send className="h-3 w-3 text-green-600" />
                               </Button>

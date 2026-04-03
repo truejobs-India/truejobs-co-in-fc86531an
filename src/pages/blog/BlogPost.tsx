@@ -375,12 +375,12 @@ export default function BlogPostPage() {
       </nav>
 
       {/* Header Banner Ad Space */}
-      <div className="container mx-auto px-4 mt-[60px]">
+      <div className="container mx-auto px-4 mt-4">
         <AdPlaceholder variant="banner" />
       </div>
 
       <article className="container mx-auto px-4 py-8">
-        <div className="max-w-4xl mx-auto">
+        <div className="max-w-6xl mx-auto">
           {/* Back Button — compact */}
           <button
             onClick={() => navigate('/blog')}

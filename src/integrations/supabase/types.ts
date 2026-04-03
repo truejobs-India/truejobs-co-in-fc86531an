@@ -2689,6 +2689,7 @@ export type Database = {
           discovered_at: string | null
           draft_content_html: string | null
           draft_content_text: string | null
+          enrichment_result: string | null
           exam_date: string | null
           exam_name: string | null
           faq_json: Json | null
@@ -2765,6 +2766,7 @@ export type Database = {
           discovered_at?: string | null
           draft_content_html?: string | null
           draft_content_text?: string | null
+          enrichment_result?: string | null
           exam_date?: string | null
           exam_name?: string | null
           faq_json?: Json | null
@@ -2841,6 +2843,7 @@ export type Database = {
           discovered_at?: string | null
           draft_content_html?: string | null
           draft_content_text?: string | null
+          enrichment_result?: string | null
           exam_date?: string | null
           exam_name?: string | null
           faq_json?: Json | null

@@ -415,7 +415,7 @@ export default function BlogPostPage() {
 
           {/* Featured Image */}
           {post.cover_image_url && (
-            <figure className="mb-10">
+            <figure className="mb-10 aspect-[1200/630] overflow-hidden">
               <img
                 src={post.cover_image_url}
                 alt={autoAlt}

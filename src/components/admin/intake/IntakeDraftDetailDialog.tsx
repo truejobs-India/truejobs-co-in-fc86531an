@@ -21,11 +21,12 @@ interface IntakeDraftDetailDialogProps {
   onFillEmpty?: () => Promise<void>;
 }
 
-export function IntakeDraftDetailDialog({ draft, onClose, onSave, onApprovePublish, onDelete }: IntakeDraftDetailDialogProps) {
+export function IntakeDraftDetailDialog({ draft, onClose, onSave, onApprovePublish, onDelete, onFillEmpty }: IntakeDraftDetailDialogProps) {
   const [edits, setEdits] = useState<Record<string, any>>({});
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [fillingEmpty, setFillingEmpty] = useState(false);
 
   const val = (field: string) => edits[field] !== undefined ? edits[field] : (draft[field] || '');
   const set = (field: string, value: any) => setEdits(prev => ({ ...prev, [field]: value }));

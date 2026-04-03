@@ -333,7 +333,11 @@ async function generateViaGeminiFlashImage(
     }
 
     const data = await resp!.json();
-    const parts = data?.candidates?.[0]?.content?.parts || [];
+    const candidate = data?.candidates?.[0];
+    const finishReason = candidate?.finishReason || 'UNKNOWN';
+    const parts = candidate?.content?.parts || [];
+
+    console.log(`[gemini-flash-image] finishReason=${finishReason} partsCount=${parts.length} slug=${slug}`);
 
     let imageBase64 = '';
     let mimeType = 'image/png';
@@ -349,10 +353,18 @@ async function generateViaGeminiFlashImage(
     }
 
     if (!imageBase64) {
+      const safetyRatings = candidate?.safetyRatings || data?.promptFeedback?.safetyRatings || [];
+      const blockedReason = data?.promptFeedback?.blockReason || '';
+      console.error(`[gemini-flash-image] No image data. finishReason=${finishReason} blockReason=${blockedReason} safetyRatings=${JSON.stringify(safetyRatings).substring(0, 300)}`);
       return new Response(JSON.stringify({
         success: false,
-        error: 'No image data returned from Gemini. The prompt may have been filtered.',
+        error: finishReason === 'SAFETY'
+          ? 'Image generation blocked by safety filter. Try a different topic or rephrase.'
+          : finishReason === 'MAX_TOKENS'
+          ? 'Image generation exceeded token limit.'
+          : `No image data returned (finishReason: ${finishReason}). The prompt may have been filtered.`,
         model: GEMINI_IMAGE_MODEL,
+        finishReason,
       }), { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 

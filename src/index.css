@@ -262,6 +262,32 @@ All colors MUST be HSL.
 }
 .content-area table {
   margin: 2rem 0;
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 1rem;
+}
+.content-area table th,
+.content-area table td {
+  border: 1px solid hsl(214 32% 91%);
+  padding: 0.625rem 0.75rem;
+  text-align: left;
+}
+.content-area table thead th {
+  background: hsl(210 40% 96%);
+  font-weight: 600;
+}
+.content-area table tbody tr:nth-child(even) {
+  background: hsl(210 40% 98%);
+}
+.dark .content-area table th,
+.dark .content-area table td {
+  border-color: hsl(217 33% 25%);
+}
+.dark .content-area table thead th {
+  background: hsl(222 47% 18%);
+}
+.dark .content-area table tbody tr:nth-child(even) {
+  background: hsl(222 47% 14%);
 }
 
 .dark .content-area h2 {
@@ -288,6 +314,11 @@ All colors MUST be HSL.
 .article-toc {
   background: hsl(210 40% 96%);
   border: 1px solid hsl(214 32% 91%);
+}
+.article-toc li {
+  margin-bottom: 0.25rem;
+}
+.article-toc {
   border-radius: 0.75rem;
   padding: 1rem 1.25rem;
 }

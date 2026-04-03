@@ -18,6 +18,7 @@ interface IntakeDraftDetailDialogProps {
   onSave: (updates: Record<string, any>) => Promise<void>;
   onApprovePublish?: () => Promise<void>;
   onDelete?: () => Promise<void>;
+  onFillEmpty?: () => Promise<void>;
 }
 
 export function IntakeDraftDetailDialog({ draft, onClose, onSave, onApprovePublish, onDelete }: IntakeDraftDetailDialogProps) {

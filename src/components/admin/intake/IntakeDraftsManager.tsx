@@ -48,6 +48,7 @@ type IntakeDraft = {
   closing_date: string | null;
   scrape_run_id: string | null;
   publish_error: string | null;
+  enrichment_result: string | null;
   created_at: string;
 };
 

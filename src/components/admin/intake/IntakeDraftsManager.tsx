@@ -632,11 +632,22 @@ export function IntakeDraftsManager() {
               {bulkActioning ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Send className="h-4 w-4 mr-1" />}
               Approve & Publish Selected ({selectedIds.size})
             </Button>
+            <Button size="sm" variant="secondary" onClick={() => handleFillEmpty(Array.from(selectedIds))} disabled={fillingEmpty}>
+              {fillingEmpty ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Zap className="h-4 w-4 mr-1" />}
+              Fill Empty Fields for Selected ({selectedIds.size})
+            </Button>
             <Button size="sm" variant="destructive" onClick={confirmDeleteSelected} disabled={deleting}>
               <Trash2 className="h-4 w-4 mr-1" />
               Delete Selected ({selectedIds.size})
             </Button>
           </>
+        )}
+
+        {visibleDrafts.length > 0 && !fillingEmpty && (
+          <Button size="sm" variant="outline" onClick={() => handleFillEmpty(visibleDrafts.map(d => d.id))} disabled={fillingEmpty}>
+            <Zap className="h-4 w-4 mr-1" />
+            Fill Empty Fields for All {TAB_LABELS[activeTab]}
+          </Button>
         )}
 
         {visibleDrafts.length > 0 && (

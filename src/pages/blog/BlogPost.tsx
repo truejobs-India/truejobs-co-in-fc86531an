@@ -390,56 +390,61 @@ export default function BlogPostPage() {
           </Button>
 
           {/* Article Header */}
-          <header className="mb-8">
+          <header className="mb-6">
             {post.category && (
               <Link to={`/blog/category/${categoryToSlug(post.category)}`}>
-                <Badge variant="secondary" className="mb-4 hover:bg-primary/20 transition-colors">
+                <Badge variant="secondary" className="mb-3 hover:bg-primary/20 transition-colors">
                   {post.category}
                 </Badge>
               </Link>
             )}
             
-            <h1 className={`text-3xl md:text-4xl lg:text-5xl font-bold leading-tight mb-6 ${/[\u0900-\u097F]/.test(post.title) ? 'hindi-title' : ''}`}>
+            <h1 className={`text-3xl md:text-4xl lg:text-5xl font-bold leading-tight mb-4 ${/[\u0900-\u097F]/.test(post.title) ? 'hindi-title' : ''}`}>
               {post.title}
             </h1>
 
-            <div className="flex flex-wrap items-center gap-4 text-muted-foreground mb-6">
-              <div className="flex items-center gap-2">
-                <User className="h-4 w-4" />
+            <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground mb-4">
+              <div className="flex items-center gap-1.5">
+                <User className="h-3.5 w-3.5" />
                 <span>{post.author_name || 'TrueJobs Editorial Team'}</span>
               </div>
-              <div className="flex items-center gap-2">
-                <Calendar className="h-4 w-4" />
+              <span className="text-border">•</span>
+              <div className="flex items-center gap-1.5">
+                <Calendar className="h-3.5 w-3.5" />
                 <time dateTime={publishDate.toISOString()}>
                   {format(publishDate, 'MMMM d, yyyy')}
                 </time>
               </div>
               {post.reading_time && (
-                <div className="flex items-center gap-2">
-                  <Clock className="h-4 w-4" />
-                  <span>{post.reading_time} min read</span>
-                </div>
+                <>
+                  <span className="text-border">•</span>
+                  <div className="flex items-center gap-1.5">
+                    <Clock className="h-3.5 w-3.5" />
+                    <span>{post.reading_time} min read</span>
+                  </div>
+                </>
               )}
-              <Button 
-                variant="ghost" 
-                size="sm" 
+              <button
                 onClick={handleShare}
-                className="ml-auto"
+                className="ml-auto flex items-center gap-1.5 text-muted-foreground hover:text-primary transition-colors"
               >
-                <Share2 className="h-4 w-4 mr-2" />
-                Share
-              </Button>
+                <Share2 className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Share</span>
+              </button>
             </div>
 
             {post.tags && post.tags.length > 0 && (
-              <div className="flex flex-wrap items-center gap-2">
-                <Tag className="h-4 w-4 text-muted-foreground" />
-                {post.tags.map((tag, i) => (
-                  <Badge key={i} variant="outline" className="text-xs">
-                    {tag}
-                  </Badge>
-                ))}
-              </div>
+              <>
+                <Separator className="mb-3" />
+                <div className="flex flex-wrap items-center gap-2">
+                  <Tag className="h-3.5 w-3.5 text-muted-foreground" />
+                  {post.tags.map((tag, i) => (
+                    <Badge key={i} variant="outline" className="text-xs">
+                      {tag}
+                    </Badge>
+                  ))}
+                </div>
+              </>
             )}
           </header>
 

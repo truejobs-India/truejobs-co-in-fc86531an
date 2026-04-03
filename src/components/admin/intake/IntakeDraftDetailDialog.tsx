@@ -50,6 +50,13 @@ export function IntakeDraftDetailDialog({ draft, onClose, onSave, onApprovePubli
     await onDelete();
   };
 
+  const handleFillEmpty = async () => {
+    if (!onFillEmpty) return;
+    setFillingEmpty(true);
+    await onFillEmpty();
+    setFillingEmpty(false);
+  };
+
   const tags = Array.isArray(draft.secondary_tags) ? draft.secondary_tags : [];
   const blockers = Array.isArray(draft.publish_blockers) ? draft.publish_blockers : [];
 

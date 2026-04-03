@@ -379,15 +379,14 @@ export default function BlogPostPage() {
 
       <article className="container mx-auto px-4 py-8">
         <div className="max-w-4xl mx-auto">
-          {/* Back Button */}
-          <Button 
-            variant="ghost" 
+          {/* Back Button — compact */}
+          <button
             onClick={() => navigate('/blog')}
-            className="mb-6"
+            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary transition-colors mb-4"
           >
-            <ArrowLeft className="h-4 w-4 mr-2" />
+            <ArrowLeft className="h-3.5 w-3.5" />
             Back to Blog
-          </Button>
+          </button>
 
           {/* Article Header */}
           <header className="mb-6">

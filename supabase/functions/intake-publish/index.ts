@@ -60,6 +60,11 @@ function validateForPublish(draft: any): string | null {
       if (!draft.exam_name && !t) return 'Exams need a title or exam_name';
       break;
     case 'notifications':
+      if (!draft.organisation_name) return 'Notifications need organisation_name';
+      if (!draft.official_notification_link && !draft.official_apply_link && !draft.closing_date) {
+        return 'Notifications need at least one of: official_notification_link, official_apply_link, closing_date';
+      }
+      break;
     case 'scholarships':
     case 'certificates':
     case 'marksheets':
@@ -219,6 +224,41 @@ Deno.serve(async (req) => {
               apply_link: draft.official_apply_link,
               application_mode: draft.application_mode,
               job_category: draft.content_type === 'notification' ? 'Notification' : null,
+              status: 'published',
+              source: 'intake_pipeline',
+              published_at: new Date().toISOString(),
+              faq_html: draft.faq_json ? JSON.stringify(draft.faq_json) : null,
+              advertisement_number: draft.advertisement_no,
+            })
+            .select('id')
+            .single();
+          if (insErr) throw new Error(`Insert into employment_news_jobs failed: ${insErr.message}`);
+          publishedId = inserted.id;
+          publishedTable = 'employment_news_jobs';
+          break;
+        }
+
+        case 'notifications': {
+          const resolvedSlug = await resolveSlug(client, slug, 'employment_news_jobs');
+          const { data: inserted, error: insErr } = await client
+            .from('employment_news_jobs')
+            .insert({
+              enriched_title: title,
+              org_name: draft.organisation_name,
+              post: draft.post_name || title,
+              slug: resolvedSlug,
+              meta_title: draft.seo_title || title,
+              meta_description: draft.meta_description,
+              enriched_description: draft.draft_content_html || draft.summary,
+              description: draft.draft_content_text || draft.summary,
+              location: draft.job_location,
+              qualification: draft.qualification_text,
+              age_limit: draft.age_limit_text,
+              salary: draft.salary_text,
+              last_date: draft.closing_date,
+              apply_link: draft.official_apply_link || draft.official_notification_link,
+              application_mode: draft.application_mode,
+              job_category: 'Notification',
               status: 'published',
               source: 'intake_pipeline',
               published_at: new Date().toISOString(),

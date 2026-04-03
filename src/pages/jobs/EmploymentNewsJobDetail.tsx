@@ -224,7 +224,8 @@ export default function EmploymentNewsJobDetail() {
                 {job.apply_link && (
                   <a href={job.apply_link} target="_blank" rel="noopener noreferrer">
                     <Button size="lg">
-                      <ExternalLink className="h-4 w-4 mr-2" /> Apply Now
+                      <ExternalLink className="h-4 w-4 mr-2" />
+                      {job.job_category === 'Notification' ? 'View Official Notice' : 'Apply Now'}
                     </Button>
                   </a>
                 )}

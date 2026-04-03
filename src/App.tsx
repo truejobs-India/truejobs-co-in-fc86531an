@@ -145,6 +145,7 @@ const App = () => (
                 <Route path="/latest-govt-jobs" element={<LatestGovtJobs />} />
                 <Route path="/jobs/employment-news" element={<EmploymentNewsJobs />} />
                 <Route path="/jobs/employment-news/:slug" element={<EmploymentNewsJobDetail />} />
+                <Route path="/notifications" element={<Notifications />} />
                 <Route path="/results/:state/:board" element={<BoardResultBoardPage />} />
                 <Route path="/results/:state" element={<BoardResultStatePage />} />
                 <Route path="/:slug" element={<SEOLandingResolver />} />

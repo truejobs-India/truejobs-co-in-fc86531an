@@ -14,7 +14,7 @@ export function QuickAccessBar() {
   return (
     <section className="py-6">
       <div className="container mx-auto px-4">
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
           {ITEMS.map(item => (
             <Link
               key={item.label}

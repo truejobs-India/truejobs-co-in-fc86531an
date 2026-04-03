@@ -35,16 +35,22 @@ export function InfoCardsRow() {
   return (
     <section className="py-6">
       <div className="container mx-auto px-4">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
           {CARDS.map(card => (
             <Link
               key={card.title}
               to={card.href}
               className="flex flex-col items-center rounded-2xl bg-card border border-border hover:shadow-medium transition-all group overflow-hidden"
             >
-              <div className="w-full aspect-square overflow-hidden bg-secondary/30 group-hover:scale-105 transition-transform">
-                <img src={card.img} alt={card.title} className="w-full h-full object-cover" width={300} height={300} loading="lazy" />
-              </div>
+              {'img' in card && card.img ? (
+                <div className="w-full aspect-square overflow-hidden bg-secondary/30 group-hover:scale-105 transition-transform">
+                  <img src={card.img} alt={card.title} className="w-full h-full object-cover" width={300} height={300} loading="lazy" />
+                </div>
+              ) : (
+                <div className="w-full aspect-square overflow-hidden bg-secondary/30 group-hover:scale-105 transition-transform flex items-center justify-center">
+                  <Bell className="h-16 w-16 text-primary/60" />
+                </div>
+              )}
               <div className="p-4 text-center">
                 <h3 className="text-lg font-bold text-foreground mb-1 font-['Outfit',sans-serif]">{card.title}</h3>
                 <p className="text-muted-foreground text-sm">{card.desc}</p>

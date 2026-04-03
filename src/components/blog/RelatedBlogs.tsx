@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
 import { BookOpen, Clock, ArrowRight } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
+import { categoryToSlug } from '@/lib/blogUtils';
 
 interface BlogPost {
   id: string;
@@ -23,9 +23,11 @@ interface RelatedBlogsProps {
   category: string | null;
   tags: string[] | null;
   limit?: number;
+  variant?: 'sidebar' | 'cards';
 }
 
-export function RelatedBlogs({ currentPostId, category, tags, limit = 3 }: RelatedBlogsProps) {
+export function RelatedBlogs({ currentPostId, category, tags, limit, variant = 'sidebar' }: RelatedBlogsProps) {
+  const effectiveLimit = limit ?? (variant === 'cards' ? 4 : 3);
   const [posts, setPosts] = useState<BlogPost[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -36,14 +38,13 @@ export function RelatedBlogs({ currentPostId, category, tags, limit = 3 }: Relat
   const fetchRelatedPosts = async () => {
     setIsLoading(true);
     
-    // First try to get posts from the same category
     let query = supabase
       .from('blog_posts')
       .select('id, title, slug, excerpt, cover_image_url, published_at, reading_time, category')
       .eq('is_published', true)
       .neq('id', currentPostId)
       .order('published_at', { ascending: false })
-      .limit(limit);
+      .limit(effectiveLimit);
 
     if (category) {
       query = query.eq('category', category);
@@ -54,14 +55,13 @@ export function RelatedBlogs({ currentPostId, category, tags, limit = 3 }: Relat
     if (!error && data && data.length > 0) {
       setPosts(data);
     } else {
-      // Fallback: get any recent posts
       const { data: fallbackData } = await supabase
         .from('blog_posts')
         .select('id, title, slug, excerpt, cover_image_url, published_at, reading_time, category')
         .eq('is_published', true)
         .neq('id', currentPostId)
         .order('published_at', { ascending: false })
-        .limit(limit);
+        .limit(effectiveLimit);
       
       if (fallbackData) {
         setPosts(fallbackData);
@@ -71,6 +71,90 @@ export function RelatedBlogs({ currentPostId, category, tags, limit = 3 }: Relat
     setIsLoading(false);
   };
 
+  // === Cards variant (end-of-article) ===
+  if (variant === 'cards') {
+    if (isLoading) {
+      return (
+        <section className="my-10">
+          <h2 className="text-2xl font-bold mb-6">Read Next</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="rounded-xl border overflow-hidden">
+                <Skeleton className="aspect-[16/9] w-full" />
+                <div className="p-4 space-y-2">
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-3 w-2/3" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      );
+    }
+
+    if (posts.length === 0) return null;
+
+    return (
+      <section className="my-10">
+        <h2 className="text-2xl font-bold mb-6">Read Next</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+          {posts.map((post) => (
+            <Link
+              key={post.id}
+              to={`/blog/${post.slug}`}
+              className="group rounded-xl border bg-card overflow-hidden hover:shadow-md transition-shadow"
+            >
+              {post.cover_image_url ? (
+                <div className="aspect-[16/9] overflow-hidden">
+                  <img
+                    src={post.cover_image_url}
+                    alt={`Read: ${post.title}`}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    loading="lazy"
+                    width={400}
+                    height={225}
+                  />
+                </div>
+              ) : (
+                <div className="aspect-[16/9] bg-muted flex items-center justify-center">
+                  <BookOpen className="h-10 w-10 text-muted-foreground/40" />
+                </div>
+              )}
+              <div className="p-4">
+                <h3 className="font-semibold text-base line-clamp-2 group-hover:text-primary transition-colors mb-2">
+                  {post.title}
+                </h3>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  {post.category && (
+                    <Badge variant="secondary" className="text-xs px-1.5 py-0">
+                      {post.category}
+                    </Badge>
+                  )}
+                  {post.reading_time && (
+                    <span className="flex items-center gap-1">
+                      <Clock className="h-3 w-3" />
+                      {post.reading_time} min
+                    </span>
+                  )}
+                </div>
+              </div>
+            </Link>
+          ))}
+        </div>
+        {category && (
+          <Link
+            to={`/blog/category/${categoryToSlug(category)}`}
+            className="flex items-center gap-1 text-sm text-primary hover:underline mt-5"
+          >
+            Explore more in {category}
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        )}
+      </section>
+    );
+  }
+
+  // === Sidebar variant (default) ===
   if (isLoading) {
     return (
       <Card>

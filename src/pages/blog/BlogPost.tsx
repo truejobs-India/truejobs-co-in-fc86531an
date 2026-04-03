@@ -14,7 +14,9 @@ import { Calendar, Clock, ArrowLeft, User, Share2, Tag, ChevronRight, BookOpen, 
 import { RelatedJobs } from '@/components/blog/RelatedJobs';
 import { RelatedBlogs } from '@/components/blog/RelatedBlogs';
 import { BlogCTA } from '@/components/blog/BlogCTA';
+import { CategoryCluster } from '@/components/blog/CategoryCluster';
 import { TableOfContents } from '@/components/blog/TableOfContents';
+import { DistributionSidebar } from '@/components/distribution/DistributionSidebar';
 import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import {
   generateArticleSchema,
@@ -486,9 +488,6 @@ export default function BlogPostPage() {
             {/* In-Content Ad Space — only for substantial articles */}
             {post.content?.length > 1000 && <AdPlaceholder variant="in-content" className="my-8" />}
 
-            {/* Mid-article CTA */}
-            <BlogCTA variant="jobs" />
-
             {/* FAQ Section */}
             {parsedFaqSchema && parsedFaqSchema.length > 0 && (
               <section className="mt-12 mb-8">
@@ -540,29 +539,46 @@ export default function BlogPostPage() {
               </div>
             </div>
 
+            {/* Read Next — main column recommendation cards */}
+            <RelatedBlogs
+              currentPostId={post.id}
+              category={post.category}
+              tags={post.tags}
+              variant="cards"
+            />
+
+            {/* Category Cluster Navigation */}
+            <CategoryCluster currentCategory={post.category} />
+
             {/* Bottom CTAs */}
             <BlogCTA variant="all" />
             <JobAlertCTA variant="compact" context="Career Updates" className="mt-6" />
+
+            {/* Footer Ad */}
+            <AdPlaceholder variant="footer" className="mt-8" />
           </div>
 
           {/* Sidebar */}
           <aside className="space-y-6">
-            {/* Sidebar Ad Space — only for substantial content */}
+            {/* Sidebar Ad Space — sticky */}
             {post.content?.length > 800 && (
               <div className="sticky top-24 mt-8">
                 <AdPlaceholder variant="sidebar" />
               </div>
             )}
 
-            {headings.length >= 3 && (
-              <TableOfContents headings={headings} />
-            )}
+            {/* Distribution Widgets */}
+            <DistributionSidebar />
+
+            {/* Related Articles */}
             <RelatedBlogs 
               currentPostId={post.id}
               category={post.category}
               tags={post.tags}
+              variant="sidebar"
             />
 
+            {/* Related Jobs */}
             <RelatedJobs 
               category={post.category}
               tags={post.tags}

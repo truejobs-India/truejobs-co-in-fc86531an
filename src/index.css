@@ -233,6 +233,88 @@ All colors MUST be HSL.
   word-break: keep-all;
 }
 
+/* ===== Article section rhythm ===== */
+.content-area h2 {
+  margin-top: 2.5rem;
+  margin-bottom: 1.25rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid hsl(214 32% 91%);
+}
+.content-area h2:first-child,
+.content-area .prose > h2:first-child {
+  border-top: none;
+  padding-top: 0;
+  margin-top: 0;
+}
+.content-area h3 {
+  margin-top: 2rem;
+  margin-bottom: 1rem;
+}
+.content-area p {
+  margin-bottom: 1.25rem;
+}
+.content-area ul,
+.content-area ol {
+  margin-bottom: 1.5rem;
+}
+.content-area li {
+  margin-bottom: 0.5rem;
+}
+.content-area table {
+  margin: 2rem 0;
+}
+
+.dark .content-area h2 {
+  border-top-color: hsl(217 33% 25%);
+}
+
+/* ===== Article intro summary ===== */
+.article-intro {
+  border-left: 4px solid hsl(217 91% 60%);
+  background: hsl(217 91% 60% / 0.04);
+  padding: 1rem 1.25rem;
+  border-radius: 0 0.5rem 0.5rem 0;
+  font-size: 1.125rem;
+  line-height: 1.7;
+  color: hsl(217 33% 17%);
+  margin-bottom: 1.5rem;
+}
+.dark .article-intro {
+  background: hsl(217 91% 60% / 0.08);
+  color: hsl(210 40% 90%);
+}
+
+/* ===== Inline Table of Contents ===== */
+.article-toc {
+  background: hsl(210 40% 96%);
+  border: 1px solid hsl(214 32% 91%);
+  border-radius: 0.75rem;
+  padding: 1rem 1.25rem;
+}
+.dark .article-toc {
+  background: hsl(222 47% 16%);
+  border-color: hsl(217 33% 25%);
+}
+
+/* ===== FAQ items ===== */
+.faq-item {
+  background: hsl(210 40% 98%);
+  border: 1px solid hsl(214 32% 91%);
+  border-radius: 0.75rem;
+  padding: 1.25rem;
+  transition: box-shadow 0.2s ease;
+}
+.faq-item:hover {
+  box-shadow: 0 2px 8px hsl(217 91% 60% / 0.08);
+}
+.dark .faq-item {
+  background: hsl(222 47% 16%);
+  border-color: hsl(217 33% 25%);
+}
+.dark .faq-item:hover {
+  box-shadow: 0 2px 8px hsl(217 91% 60% / 0.12);
+}
+
 /* Premium gradient utility classes */
 @layer utilities {
   .bg-gradient-primary {

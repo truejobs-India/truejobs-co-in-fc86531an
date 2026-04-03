@@ -172,6 +172,7 @@ export default function BlogCategory() {
       </section>
 
       <div className="max-w-4xl mx-auto px-4 lg:px-8 py-12">
+        <AdPlaceholder variant="banner" />
         {isLoading ? (
           <div className="grid md:grid-cols-2 gap-6">
             {[...Array(6)].map((_, i) => (

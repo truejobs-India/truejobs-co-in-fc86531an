@@ -721,6 +721,15 @@ export function IntakeDraftsManager() {
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-wrap gap-0.5">
+                            {d.enrichment_result === 'enriched' && (
+                              <Badge className="text-[9px] px-1 py-0 bg-green-600/15 text-green-700 border-green-600/30 dark:text-green-400">Enriched</Badge>
+                            )}
+                            {d.enrichment_result === 'not_enriched_tech_error' && (
+                              <Badge variant="destructive" className="text-[9px] px-1 py-0">Fill Failed</Badge>
+                            )}
+                            {d.enrichment_result === 'not_enriched_no_data' && (
+                              <Badge className="text-[9px] px-1 py-0 bg-amber-500/15 text-amber-700 border-amber-500/30 dark:text-amber-400">No Data</Badge>
+                            )}
                             {d.processing_status === 'publish_failed' && (
                               <Badge variant="destructive" className="text-[9px] px-1 py-0" title={d.publish_error || 'Publish failed'}>
                                 Publish Failed

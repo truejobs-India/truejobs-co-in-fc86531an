@@ -153,8 +153,23 @@ export default function BlogPostPage() {
   };
 
   // Sanitize and render content — detect HTML vs markdown
-  const renderContent = (content: string) => {
-    const isRichHTML = /<(table|div|section|figure|svg)\b/i.test(content);
+  const renderContent = (rawContent: string) => {
+    let content = rawContent;
+
+    // Conservative: fix literal "\n" escape artifacts only if no <pre>/<code> blocks
+    if (!/<(pre|code)\b/i.test(content)) {
+      content = content.replace(/\\n/g, '\n');
+    }
+
+    // Conservative: strip leading duplicate title only if exact match + boundary
+    if (post?.title && content.startsWith(post.title)) {
+      const afterTitle = content.slice(post.title.length);
+      if (/^[\s\n<]/.test(afterTitle) || afterTitle === '') {
+        content = afterTitle.trimStart();
+      }
+    }
+
+    const isRichHTML = /<(p|table|div|section|figure|svg)\b/i.test(content);
 
     let html: string;
 

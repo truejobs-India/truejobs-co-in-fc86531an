@@ -314,6 +314,11 @@ All colors MUST be HSL.
 .article-toc {
   background: hsl(210 40% 96%);
   border: 1px solid hsl(214 32% 91%);
+}
+.article-toc li {
+  margin-bottom: 0.25rem;
+}
+.article-toc {
   border-radius: 0.75rem;
   padding: 1rem 1.25rem;
 }

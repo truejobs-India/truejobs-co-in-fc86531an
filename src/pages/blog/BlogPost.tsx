@@ -425,13 +425,35 @@ export default function BlogPostPage() {
                   </div>
                 </>
               )}
+            </div>
+
+            {/* Share Row */}
+            <div className="flex items-center gap-3 mt-3">
               <button
                 onClick={handleShare}
-                className="ml-auto flex items-center gap-1.5 text-muted-foreground hover:text-primary transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-border text-sm text-muted-foreground hover:text-primary hover:border-primary transition-colors"
               >
                 <Share2 className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Share</span>
+                <span>Share</span>
               </button>
+              <a
+                href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(post.title)}&url=${encodeURIComponent(window.location.href)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-border text-sm text-muted-foreground hover:text-primary hover:border-primary transition-colors"
+              >
+                <Twitter className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Tweet</span>
+              </a>
+              <a
+                href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(window.location.href)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-border text-sm text-muted-foreground hover:text-primary hover:border-primary transition-colors"
+              >
+                <Linkedin className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">LinkedIn</span>
+              </a>
             </div>
 
             {post.tags && post.tags.length > 0 && (

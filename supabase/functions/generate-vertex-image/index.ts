@@ -40,8 +40,8 @@ const KNOWN_IMAGE_MODEL_KEYS = new Set([
   'vertex-flash-image', // Gemini 2.5 Flash Image via direct Vertex AI
 ]);
 
-const IMAGEN_TIMEOUT_MS = 90_000;
-const GATEWAY_TIMEOUT_MS = 90_000;
+const IMAGEN_TIMEOUT_MS = 120_000;
+const GATEWAY_TIMEOUT_MS = 120_000;
 const MAX_RETRIES = 3;
 const RETRY_BASE_MS = 2000; // 2s, 4s, 8s exponential backoff
 

@@ -37,6 +37,7 @@ const KNOWN_IMAGE_MODEL_KEYS = new Set([
   'vertex-3-pro-image',
   'vertex-3.1-flash-image',
   'vertex-pro', // has image capability in aiModels.ts
+  'vertex-flash-image', // Gemini 2.5 Flash Image via direct Vertex AI
 ]);
 
 const IMAGEN_TIMEOUT_MS = 90_000;

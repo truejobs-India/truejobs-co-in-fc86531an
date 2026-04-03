@@ -102,14 +102,17 @@ export default function BlogPostPage() {
       // Parse faq_schema if it's a string or normalize it
       let faqData: Array<{ question: string; answer: string }> | null = null;
       if (data.faq_schema) {
-        if (typeof data.faq_schema === 'string') {
-          try {
-            faqData = JSON.parse(data.faq_schema);
-          } catch {
-            faqData = null;
-          }
-        } else if (Array.isArray(data.faq_schema)) {
-          faqData = data.faq_schema as Array<{ question: string; answer: string }>;
+        let raw: unknown = data.faq_schema;
+        if (typeof raw === 'string') {
+          try { raw = JSON.parse(raw); } catch { raw = null; }
+        }
+        if (Array.isArray(raw)) {
+          faqData = raw as Array<{ question: string; answer: string }>;
+        } else if (raw && typeof raw === 'object' && !Array.isArray(raw) && Array.isArray((raw as any).mainEntity)) {
+          faqData = (raw as any).mainEntity.map((e: any) => ({
+            question: e.name || e.question,
+            answer: e.acceptedAnswer?.text || e.answer,
+          }));
         }
       }
 
@@ -150,8 +153,23 @@ export default function BlogPostPage() {
   };
 
   // Sanitize and render content — detect HTML vs markdown
-  const renderContent = (content: string) => {
-    const isRichHTML = /<(table|div|section|figure|svg)\b/i.test(content);
+  const renderContent = (rawContent: string) => {
+    let content = rawContent;
+
+    // Conservative: fix literal "\n" escape artifacts only if no <pre>/<code> blocks
+    if (!/<(pre|code)\b/i.test(content)) {
+      content = content.replace(/\\n/g, '\n');
+    }
+
+    // Conservative: strip leading duplicate title only if exact match + boundary
+    if (post?.title && content.startsWith(post.title)) {
+      const afterTitle = content.slice(post.title.length);
+      if (/^[\s\n<]/.test(afterTitle) || afterTitle === '') {
+        content = afterTitle.trimStart();
+      }
+    }
+
+    const isRichHTML = /<(p|table|div|section|figure|svg)\b/i.test(content);
 
     let html: string;
 
@@ -369,7 +387,7 @@ export default function BlogPostPage() {
               </Link>
             )}
             
-            <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold leading-tight mb-6">
+            <h1 className={`text-3xl md:text-4xl lg:text-5xl font-bold leading-tight mb-6 ${/[\u0900-\u097F]/.test(post.title) ? 'hindi-title' : ''}`}>
               {post.title}
             </h1>
 

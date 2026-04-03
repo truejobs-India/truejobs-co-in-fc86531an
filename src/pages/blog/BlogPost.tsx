@@ -161,6 +161,18 @@ export default function BlogPostPage() {
       content = content.replace(/\\n/g, '\n');
     }
 
+    // Conservative: strip trailing JSON metadata that was accidentally stored in content
+    // Matches patterns like: ",\n  "metaTitle": or ",  "metaTitle":
+    const jsonTailMatch = content.search(/",\s*"metaTitle"\s*:/);
+    if (jsonTailMatch > 0) {
+      // Find the last closing </p> or </ul> or </div> etc. before the JSON
+      const beforeJson = content.slice(0, jsonTailMatch);
+      const lastTagEnd = beforeJson.lastIndexOf('>');
+      if (lastTagEnd > 0) {
+        content = content.slice(0, lastTagEnd + 1);
+      }
+    }
+
     // Conservative: strip leading duplicate title only if exact match + boundary
     if (post?.title && content.startsWith(post.title)) {
       const afterTitle = content.slice(post.title.length);

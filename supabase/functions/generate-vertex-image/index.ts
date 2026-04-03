@@ -478,7 +478,12 @@ async function generateViaVertexDirectImage(
       });
     } catch (fetchErr: any) {
       clearTimeout(timer);
-      console.error(`[vertex-direct-image] fetch error: ${fetchErr.message}`);
+      const isTimeout = fetchErr.name === 'AbortError' || fetchErr.message?.includes('aborted');
+      console.error(`[vertex-direct-image] fetch error (timeout=${isTimeout}): ${fetchErr.message}`);
+      if (isTimeout) {
+        return new Response(JSON.stringify({ success: false, error: 'Image generation timed out. The model took too long to respond. Please try again.', model: vertexModelId, timedOut: true }),
+          { status: 504, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
       return new Response(JSON.stringify({ success: false, error: `Vertex fetch error: ${fetchErr.message}`, model: vertexModelId }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     } finally {

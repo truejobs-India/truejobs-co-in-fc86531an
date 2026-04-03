@@ -274,16 +274,33 @@ export function parseMarkdown(content: string): string {
  * Extract headings from content for table of contents
  */
 export function extractHeadings(content: string): Array<{ level: number; text: string; id: string }> {
-  const headingRegex = /^(#{1,3})\s+(.+)$/gm;
   const headings: Array<{ level: number; text: string; id: string }> = [];
-  let match;
+  const seen = new Set<string>();
 
-  while ((match = headingRegex.exec(content)) !== null) {
-    headings.push({
-      level: match[1].length,
-      text: match[2],
-      id: generateSlug(match[2]),
-    });
+  // Pass 1: Markdown headings (# / ## / ###)
+  const mdRegex = /^(#{1,3})\s+(.+)$/gm;
+  let match;
+  while ((match = mdRegex.exec(content)) !== null) {
+    const text = match[2].trim();
+    const id = generateSlug(text);
+    if (!seen.has(id)) {
+      seen.add(id);
+      headings.push({ level: match[1].length, text, id });
+    }
+  }
+
+  // Pass 2: HTML headings (<h2> / <h3>) — only if markdown pass found nothing
+  if (headings.length === 0) {
+    const htmlRegex = /<h([23])[^>]*?(?:id="([^"]*)")?[^>]*>(.*?)<\/h[23]>/gi;
+    while ((match = htmlRegex.exec(content)) !== null) {
+      const level = parseInt(match[1], 10);
+      const text = match[3].replace(/<[^>]+>/g, '').trim();
+      const id = match[2] || generateSlug(text);
+      if (text && !seen.has(id)) {
+        seen.add(id);
+        headings.push({ level, text, id });
+      }
+    }
   }
 
   return headings;

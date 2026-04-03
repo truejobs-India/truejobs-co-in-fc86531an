@@ -466,6 +466,18 @@ export default function BlogPostPage() {
         {/* Main Content with Sidebar */}
         <div className="grid lg:grid-cols-[1fr_300px] gap-8 max-w-6xl mx-auto">
           <div className="max-w-4xl content-area">
+            {/* Intro Summary */}
+            {post.excerpt && post.excerpt.length > 80 && (
+              <div className="article-intro">
+                {post.excerpt}
+              </div>
+            )}
+
+            {/* Inline Table of Contents */}
+            {headings.length >= 3 && (
+              <TableOfContents headings={headings} inline />
+            )}
+
             {/* Article Content */}
             <div 
               className="prose prose-lg max-w-none dark:prose-invert"
@@ -484,9 +496,9 @@ export default function BlogPostPage() {
                 <h2 className="text-2xl font-bold mb-6">Frequently Asked Questions</h2>
                 <div className="space-y-4">
                   {parsedFaqSchema.map((faq, index) => (
-                    <div key={index} className="border rounded-lg p-4">
+                    <div key={index} className="faq-item">
                       <h3 className="font-semibold text-lg mb-2">{faq.question}</h3>
-                      <p className="text-muted-foreground">{faq.answer}</p>
+                      <p className="text-foreground/80 leading-relaxed">{faq.answer}</p>
                     </div>
                   ))}
                 </div>

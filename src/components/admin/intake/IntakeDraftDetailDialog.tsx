@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Send, Trash2, Loader2 } from 'lucide-react';
+import { Send, Trash2, Loader2, Zap } from 'lucide-react';
 
 interface IntakeDraftDetailDialogProps {
   draft: any;

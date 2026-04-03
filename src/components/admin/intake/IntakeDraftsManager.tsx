@@ -48,6 +48,7 @@ type IntakeDraft = {
   closing_date: string | null;
   scrape_run_id: string | null;
   publish_error: string | null;
+  enrichment_result: string | null;
   created_at: string;
 };
 
@@ -146,6 +147,8 @@ export function IntakeDraftsManager() {
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deleteScope, setDeleteScope] = useState<'selected' | 'all'>('selected');
   const [singleDeleteId, setSingleDeleteId] = useState<string | null>(null);
+  const [fillingEmpty, setFillingEmpty] = useState(false);
+  const [fillProgress, setFillProgress] = useState({ current: 0, total: 0 });
 
   const fetchDrafts = useCallback(async () => {
     setLoading(true);
@@ -411,6 +414,54 @@ export function IntakeDraftsManager() {
     }
   };
 
+  // Fill empty fields
+  const handleFillEmpty = async (ids: string[]) => {
+    if (ids.length === 0) return;
+    setFillingEmpty(true);
+    setFillProgress({ current: 0, total: ids.length });
+
+    try {
+      let session: { access_token: string } | null = null;
+      const { data: refreshData } = await supabase.auth.refreshSession();
+      if (refreshData?.session?.access_token) {
+        session = refreshData.session;
+      } else {
+        const { data: fallbackData } = await supabase.auth.getSession();
+        session = fallbackData?.session ?? null;
+      }
+      if (!session?.access_token) throw new Error('Not authenticated');
+
+      let remaining = [...ids];
+      while (remaining.length > 0) {
+        const batch = remaining.slice(0, 15);
+        remaining = remaining.slice(15);
+
+        try {
+          await supabase.functions.invoke('intake-ai-classify', {
+            body: { draft_ids: batch, aiModel, fill_empty_only: true },
+            headers: { Authorization: `Bearer ${session.access_token}` },
+          });
+        } catch (err) {
+          console.error('Fill empty batch error:', err);
+        }
+
+        setFillProgress(prev => ({ ...prev, current: ids.length - remaining.length }));
+
+        if (remaining.length > 0) {
+          await new Promise(r => setTimeout(r, 1500));
+        }
+      }
+
+      toast({ title: 'Fill Empty Fields Complete', description: `Processed ${ids.length} draft(s)` });
+    } catch (err) {
+      toast({ title: 'Fill failed', description: String(err), variant: 'destructive' });
+    } finally {
+      setFillingEmpty(false);
+      setFillProgress({ current: 0, total: 0 });
+      fetchDrafts();
+    }
+  };
+
   const visibleDrafts = filterDrafts(allDrafts, activeTab, searchQuery);
 
   const tabCounts = {
@@ -498,6 +549,19 @@ export function IntakeDraftsManager() {
         </Card>
       )}
 
+      {/* Fill Empty Progress Banner */}
+      {fillingEmpty && (
+        <Card className="border-amber-500/30 bg-amber-500/5">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              AI Fill Empty Fields: {fillProgress.current} / {fillProgress.total}
+            </div>
+            <Progress value={fillProgress.total > 0 ? (fillProgress.current / fillProgress.total) * 100 : 0} className="h-2 mt-2" />
+          </CardContent>
+        </Card>
+      )}
+
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {([
@@ -568,11 +632,22 @@ export function IntakeDraftsManager() {
               {bulkActioning ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Send className="h-4 w-4 mr-1" />}
               Approve & Publish Selected ({selectedIds.size})
             </Button>
+            <Button size="sm" variant="secondary" onClick={() => handleFillEmpty(Array.from(selectedIds))} disabled={fillingEmpty}>
+              {fillingEmpty ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Zap className="h-4 w-4 mr-1" />}
+              Fill Empty Fields for Selected ({selectedIds.size})
+            </Button>
             <Button size="sm" variant="destructive" onClick={confirmDeleteSelected} disabled={deleting}>
               <Trash2 className="h-4 w-4 mr-1" />
               Delete Selected ({selectedIds.size})
             </Button>
           </>
+        )}
+
+        {visibleDrafts.length > 0 && !fillingEmpty && (
+          <Button size="sm" variant="outline" onClick={() => handleFillEmpty(visibleDrafts.map(d => d.id))} disabled={fillingEmpty}>
+            <Zap className="h-4 w-4 mr-1" />
+            Fill Empty Fields for All {TAB_LABELS[activeTab]}
+          </Button>
         )}
 
         {visibleDrafts.length > 0 && (
@@ -646,6 +721,15 @@ export function IntakeDraftsManager() {
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-wrap gap-0.5">
+                            {d.enrichment_result === 'enriched' && (
+                              <Badge className="text-[9px] px-1 py-0 bg-green-600/15 text-green-700 border-green-600/30 dark:text-green-400">Enriched</Badge>
+                            )}
+                            {d.enrichment_result === 'not_enriched_tech_error' && (
+                              <Badge variant="destructive" className="text-[9px] px-1 py-0">Fill Failed</Badge>
+                            )}
+                            {d.enrichment_result === 'not_enriched_no_data' && (
+                              <Badge className="text-[9px] px-1 py-0 bg-amber-500/15 text-amber-700 border-amber-500/30 dark:text-amber-400">No Data</Badge>
+                            )}
                             {d.processing_status === 'publish_failed' && (
                               <Badge variant="destructive" className="text-[9px] px-1 py-0" title={d.publish_error || 'Publish failed'}>
                                 Publish Failed
@@ -675,6 +759,12 @@ export function IntakeDraftsManager() {
                             <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setSelectedDraft(d)} title="Edit">
                               <Search className="h-3 w-3" />
                             </Button>
+                            {d.processing_status !== 'published' && (
+                              <Button variant="ghost" size="icon" className="h-6 w-6"
+                                onClick={() => handleFillEmpty([d.id])} title="AI Fill Empty Fields" disabled={fillingEmpty}>
+                                <Zap className="h-3 w-3 text-amber-600" />
+                              </Button>
+                            )}
                             {d.processing_status !== 'published' && (
                               <Button variant="ghost" size="icon" className="h-6 w-6"
                                 onClick={() => handleApproveAndPublish(d.id)} title="Approve & Publish">
@@ -773,6 +863,12 @@ export function IntakeDraftsManager() {
           }}
           onDelete={async () => {
             setSingleDeleteId(selectedDraft.id);
+          }}
+          onFillEmpty={async () => {
+            await handleFillEmpty([selectedDraft.id]);
+            // Re-fetch and re-open with updated data
+            const { data } = await supabase.from('intake_drafts').select('*').eq('id', selectedDraft.id).single();
+            if (data) setSelectedDraft(data as any);
           }}
         />
       )}

@@ -1,0 +1,1 @@
+ALTER TABLE public.intake_drafts ADD COLUMN enrichment_result text DEFAULT NULL;

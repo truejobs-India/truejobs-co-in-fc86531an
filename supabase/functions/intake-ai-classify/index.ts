@@ -490,6 +490,7 @@ Deno.serve(async (req) => {
     const draftIds = body.draft_ids as string[];
     const aiModel = (body.aiModel as string) || '';
     const retryEnhanced = body.retry_enhanced === true;
+    const fillEmptyOnly = body.fill_empty_only === true;
 
     if (!draftIds || !Array.isArray(draftIds) || draftIds.length === 0) {
       return json({ error: 'Missing draft_ids array' }, 400);
@@ -499,6 +500,141 @@ Deno.serve(async (req) => {
     }
 
     const client = createClient(supabaseUrl, serviceRoleKey);
+
+    // ─── Fill Empty Only Mode ───────────────────────────────────────────────
+    if (fillEmptyOnly) {
+      const fillResults: { id: string; status: string; enrichment_result: string; fields_filled?: string[]; error?: string }[] = [];
+
+      for (const draftId of draftIds) {
+        try {
+          const { data: draft, error: fetchErr } = await client
+            .from('intake_drafts').select('*').eq('id', draftId).single();
+
+          if (fetchErr || !draft) {
+            await client.from('intake_drafts').update({ enrichment_result: 'not_enriched_tech_error' } as any).eq('id', draftId);
+            fillResults.push({ id: draftId, status: 'error', enrichment_result: 'not_enriched_tech_error', error: 'Draft not found' });
+            continue;
+          }
+
+          // Identify empty fields from current DB row
+          const emptyFields: string[] = IMPORTANT_FIELDS.filter(f => {
+            const v = (draft as any)[f];
+            return v === undefined || v === null || v === '' || (typeof v === 'number' && isNaN(v));
+          });
+
+          if (emptyFields.length === 0) {
+            await client.from('intake_drafts').update({ enrichment_result: 'not_enriched_no_data' } as any).eq('id', draftId);
+            fillResults.push({ id: draftId, status: 'ok', enrichment_result: 'not_enriched_no_data' });
+            continue;
+          }
+
+          // Deterministic extraction — only for empty fields
+          const preExtracted = deterministicExtract(draft);
+          const deterministicFills: Record<string, any> = {};
+          for (const [key, val] of Object.entries(preExtracted)) {
+            if (val && emptyFields.includes(key)) {
+              deterministicFills[key] = val;
+            }
+          }
+
+          // Re-check which fields are still empty after deterministic pass
+          const stillEmptyFields = emptyFields.filter(f => !deterministicFills[f]);
+
+          let aiFills: Record<string, any> = {};
+
+          // Only call AI if there are still-empty fields AND substantial evidence exists
+          const hasSubstantialEvidence = (draft.raw_text && (draft.raw_text as string).length > 200) ||
+            !!draft.structured_data_json || !!draft.raw_html;
+
+          if (stillEmptyFields.length > 0 && hasSubstantialEvidence) {
+            try {
+              // Build evidence
+              let structuredPayload = '';
+              if (draft.structured_data_json) {
+                try {
+                  const sd = typeof draft.structured_data_json === 'string'
+                    ? draft.structured_data_json
+                    : JSON.stringify(draft.structured_data_json);
+                  structuredPayload = sd.slice(0, 3000);
+                } catch { /* ignore */ }
+              }
+              const rawHtml = draft.raw_html ? (draft.raw_html as string).slice(0, 3000) : '';
+
+              const evidence = [
+                draft.raw_title ? `Title: ${draft.raw_title}` : '',
+                draft.source_url ? `Source URL: ${draft.source_url}` : '',
+                draft.source_domain ? `Source Domain: ${draft.source_domain}` : '',
+                draft.source_name ? `Source Name: ${draft.source_name}` : '',
+                draft.raw_file_url ? `File URL: ${draft.raw_file_url}` : '',
+                draft.raw_text ? `Content:\n${(draft.raw_text as string).slice(0, 4000)}` : '',
+                structuredPayload ? `Original Import Payload:\n${structuredPayload}` : '',
+                rawHtml ? `Source HTML (excerpt):\n${rawHtml}` : '',
+              ].filter(Boolean).join('\n\n');
+
+              const fillTool = buildFillEmptyToolSchema(stillEmptyFields);
+              const fillPrompt = `These fields are currently empty and need to be filled ONLY if grounded evidence exists:\n${stillEmptyFields.join(', ')}\n\nEvidence:\n${evidence}`;
+
+              const fillResult = await callAI(lovableKey, FILL_EMPTY_FIELDS_PROMPT, fillPrompt, fillTool, aiModel);
+
+              // Only accept fields that were in the still-empty list
+              for (const f of stillEmptyFields) {
+                const newVal = fillResult[f];
+                if (newVal !== undefined && newVal !== null && newVal !== '') {
+                  aiFills[f] = newVal;
+                }
+              }
+            } catch (aiErr) {
+              console.error(`[intake-ai-classify] Fill AI error for ${draftId}:`, aiErr instanceof Error ? aiErr.message : aiErr);
+            }
+          }
+
+          // Merge deterministic + AI fills — ONLY for fields that were originally empty
+          const allFills: Record<string, any> = { ...deterministicFills, ...aiFills };
+
+          // Safety: double-check that we only include fields that were truly empty in the original row
+          const safeFills: Record<string, any> = {};
+          for (const [key, val] of Object.entries(allFills)) {
+            const originalVal = (draft as any)[key];
+            const wasEmpty = originalVal === undefined || originalVal === null || originalVal === '' || (typeof originalVal === 'number' && isNaN(originalVal));
+            if (wasEmpty && val !== undefined && val !== null && val !== '') {
+              safeFills[key] = val;
+            }
+          }
+
+          const filledFieldNames = Object.keys(safeFills);
+          const enrichmentResult = filledFieldNames.length > 0 ? 'enriched' : 'not_enriched_no_data';
+
+          // Build update — only filled fields + enrichment_result
+          const update: Record<string, any> = {
+            ...safeFills,
+            enrichment_result: enrichmentResult,
+          };
+
+          const { error: updateErr } = await client.from('intake_drafts').update(update as any).eq('id', draftId);
+          if (updateErr) {
+            await client.from('intake_drafts').update({ enrichment_result: 'not_enriched_tech_error' } as any).eq('id', draftId);
+            fillResults.push({ id: draftId, status: 'error', enrichment_result: 'not_enriched_tech_error', error: updateErr.message });
+          } else {
+            fillResults.push({ id: draftId, status: 'ok', enrichment_result: enrichmentResult, fields_filled: filledFieldNames });
+          }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : 'Unknown error';
+          console.error(`[intake-ai-classify] Fill error for ${draftId}:`, msg);
+          try {
+            await client.from('intake_drafts').update({ enrichment_result: 'not_enriched_tech_error' } as any).eq('id', draftId);
+          } catch { /* best effort */ }
+          fillResults.push({ id: draftId, status: 'error', enrichment_result: 'not_enriched_tech_error', error: msg });
+        }
+
+        if (draftIds.indexOf(draftId) < draftIds.length - 1) {
+          await sleep(2000);
+        }
+      }
+
+      return json({ results: fillResults });
+    }
+
+    // ─── Normal Classification Mode ─────────────────────────────────────────
     const results: { id: string; status: string; error?: string; secondPass?: boolean }[] = [];
 
     const systemPrompt = retryEnhanced ? RETRY_ENHANCED_PREFIX + SYSTEM_PROMPT : SYSTEM_PROMPT;

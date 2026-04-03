@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Send, Trash2, Loader2 } from 'lucide-react';
+import { Send, Trash2, Loader2, Zap } from 'lucide-react';
 
 interface IntakeDraftDetailDialogProps {
   draft: any;
@@ -18,13 +18,15 @@ interface IntakeDraftDetailDialogProps {
   onSave: (updates: Record<string, any>) => Promise<void>;
   onApprovePublish?: () => Promise<void>;
   onDelete?: () => Promise<void>;
+  onFillEmpty?: () => Promise<void>;
 }
 
-export function IntakeDraftDetailDialog({ draft, onClose, onSave, onApprovePublish, onDelete }: IntakeDraftDetailDialogProps) {
+export function IntakeDraftDetailDialog({ draft, onClose, onSave, onApprovePublish, onDelete, onFillEmpty }: IntakeDraftDetailDialogProps) {
   const [edits, setEdits] = useState<Record<string, any>>({});
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [fillingEmpty, setFillingEmpty] = useState(false);
 
   const val = (field: string) => edits[field] !== undefined ? edits[field] : (draft[field] || '');
   const set = (field: string, value: any) => setEdits(prev => ({ ...prev, [field]: value }));
@@ -46,6 +48,13 @@ export function IntakeDraftDetailDialog({ draft, onClose, onSave, onApprovePubli
   const handleDelete = async () => {
     if (!onDelete) return;
     await onDelete();
+  };
+
+  const handleFillEmpty = async () => {
+    if (!onFillEmpty) return;
+    setFillingEmpty(true);
+    await onFillEmpty();
+    setFillingEmpty(false);
   };
 
   const tags = Array.isArray(draft.secondary_tags) ? draft.secondary_tags : [];
@@ -122,6 +131,15 @@ export function IntakeDraftDetailDialog({ draft, onClose, onSave, onApprovePubli
                 {draft.content_type && <Badge variant="outline">Type: {draft.content_type}</Badge>}
                 {draft.publish_target && <Badge variant="outline">Target: {draft.publish_target}</Badge>}
                 {draft.confidence_score != null && <Badge variant="outline">Confidence: {draft.confidence_score}%</Badge>}
+                {draft.enrichment_result === 'enriched' && (
+                  <Badge className="text-[10px] bg-green-600/15 text-green-700 border-green-600/30 dark:text-green-400">Enriched</Badge>
+                )}
+                {draft.enrichment_result === 'not_enriched_tech_error' && (
+                  <Badge variant="destructive" className="text-[10px]">Fill Failed</Badge>
+                )}
+                {draft.enrichment_result === 'not_enriched_no_data' && (
+                  <Badge className="text-[10px] bg-amber-500/15 text-amber-700 border-amber-500/30 dark:text-amber-400">No Data</Badge>
+                )}
               </div>
 
               {tags.length > 0 && (
@@ -268,6 +286,13 @@ export function IntakeDraftDetailDialog({ draft, onClose, onSave, onApprovePubli
           )}
 
           <div className="flex-1" />
+
+          {onFillEmpty && draft.processing_status !== 'published' && (
+            <Button variant="outline" size="sm" onClick={handleFillEmpty} disabled={fillingEmpty}>
+              {fillingEmpty ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Zap className="h-3 w-3 mr-1" />}
+              AI Fill Empty Fields
+            </Button>
+          )}
 
           <Button variant="outline" onClick={onClose} size="sm">Cancel</Button>
 

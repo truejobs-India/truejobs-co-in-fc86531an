@@ -1,51 +1,63 @@
 
 
-# Intake Draft Preview — End-User View
+# Add Enrichment Outcome Status to AI Fill Empty Fields
 
-## What This Does
-Replaces the current admin-style preview dialog with one that renders the draft exactly as it would appear to end users on the published page. The preview adapts based on `publish_target` — showing the Employment News Job layout or the Govt Exam layout accordingly.
+## Summary
+Add a new `enrichment_result` column to `intake_drafts` that records the outcome of each fill-empty-fields run. Show this status in the UI so admins can quickly see which drafts were truly enriched vs. skipped.
 
-## Current State
-- `IntakeDraftPreviewDialog` shows an admin-formatted view: SEO block, key-details table, raw HTML
-- The actual published pages (`EmploymentNewsJobDetail.tsx` and `GovtExamDetail.tsx`) have completely different layouts with cards, badges, info grids, FAQ sections, apply buttons, etc.
-- The intake_drafts table stores fields that map to both target tables (org name, post name, exam name, salary, qualification, dates, links, `draft_content_html`)
+## Database Migration
 
-## Plan
+Add one column to `intake_drafts`:
 
-### File: `src/components/admin/intake/IntakeDraftPreviewDialog.tsx` — Full rewrite
+```sql
+ALTER TABLE public.intake_drafts
+ADD COLUMN enrichment_result text DEFAULT NULL;
+```
 
-Replace the current admin-formatted preview with a layout that mirrors the actual published pages:
+No enum or CHECK constraint — just a nullable text column storing one of three values:
+- `enriched`
+- `not_enriched_tech_error`
+- `not_enriched_no_data`
 
-**Based on `publish_target`:**
+NULL means the fill action was never run on this draft.
 
-**Jobs target** (publish_target = `jobs` or content_type = `job`): Mirror `EmploymentNewsJobDetail.tsx`:
-- Org name as subtitle, normalized_title as h1
-- Badge row: vacancy_count, application_mode, job_location
-- Info grid (muted bg): salary_text, qualification_text, age_limit_text, application_mode, closing_date, opening_date
-- `draft_content_html` rendered as prose
-- Official links section (notification + apply)
-- Wrapped in a Card with CardContent, matching the real page styling
+## File Changes
 
-**Exams/Results/Admit Cards target**: Mirror `GovtExamDetail.tsx`:
-- exam_name as h1, organisation_name as conducting body
-- Status badge + category badges
-- Info grid: vacancy_count, salary_text, closing_date, qualification_text
-- `draft_content_html` rendered as prose
-- Important links card (apply + notification)
+### 1. `supabase/functions/intake-ai-classify/index.ts`
 
-**Fallback** (unknown target): Keep current generic layout with key-details table + HTML content.
+In the new `fill_empty_only` code path (to be added per the approved plan), after processing each draft:
 
-**Shared elements across both variants:**
-- SEO meta preview block at the top (seo_title, slug, meta_description) — kept as a collapsible admin-only info bar since this doesn't appear on the real page but is useful for review
-- Summary block if present
-- "Preview Mode" banner at top to clarify this is a draft preview
+- **Count fields actually filled**: Compare the update payload against the original empty-field list. If ≥1 field was filled → `enrichment_result = 'enriched'`
+- **No fields filled but no error**: → `enrichment_result = 'not_enriched_no_data'`
+- **Catch block (tech failure)**: → `enrichment_result = 'not_enriched_tech_error'`
 
-**No new files needed** — this is a self-contained rewrite of the existing dialog component. No new database queries — same `intake_drafts` select query, just rendered differently.
+The `enrichment_result` value is included in the same DB update that writes the filled fields. Always set `enrichment_result` in fill_empty_only mode, even on failure.
 
-### Technical Details
-- The dialog fetches the same fields it already does from `intake_drafts`
-- Field mapping: `organisation_name` → org_name, `post_name` → post, `normalized_title` → enriched_title, `salary_text` → salary, `qualification_text` → qualification, `age_limit_text` → age_limit, `closing_date` → last_date, `draft_content_html` → enriched_description
-- Uses the same Card, Badge, Button, and icon components already imported in the project
-- `dangerouslySetInnerHTML` for `draft_content_html` stays (trusted internal HTML policy unchanged)
-- Dialog max-width stays `max-w-4xl` to approximate the real `max-w-4xl` content area
+Return the `enrichment_result` in the per-draft response object so the frontend knows what happened.
+
+### 2. `src/components/admin/intake/IntakeDraftsManager.tsx`
+
+- Add `enrichment_result` to the `IntakeDraft` type and the select query
+- In the table row, show a small badge when `enrichment_result` is set:
+  - `enriched` → green badge "Enriched"
+  - `not_enriched_tech_error` → red badge "Fill Failed"  
+  - `not_enriched_no_data` → amber badge "No Data"
+- Place it near the existing status badges (e.g., after confidence score or in the actions area)
+
+### 3. `src/components/admin/intake/IntakeDraftDetailDialog.tsx`
+
+- Show `enrichment_result` in the Classification tab if present, using the same badge styling
+- Label: "Fill Result" with the outcome badge
+
+## Safety
+- Column is only written in `fill_empty_only` mode — normal classification never touches it
+- NULL default means existing drafts are unaffected
+- No existing columns or logic modified
+
+## Verification Checklist
+1. Draft with fillable evidence → shows "Enriched" badge after fill
+2. Draft with no usable evidence → shows "No Data" badge
+3. Draft where edge function fails → shows "Fill Failed" badge
+4. Drafts never run through fill → no badge (NULL)
+5. Normal classification flow unaffected
 

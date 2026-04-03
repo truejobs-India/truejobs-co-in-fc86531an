@@ -47,7 +47,7 @@ export function HeroSideCards() {
             target="_blank" rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[hsl(142_70%_40%)] text-white text-xs font-semibold hover:bg-[hsl(142_70%_35%)] transition-colors"
           >
-            <img src={CTA_CHANNELS.whatsapp.logo} alt="WhatsApp" className="h-3.5 w-3.5 rounded-sm" /> WhatsApp Alerts
+            <img src={CTA_CHANNELS.whatsapp.logo} alt="WhatsApp" className="h-3.5 w-3.5 rounded-sm" width={14} height={14} /> WhatsApp Alerts
           </a>
           <a
             href={CTA_CHANNELS.telegram.url}

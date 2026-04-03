@@ -864,6 +864,12 @@ export function IntakeDraftsManager() {
           onDelete={async () => {
             setSingleDeleteId(selectedDraft.id);
           }}
+          onFillEmpty={async () => {
+            await handleFillEmpty([selectedDraft.id]);
+            // Re-fetch and re-open with updated data
+            const { data } = await supabase.from('intake_drafts').select('*').eq('id', selectedDraft.id).single();
+            if (data) setSelectedDraft(data as any);
+          }}
         />
       )}
 

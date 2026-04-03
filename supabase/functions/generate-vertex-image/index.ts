@@ -285,8 +285,8 @@ async function generateViaGeminiFlashImage(
           body: JSON.stringify({
             contents: [{ role: 'user', parts: [{ text: imagePrompt }] }],
             generationConfig: {
-              responseModalities: ['TEXT', 'IMAGE'],
-              temperature: 1.0,
+              responseModalities: ['IMAGE', 'TEXT'],
+              temperature: 0.8,
               maxOutputTokens: 8192,
             },
             safetySettings: [

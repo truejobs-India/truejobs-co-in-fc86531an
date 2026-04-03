@@ -95,9 +95,15 @@ export default function EmploymentNewsJobDetail() {
       />
       <div className="container mx-auto py-8 px-4 max-w-4xl content-area my-8">
         {/* Breadcrumb */}
-        <Link to="/jobs/employment-news" className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-4">
-          <ChevronLeft className="h-4 w-4 mr-1" /> Back to Employment News Jobs
-        </Link>
+        {job.job_category === 'Notification' ? (
+          <Link to="/notifications" className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-4">
+            <ChevronLeft className="h-4 w-4 mr-1" /> Back to Notifications
+          </Link>
+        ) : (
+          <Link to="/jobs/employment-news" className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-4">
+            <ChevronLeft className="h-4 w-4 mr-1" /> Back to Employment News Jobs
+          </Link>
+        )}
 
         <AdPlaceholder variant="banner" />
 
@@ -218,7 +224,8 @@ export default function EmploymentNewsJobDetail() {
                 {job.apply_link && (
                   <a href={job.apply_link} target="_blank" rel="noopener noreferrer">
                     <Button size="lg">
-                      <ExternalLink className="h-4 w-4 mr-2" /> Apply Now
+                      <ExternalLink className="h-4 w-4 mr-2" />
+                      {job.job_category === 'Notification' ? 'View Official Notice' : 'Apply Now'}
                     </Button>
                   </a>
                 )}

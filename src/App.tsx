@@ -38,6 +38,7 @@ const GovtExamDetail = lazy(() => import("./pages/jobs/GovtExamDetail"));
 const LatestGovtJobs = lazy(() => import("./pages/jobs/LatestGovtJobs"));
 const EmploymentNewsJobs = lazy(() => import("./pages/jobs/EmploymentNewsJobs"));
 const EmploymentNewsJobDetail = lazy(() => import("./pages/jobs/EmploymentNewsJobDetail"));
+const Notifications = lazy(() => import("./pages/jobs/Notifications"));
 
 const Companies = lazy(() => import("./pages/companies/Companies"));
 const CompanyDetail = lazy(() => import("./pages/companies/CompanyDetail"));
@@ -144,6 +145,7 @@ const App = () => (
                 <Route path="/latest-govt-jobs" element={<LatestGovtJobs />} />
                 <Route path="/jobs/employment-news" element={<EmploymentNewsJobs />} />
                 <Route path="/jobs/employment-news/:slug" element={<EmploymentNewsJobDetail />} />
+                <Route path="/notifications" element={<Notifications />} />
                 <Route path="/results/:state/:board" element={<BoardResultBoardPage />} />
                 <Route path="/results/:state" element={<BoardResultStatePage />} />
                 <Route path="/:slug" element={<SEOLandingResolver />} />

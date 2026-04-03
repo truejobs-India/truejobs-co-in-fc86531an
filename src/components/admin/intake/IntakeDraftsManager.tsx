@@ -414,6 +414,54 @@ export function IntakeDraftsManager() {
     }
   };
 
+  // Fill empty fields
+  const handleFillEmpty = async (ids: string[]) => {
+    if (ids.length === 0) return;
+    setFillingEmpty(true);
+    setFillProgress({ current: 0, total: ids.length });
+
+    try {
+      let session: { access_token: string } | null = null;
+      const { data: refreshData } = await supabase.auth.refreshSession();
+      if (refreshData?.session?.access_token) {
+        session = refreshData.session;
+      } else {
+        const { data: fallbackData } = await supabase.auth.getSession();
+        session = fallbackData?.session ?? null;
+      }
+      if (!session?.access_token) throw new Error('Not authenticated');
+
+      let remaining = [...ids];
+      while (remaining.length > 0) {
+        const batch = remaining.slice(0, 15);
+        remaining = remaining.slice(15);
+
+        try {
+          await supabase.functions.invoke('intake-ai-classify', {
+            body: { draft_ids: batch, aiModel, fill_empty_only: true },
+            headers: { Authorization: `Bearer ${session.access_token}` },
+          });
+        } catch (err) {
+          console.error('Fill empty batch error:', err);
+        }
+
+        setFillProgress(prev => ({ ...prev, current: ids.length - remaining.length }));
+
+        if (remaining.length > 0) {
+          await new Promise(r => setTimeout(r, 1500));
+        }
+      }
+
+      toast({ title: 'Fill Empty Fields Complete', description: `Processed ${ids.length} draft(s)` });
+    } catch (err) {
+      toast({ title: 'Fill failed', description: String(err), variant: 'destructive' });
+    } finally {
+      setFillingEmpty(false);
+      setFillProgress({ current: 0, total: 0 });
+      fetchDrafts();
+    }
+  };
+
   const visibleDrafts = filterDrafts(allDrafts, activeTab, searchQuery);
 
   const tabCounts = {

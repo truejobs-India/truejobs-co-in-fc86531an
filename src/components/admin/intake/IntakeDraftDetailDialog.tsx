@@ -287,6 +287,13 @@ export function IntakeDraftDetailDialog({ draft, onClose, onSave, onApprovePubli
 
           <div className="flex-1" />
 
+          {onFillEmpty && draft.processing_status !== 'published' && (
+            <Button variant="outline" size="sm" onClick={handleFillEmpty} disabled={fillingEmpty}>
+              {fillingEmpty ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Zap className="h-3 w-3 mr-1" />}
+              AI Fill Empty Fields
+            </Button>
+          )}
+
           <Button variant="outline" onClick={onClose} size="sm">Cancel</Button>
 
           <Button onClick={handleSave} disabled={saving || Object.keys(edits).length === 0} size="sm" variant="secondary">

@@ -171,7 +171,7 @@ export function JobAlertCTA({ variant, context, className = '' }: JobAlertCTAPro
           ) : (
             <form onSubmit={handleEmailSubmit} className="flex gap-2">
               <div className="relative flex-1">
-                <img src={CTA_CHANNELS.email.logo} alt="" className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 rounded-sm" />
+                <img src={CTA_CHANNELS.email.logo} alt="" className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 rounded-sm" width={20} height={20} />
                 <Input
                   type="email" placeholder="Enter your email for alerts"
                   value={email} onChange={e => setEmail(e.target.value)}

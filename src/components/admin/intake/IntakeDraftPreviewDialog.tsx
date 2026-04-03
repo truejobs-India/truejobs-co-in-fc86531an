@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Loader2, MapPin, Calendar, Users, IndianRupee, ExternalLink, Briefcase, ChevronDown, Eye, GraduationCap } from 'lucide-react';
+import { Loader2, MapPin, Calendar, Users, IndianRupee, ExternalLink, ChevronDown, Eye, GraduationCap } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 
 interface Props {

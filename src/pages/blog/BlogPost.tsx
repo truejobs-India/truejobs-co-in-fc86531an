@@ -554,8 +554,6 @@ export default function BlogPostPage() {
             <BlogCTA variant="all" />
             <JobAlertCTA variant="compact" context="Career Updates" className="mt-6" />
 
-            {/* Footer Ad */}
-            <AdPlaceholder variant="footer" className="mt-8" />
           </div>
 
           {/* Sidebar */}

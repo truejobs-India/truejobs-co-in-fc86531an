@@ -151,6 +151,8 @@ export default function ResourceDownload() {
           </CardContent>
         </Card>
 
+        <AdPlaceholder variant="in-content" />
+
         {/* Why Subscribe section */}
         <section className="mb-8">
           <h2 className="text-xl font-bold text-foreground mb-4">

@@ -162,6 +162,8 @@ export default function QualificationJobsPage() {
           )}
         </section>
 
+        <AdPlaceholder variant="in-content" />
+
         <PopularExamsBlock qualificationSlug={config.slug} />
 
         <FAQAccordion items={config.faqItems} />

@@ -229,6 +229,8 @@ export default function StateGovtJobsPage() {
           </section>
         )}
 
+        <AdPlaceholder variant="in-content" />
+
         <PopularExamsBlock />
 
         {/* Supplemental enrichment sections */}

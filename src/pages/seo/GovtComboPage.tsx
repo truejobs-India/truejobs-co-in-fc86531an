@@ -203,6 +203,8 @@ export default function GovtComboPage() {
           )}
         </section>
 
+        <AdPlaceholder variant="in-content" />
+
         <PopularExamsBlock />
 
         <FAQAccordion items={config.faqItems} />

@@ -259,6 +259,8 @@ export function ResourceListing({ resourceType, pageTitle, metaTitle, metaDescri
           </>
         ) : null}
 
+        <AdPlaceholder variant="in-content" />
+
         {/* Zero-inventory cross-resource section — only when truly empty (no search filter) */}
         {isEmpty && (
           <div className="space-y-10">

@@ -162,6 +162,8 @@ export default function CityJobsPage() {
           title={`Latest Job Openings in ${config.city}`}
         />
 
+        <AdPlaceholder variant="in-content" />
+
         {/* FAQ */}
         <FAQAccordion items={config.faqItems} title={`FAQs About Jobs in ${config.city}`} />
 

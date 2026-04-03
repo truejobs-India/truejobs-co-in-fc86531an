@@ -477,7 +477,7 @@ export default function BlogPostPage() {
               <img
                 src={post.cover_image_url}
                 alt={autoAlt}
-                className="w-full h-auto rounded-xl shadow-lg"
+                className="w-full h-full object-cover rounded-xl shadow-lg"
                 loading="eager"
                 width={1200}
                 height={630}

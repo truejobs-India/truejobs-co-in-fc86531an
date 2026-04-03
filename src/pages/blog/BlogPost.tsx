@@ -488,9 +488,6 @@ export default function BlogPostPage() {
             {/* In-Content Ad Space — only for substantial articles */}
             {post.content?.length > 1000 && <AdPlaceholder variant="in-content" className="my-8" />}
 
-            {/* Mid-article CTA */}
-            <BlogCTA variant="jobs" />
-
             {/* FAQ Section */}
             {parsedFaqSchema && parsedFaqSchema.length > 0 && (
               <section className="mt-12 mb-8">
@@ -542,29 +539,46 @@ export default function BlogPostPage() {
               </div>
             </div>
 
+            {/* Read Next — main column recommendation cards */}
+            <RelatedBlogs
+              currentPostId={post.id}
+              category={post.category}
+              tags={post.tags}
+              variant="cards"
+            />
+
+            {/* Category Cluster Navigation */}
+            <CategoryCluster currentCategory={post.category} />
+
             {/* Bottom CTAs */}
             <BlogCTA variant="all" />
             <JobAlertCTA variant="compact" context="Career Updates" className="mt-6" />
+
+            {/* Footer Ad */}
+            <AdPlaceholder variant="footer" className="mt-8" />
           </div>
 
           {/* Sidebar */}
           <aside className="space-y-6">
-            {/* Sidebar Ad Space — only for substantial content */}
+            {/* Sidebar Ad Space — sticky */}
             {post.content?.length > 800 && (
               <div className="sticky top-24 mt-8">
                 <AdPlaceholder variant="sidebar" />
               </div>
             )}
 
-            {headings.length >= 3 && (
-              <TableOfContents headings={headings} />
-            )}
+            {/* Distribution Widgets */}
+            <DistributionSidebar />
+
+            {/* Related Articles */}
             <RelatedBlogs 
               currentPostId={post.id}
               category={post.category}
               tags={post.tags}
+              variant="sidebar"
             />
 
+            {/* Related Jobs */}
             <RelatedJobs 
               category={post.category}
               tags={post.tags}

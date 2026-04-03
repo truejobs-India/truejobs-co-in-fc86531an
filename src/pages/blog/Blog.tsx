@@ -18,6 +18,19 @@ import { JobAlertCTA } from '@/components/shared/JobAlertCTA';
 
 import { BLOG_CATEGORIES } from '@/lib/blogCategories';
 
+interface BlogPost {
+  id: string;
+  title: string;
+  slug: string;
+  excerpt: string | null;
+  cover_image_url: string | null;
+  published_at: string | null;
+  created_at: string;
+  reading_time: number | null;
+  category: string | null;
+  tags: string[] | null;
+}
+
 export default function Blog() {
   const [posts, setPosts] = useState<BlogPost[]>([]);
   const [featuredPost, setFeaturedPost] = useState<BlogPost | null>(null);

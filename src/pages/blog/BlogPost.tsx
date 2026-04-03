@@ -14,7 +14,9 @@ import { Calendar, Clock, ArrowLeft, User, Share2, Tag, ChevronRight, BookOpen, 
 import { RelatedJobs } from '@/components/blog/RelatedJobs';
 import { RelatedBlogs } from '@/components/blog/RelatedBlogs';
 import { BlogCTA } from '@/components/blog/BlogCTA';
+import { CategoryCluster } from '@/components/blog/CategoryCluster';
 import { TableOfContents } from '@/components/blog/TableOfContents';
+import { DistributionSidebar } from '@/components/distribution/DistributionSidebar';
 import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import {
   generateArticleSchema,

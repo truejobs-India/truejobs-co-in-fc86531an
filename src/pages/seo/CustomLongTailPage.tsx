@@ -155,6 +155,8 @@ export default function CustomLongTailPage() {
           </section>
         )}
 
+        <AdPlaceholder variant="in-content" />
+
         {/* FAQs */}
         {config.faqItems.length > 0 && (
           <FAQAccordion items={config.faqItems} />

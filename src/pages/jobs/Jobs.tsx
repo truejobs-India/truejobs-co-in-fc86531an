@@ -715,6 +715,8 @@ export default function Jobs() {
           </div>
         </section>
 
+        <AdPlaceholder variant="in-content" />
+
         <JobAlertCTA variant="banner" className="mt-8" />
       </div>
     </Layout>

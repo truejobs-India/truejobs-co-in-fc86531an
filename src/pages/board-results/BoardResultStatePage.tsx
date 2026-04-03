@@ -159,6 +159,8 @@ export default function BoardResultStatePage() {
           </div>
         </section>
 
+        <AdPlaceholder variant="in-content" />
+
         {/* Bottom CTA */}
         <BoardResultAlertCTA variant="compact" context={stateDisplay} className="mb-8" />
 

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { Layout } from '@/components/layout/Layout';
 import { SEO } from '@/components/SEO';
@@ -171,6 +172,7 @@ export default function BlogCategory() {
       </section>
 
       <div className="max-w-4xl mx-auto px-4 lg:px-8 py-12">
+        <AdPlaceholder variant="banner" />
         {isLoading ? (
           <div className="grid md:grid-cols-2 gap-6">
             {[...Array(6)].map((_, i) => (

@@ -123,6 +123,8 @@ export default function IndustryJobsPage() {
         </section>
 
         <LiveJobListings filter={{ keywords: config.filterKeywords, limit: 10 }} title={`Latest ${config.industry} Job Openings`} />
+        <AdPlaceholder variant="in-content" />
+
         <FAQAccordion items={config.faqItems} title={`FAQs About ${config.industry} Jobs`} />
         <RelatedCities cities={topCityLinks} title={`Top Cities for ${config.industry} Jobs`} />
         {relatedCatLinks.length > 0 && <RelatedCategories categories={relatedCatLinks} title="Related Job Categories" />}

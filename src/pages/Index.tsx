@@ -34,34 +34,44 @@ export default function Index() {
         </div>
       </section>
 
-      {/* Latest Updates (govt exams from DB) */}
-      <LatestGovtJobs />
+      {/* Main content + desktop sidebar */}
+      <div className="container mx-auto px-4">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-6">
+          {/* Left: main content */}
+          <div>
+            <LatestGovtJobs />
 
-      {/* Govt Job Categories grid */}
-      <GovtJobCategories />
+            <AdPlaceholder variant="in-content" />
 
-      <div className="container mx-auto px-4 my-6">
-        <AdPlaceholder variant="banner" />
-      </div>
+            <GovtJobCategories />
 
-      {/* State-wise filter */}
-      <StateQuickFilter />
+            <div className="my-6">
+              <AdPlaceholder variant="banner" />
+            </div>
 
-      {/* Info cards: Results, Admit Cards, Exam Calendar */}
-      <InfoCardsRow />
+            <StateQuickFilter />
 
-      {/* Preparation Tools banner */}
-      <PrepToolsBanner />
+            <InfoCardsRow />
 
-      {/* Private Jobs (secondary) */}
-      <PrivateJobsExplore />
+            <AdPlaceholder variant="in-content" />
 
-      {/* Alert signup banner */}
-      <section className="py-6">
-        <div className="container mx-auto px-4">
-          <JobAlertCTA variant="strong" />
+            <PrepToolsBanner />
+
+            <PrivateJobsExplore />
+
+            <section className="py-6">
+              <JobAlertCTA variant="strong" />
+            </section>
+          </div>
+
+          {/* Right: desktop-only sticky sidebar ad */}
+          <aside className="hidden lg:block">
+            <div className="sticky top-20">
+              <AdPlaceholder variant="sidebar" />
+            </div>
+          </aside>
         </div>
-      </section>
+      </div>
     </Layout>
   );
 }

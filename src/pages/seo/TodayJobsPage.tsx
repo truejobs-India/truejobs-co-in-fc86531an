@@ -210,6 +210,8 @@ export default function TodayJobsPage() {
           )}
         </section>
 
+        <AdPlaceholder variant="in-content" />
+
         {/* Cross-links */}
         {config.city && (() => {
           const citySlug = `jobs-in-${config.city.toLowerCase().replace(/\s+/g, '-')}`;

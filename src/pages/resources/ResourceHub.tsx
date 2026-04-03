@@ -228,6 +228,7 @@ export default function ResourceHub({ resourceType: propType }: ResourceHubProps
         )}
 
         {/* Top Downloads — only show if we have hub-specific results */}
+        <AdPlaceholder variant="in-content" />
         {resources.length > 0 && topDownloads.length > 0 && (
           <section className="mt-16">
             <h2 className="text-2xl font-bold text-foreground mb-6">🔥 Top Downloads</h2>

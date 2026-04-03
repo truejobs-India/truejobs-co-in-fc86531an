@@ -185,6 +185,8 @@ export default function GovtSelectionPage() {
           )}
         </section>
 
+        <AdPlaceholder variant="in-content" />
+
         {/* FAQ Section */}
         <FAQAccordion items={config.faqItems} />
 

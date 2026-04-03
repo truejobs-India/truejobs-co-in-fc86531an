@@ -139,6 +139,8 @@ export default function CategoryJobsPage() {
           title={`Latest ${config.category} Job Openings`}
         />
 
+        <AdPlaceholder variant="in-content" />
+
         <FAQAccordion items={config.faqItems} title={`FAQs About ${config.category} Jobs`} />
 
         <RelatedCities cities={topCityLinks} title={`Top Cities for ${config.category} Jobs`} />

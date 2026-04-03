@@ -355,6 +355,8 @@ export default function ExamAuthorityPage() {
           </section>
         )}
 
+        <AdPlaceholder variant="in-content" />
+
         {/* FAQ — merge static + enrichment FAQs */}
         {(() => {
           const staticFaqs: FAQItem[] = config.faqs;

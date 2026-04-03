@@ -224,6 +224,8 @@ export default function DeadlineJobsPage() {
           </Card>
         )}
 
+        <AdPlaceholder variant="in-content" />
+
         {/* Quick links to other deadline pages */}
         <Card className="mb-8">
           <CardContent className="p-5">

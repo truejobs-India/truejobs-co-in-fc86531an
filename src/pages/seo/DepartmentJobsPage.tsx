@@ -163,6 +163,8 @@ export default function DepartmentJobsPage() {
           )}
         </section>
 
+        <AdPlaceholder variant="in-content" />
+
         <PopularExamsBlock departmentSlug={config.slug} />
 
         <FAQAccordion items={config.faqItems} />

@@ -133,6 +133,8 @@ export default function LatestGovtJobs() {
           <AdPlaceholder variant="banner" />
         </div>
 
+        <AdPlaceholder variant="in-content" />
+
         <div className="text-center mt-8">
           <Link to="/sarkari-jobs" className="text-primary hover:underline font-medium inline-flex items-center gap-1">
             Browse All Sarkari Jobs <ArrowRight className="h-4 w-4" />

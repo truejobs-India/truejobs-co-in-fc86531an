@@ -1,6 +1,6 @@
 /**
  * Real Google AdSense ad unit component.
- * Renders <ins class="adsbygoogle"> with proper push() call.
+ * Renders <ins class="adsbygoogle"> with multi-signal readiness gating.
  * Respects NoAdsContext — returns null on admin/auth pages.
  */
 
@@ -20,8 +20,6 @@ interface AdPlaceholderProps {
 
 const AD_CLIENT = 'ca-pub-7353331010234724';
 
-// Each variant gets a unique slot ID for reporting granularity.
-// Replace these with real slot IDs from AdSense dashboard when available.
 const SLOT_IDS: Record<AdPlaceholderProps['variant'], string> = {
   banner: '6502762618',
   sidebar: '5672896678',
@@ -38,7 +36,7 @@ const variantConfig = {
   sidebar: {
     minHeight: 'min-h-[250px]',
     wrapper: 'w-full my-5 px-2 flex flex-col items-center min-h-[280px]',
-    format: 'auto' as const,
+    format: 'vertical' as const,
   },
   'in-content': {
     minHeight: 'min-h-[250px]',
@@ -52,6 +50,13 @@ const variantConfig = {
   },
 };
 
+const IS_PROD_DOMAIN =
+  typeof window !== 'undefined' &&
+  (window.location.hostname === 'truejobs.co.in' ||
+    window.location.hostname === 'www.truejobs.co.in');
+
+const IS_DEV = !IS_PROD_DOMAIN;
+
 function AdLabel() {
   return (
     <p className="text-[10px] text-muted-foreground text-center uppercase tracking-widest mb-1 select-none">
@@ -64,30 +69,47 @@ export function AdPlaceholder({ variant, className = '' }: AdPlaceholderProps) {
   const noAds = useContext(NoAdsContext);
   const adRef = useRef<HTMLModElement>(null);
   const pushed = useRef(false);
+  const retries = useRef(0);
   const config = variantConfig[variant];
 
   useEffect(() => {
-    // Only push on production domain, and only once per mount
-    if (
-      pushed.current ||
-      noAds ||
-      typeof window === 'undefined' ||
-      (window.location.hostname !== 'truejobs.co.in' &&
-        window.location.hostname !== 'www.truejobs.co.in')
-    ) {
+    if (pushed.current || noAds || typeof window === 'undefined' || !IS_PROD_DOMAIN) {
       return;
     }
 
-    try {
-      (window.adsbygoogle = window.adsbygoogle || []).push({});
-      pushed.current = true;
-    } catch (e) {
-      // AdSense not loaded yet or blocked — fail silently
-    }
-  }, [noAds]);
+    const initAd = () => {
+      const scriptPresent = !!document.querySelector('script[src*="adsbygoogle"]');
+      const containerWidth = adRef.current?.offsetWidth ?? 0;
+      const isVisible = document.visibilityState === 'visible';
 
-  // No ads on admin/auth pages
+      if (IS_DEV) {
+        console.debug(`[AdSense] ${variant} | path=${window.location.pathname} | script=${scriptPresent} | width=${containerWidth} | visible=${isVisible} | retry=${retries.current}`);
+      }
+
+      if (scriptPresent && containerWidth > 0 && isVisible) {
+        try {
+          (window.adsbygoogle = window.adsbygoogle || []).push({});
+          pushed.current = true;
+          if (IS_DEV) console.debug(`[AdSense] ${variant} → pushed OK`);
+        } catch (e) {
+          if (IS_DEV) console.debug(`[AdSense] ${variant} → push error`, e);
+        }
+      } else if (retries.current < 3) {
+        retries.current += 1;
+        setTimeout(initAd, 1000);
+      } else if (IS_DEV) {
+        console.debug(`[AdSense] ${variant} → gave up after 3 retries`);
+      }
+    };
+
+    // Defer first attempt slightly to allow layout to settle
+    const timer = setTimeout(initAd, 100);
+    return () => clearTimeout(timer);
+  }, [noAds, variant]);
+
   if (noAds) return null;
+
+  const adFormat = config.format === 'fluid' ? 'fluid' : config.format;
 
   return (
     <div className={`${config.wrapper} ${className}`}>
@@ -102,7 +124,7 @@ export function AdPlaceholder({ variant, className = '' }: AdPlaceholderProps) {
         }}
         data-ad-client={AD_CLIENT}
         data-ad-slot={SLOT_IDS[variant]}
-        data-ad-format={config.format === 'fluid' ? 'fluid' : 'auto'}
+        data-ad-format={adFormat}
         data-full-width-responsive="true"
         {...(config.format === 'fluid'
           ? { 'data-ad-layout': 'in-article', 'data-ad-layout-key': '-fb+5w+4e-db+86' }

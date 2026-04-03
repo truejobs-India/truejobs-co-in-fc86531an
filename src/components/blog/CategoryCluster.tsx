@@ -10,13 +10,25 @@ interface CategoryClusterProps {
 export function CategoryCluster({ currentCategory }: CategoryClusterProps) {
   const currentSlug = currentCategory ? categoryToSlug(currentCategory) : null;
 
+  const MAX_PILLS = 8;
+
+  // Build display list: current category first, then fill from full list
+  const displayCategories = (() => {
+    const currentCat = currentSlug
+      ? BLOG_CATEGORIES.find((c) => c.slug === currentSlug)
+      : null;
+    const others = BLOG_CATEGORIES.filter((c) => c.slug !== currentSlug);
+    const base = currentCat ? [currentCat] : [];
+    return [...base, ...others].slice(0, MAX_PILLS);
+  })();
+
   return (
     <div className="my-8">
       <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
         Explore Topics
       </h3>
       <div className="flex flex-wrap gap-2">
-        {BLOG_CATEGORIES.map((cat) => {
+        {displayCategories.map((cat) => {
           const isActive = cat.slug === currentSlug;
           return (
             <Link key={cat.slug} to={`/blog/category/${cat.slug}`}>

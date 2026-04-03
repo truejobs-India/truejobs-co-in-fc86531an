@@ -1,52 +1,139 @@
 
 
-# Revised Plan: Public Notifications Section
+# Full-Site AdSense Revenue Optimization & Rendering Stability (Corrected)
 
-This is the same approved plan with one added guard for Phase 2 detail page rendering.
+## Corrections Applied
 
-## All Previous Phases — Unchanged
+### Correction 1: Accurate unique file count
 
-Phases 1–5 from the approved plan remain exactly as specified:
-- Route notification drafts into `employment_news_jobs` with `job_category = 'Notification'`
-- New `/notifications` listing page
-- Homepage entries in InfoCardsRow and QuickAccessBar
-- Quality gate in `intake-publish`
-- No new DB table, no new detail page component
+The previous plan listed 32 files changed but double-counted `src/components/resources/ResourceListing.tsx` (once in the main list at #32, and again separately as "File 32 (indirect)"). The true unique file count is **31 files**. All summary tables and counts below reflect this corrected total.
 
-## Added Guard: Context-Aware Labels on Detail Page
+### Correction 2: Robust AdSense readiness strategy
 
-### File: `src/pages/jobs/EmploymentNewsJobDetail.tsx`
+The previous plan described checking whether `window.adsbygoogle` is a "real initialized array (not just [] from our own fallback)." This is brittle and vague. The corrected readiness strategy is a multi-signal gate:
 
-The detail page currently has several job-centric labels and behaviors that would read oddly for notice-type content. Add conditional logic based on `job.job_category === 'Notification'`:
+**Before calling `adsbygoogle.push({})`, ALL of the following must be true:**
 
-**1. Breadcrumb** (line 98-99): Currently says "Back to Employment News Jobs."
-- If `job_category === 'Notification'` → show "Back to Notifications" linking to `/notifications`
-- Otherwise → keep existing text
+1. **Script presence**: The AdSense `<script>` element with `src` containing `adsbygoogle.js` or `adsbygoogle` actually exists in the DOM (not just our own `window.adsbygoogle = []` fallback).
+2. **Container width**: `adRef.current.offsetWidth > 0` — the `<ins>` element has measurable rendered width, meaning it is not inside a hidden, collapsed, or zero-width parent.
+3. **Document visibility**: `document.visibilityState === 'visible'` — the page tab is active and visible.
 
-**2. Vacancies badge** (line 113-114): Shows "X Vacancies."
-- Only render when `job_category !== 'Notification'` OR when vacancies is explicitly set. Notifications like corrigenda or schedules typically have no vacancy count, so this naturally hides via the existing `job.vacancies &&` guard — no change needed here.
+**If any condition fails**: Retry up to 3 times at 1-second intervals via `setTimeout`. After 3 failures, stop silently (do not throw, do not log in production).
 
-**3. Apply Now button** (around line 204): Label says "Apply Now."
-- If `job_category === 'Notification'` → label becomes "View Official Notice"
-- Otherwise → keep "Apply Now"
+**Dev-mode logging**: In non-production, emit `console.debug` with variant, pathname, container width, script-present status, visibility state, and outcome (pushed / retrying / gave up).
 
-**4. Page footer text** (line 227): Says "Published on TrueJobs" — fine for both, no change needed.
+This replaces the single array-type check with a defensible multi-signal approach.
 
-**5. Key Info Grid labels** — fields like Salary, Qualification, Age Limit naturally hide when null (existing `&&` guards), so a notification with no salary simply won't show that row. No change needed.
+---
 
-**Summary of detail page changes:**
-- Breadcrumb text + link: conditional on `job_category`
-- Apply button label: "View Official Notice" for notifications
-- Everything else already adapts via null-guards
+## Root Causes
 
-This ensures corrigenda, schedules, shortlist notices, and verification notices render with appropriate language rather than looking like vacancy postings.
+**1. AdPlaceholder.tsx has 3 critical bugs:**
+- `adsbygoogle.push({})` fires immediately on mount without any readiness checks.
+- `adRef` is attached to `<ins>` but never read — no container validation.
+- Line 105: `config.format === 'fluid' ? 'fluid' : 'auto'` means banner (config `horizontal`) and sidebar (config `auto`) both render as `data-ad-format="auto"` in the DOM. The intended format values are never used. Auto-format in narrow containers collapses to zero height.
 
-## Files Changed (Complete List)
+**2. Severe under-monetization:**
+- Homepage: 1 manual ad. No sidebar, no in-content.
+- 28 listing/SEO pages: 1 banner each.
+- BlogCategory: 0 ads.
+- GovtExamDetail (long high-intent page): 1 banner.
 
-1. `supabase/functions/intake-publish/index.ts` — enable notification publishing + quality gate
-2. `src/pages/jobs/Notifications.tsx` — new listing page
-3. `src/App.tsx` — add `/notifications` route
-4. `src/components/home/InfoCardsRow.tsx` — add Notifications card
-5. `src/components/home/QuickAccessBar.tsx` — add Notifications quick link
-6. `src/pages/jobs/EmploymentNewsJobDetail.tsx` — context-aware breadcrumb + button labels for notification items
+---
+
+## Technical Changes
+
+### File 1: `src/components/ads/AdPlaceholder.tsx`
+
+**Format fix**: Replace line 105 logic. Use the config format value directly in `data-ad-format`:
+- banner → `"horizontal"`, sidebar → `"vertical"` (change config from `auto` to `vertical`), footer → `"horizontal"`, in-content → `"fluid"` (unchanged)
+
+**Multi-signal readiness gate**: Before `push({})`:
+1. Check script presence: `document.querySelector('script[src*="adsbygoogle"]') !== null`
+2. Check container width: `adRef.current?.offsetWidth > 0`
+3. Check visibility: `document.visibilityState === 'visible'`
+4. If any fails, retry (max 3, 1s apart)
+
+**Dev logging**: `console.debug` in non-production with variant, pathname, width, script-present, visibility, outcome.
+
+**Preserved**: noAds context, domain safety, pushed ref, AdLabel, all slot IDs.
+
+### File 2: `src/pages/Index.tsx`
+
+Wrap content below hero in `lg:grid-cols-[1fr_300px]` grid. Left column: all existing sections. Right column: sticky sidebar ad (hidden below `lg`). Add 2 `in-content` ads (after LatestGovtJobs, after InfoCardsRow). Keep existing banner.
+
+### Files 3–30: Add `in-content` ads to 28 pages
+
+Each gets 1 `<AdPlaceholder variant="in-content" />` at a natural content break:
+
+| # | File | Position |
+|---|------|----------|
+| 3 | SarkariJobs.tsx | After job cards, before PopularExamsBlock |
+| 4 | LatestGovtJobs.tsx | After job cards |
+| 5 | Jobs.tsx | After job listings grid |
+| 6 | PrivateJobs.tsx | After job listings |
+| 7 | Notifications.tsx | After notification cards |
+| 8 | EmploymentNewsJobs.tsx | After job cards |
+| 9 | Blog.tsx | After blog post grid |
+| 10 | Companies.tsx | After company cards |
+| 11 | GovtExamDetail.tsx | After Selection Process, before FAQ |
+| 12 | ExamClusterHub.tsx | After subtopic grid, before FAQ |
+| 13 | ExamAuthorityPage.tsx | After main content |
+| 14 | BoardResultStatePage.tsx | After results content |
+| 15 | BoardResultBoardPage.tsx | After results content |
+| 16 | ResourceHub.tsx | After resource cards |
+| 17 | ResourceDownload.tsx | After download content |
+| 18 | ResourceListing.tsx (shared) | After listing grid — propagates to SamplePapers, Books, PreviousYearPapers, Guides |
+| 19 | StateGovtJobsPage.tsx | After job listings |
+| 20 | DepartmentJobsPage.tsx | After main content |
+| 21 | GovtComboPage.tsx | After listings |
+| 22 | GovtSelectionPage.tsx | After main content |
+| 23 | CategoryJobsPage.tsx | After listings |
+| 24 | CityJobsPage.tsx | After listings |
+| 25 | QualificationJobsPage.tsx | After listings |
+| 26 | IndustryJobsPage.tsx | After listings |
+| 27 | CustomLongTailPage.tsx | After listings |
+| 28 | DeadlineJobsPage.tsx | After listings |
+| 29 | TodayJobsPage.tsx | After listings |
+| 30 | AllSarkariJobsHub.tsx | After listings |
+
+### File 31: `src/pages/blog/BlogCategory.tsx`
+
+Add 1 `<AdPlaceholder variant="banner" />` after category header, before posts grid. Currently has 0 ads.
+
+---
+
+## Pages Intentionally Unchanged
+
+| Page(s) | Current ads | Reason category |
+|---------|-------------|-----------------|
+| BlogPost.tsx | 3 (banner+in-content+sidebar) | Already sufficient |
+| CompanyDetail.tsx | 3 | Already sufficient |
+| ResourceDetail.tsx | 3 | Already sufficient |
+| JobDetail.tsx | 2 (banner+in-content) | Already sufficient |
+| EmploymentNewsJobDetail.tsx | 2 | Already sufficient |
+| PremiumResultLanding.tsx | 2 | Already sufficient |
+| 13 Tool pages | 1 banner each | UX risk — interactive tools |
+| Tools.tsx (index) | 1 banner | Thin content |
+| 6 Legal pages | 1 banner each | Policy/trust |
+| 3 Insurance pages | 1 banner each | Thin content |
+| NearMeJobPage.tsx | 1 banner | Thin content |
+| EnrolNow.tsx | 0 | Conversion sensitivity |
+| ThankYou.tsx | 0 | Conversion sensitivity |
+| NotFound.tsx | 0 | Technical inappropriateness |
+| Offline.tsx | 0 | Technical inappropriateness |
+| All admin/auth pages | 0 | noAds protection |
+
+---
+
+## Summary
+
+| Metric | Before | After |
+|--------|--------|-------|
+| **Unique files changed** | — | **31** |
+| Homepage manual ads | 1 | 4 |
+| Pages with 0 public ads | 1 (BlogCategory) | 0 |
+| AdPlaceholder format bug | Active | Fixed |
+| Readiness strategy | None | Multi-signal gate with 3 retries |
+| Public pages left unreviewed | — | 0 |
 

@@ -88,7 +88,19 @@ export function RelatedJobs({ category, tags, limit = 4 }: RelatedJobsProps) {
   }
 
   if (jobs.length === 0) {
-    return null;
+    return (
+      <Card className="border-2 border-primary/10">
+        <CardHeader className="bg-primary/5">
+          <div className="flex items-center gap-2">
+            <Briefcase className="h-5 w-5 text-primary" />
+            <CardTitle className="text-xl">Related Jobs on TrueJobs</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent className="p-4">
+          <p className="text-sm text-muted-foreground">No related jobs found.</p>
+        </CardContent>
+      </Card>
+    );
   }
 
   return (

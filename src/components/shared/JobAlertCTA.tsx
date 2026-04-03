@@ -83,7 +83,7 @@ export function JobAlertCTA({ variant, context, className = '' }: JobAlertCTAPro
                 className="h-8 text-xs rounded-lg flex-1 min-w-0" required
               />
               <Button type="submit" disabled={isLoading} size="sm" className="h-8 text-xs rounded-lg px-3 bg-primary hover:bg-primary/90">
-                {isLoading ? '…' : <img src={CTA_CHANNELS.email.logo} alt="Email" className="h-4 w-4 rounded-sm" />}
+                {isLoading ? '…' : <img src={CTA_CHANNELS.email.logo} alt="Email" className="h-4 w-4 rounded-sm" width={16} height={16} />}
               </Button>
             </form>
           ) : (
@@ -171,7 +171,7 @@ export function JobAlertCTA({ variant, context, className = '' }: JobAlertCTAPro
           ) : (
             <form onSubmit={handleEmailSubmit} className="flex gap-2">
               <div className="relative flex-1">
-                <img src={CTA_CHANNELS.email.logo} alt="" className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 rounded-sm" />
+                <img src={CTA_CHANNELS.email.logo} alt="" className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 rounded-sm" width={20} height={20} />
                 <Input
                   type="email" placeholder="Enter your email for alerts"
                   value={email} onChange={e => setEmail(e.target.value)}
@@ -199,7 +199,7 @@ function ChannelButton({ type, size = 'default' }: { type: 'whatsapp' | 'telegra
   return (
     <Button asChild className={`${c.bgClass} text-white rounded-xl ${h} flex-1`}>
       <a href={c.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2">
-        <img src={c.logo} alt={type} className={`${imgSize} rounded-sm object-cover`} />
+        <img src={c.logo} alt={type} className={`${imgSize} rounded-sm object-cover`} width={size === 'sm' ? 16 : 20} height={size === 'sm' ? 16 : 20} />
         <span>{c.label}</span>
       </a>
     </Button>

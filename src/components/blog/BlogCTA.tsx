@@ -57,6 +57,8 @@ export function BlogCTA({ variant = 'all' }: BlogCTAProps) {
                       src={cta.buttonImage} 
                       alt={cta.buttonAlt} 
                       className="h-10 w-auto mx-auto hover:scale-105 transition-transform"
+                      width={120}
+                      height={40}
                     />
                   </Link>
                 ) : (
@@ -97,6 +99,8 @@ export function BlogCTA({ variant = 'all' }: BlogCTAProps) {
                 src={cta.buttonImage} 
                 alt={cta.buttonAlt} 
                 className="h-12 w-auto hover:scale-105 transition-transform"
+                width={120}
+                height={48}
               />
             </Link>
           ) : (

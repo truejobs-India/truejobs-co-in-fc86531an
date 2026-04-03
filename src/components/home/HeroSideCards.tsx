@@ -47,14 +47,14 @@ export function HeroSideCards() {
             target="_blank" rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[hsl(142_70%_40%)] text-white text-xs font-semibold hover:bg-[hsl(142_70%_35%)] transition-colors"
           >
-            <img src={CTA_CHANNELS.whatsapp.logo} alt="WhatsApp" className="h-3.5 w-3.5 rounded-sm" /> WhatsApp Alerts
+            <img src={CTA_CHANNELS.whatsapp.logo} alt="WhatsApp" className="h-3.5 w-3.5 rounded-sm" width={14} height={14} /> WhatsApp Alerts
           </a>
           <a
             href={CTA_CHANNELS.telegram.url}
             target="_blank" rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[hsl(200_100%_40%)] text-white text-xs font-semibold hover:bg-[hsl(200_100%_35%)] transition-colors"
           >
-            <img src={CTA_CHANNELS.telegram.logo} alt="Telegram" className="h-3.5 w-3.5 rounded-sm" /> Telegram Channel
+            <img src={CTA_CHANNELS.telegram.logo} alt="Telegram" className="h-3.5 w-3.5 rounded-sm" width={14} height={14} /> Telegram Channel
           </a>
           <HeroEmailForm />
         </div>
@@ -121,7 +121,7 @@ function HeroEmailForm() {
         disabled={loading}
         className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-[hsl(4_80%_56%)] text-white text-xs font-semibold hover:bg-[hsl(4_80%_48%)] transition-colors disabled:opacity-50"
       >
-        <img src={CTA_CHANNELS.email.logo} alt="Email" className="h-3.5 w-3.5 rounded-sm" />
+        <img src={CTA_CHANNELS.email.logo} alt="Email" className="h-3.5 w-3.5 rounded-sm" width={14} height={14} />
         {loading ? '…' : 'Subscribe'}
       </button>
     </form>

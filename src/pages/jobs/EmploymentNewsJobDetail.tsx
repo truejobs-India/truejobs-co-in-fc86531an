@@ -42,8 +42,16 @@ export default function EmploymentNewsJobDetail() {
   if (isLoading) {
     return (
       <Layout>
-        <div className="container mx-auto py-8 px-4 max-w-4xl">
-          <Skeleton className="h-8 w-48 mb-4" />
+        <div className="container mx-auto py-8 px-4 max-w-4xl min-h-[500px]">
+          <Skeleton className="h-6 w-40 mb-3" /> {/* breadcrumb */}
+          <Skeleton className="h-[110px] w-full rounded mb-5" /> {/* banner ad space */}
+          <Skeleton className="h-10 w-3/4 mb-4" /> {/* title */}
+          <div className="grid grid-cols-2 gap-3 mb-6">
+            <Skeleton className="h-16 w-full rounded" />
+            <Skeleton className="h-16 w-full rounded" />
+            <Skeleton className="h-16 w-full rounded" />
+            <Skeleton className="h-16 w-full rounded" />
+          </div>
           <Skeleton className="h-64 w-full" />
         </div>
       </Layout>

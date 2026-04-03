@@ -53,7 +53,14 @@ export function LatestGovtJobs() {
     );
   }
 
-  if (jobs.length === 0) return null;
+  if (jobs.length === 0) return (
+    <section className="py-8">
+      <div className="container mx-auto px-4">
+        <h2 className="text-xl font-bold font-['Outfit',sans-serif] mb-4">Latest Government Jobs</h2>
+        <p className="text-muted-foreground text-sm">No government jobs available right now. Check back soon!</p>
+      </div>
+    </section>
+  );
 
   return (
     <section className="py-8">

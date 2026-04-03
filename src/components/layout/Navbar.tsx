@@ -149,6 +149,8 @@ export function Navbar() {
               src={truejobsLogo} 
               alt="TrueJobs - India's Smart Job Portal" 
               className="h-10 w-auto object-contain"
+              width={160}
+              height={40}
             />
           </Link>
 
@@ -392,6 +394,8 @@ export function Navbar() {
                     src={employerLoginButton} 
                     alt="Employer login - Post jobs and hire talent" 
                     className="h-12 object-contain"
+                    width={120}
+                    height={48}
                   />
                 </button>
                 <button 
@@ -402,6 +406,8 @@ export function Navbar() {
                     src={candidateLoginButton} 
                     alt="Job seeker login - Find your dream job" 
                     className="h-10 sm:h-12 object-contain"
+                    width={120}
+                    height={40}
                   />
                 </button>
               </div>

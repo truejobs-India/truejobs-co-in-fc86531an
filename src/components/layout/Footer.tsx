@@ -20,6 +20,8 @@ export function Footer() {
                 src={truejobsLogo} 
                 alt="TrueJobs - India's Smart Job Portal" 
                 className="h-10 w-auto object-contain"
+                width={160}
+                height={40}
               />
             </Link>
             <p className="text-muted-foreground text-sm">

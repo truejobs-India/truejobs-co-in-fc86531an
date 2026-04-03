@@ -49,7 +49,14 @@ export function LatestPrivateJobs() {
     );
   }
 
-  if (jobs.length === 0) return null;
+  if (jobs.length === 0) return (
+    <section className="py-8 bg-secondary/30">
+      <div className="container mx-auto px-4">
+        <h2 className="text-xl font-bold font-['Outfit',sans-serif] mb-4">Latest Private Jobs</h2>
+        <p className="text-muted-foreground text-sm">No private jobs available right now. Check back soon!</p>
+      </div>
+    </section>
+  );
 
   return (
     <section className="py-8 bg-secondary/30">

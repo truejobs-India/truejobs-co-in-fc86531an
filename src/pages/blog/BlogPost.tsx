@@ -207,8 +207,9 @@ export default function BlogPostPage() {
   if (isLoading) {
     return (
       <Layout>
-        <div className="container mx-auto px-4 py-8 max-w-4xl">
+        <div className="container mx-auto px-4 py-8 max-w-4xl min-h-[600px]">
           <Skeleton className="h-8 w-32 mb-4" />
+          <Skeleton className="h-[110px] w-full rounded mb-5" /> {/* banner ad space */}
           <Skeleton className="h-12 w-full mb-4" />
           <Skeleton className="h-6 w-48 mb-8" />
           <Skeleton className="h-80 w-full rounded-xl mb-8" />
@@ -216,6 +217,8 @@ export default function BlogPostPage() {
             <Skeleton className="h-4 w-full" />
             <Skeleton className="h-4 w-full" />
             <Skeleton className="h-4 w-3/4" />
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-5/6" />
           </div>
         </div>
       </Layout>
@@ -418,6 +421,8 @@ export default function BlogPostPage() {
                 alt={autoAlt}
                 className="w-full h-auto rounded-xl shadow-lg"
                 loading="eager"
+                width={1200}
+                height={630}
               />
             </figure>
           )}

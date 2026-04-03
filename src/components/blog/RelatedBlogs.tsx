@@ -93,7 +93,19 @@ export function RelatedBlogs({ currentPostId, category, tags, limit = 3 }: Relat
   }
 
   if (posts.length === 0) {
-    return null;
+    return (
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <BookOpen className="h-5 w-5 text-primary" />
+            <CardTitle className="text-xl">Related Articles</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">No related articles found.</p>
+        </CardContent>
+      </Card>
+    );
   }
 
   return (
@@ -117,6 +129,8 @@ export function RelatedBlogs({ currentPostId, category, tags, limit = 3 }: Relat
                 alt={`Thumbnail for ${post.title}`}
                 className="h-16 w-16 object-cover rounded shrink-0"
                 loading="lazy"
+                width={64}
+                height={64}
               />
             ) : (
               <div className="h-16 w-16 bg-muted rounded shrink-0 flex items-center justify-center">

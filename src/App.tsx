@@ -38,6 +38,7 @@ const GovtExamDetail = lazy(() => import("./pages/jobs/GovtExamDetail"));
 const LatestGovtJobs = lazy(() => import("./pages/jobs/LatestGovtJobs"));
 const EmploymentNewsJobs = lazy(() => import("./pages/jobs/EmploymentNewsJobs"));
 const EmploymentNewsJobDetail = lazy(() => import("./pages/jobs/EmploymentNewsJobDetail"));
+const Notifications = lazy(() => import("./pages/jobs/Notifications"));
 
 const Companies = lazy(() => import("./pages/companies/Companies"));
 const CompanyDetail = lazy(() => import("./pages/companies/CompanyDetail"));

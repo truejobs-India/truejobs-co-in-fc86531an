@@ -1,63 +1,36 @@
 
 
-# Add Enrichment Outcome Status to AI Fill Empty Fields
+# Unify Intake AI Model Selector
 
-## Summary
-Add a new `enrichment_result` column to `intake_drafts` that records the outcome of each fill-empty-fields run. Show this status in the UI so admins can quickly see which drafts were truly enriched vs. skipped.
+## Current State
 
-## Database Migration
+There is already **one single `AiModelSelector`** in `IntakeDraftsManager.tsx` (line 600) controlling the `aiModel` state variable. This same `aiModel` is already passed to all three edge function calls:
+- Initial classification (line 202)
+- Retry enhanced (line 241)
+- Fill empty fields (line 441)
 
-Add one column to `intake_drafts`:
+**There is no duplicate selector and no silent fallback.** The architecture is already correct.
 
-```sql
-ALTER TABLE public.intake_drafts
-ADD COLUMN enrichment_result text DEFAULT NULL;
+## Only Change Needed
+
+Relabel the existing selector from its current unlabeled state to **"Intake AI Model"** so it is explicitly clear this is the single source of truth for all Intake AI actions.
+
+### File: `src/components/admin/intake/IntakeDraftsManager.tsx`
+
+**Line 600** — Wrap the existing `AiModelSelector` with a label:
+
+```tsx
+<div className="flex items-center gap-1.5">
+  <span className="text-xs text-muted-foreground whitespace-nowrap">Intake AI Model:</span>
+  <AiModelSelector value={aiModel} onValueChange={setAiModel} capability="text" size="sm" triggerClassName="w-[180px] h-8 text-xs" />
+</div>
 ```
 
-No enum or CHECK constraint — just a nullable text column storing one of three values:
-- `enriched`
-- `not_enriched_tech_error`
-- `not_enriched_no_data`
+No other files changed. No new selectors. No architectural changes.
 
-NULL means the fill action was never run on this draft.
+## Why This Is Sufficient
 
-## File Changes
-
-### 1. `supabase/functions/intake-ai-classify/index.ts`
-
-In the new `fill_empty_only` code path (to be added per the approved plan), after processing each draft:
-
-- **Count fields actually filled**: Compare the update payload against the original empty-field list. If ≥1 field was filled → `enrichment_result = 'enriched'`
-- **No fields filled but no error**: → `enrichment_result = 'not_enriched_no_data'`
-- **Catch block (tech failure)**: → `enrichment_result = 'not_enriched_tech_error'`
-
-The `enrichment_result` value is included in the same DB update that writes the filled fields. Always set `enrichment_result` in fill_empty_only mode, even on failure.
-
-Return the `enrichment_result` in the per-draft response object so the frontend knows what happened.
-
-### 2. `src/components/admin/intake/IntakeDraftsManager.tsx`
-
-- Add `enrichment_result` to the `IntakeDraft` type and the select query
-- In the table row, show a small badge when `enrichment_result` is set:
-  - `enriched` → green badge "Enriched"
-  - `not_enriched_tech_error` → red badge "Fill Failed"  
-  - `not_enriched_no_data` → amber badge "No Data"
-- Place it near the existing status badges (e.g., after confidence score or in the actions area)
-
-### 3. `src/components/admin/intake/IntakeDraftDetailDialog.tsx`
-
-- Show `enrichment_result` in the Classification tab if present, using the same badge styling
-- Label: "Fill Result" with the outcome badge
-
-## Safety
-- Column is only written in `fill_empty_only` mode — normal classification never touches it
-- NULL default means existing drafts are unaffected
-- No existing columns or logic modified
-
-## Verification Checklist
-1. Draft with fillable evidence → shows "Enriched" badge after fill
-2. Draft with no usable evidence → shows "No Data" badge
-3. Draft where edge function fails → shows "Fill Failed" badge
-4. Drafts never run through fill → no badge (NULL)
-5. Normal classification flow unaffected
+- Single `aiModel` state already governs all AI calls (classify, retry, fill-empty)
+- The edge function (`intake-ai-classify`) receives `aiModel` from the request body and uses it directly — no hidden fallback logic
+- Adding a visible label makes the single-source-of-truth behavior obvious to the admin
 

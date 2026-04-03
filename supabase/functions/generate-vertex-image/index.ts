@@ -1099,7 +1099,7 @@ serve(async (req) => {
     const aspectRatio = ASPECT_RATIOS[body.aspectRatio || '16:9'] || '16:9';
     const imagePrompt = buildCoverImagePrompt(body);
 
-    if (selectedModel === 'vertex-imagen') {
+    if (selectedModel === 'vertex-imagen' || isImagenAliasModel(selectedModel)) {
       return await generateViaImagen(body, slug, imagePrompt, imageCount, aspectRatio, adminClient, startMs, strict);
     }
     if (isVertexDirectImageModel(selectedModel)) {

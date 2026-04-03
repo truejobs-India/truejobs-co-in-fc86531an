@@ -1084,7 +1084,7 @@ serve(async (req) => {
       if (isGatewayModel(selectedInlineModel) && selectedInlineModel !== 'gemini-flash-image') {
         return await generateViaGatewayModel(selectedInlineModel, { ...body, purpose: 'inline' }, imagePrompt);
       }
-      if (selectedInlineModel === 'gemini-flash-image') {
+      if (selectedInlineModel === 'gemini-flash-image' || selectedInlineModel === 'vertex-flash-image') {
         return await generateViaGeminiFlashImage({ ...body, purpose: 'inline' }, slug, imagePrompt, adminClient, startMs, strict);
       }
       // Strict mode: reject catch-all default

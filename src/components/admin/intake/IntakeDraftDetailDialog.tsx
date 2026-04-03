@@ -131,6 +131,15 @@ export function IntakeDraftDetailDialog({ draft, onClose, onSave, onApprovePubli
                 {draft.content_type && <Badge variant="outline">Type: {draft.content_type}</Badge>}
                 {draft.publish_target && <Badge variant="outline">Target: {draft.publish_target}</Badge>}
                 {draft.confidence_score != null && <Badge variant="outline">Confidence: {draft.confidence_score}%</Badge>}
+                {draft.enrichment_result === 'enriched' && (
+                  <Badge className="text-[10px] bg-green-600/15 text-green-700 border-green-600/30 dark:text-green-400">Enriched</Badge>
+                )}
+                {draft.enrichment_result === 'not_enriched_tech_error' && (
+                  <Badge variant="destructive" className="text-[10px]">Fill Failed</Badge>
+                )}
+                {draft.enrichment_result === 'not_enriched_no_data' && (
+                  <Badge className="text-[10px] bg-amber-500/15 text-amber-700 border-amber-500/30 dark:text-amber-400">No Data</Badge>
+                )}
               </div>
 
               {tags.length > 0 && (

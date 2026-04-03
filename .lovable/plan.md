@@ -1,119 +1,128 @@
 
 
-# Phase 1: Fix Broken Text Rendering and Hindi Typography — Conservative Implementation
+# Phase 2: Upgrade Article Readability, Structure, and On-Page Engagement
 
-## Changes
+## Key Issues Found
 
-### 1. `src/pages/blog/BlogPost.tsx`
+1. **Table of Contents broken for HTML articles**: `extractHeadings()` in `blogUtils.ts` only matches markdown `# heading` syntax. Since Phase 1 fixed the router to correctly identify HTML articles (with `<p>` tags), most articles now bypass the markdown path — meaning their `<h2>`/`<h3>` tags are never extracted, and TOC shows nothing.
 
-**a) Fix `isRichHTML` detection (line 154)**
-Change regex to include `<p` tags:
-```
-const isRichHTML = /<(p|table|div|section|figure|svg)\b/i.test(content);
-```
+2. **TOC buried in sidebar below sticky ad**: Even when headings exist, the TOC renders below the sidebar ad in the sidebar column, making it hard to discover. For long articles, an inline TOC near the top of the article body is more valuable.
 
-**b) Fix FAQ `mainEntity` parsing (lines 103–113)**
-After the existing `Array.isArray` check, add a branch for objects with `mainEntity`:
-```typescript
-} else if (raw && typeof raw === 'object' && !Array.isArray(raw) && Array.isArray((raw as any).mainEntity)) {
-  faqData = (raw as any).mainEntity.map((e: any) => ({
-    question: e.name || e.question,
-    answer: e.acceptedAnswer?.text || e.answer,
-  }));
-}
-```
+3. **Content area is a single unbroken vertical strip**: No visual rhythm — paragraphs, headings, lists, and images all flow without breathing room or section delineation.
 
-**c) Conservative content normalization (inside `renderContent`, before the `isRichHTML` branch)**
-Only target literal escaped `\n` sequences that appear **outside** HTML tags and `<pre>`/`<code>` blocks. This avoids corrupting preformatted content or code snippets:
-```typescript
-// Only fix literal "\n" in non-code text (escaped newline artifacts from AI generation)
-// Skip content that contains <pre> or <code> to avoid corrupting code blocks
-if (!/<(pre|code)\b/i.test(content)) {
-  content = content.replace(/\\n/g, '\n');
-}
-```
-This is applied once at the top of `renderContent` before branching. The guard ensures we never touch articles containing code/preformatted blocks.
+4. **Article header area lacks hierarchy**: Back button, category badge, title, meta, tags, and cover image are stacked with uniform spacing — no visual grouping or premium feel.
 
-**d) Conservative leading-title deduplication (inside `renderContent`, after the `\n` fix)**
-Only strip if the content starts with the exact title text (case-sensitive match) followed by a newline or HTML tag — not a fuzzy match:
-```typescript
-// Strip leading duplicate title only if content starts with exact title text
-if (post?.title && content.startsWith(post.title)) {
-  const afterTitle = content.slice(post.title.length);
-  // Only strip if followed by whitespace/newline/tag boundary — not mid-word
-  if (/^[\s\n<]/.test(afterTitle) || afterTitle === '') {
-    content = afterTitle.trimStart();
-  }
-}
-```
-This is safe because it requires an exact prefix match and a clear boundary character.
+5. **No intro summary or key-takeaways block**: Long informational articles dump straight into content with no scannable entry point.
 
-**e) Hindi-aware title class (line 372)**
-Add detection and conditional class:
-```typescript
-const isHindiTitle = /[\u0900-\u097F]/.test(post.title);
-```
-Update H1:
-```tsx
-<h1 className={`text-3xl md:text-4xl lg:text-5xl font-bold leading-tight mb-6 ${isHindiTitle ? 'hindi-title' : ''}`}>
-```
+6. **FAQ section is visually flat**: Plain bordered divs with no accordion or visual distinction from article body.
 
-### 2. `src/components/govt/EnrichedSection.tsx`
+---
 
-**Conservative `\n` normalization in the text branch only (line 61)**
-Only normalize in the plain-text path (not the HTML path), and only fix literal `\n` escape sequences:
-```typescript
-// Normalize literal \n escape artifacts — only in plain-text mode
-const normalized = content
-  .replace(/\\n/g, '\n')
-  .replace(/\n{3,}/g, '\n\n');
-const paragraphs = normalized.split(/\n\n+/).filter(Boolean);
-```
-The HTML branch (`type === 'html'`) is untouched — DOMPurify handles that path already.
+## Plan
 
-### 3. `index.html`
+### File 1: `src/lib/blogUtils.ts` — Fix heading extraction for HTML content
 
-Add Noto Sans Devanagari font (preload + stylesheet):
-```html
-<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap" />
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap" rel="stylesheet" />
-```
+**Change**: Update `extractHeadings()` to also parse HTML `<h2>` and `<h3>` tags, not just markdown `#` syntax. Add an HTML heading regex pass that matches `<h2...>text</h2>` and `<h3...>text</h3>`, strips inner HTML tags, and extracts the id (or generates one). Deduplicate results. This makes TOC work for all articles.
 
-### 4. `src/index.css`
+### File 2: `src/components/blog/TableOfContents.tsx` — Compact inline TOC variant
 
-Add Hindi typography class:
+**Change**: Add an `inline` prop variant. When `inline={true}`, render as a compact bordered box (not a sticky Card) suitable for embedding inside the article body near the top. Keep the sidebar variant unchanged. The inline version: light background, smaller text, collapsible with a "Show/Hide" toggle for articles with many headings (>8), numbered items for scannability.
+
+### File 3: `src/pages/blog/BlogPost.tsx` — Restructure article layout
+
+**Changes**:
+
+a) **Move TOC inline**: Insert a `<TableOfContents headings={headings} inline />` inside the article body, right after the cover image and before the prose content. Remove it from the sidebar (or keep sidebar TOC only on desktop for very long articles — but the inline version is the primary one).
+
+b) **Add excerpt/intro block**: If `post.excerpt` exists and is substantial (>80 chars), render it as a styled intro summary block with a left border accent, slightly larger text, and muted background — placed between cover image and article body. This gives readers an immediate overview.
+
+c) **Refine header spacing**: 
+- Group category badge + title closer together
+- Add a subtle separator between header meta (author/date/reading time) and tags
+- Reduce back-button prominence (smaller, text-only)
+- Tighten the overall header vertical rhythm
+
+d) **Add content section spacing via CSS class**: Wrap the prose div with a `article-content` class that adds enhanced spacing rules (see CSS changes below).
+
+### File 4: `src/index.css` — Article readability and rhythm improvements
+
+**Changes**:
+
+a) **Enhanced content spacing inside `.content-area`**:
 ```css
-.hindi-title {
-  font-family: 'Noto Sans Devanagari', 'Outfit', system-ui, sans-serif;
-  font-weight: 600;
-  line-height: 1.5;
-  letter-spacing: 0.01em;
-  word-break: keep-all;
+/* Section breathing room */
+.content-area h2 { margin-top: 2.5rem; margin-bottom: 1.25rem; padding-top: 1.5rem; border-top: 1px solid hsl(214 32% 91%); }
+.content-area h2:first-child { border-top: none; padding-top: 0; margin-top: 0; }
+.content-area h3 { margin-top: 2rem; margin-bottom: 1rem; }
+.content-area p { margin-bottom: 1.25rem; }
+.content-area ul, .content-area ol { margin-bottom: 1.5rem; }
+.content-area li { margin-bottom: 0.5rem; }
+.content-area table { margin: 2rem 0; }
+```
+This adds visual section breaks at each h2, making long articles scannable without redesigning anything.
+
+b) **Intro summary block styling**:
+```css
+.article-intro {
+  border-left: 4px solid hsl(217 91% 60%);
+  background: hsl(217 91% 60% / 0.04);
+  padding: 1rem 1.25rem;
+  border-radius: 0 0.5rem 0.5rem 0;
+  font-size: 1.125rem;
+  line-height: 1.7;
+  color: #1a1a1a;
+  margin-bottom: 2rem;
 }
 ```
 
-## Safety Guarantees
+c) **FAQ section upgrade**:
+```css
+.content-area .faq-item {
+  background: hsl(210 40% 98%);
+  border: 1px solid hsl(214 32% 91%);
+  border-radius: 0.75rem;
+  padding: 1.25rem;
+  transition: box-shadow 0.2s;
+}
+.content-area .faq-item:hover {
+  box-shadow: 0 2px 8px hsl(217 91% 60% / 0.08);
+}
+```
 
-| Concern | Protection |
-|---|---|
-| `\n` in `<pre>`/`<code>` | Skipped entirely if content contains those tags |
-| Title dedup false positive | Requires exact case-sensitive prefix + boundary char |
-| HTML content corruption | `\n` fix only runs on raw string before HTML parsing; HTML branch untouched in EnrichedSection |
-| Ad placements | Zero changes to ad components or positions |
-| English titles | `hindi-title` class only applied when Devanagari chars detected |
+d) **Dark mode counterparts** for all new styles.
 
-## Files Changed
-1. `src/pages/blog/BlogPost.tsx` — 5 targeted edits
-2. `src/components/govt/EnrichedSection.tsx` — 1 edit (text branch only)
-3. `index.html` — font addition
-4. `src/index.css` — Hindi typography class
+### File 5: `src/pages/blog/BlogPost.tsx` — FAQ visual upgrade
+
+**Change**: Update FAQ section to use the `faq-item` class, add a subtle FAQ icon or number, and ensure answer text uses proper `text-foreground` instead of `text-muted-foreground` for readability.
+
+---
+
+## What Is NOT Changed
+- No ads removed, repositioned, or weakened
+- Header banner ad stays at the same position
+- In-content ad stays in the same position
+- Sidebar ad stays sticky at top
+- No new components beyond the inline TOC variant
+- No sidebar/end-of-article optimization (that's a later phase)
+- Cover image aspect-ratio hardening already done in prior phase
+
+## Ad-Safety Decisions
+- The inline TOC adds ~100-150px of engaging content above the fold, which **improves** scroll depth and time-on-page — favorable for AdSense
+- The intro summary block keeps readers engaged longer before they bounce — improves viewability
+- Section borders at h2 tags create natural scroll pause points — favorable for in-content ad viewability
+- No content is pushed below the fold that was previously above it
+
+## Remaining Gaps
+- Sidebar layout optimization (later phase)
+- End-of-article engagement modules (later phase)
+- Key Takeaways / Exam Relevance callout boxes require structured data in the DB — can only render if articles store this metadata; for now, the excerpt/intro block covers the "scannable entry point" need
 
 ## Manual Verification Checklist
-1. Open a Hindi blog article — title should have better spacing and weight
-2. Open an article with `<p>` tags but no table/div — should render cleanly (not double-wrapped)
-3. Open an article with FAQ `mainEntity` wrapper — FAQs should appear
-4. Check an article with known `\n` artifacts — should render as proper line breaks
-5. Open an article containing `<pre>` or `<code>` — verify content is untouched
-6. Verify no duplicate title appears at top of article body
-7. Verify ads unchanged on all blog pages
+1. Open a long Hindi article — verify h2 sections have top borders and breathing room
+2. Open any article with 3+ headings — verify inline TOC appears after cover image
+3. Open an article with an excerpt — verify intro block renders with left blue border
+4. Open the UPI article — verify FAQ items have upgraded card styling
+5. Verify header area feels tighter and more intentional
+6. Verify no ads moved or became less visible
+7. Check mobile (375px) — inline TOC should be compact and not overwhelming
 

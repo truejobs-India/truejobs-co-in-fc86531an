@@ -285,8 +285,8 @@ async function generateViaGeminiFlashImage(
           body: JSON.stringify({
             contents: [{ role: 'user', parts: [{ text: imagePrompt }] }],
             generationConfig: {
-              responseModalities: ['TEXT', 'IMAGE'],
-              temperature: 1.0,
+              responseModalities: ['IMAGE', 'TEXT'],
+              temperature: 0.8,
               maxOutputTokens: 8192,
             },
             safetySettings: [
@@ -355,14 +355,32 @@ async function generateViaGeminiFlashImage(
     if (!imageBase64) {
       const safetyRatings = candidate?.safetyRatings || data?.promptFeedback?.safetyRatings || [];
       const blockedReason = data?.promptFeedback?.blockReason || '';
-      console.error(`[gemini-flash-image] No image data. finishReason=${finishReason} blockReason=${blockedReason} safetyRatings=${JSON.stringify(safetyRatings).substring(0, 300)}`);
+      const textPreview = parts
+        .map((part: any) => (typeof part?.text === 'string' ? part.text.trim() : ''))
+        .filter(Boolean)
+        .join(' ')
+        .slice(0, 240);
+      console.error(`[gemini-flash-image] No image data. finishReason=${finishReason} blockReason=${blockedReason} textPreview=${textPreview} safetyRatings=${JSON.stringify(safetyRatings).substring(0, 300)}`);
+
+      if (finishReason === 'STOP' && !body.__vertexImageRetry) {
+        console.warn(`[gemini-flash-image] Retrying text-only STOP response with explicit image-only instruction for slug=${slug}`);
+        return await generateViaGeminiFlashImage(
+          { ...body, __vertexImageRetry: true },
+          slug,
+          `${imagePrompt}\n\nCRITICAL: Return one generated image in the response. Do not return a text-only answer.`,
+          adminClient,
+          startMs,
+          strict,
+        );
+      }
+
       return new Response(JSON.stringify({
         success: false,
         error: finishReason === 'SAFETY'
           ? 'Image generation blocked by safety filter. Try a different topic or rephrase.'
           : finishReason === 'MAX_TOKENS'
           ? 'Image generation exceeded token limit.'
-          : `No image data returned (finishReason: ${finishReason}). The prompt may have been filtered.`,
+          : `No image data returned (finishReason: ${finishReason}). The model returned text but no image.`,
         model: GEMINI_IMAGE_MODEL,
         finishReason,
       }), { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });

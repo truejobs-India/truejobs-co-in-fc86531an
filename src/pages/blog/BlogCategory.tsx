@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { Layout } from '@/components/layout/Layout';
 import { SEO } from '@/components/SEO';

@@ -40,8 +40,8 @@ const KNOWN_IMAGE_MODEL_KEYS = new Set([
   'vertex-flash-image', // Gemini 2.5 Flash Image via direct Vertex AI
 ]);
 
-const IMAGEN_TIMEOUT_MS = 90_000;
-const GATEWAY_TIMEOUT_MS = 90_000;
+const IMAGEN_TIMEOUT_MS = 120_000;
+const GATEWAY_TIMEOUT_MS = 120_000;
 const MAX_RETRIES = 3;
 const RETRY_BASE_MS = 2000; // 2s, 4s, 8s exponential backoff
 
@@ -478,7 +478,12 @@ async function generateViaVertexDirectImage(
       });
     } catch (fetchErr: any) {
       clearTimeout(timer);
-      console.error(`[vertex-direct-image] fetch error: ${fetchErr.message}`);
+      const isTimeout = fetchErr.name === 'AbortError' || fetchErr.message?.includes('aborted');
+      console.error(`[vertex-direct-image] fetch error (timeout=${isTimeout}): ${fetchErr.message}`);
+      if (isTimeout) {
+        return new Response(JSON.stringify({ success: false, error: 'Image generation timed out. The model took too long to respond. Please try again.', model: vertexModelId, timedOut: true }),
+          { status: 504, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
       return new Response(JSON.stringify({ success: false, error: `Vertex fetch error: ${fetchErr.message}`, model: vertexModelId }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     } finally {

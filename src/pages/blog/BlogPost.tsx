@@ -102,14 +102,17 @@ export default function BlogPostPage() {
       // Parse faq_schema if it's a string or normalize it
       let faqData: Array<{ question: string; answer: string }> | null = null;
       if (data.faq_schema) {
-        if (typeof data.faq_schema === 'string') {
-          try {
-            faqData = JSON.parse(data.faq_schema);
-          } catch {
-            faqData = null;
-          }
-        } else if (Array.isArray(data.faq_schema)) {
-          faqData = data.faq_schema as Array<{ question: string; answer: string }>;
+        let raw: unknown = data.faq_schema;
+        if (typeof raw === 'string') {
+          try { raw = JSON.parse(raw); } catch { raw = null; }
+        }
+        if (Array.isArray(raw)) {
+          faqData = raw as Array<{ question: string; answer: string }>;
+        } else if (raw && typeof raw === 'object' && !Array.isArray(raw) && Array.isArray((raw as any).mainEntity)) {
+          faqData = (raw as any).mainEntity.map((e: any) => ({
+            question: e.name || e.question,
+            answer: e.acceptedAnswer?.text || e.answer,
+          }));
         }
       }
 

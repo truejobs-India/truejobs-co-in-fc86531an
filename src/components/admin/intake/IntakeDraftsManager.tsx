@@ -147,6 +147,8 @@ export function IntakeDraftsManager() {
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deleteScope, setDeleteScope] = useState<'selected' | 'all'>('selected');
   const [singleDeleteId, setSingleDeleteId] = useState<string | null>(null);
+  const [fillingEmpty, setFillingEmpty] = useState(false);
+  const [fillProgress, setFillProgress] = useState({ current: 0, total: 0 });
 
   const fetchDrafts = useCallback(async () => {
     setLoading(true);

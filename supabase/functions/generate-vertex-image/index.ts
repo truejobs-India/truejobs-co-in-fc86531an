@@ -1060,7 +1060,7 @@ serve(async (req) => {
       if (isGatewayModel(selectedCoverModel) && selectedCoverModel !== 'gemini-flash-image') {
         return await generateViaGatewayModel(selectedCoverModel, body, imagePrompt);
       }
-      if (selectedCoverModel === 'gemini-flash-image') {
+      if (selectedCoverModel === 'gemini-flash-image' || selectedCoverModel === 'vertex-flash-image') {
         return await generateViaGeminiFlashImage(body, slug, imagePrompt, adminClient, startMs, strict);
       }
       // Strict mode: reject unresolved routing

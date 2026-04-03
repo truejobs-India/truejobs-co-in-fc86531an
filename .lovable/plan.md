@@ -1,36 +1,52 @@
 
 
-# Unify Intake AI Model Selector
+# Revised Plan: Public Notifications Section
 
-## Current State
+This is the same approved plan with one added guard for Phase 2 detail page rendering.
 
-There is already **one single `AiModelSelector`** in `IntakeDraftsManager.tsx` (line 600) controlling the `aiModel` state variable. This same `aiModel` is already passed to all three edge function calls:
-- Initial classification (line 202)
-- Retry enhanced (line 241)
-- Fill empty fields (line 441)
+## All Previous Phases — Unchanged
 
-**There is no duplicate selector and no silent fallback.** The architecture is already correct.
+Phases 1–5 from the approved plan remain exactly as specified:
+- Route notification drafts into `employment_news_jobs` with `job_category = 'Notification'`
+- New `/notifications` listing page
+- Homepage entries in InfoCardsRow and QuickAccessBar
+- Quality gate in `intake-publish`
+- No new DB table, no new detail page component
 
-## Only Change Needed
+## Added Guard: Context-Aware Labels on Detail Page
 
-Relabel the existing selector from its current unlabeled state to **"Intake AI Model"** so it is explicitly clear this is the single source of truth for all Intake AI actions.
+### File: `src/pages/jobs/EmploymentNewsJobDetail.tsx`
 
-### File: `src/components/admin/intake/IntakeDraftsManager.tsx`
+The detail page currently has several job-centric labels and behaviors that would read oddly for notice-type content. Add conditional logic based on `job.job_category === 'Notification'`:
 
-**Line 600** — Wrap the existing `AiModelSelector` with a label:
+**1. Breadcrumb** (line 98-99): Currently says "Back to Employment News Jobs."
+- If `job_category === 'Notification'` → show "Back to Notifications" linking to `/notifications`
+- Otherwise → keep existing text
 
-```tsx
-<div className="flex items-center gap-1.5">
-  <span className="text-xs text-muted-foreground whitespace-nowrap">Intake AI Model:</span>
-  <AiModelSelector value={aiModel} onValueChange={setAiModel} capability="text" size="sm" triggerClassName="w-[180px] h-8 text-xs" />
-</div>
-```
+**2. Vacancies badge** (line 113-114): Shows "X Vacancies."
+- Only render when `job_category !== 'Notification'` OR when vacancies is explicitly set. Notifications like corrigenda or schedules typically have no vacancy count, so this naturally hides via the existing `job.vacancies &&` guard — no change needed here.
 
-No other files changed. No new selectors. No architectural changes.
+**3. Apply Now button** (around line 204): Label says "Apply Now."
+- If `job_category === 'Notification'` → label becomes "View Official Notice"
+- Otherwise → keep "Apply Now"
 
-## Why This Is Sufficient
+**4. Page footer text** (line 227): Says "Published on TrueJobs" — fine for both, no change needed.
 
-- Single `aiModel` state already governs all AI calls (classify, retry, fill-empty)
-- The edge function (`intake-ai-classify`) receives `aiModel` from the request body and uses it directly — no hidden fallback logic
-- Adding a visible label makes the single-source-of-truth behavior obvious to the admin
+**5. Key Info Grid labels** — fields like Salary, Qualification, Age Limit naturally hide when null (existing `&&` guards), so a notification with no salary simply won't show that row. No change needed.
+
+**Summary of detail page changes:**
+- Breadcrumb text + link: conditional on `job_category`
+- Apply button label: "View Official Notice" for notifications
+- Everything else already adapts via null-guards
+
+This ensures corrigenda, schedules, shortlist notices, and verification notices render with appropriate language rather than looking like vacancy postings.
+
+## Files Changed (Complete List)
+
+1. `supabase/functions/intake-publish/index.ts` — enable notification publishing + quality gate
+2. `src/pages/jobs/Notifications.tsx` — new listing page
+3. `src/App.tsx` — add `/notifications` route
+4. `src/components/home/InfoCardsRow.tsx` — add Notifications card
+5. `src/components/home/QuickAccessBar.tsx` — add Notifications quick link
+6. `src/pages/jobs/EmploymentNewsJobDetail.tsx` — context-aware breadcrumb + button labels for notification items
 

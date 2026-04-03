@@ -207,6 +207,15 @@ All colors MUST be HSL.
   color: hsl(217 91% 60%);
 }
 
+/* Hindi / Devanagari typography — improved readability */
+.hindi-title {
+  font-family: 'Noto Sans Devanagari', 'Outfit', system-ui, sans-serif;
+  font-weight: 600;
+  line-height: 1.5;
+  letter-spacing: 0.01em;
+  word-break: keep-all;
+}
+
 /* Premium gradient utility classes */
 @layer utilities {
   .bg-gradient-primary {

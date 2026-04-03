@@ -58,7 +58,11 @@ export function EnrichedSection({ title, content, type = 'text' }: Props) {
     );
   }
 
-  const paragraphs = content.split(/\n\n+/).filter(Boolean);
+  // Normalize literal \n escape artifacts — only in plain-text mode
+  const normalized = content
+    .replace(/\\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n');
+  const paragraphs = normalized.split(/\n\n+/).filter(Boolean);
   return (
     <section className="mb-10">
       <h2 className="text-2xl font-semibold text-foreground mb-4">{title}</h2>

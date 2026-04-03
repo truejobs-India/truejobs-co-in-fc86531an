@@ -387,7 +387,7 @@ export default function BlogPostPage() {
               </Link>
             )}
             
-            <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold leading-tight mb-6">
+            <h1 className={`text-3xl md:text-4xl lg:text-5xl font-bold leading-tight mb-6 ${/[\u0900-\u097F]/.test(post.title) ? 'hindi-title' : ''}`}>
               {post.title}
             </h1>
 

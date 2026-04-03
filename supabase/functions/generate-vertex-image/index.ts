@@ -1025,11 +1025,13 @@ serve(async (req) => {
 
     // ── Helper: check if model should use Lovable Gateway ──
     const isGatewayModel = (model: string) => model in GATEWAY_IMAGE_MODELS && GATEWAY_IMAGE_MODELS[model] !== '__vertex_direct__';
-    const isVertexDirectImageModel = (model: string) => model === 'vertex-3-pro-image' || model === 'vertex-3.1-flash-image';
+    const isVertexDirectImageModel = (model: string) => model === 'vertex-3-pro-image' || model === 'vertex-3.1-flash-image' || model === 'vertex-pro';
     const resolveVertexDirectRuntimeModel = (model: string) => {
       switch (model) {
         case 'vertex-3.1-flash-image':
           return 'gemini-3.1-flash-image-preview';
+        case 'vertex-pro':
+          return 'gemini-2.5-pro-preview-06-05';
         case 'vertex-3-pro-image':
         default:
           return 'gemini-3-pro-image-preview';

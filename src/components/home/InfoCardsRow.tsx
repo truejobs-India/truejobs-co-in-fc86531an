@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 
+import { Bell } from 'lucide-react';
 import infoResults from '@/assets/info-results.png';
 import infoAdmitCard from '@/assets/info-admit-card.png';
 import infoExamCalendar from '@/assets/info-exam-calendar.png';
@@ -22,6 +23,11 @@ const CARDS = [
     desc: 'Track upcoming recruitment dates and important deadlines.',
     img: infoExamCalendar,
     href: '/sarkari-jobs',
+  },
+  {
+    title: 'Notifications',
+    desc: 'Latest official recruitment notifications, exam & interview notices.',
+    href: '/notifications',
   },
 ];
 

@@ -393,7 +393,7 @@ Deno.serve(async (req) => {
               qualification: draft.qualification_text,
               age_limit: draft.age_limit_text,
               salary: draft.salary_text,
-              last_date: draft.closing_date,
+              last_date: normalizeDate(draft.closing_date),
               apply_link: draft.official_apply_link,
               application_mode: draft.application_mode,
               job_category: draft.content_type === 'notification' ? 'Notification' : null,

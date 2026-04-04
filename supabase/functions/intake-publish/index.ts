@@ -201,6 +201,49 @@ Deno.serve(async (req) => {
     let publishedId: string | null = null;
     let publishedTable: string | null = null;
 
+    // ── Change 1: Idempotent guard ──
+    if (draft.published_record_id && draft.published_table_name) {
+      await client.from('intake_drafts').update({
+        processing_status: 'published',
+        publish_error: null,
+      }).eq('id', draftId);
+      return json({
+        success: true,
+        published_id: draft.published_record_id,
+        table: draft.published_table_name,
+        already_published: true,
+      });
+    }
+
+    // ── Change 3: Orphan detection for failed retries ──
+    if (draft.processing_status === 'publish_failed' && !draft.published_record_id) {
+      const targetTable = draft.publish_target === 'jobs' || draft.publish_target === 'notifications'
+        ? 'employment_news_jobs' : draft.publish_target === 'exams' ? 'govt_exams'
+        : draft.publish_target === 'results' ? 'govt_results'
+        : draft.publish_target === 'admit_cards' ? 'govt_admit_cards'
+        : draft.publish_target === 'answer_keys' ? 'govt_answer_keys' : null;
+
+      if (targetTable) {
+        // Check if a record was already inserted by a previous attempt
+        const { data: existing } = await client.from(targetTable)
+          .select('id')
+          .eq('source', 'intake_pipeline')
+          .ilike('enriched_title', title)
+          .limit(1);
+        if (existing && existing.length > 0) {
+          // Found orphan — heal the draft record
+          await client.from('intake_drafts').update({
+            processing_status: 'published',
+            published_record_id: existing[0].id,
+            published_table_name: targetTable,
+            published_at: new Date().toISOString(),
+            publish_error: null,
+          }).eq('id', draftId);
+          return json({ success: true, published_id: existing[0].id, table: targetTable, healed: true });
+        }
+      }
+    }
+
     try {
       switch (draft.publish_target) {
         case 'jobs': {

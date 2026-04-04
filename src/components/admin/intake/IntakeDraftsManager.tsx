@@ -305,13 +305,19 @@ export function IntakeDraftsManager() {
 
       const errorMsg = resp.error ? String(resp.error) : resp.data?.error;
       if (errorMsg) {
-        // Revert and mark as publish_failed so row stays visible
-        await supabase.from('intake_drafts').update({
-          review_status: 'pending',
-          processing_status: 'publish_failed',
-          publish_error: String(errorMsg).slice(0, 500),
-        } as any).eq('id', id);
-        toast({ title: 'Publish Failed', description: String(errorMsg), variant: 'destructive' });
+        const isBlocked = String(errorMsg).includes('Publish blocked');
+        if (isBlocked) {
+          // Content block — don't revert status, just inform admin
+          toast({ title: 'Marked As Blocked', description: String(errorMsg).replace('Publish blocked: ', ''), variant: 'default' });
+        } else {
+          // Real failure — revert and mark as publish_failed
+          await supabase.from('intake_drafts').update({
+            review_status: 'pending',
+            processing_status: 'publish_failed',
+            publish_error: String(errorMsg).slice(0, 500),
+          } as any).eq('id', id);
+          toast({ title: 'Publish Failed', description: String(errorMsg), variant: 'destructive' });
+        }
       } else {
         toast({ title: 'Published', description: `Published to ${resp.data?.table || 'live table'}` });
       }

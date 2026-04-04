@@ -954,7 +954,7 @@ async function handleExtractBatch(
   if (!sourceId) return jsonResponse({ error: 'source_id required' }, 400);
 
   const { data: source } = await client.from('firecrawl_sources').select('source_type').eq('id', sourceId).single();
-  const limits = getSourceLimits(source?.source_type || 'firecrawl_html');
+  const limits = getSourceLimits(source?.source_type || 'government');
   const maxItems = Math.min((body.max_items as number) || 10, limits.extractBatchMax);
 
   const { data: items, error } = await client

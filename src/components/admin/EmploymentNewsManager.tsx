@@ -24,7 +24,7 @@ import { getRecommendedModelsForTarget } from '@/lib/aiModels';
 import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSelector';
 import {
   Upload, FileText, Sparkles, CheckCircle, XCircle, Eye, Pencil, Trash2,
-  Search, ChevronLeft, ChevronRight, Loader2, AlertCircle, Info
+  Search, ChevronLeft, ChevronRight, Loader2, AlertCircle, Info, Square
 } from 'lucide-react';
 
 type EmpNewsJob = {

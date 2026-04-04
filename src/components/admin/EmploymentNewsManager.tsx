@@ -370,6 +370,11 @@ export function EmploymentNewsManager() {
       let degradedChunks = 0;
 
       for (let i = 0; i < chunks.length; i++) {
+        if (stopExtractionRef.current) {
+          stoppedEarly = true;
+          console.warn(`[extract] Stopped by user after ${completedChunks}/${chunks.length} chunks`);
+          break;
+        }
         setExtractProgress(p => ({ ...p, current: i + 1 }));
 
         const payload: any = {

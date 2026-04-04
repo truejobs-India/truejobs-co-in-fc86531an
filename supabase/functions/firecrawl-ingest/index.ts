@@ -1024,7 +1024,7 @@ async function handleExtractItemInternal(
 
     const resolvedBatchSourceType = source?.source_type;
     if (!resolvedBatchSourceType) {
-      console.warn(`[firecrawl-ingest] Missing source_type for source ${item.firecrawl_source_id} during batch extract — defaulting to firecrawl_html`);
+      console.warn(`[firecrawl-ingest] Missing source_type for source ${item.firecrawl_source_id} during batch extract — defaulting to government`);
     }
     const rawBatchData: Record<string, unknown> = {
         staged_item_id: stagedItemId,

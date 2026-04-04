@@ -213,7 +213,6 @@ const GOVT_TABS: { key: GovtFilter; label: string }[] = [
 ];
 
 const TITLE_MAP: Record<string, string> = {
-  firecrawl_html: 'Private Draft Jobs',
   government: 'Government Draft Jobs',
   firecrawl_sitemap: 'Sitemap Draft Jobs',
 };
@@ -222,7 +221,7 @@ const SELECT_FIELDS = 'id, title, organization_name, post_name, state, extractio
 
 // ── Props ──
 interface DraftJobsSectionProps {
-  sourceTypeTag: 'firecrawl_html' | 'government' | 'firecrawl_sitemap';
+  sourceTypeTag: 'government' | 'firecrawl_sitemap';
 }
 
 export function DraftJobsSection({ sourceTypeTag }: DraftJobsSectionProps) {

@@ -879,7 +879,7 @@ async function handleExtractItem(
 
     const resolvedSourceType = source?.source_type;
     if (!resolvedSourceType) {
-      console.warn(`[firecrawl-ingest] Missing source_type for source ${item.firecrawl_source_id} during single extract — defaulting to firecrawl_html`);
+      console.warn(`[firecrawl-ingest] Missing source_type for source ${item.firecrawl_source_id} during single extract — defaulting to government`);
     }
     const rawDraftData: Record<string, unknown> = {
       staged_item_id: stagedItemId,
@@ -889,7 +889,7 @@ async function handleExtractItem(
       source_seed_url: source?.seed_url || null,
       source_page_url: item.discovered_from_url,
       source_bucket: item.bucket,
-      source_type_tag: resolvedSourceType || 'firecrawl_html',
+      source_type_tag: resolvedSourceType || 'government',
       ...extraction.fields,
       extraction_confidence: extraction.confidence,
       fields_extracted: extraction.fields_extracted,
@@ -954,7 +954,7 @@ async function handleExtractBatch(
   if (!sourceId) return jsonResponse({ error: 'source_id required' }, 400);
 
   const { data: source } = await client.from('firecrawl_sources').select('source_type').eq('id', sourceId).single();
-  const limits = getSourceLimits(source?.source_type || 'firecrawl_html');
+  const limits = getSourceLimits(source?.source_type || 'government');
   const maxItems = Math.min((body.max_items as number) || 10, limits.extractBatchMax);
 
   const { data: items, error } = await client
@@ -1024,7 +1024,7 @@ async function handleExtractItemInternal(
 
     const resolvedBatchSourceType = source?.source_type;
     if (!resolvedBatchSourceType) {
-      console.warn(`[firecrawl-ingest] Missing source_type for source ${item.firecrawl_source_id} during batch extract — defaulting to firecrawl_html`);
+      console.warn(`[firecrawl-ingest] Missing source_type for source ${item.firecrawl_source_id} during batch extract — defaulting to government`);
     }
     const rawBatchData: Record<string, unknown> = {
         staged_item_id: stagedItemId,
@@ -1034,7 +1034,7 @@ async function handleExtractItemInternal(
         source_seed_url: source?.seed_url || null,
         source_page_url: item.discovered_from_url,
         source_bucket: item.bucket,
-        source_type_tag: resolvedBatchSourceType || 'firecrawl_html',
+        source_type_tag: resolvedBatchSourceType || 'government',
         ...extraction.fields,
         extraction_confidence: extraction.confidence,
         fields_extracted: extraction.fields_extracted,

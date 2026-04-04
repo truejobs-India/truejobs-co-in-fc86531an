@@ -8,9 +8,7 @@ const QUICK_LINKS = [
   { label: 'Latest Govt Jobs', href: '/sarkari-jobs' },
   { label: 'Results', href: '/sarkari-jobs?status=result_declared' },
   { label: 'Admit Card', href: '/sarkari-jobs?status=admit_card_released' },
-  { label: 'Answer Key', href: '/sarkari-jobs' },
-  { label: 'Syllabus', href: '/sarkari-jobs' },
-  { label: 'Exam Calendar', href: '/sarkari-jobs' },
+  { label: 'Exam Calendar', href: '/govt-exam-calendar' },
 ];
 
 const DEPT_CHIPS = [

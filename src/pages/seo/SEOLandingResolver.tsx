@@ -45,6 +45,11 @@ export default function SEOLandingResolver() {
     const REDIRECTS: Record<string, string> = {
       'govt-jobs-up': '/govt-jobs-uttar-pradesh',
       'ssc-cgl-previous-year-papers': '/ssc-cgl-previous-year-paper',
+      'exam-calendar': '/govt-exam-calendar',
+      'results': '/sarkari-jobs?status=result_declared',
+      'admit-card': '/sarkari-jobs?status=admit_card_released',
+      'answer-key': '/sarkari-jobs',
+      'syllabus': '/sarkari-jobs',
     };
     if (REDIRECTS[slug]) {
       window.location.replace(REDIRECTS[slug]);

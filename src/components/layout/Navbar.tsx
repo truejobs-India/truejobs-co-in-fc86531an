@@ -34,18 +34,9 @@ import {
   Check, 
   FileText, 
   CheckCircle, 
-  BarChart3, 
-  Gift,
   ChevronDown,
   BookOpen,
   HelpCircle,
-  Users,
-  MapPin,
-  Factory,
-  GraduationCap,
-  Laptop,
-  UserCheck,
-  TrendingUp,
   Heart,
   FolderOpen,
   RefreshCw,
@@ -100,8 +91,6 @@ const JOBS_BY_TYPE = [
 const TOOLS_ITEMS = [
   { labelKey: 'nav.aiResumeBuilder', href: '/tools/resume-builder', icon: FileText, description: 'Create professional resumes with AI', hasNew: true },
   { labelKey: 'nav.aiResumeChecker', href: '/tools/resume-checker', icon: CheckCircle, description: 'Check your resume ATS score', hasNew: true },
-  { labelKey: 'nav.polls', href: '#', icon: BarChart3, description: 'Participate in career polls' },
-  { labelKey: 'nav.contestsSurveys', href: '#', icon: Gift, description: 'Win prizes and earn rewards' },
 ];
 
 
@@ -332,7 +321,7 @@ export function Navbar() {
                         {t('employer.company')}
                       </DropdownMenuItem>
                     )}
-                    <DropdownMenuItem onClick={() => navigate('/settings')} className="cursor-pointer">
+                    <DropdownMenuItem onClick={() => navigate('/profile')} className="cursor-pointer">
                       <Settings className="mr-2 h-4 w-4 text-gray-500" />
                       {t('nav.settings')}
                     </DropdownMenuItem>

@@ -83,8 +83,7 @@ export function Footer() {
             <ul className="space-y-2 text-sm">
               <li><Link to="/sarkari-jobs?status=admit_card_released" className="text-muted-foreground hover:text-foreground transition-colors">Admit Cards</Link></li>
               <li><Link to="/sarkari-jobs?status=result_declared" className="text-muted-foreground hover:text-foreground transition-colors">Results</Link></li>
-              <li><Link to="/sarkari-jobs" className="text-muted-foreground hover:text-foreground transition-colors">Answer Keys</Link></li>
-              <li><Link to="/sarkari-jobs" className="text-muted-foreground hover:text-foreground transition-colors">Exam Calendar</Link></li>
+              <li><Link to="/govt-exam-calendar" className="text-muted-foreground hover:text-foreground transition-colors">Exam Calendar</Link></li>
             </ul>
           </div>
 

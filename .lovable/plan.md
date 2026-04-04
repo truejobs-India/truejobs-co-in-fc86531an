@@ -1,34 +1,66 @@
 
 
-# Fix: Distinguish "Blocked" from "Failed" in Publish UI
+# Plan: Permanently Delete the `firecrawl_html` Private Pipeline
 
-## Problem
-When an admin clicks "Approve & Publish" on a draft that has `publish_blockers`, the edge function correctly returns a 400 with `"Publish blocked: ..."`. But the UI treats this identically to a real failure — it shows a red "Publish Failed" toast, reverts `review_status` to `pending`, and sets `processing_status` to `publish_failed`. This makes it look like a code bug instead of a deliberate content block.
+## Data to be deleted
 
-## Solution
+| Table | Rows | Filter |
+|---|---|---|
+| `firecrawl_draft_jobs` | 198 | `source_type_tag = 'firecrawl_html'` |
+| `firecrawl_staged_items` | 1,191 | joined via `firecrawl_source_id` to html sources |
+| `firecrawl_fetch_runs` | 81 | joined via `firecrawl_source_id` to html sources |
+| `firecrawl_sources` | 10 | `source_type = 'firecrawl_html'` |
 
-### 1. Frontend: `IntakeDraftsManager.tsx` — `handleApproveAndPublish` (~lines 306-314)
+Government data (200 sources, 466 drafts) is untouched.
 
-Detect blocker responses and handle them differently:
+## Steps
 
-- **If error message contains "Publish blocked:"** → show an amber/warning toast titled **"Publish Blocked"** with the blocker reasons, do NOT revert `review_status` or set `processing_status` to `publish_failed` (the draft stays as-is for admin to fix the content)
-- **If any other error** → keep existing red "Publish Failed" behavior
+### Step 0 — Export backup
+Run a script to export all 4 tables' `firecrawl_html` rows to CSV files in `/mnt/documents/` before any deletion.
 
-Same change in `handleBulkApprovePublish` for consistency.
+### Step 1 — Delete data (4 DELETE statements via insert tool)
+Delete in FK order:
+1. `DELETE FROM firecrawl_draft_jobs WHERE source_type_tag = 'firecrawl_html'`
+2. `DELETE FROM firecrawl_staged_items WHERE firecrawl_source_id IN (SELECT id FROM firecrawl_sources WHERE source_type = 'firecrawl_html')`
+3. `DELETE FROM firecrawl_fetch_runs WHERE firecrawl_source_id IN (SELECT id FROM firecrawl_sources WHERE source_type = 'firecrawl_html')`
+4. `DELETE FROM firecrawl_sources WHERE source_type = 'firecrawl_html'`
 
-### 2. Frontend: `IntakeDraftDetailDialog.tsx` — Publish button area (~line 303)
+### Step 2 — Database migration: block `firecrawl_html` in validation trigger
+Update `validate_firecrawl_sources_fields()` to only allow `('firecrawl_sitemap', 'government')`, removing `'firecrawl_html'`.
 
-When `draft.publish_blockers` has entries, disable the "Approve & Publish" button and show a small warning label like **"Blocked — clear blockers first"** so the admin knows before even clicking.
+### Step 3 — Frontend: `FirecrawlDraftsManager.tsx`
+Remove 2 lines:
+- `<FirecrawlSourcesManager sourceTypeFilter="firecrawl_html" />`
+- `<DraftJobsSection sourceTypeTag="firecrawl_html" />`
 
-### 3. Edge function: No changes needed
-The edge function already returns a clear `"Publish blocked: ..."` message. The problem is purely in how the UI interprets and displays it.
+### Step 4 — Frontend: `FirecrawlSourcesManager.tsx`
+Remove the `firecrawl_html` entry from `SOURCE_TYPE_CONFIG` (line 90). Component stays for sitemap use.
 
-## Files Changed
+### Step 5 — Frontend: `DraftJobsSection.tsx`
+Remove `firecrawl_html` from `TITLE_MAP` (line 216) and from the `sourceTypeTag` union type (line 225).
+
+### Step 6 — Edge function: `firecrawl-ingest/index.ts`
+Change 3 fallback defaults from `'firecrawl_html'` to `'government'` (lines 882, 892, 957, 1027, 1037). These are just warning-path defaults when source_type is missing.
+
+### Step 7 — Verify government pipeline still works
+Query government source/draft counts to confirm no data was lost. Visually confirm the admin UI renders government + sitemap sections correctly.
+
+## Files changed
 
 | # | File | Change |
 |---|---|---|
-| 1 | `src/components/admin/intake/IntakeDraftsManager.tsx` | Detect "Publish blocked" in response, show warning toast instead of error, skip status revert |
-| 2 | `src/components/admin/intake/IntakeDraftDetailDialog.tsx` | Disable publish button when blockers exist, show inline warning |
+| 1 | CSV exports | Backup 4 tables to `/mnt/documents/` |
+| 2 | Data (insert tool) | 4 DELETE statements |
+| 3 | Migration SQL | Update `validate_firecrawl_sources_fields()` |
+| 4 | `src/components/admin/firecrawl/FirecrawlDraftsManager.tsx` | Remove 2 lines |
+| 5 | `src/components/admin/firecrawl/FirecrawlSourcesManager.tsx` | Remove 1 config entry |
+| 6 | `src/components/admin/firecrawl/DraftJobsSection.tsx` | Remove from title map + type union |
+| 7 | `supabase/functions/firecrawl-ingest/index.ts` | Change 3 fallback defaults |
 
-**Total: 2 files, ~20 lines changed**
+## What is NOT touched
+- `GovtSourcesManager.tsx` — completely separate component
+- All government rows in all 4 firecrawl tables
+- `firecrawl-cleanup-branding` edge function — works on any drafts, no `firecrawl_html` specifics
+- `firecrawl-ai-enrich` edge function — source-type agnostic
+- All intake pipeline code, RSS pipeline, Azure pipeline
 

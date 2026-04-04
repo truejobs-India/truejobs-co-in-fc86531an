@@ -100,8 +100,6 @@ const JOBS_BY_TYPE = [
 const TOOLS_ITEMS = [
   { labelKey: 'nav.aiResumeBuilder', href: '/tools/resume-builder', icon: FileText, description: 'Create professional resumes with AI', hasNew: true },
   { labelKey: 'nav.aiResumeChecker', href: '/tools/resume-checker', icon: CheckCircle, description: 'Check your resume ATS score', hasNew: true },
-  { labelKey: 'nav.polls', href: '#', icon: BarChart3, description: 'Participate in career polls' },
-  { labelKey: 'nav.contestsSurveys', href: '#', icon: Gift, description: 'Win prizes and earn rewards' },
 ];
 
 

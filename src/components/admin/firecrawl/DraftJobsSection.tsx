@@ -213,7 +213,6 @@ const GOVT_TABS: { key: GovtFilter; label: string }[] = [
 ];
 
 const TITLE_MAP: Record<string, string> = {
-  firecrawl_html: 'Private Draft Jobs',
   government: 'Government Draft Jobs',
   firecrawl_sitemap: 'Sitemap Draft Jobs',
 };

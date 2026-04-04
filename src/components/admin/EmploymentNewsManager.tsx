@@ -24,7 +24,7 @@ import { getRecommendedModelsForTarget } from '@/lib/aiModels';
 import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSelector';
 import {
   Upload, FileText, Sparkles, CheckCircle, XCircle, Eye, Pencil, Trash2,
-  Search, ChevronLeft, ChevronRight, Loader2, AlertCircle, Info
+  Search, ChevronLeft, ChevronRight, Loader2, AlertCircle, Info, Square
 } from 'lucide-react';
 
 type EmpNewsJob = {
@@ -131,6 +131,7 @@ export function EmploymentNewsManager() {
   const [issueDetails, setIssueDetails] = useState('');
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractProgress, setExtractProgress] = useState({ current: 0, total: 0, newCount: 0, updatedCount: 0 });
+  const stopExtractionRef = useRef(false);
   const [extractAiModel, setExtractAiModel] = useState<string>(() => getLastUsedModel('text', 'vertex-flash'));
 
   // Pipeline state
@@ -342,6 +343,7 @@ export function EmploymentNewsManager() {
 
   const handleExtract = async () => {
     setIsExtracting(true);
+    stopExtractionRef.current = false;
     setExtractProgress({ current: 0, total: 0, newCount: 0, updatedCount: 0 });
     let activeBatchId: string | null = null;
     let completedChunksCount = 0;
@@ -368,6 +370,11 @@ export function EmploymentNewsManager() {
       let degradedChunks = 0;
 
       for (let i = 0; i < chunks.length; i++) {
+        if (stopExtractionRef.current) {
+          stoppedEarly = true;
+          console.warn(`[extract] Stopped by user after ${completedChunks}/${chunks.length} chunks`);
+          break;
+        }
         setExtractProgress(p => ({ ...p, current: i + 1 }));
 
         const payload: any = {
@@ -833,6 +840,7 @@ export function EmploymentNewsManager() {
           onPastedTextChange={setPastedText}
           onIssueDetailsChange={setIssueDetails}
           onExtract={handleExtract}
+          onStopExtraction={() => { stopExtractionRef.current = true; }}
         />
       ) : (
         <>
@@ -1562,6 +1570,7 @@ function UploadView({
   file, pastedText, issueDetails, isExtracting, extractProgress,
   aiModel, onAiModelChange,
   onFileChange, onDrop, onPastedTextChange, onIssueDetailsChange, onExtract,
+  onStopExtraction,
 }: {
   file: File | null;
   pastedText: string;
@@ -1575,6 +1584,7 @@ function UploadView({
   onPastedTextChange: (v: string) => void;
   onIssueDetailsChange: (v: string) => void;
   onExtract: () => void;
+  onStopExtraction?: () => void;
 }) {
   return (
     <Card>
@@ -1657,7 +1667,20 @@ function UploadView({
               <span>Processing chunk {extractProgress.current} of {extractProgress.total}</span>
               <span>{extractProgress.newCount} new, {extractProgress.updatedCount} updated</span>
             </div>
-            <Progress value={(extractProgress.current / extractProgress.total) * 100} />
+            <div className="flex items-center gap-2">
+              <Progress value={(extractProgress.current / extractProgress.total) * 100} className="flex-1" />
+              {onStopExtraction && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={onStopExtraction}
+                  className="shrink-0"
+                >
+                  <Square className="h-3.5 w-3.5 mr-1.5" />
+                  Stop
+                </Button>
+              )}
+            </div>
           </div>
         )}
 

@@ -326,7 +326,7 @@ Deno.serve(async (req) => {
               conducting_body: draft.organisation_name,
               status: 'upcoming',
               exam_category: 'Central',
-              description: draft.draft_content_html || draft.summary,
+              seo_content: draft.draft_content_html || draft.summary,
               meta_title: draft.seo_title || title,
               meta_description: draft.meta_description,
               qualification: draft.qualification_text,

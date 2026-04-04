@@ -221,7 +221,7 @@ const SELECT_FIELDS = 'id, title, organization_name, post_name, state, extractio
 
 // ── Props ──
 interface DraftJobsSectionProps {
-  sourceTypeTag: 'firecrawl_html' | 'government' | 'firecrawl_sitemap';
+  sourceTypeTag: 'government' | 'firecrawl_sitemap';
 }
 
 export function DraftJobsSection({ sourceTypeTag }: DraftJobsSectionProps) {

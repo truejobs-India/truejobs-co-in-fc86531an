@@ -879,7 +879,7 @@ async function handleExtractItem(
 
     const resolvedSourceType = source?.source_type;
     if (!resolvedSourceType) {
-      console.warn(`[firecrawl-ingest] Missing source_type for source ${item.firecrawl_source_id} during single extract — defaulting to firecrawl_html`);
+      console.warn(`[firecrawl-ingest] Missing source_type for source ${item.firecrawl_source_id} during single extract — defaulting to government`);
     }
     const rawDraftData: Record<string, unknown> = {
       staged_item_id: stagedItemId,

@@ -26,6 +26,50 @@ function generateSlug(title: string): string {
     .slice(0, 70);
 }
 
+// ── Normalize date strings to ISO YYYY-MM-DD ──
+const MONTH_MAP: Record<string, string> = {
+  january: '01', february: '02', march: '03', april: '04',
+  may: '05', june: '06', july: '07', august: '08',
+  september: '09', october: '10', november: '11', december: '12',
+};
+
+function normalizeDate(raw: string | null | undefined): string | null {
+  if (!raw || typeof raw !== 'string') return null;
+  const s = raw.trim();
+  if (!s) return null;
+
+  // Already ISO: 2026-03-20
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+
+  // DD/MM/YYYY or DD-MM-YYYY
+  const dmy = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (dmy) {
+    const [, d, m, y] = dmy;
+    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  }
+
+  // "12th March 2026", "1 January 2025", "2nd Feb 2026"
+  const textDate = s.match(/^(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]+)\s+(\d{4})$/);
+  if (textDate) {
+    const [, d, monthStr, y] = textDate;
+    const m = MONTH_MAP[monthStr.toLowerCase()];
+    if (m) return `${y}-${m}-${d.padStart(2, '0')}`;
+  }
+
+  // "March 12, 2026"
+  const mdyText = s.match(/^([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})$/);
+  if (mdyText) {
+    const [, monthStr, d, y] = mdyText;
+    const m = MONTH_MAP[monthStr.toLowerCase()];
+    if (m) return `${y}-${m}-${d.padStart(2, '0')}`;
+  }
+
+  // MM/DD/YYYY — ambiguous, skip to avoid wrong interpretation
+  // Return null for unparseable dates rather than crashing
+  console.warn(`[intake-publish] Could not parse date: "${s}"`);
+  return null;
+}
+
 // ── Minimum publish checks per type ──
 function validateForPublish(draft: any): string | null {
   const target = draft.publish_target;
@@ -271,8 +315,8 @@ Deno.serve(async (req) => {
     if (fetchErr || !draft) return json({ error: 'Draft not found' }, 404);
 
     // Gate checks
-    if (draft.primary_status !== 'publish_ready') {
-      return json({ error: `Cannot publish: primary_status is "${draft.primary_status}", must be "publish_ready"` }, 400);
+    if (draft.primary_status !== 'publish_ready' && !(draft.primary_status === 'manual_check' && draft.review_status === 'approved')) {
+      return json({ error: `Cannot publish: primary_status is "${draft.primary_status}" and review_status is "${draft.review_status}". Need "publish_ready" or "manual_check" with "approved".` }, 400);
     }
     if (draft.review_status !== 'approved') {
       return json({ error: `Cannot publish: review_status is "${draft.review_status}", must be "approved"` }, 400);

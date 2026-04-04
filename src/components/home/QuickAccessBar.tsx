@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { CreditCard, Award, Calendar, FileCheck, UserCheck, Bell } from 'lucide-react';
+import { CreditCard, Award, Calendar, UserCheck, Bell } from 'lucide-react';
 
 const ITEMS = [
   { label: 'Admit Cards', icon: CreditCard, href: '/sarkari-jobs?status=admit_card_released', color: 'text-blue-600 bg-blue-50' },

@@ -428,7 +428,7 @@ Deno.serve(async (req) => {
               qualification: draft.qualification_text,
               age_limit: draft.age_limit_text,
               salary: draft.salary_text,
-              last_date: draft.closing_date,
+              last_date: normalizeDate(draft.closing_date),
               apply_link: draft.official_apply_link || draft.official_notification_link,
               application_mode: draft.application_mode,
               job_category: 'Notification',
@@ -492,7 +492,7 @@ Deno.serve(async (req) => {
             .insert({
               exam_id: examResult.examId,
               result_title: title,
-              result_date: draft.result_date || null,
+              result_date: normalizeDate(draft.result_date),
               result_link: draft.result_link || draft.official_notification_link,
               status: 'published',
             })
@@ -520,7 +520,7 @@ Deno.serve(async (req) => {
             .insert({
               exam_id: examResult.examId,
               title: title,
-              release_date: draft.admit_card_date || null,
+              release_date: normalizeDate(draft.admit_card_date),
               download_link: draft.admit_card_link || draft.official_notification_link,
               instructions: draft.draft_content_text || draft.summary,
               status: 'active',
@@ -549,7 +549,7 @@ Deno.serve(async (req) => {
             .insert({
               exam_id: examResult.examId,
               title: title,
-              release_date: draft.answer_key_date || null,
+              release_date: normalizeDate(draft.answer_key_date),
               download_link: draft.answer_key_link || draft.official_notification_link,
               status: 'published',
             })

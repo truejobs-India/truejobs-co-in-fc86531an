@@ -330,7 +330,7 @@ export function Navbar() {
                         {t('employer.company')}
                       </DropdownMenuItem>
                     )}
-                    <DropdownMenuItem onClick={() => navigate('/settings')} className="cursor-pointer">
+                    <DropdownMenuItem onClick={() => navigate('/profile')} className="cursor-pointer">
                       <Settings className="mr-2 h-4 w-4 text-gray-500" />
                       {t('nav.settings')}
                     </DropdownMenuItem>

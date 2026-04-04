@@ -2,16 +2,16 @@ import { Link } from 'react-router-dom';
 import { Calculator, Calendar, Keyboard, UserCheck, IndianRupee, Camera, ImageIcon, FileText, Percent, Target } from 'lucide-react';
 
 const TOOLS = [
-  { label: 'Age Calculator', href: '/tools/age-calculator', icon: Calculator },
-  { label: 'Eligibility Checker', href: '/tools/eligibility-checker', icon: UserCheck },
-  { label: 'Salary Calculator', href: '/tools/salary-calculator', icon: IndianRupee },
-  { label: 'Typing Test', href: '/tools/typing-test', icon: Keyboard },
-  { label: 'Exam Calendar', href: '/tools/exam-calendar', icon: Calendar },
-  { label: 'Photo Resizer', href: '/tools/photo-resizer', icon: Camera },
-  { label: 'Image Resizer', href: '/tools/image-resizer', icon: ImageIcon },
-  { label: 'PDF Tools', href: '/tools/pdf-tools', icon: FileText },
-  { label: 'Percentage Calculator', href: '/tools/percentage-calculator', icon: Percent },
-  { label: 'Fee Calculator', href: '/tools/fee-calculator', icon: IndianRupee },
+  { label: 'Age Calculator', href: '/govt-job-age-calculator', icon: Calculator },
+  { label: 'Eligibility Checker', href: '/govt-exam-eligibility-checker', icon: UserCheck },
+  { label: 'Salary Calculator', href: '/govt-salary-calculator', icon: IndianRupee },
+  { label: 'Typing Test', href: '/typing-test-for-government-exams', icon: Keyboard },
+  { label: 'Exam Calendar', href: '/govt-exam-calendar', icon: Calendar },
+  { label: 'Photo Resizer', href: '/photo-resizer', icon: Camera },
+  { label: 'Image Resizer', href: '/image-resizer', icon: ImageIcon },
+  { label: 'PDF Tools', href: '/pdf-tools', icon: FileText },
+  { label: 'Percentage Calculator', href: '/percentage-calculator', icon: Percent },
+  { label: 'Fee Calculator', href: '/govt-exam-fee-calculator', icon: IndianRupee },
   { label: 'AI Resume Checker', href: '/tools/resume-checker', icon: Target },
 ];
 

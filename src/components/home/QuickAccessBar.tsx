@@ -4,10 +4,9 @@ import { CreditCard, Award, Calendar, FileCheck, UserCheck, Bell } from 'lucide-
 const ITEMS = [
   { label: 'Admit Cards', icon: CreditCard, href: '/sarkari-jobs?status=admit_card_released', color: 'text-blue-600 bg-blue-50' },
   { label: 'Results', icon: Award, href: '/sarkari-jobs?status=result_declared', color: 'text-green-600 bg-green-50' },
-  { label: 'Exam Calendar', icon: Calendar, href: '/sarkari-jobs', color: 'text-purple-600 bg-purple-50' },
-  { label: 'Answer Keys', icon: FileCheck, href: '/sarkari-jobs', color: 'text-orange-600 bg-orange-50' },
+  { label: 'Exam Calendar', icon: Calendar, href: '/govt-exam-calendar', color: 'text-purple-600 bg-purple-50' },
   { label: 'Notifications', icon: Bell, href: '/notifications', color: 'text-red-600 bg-red-50' },
-  { label: 'Eligibility', icon: UserCheck, href: '/sarkari-jobs', color: 'text-teal-600 bg-teal-50' },
+  { label: 'Eligibility', icon: UserCheck, href: '/govt-exam-eligibility-checker', color: 'text-teal-600 bg-teal-50' },
 ];
 
 export function QuickAccessBar() {

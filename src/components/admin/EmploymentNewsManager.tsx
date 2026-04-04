@@ -1570,6 +1570,7 @@ function UploadView({
   file, pastedText, issueDetails, isExtracting, extractProgress,
   aiModel, onAiModelChange,
   onFileChange, onDrop, onPastedTextChange, onIssueDetailsChange, onExtract,
+  onStopExtraction,
 }: {
   file: File | null;
   pastedText: string;
@@ -1583,6 +1584,7 @@ function UploadView({
   onPastedTextChange: (v: string) => void;
   onIssueDetailsChange: (v: string) => void;
   onExtract: () => void;
+  onStopExtraction?: () => void;
 }) {
   return (
     <Card>

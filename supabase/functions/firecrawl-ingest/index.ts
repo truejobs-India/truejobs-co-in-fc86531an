@@ -1034,7 +1034,7 @@ async function handleExtractItemInternal(
         source_seed_url: source?.seed_url || null,
         source_page_url: item.discovered_from_url,
         source_bucket: item.bucket,
-        source_type_tag: resolvedBatchSourceType || 'firecrawl_html',
+        source_type_tag: resolvedBatchSourceType || 'government',
         ...extraction.fields,
         extraction_confidence: extraction.confidence,
         fields_extracted: extraction.fields_extracted,

@@ -323,9 +323,15 @@ Deno.serve(async (req) => {
     }
 
     // Check blockers
-    const blockers = Array.isArray(draft.publish_blockers) ? draft.publish_blockers as string[] : [];
-    if (blockers.length > 0) {
-      return json({ error: `Publish blocked: ${blockers.join(', ')}` }, 400);
+    const rawBlockers = Array.isArray(draft.publish_blockers) ? draft.publish_blockers as string[] : [];
+    if (rawBlockers.length > 0) {
+      // If admin has approved, treat approval as override — clear blockers and proceed
+      if (draft.review_status === 'approved') {
+        console.log(`[intake-publish] Admin override: clearing ${rawBlockers.length} blockers for draft ${draftId}`);
+        await client.from('intake_drafts').update({ publish_blockers: [] }).eq('id', draftId);
+      } else {
+        return json({ error: `Publish blocked: ${rawBlockers.join(', ')}` }, 400);
+      }
     }
 
     // Validate minimum fields

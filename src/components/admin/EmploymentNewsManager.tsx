@@ -1667,7 +1667,20 @@ function UploadView({
               <span>Processing chunk {extractProgress.current} of {extractProgress.total}</span>
               <span>{extractProgress.newCount} new, {extractProgress.updatedCount} updated</span>
             </div>
-            <Progress value={(extractProgress.current / extractProgress.total) * 100} />
+            <div className="flex items-center gap-2">
+              <Progress value={(extractProgress.current / extractProgress.total) * 100} className="flex-1" />
+              {onStopExtraction && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={onStopExtraction}
+                  className="shrink-0"
+                >
+                  <Square className="h-3.5 w-3.5 mr-1.5" />
+                  Stop
+                </Button>
+              )}
+            </div>
           </div>
         )}
 

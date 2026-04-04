@@ -131,6 +131,7 @@ export function EmploymentNewsManager() {
   const [issueDetails, setIssueDetails] = useState('');
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractProgress, setExtractProgress] = useState({ current: 0, total: 0, newCount: 0, updatedCount: 0 });
+  const stopExtractionRef = useRef(false);
   const [extractAiModel, setExtractAiModel] = useState<string>(() => getLastUsedModel('text', 'vertex-flash'));
 
   // Pipeline state

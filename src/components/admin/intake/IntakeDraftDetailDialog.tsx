@@ -301,10 +301,17 @@ export function IntakeDraftDetailDialog({ draft, onClose, onSave, onApprovePubli
           </Button>
 
           {onApprovePublish && draft.processing_status !== 'published' && (
-            <Button onClick={handleApprovePublish} disabled={publishing} size="sm">
-              {publishing ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Send className="h-4 w-4 mr-1" />}
-              Approve & Publish
-            </Button>
+            blockers.length > 0 ? (
+              <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+                <AlertTriangle className="h-4 w-4" />
+                <span className="text-xs font-medium">Blocked — clear blockers first</span>
+              </div>
+            ) : (
+              <Button onClick={handleApprovePublish} disabled={publishing} size="sm">
+                {publishing ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Send className="h-4 w-4 mr-1" />}
+                Approve & Publish
+              </Button>
+            )
           )}
         </DialogFooter>
       </DialogContent>

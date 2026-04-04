@@ -358,11 +358,14 @@ export function IntakeDraftsManager() {
 
           const errorMsg = resp.error ? String(resp.error) : resp.data?.error;
           if (errorMsg) {
-            await supabase.from('intake_drafts').update({
-              review_status: 'pending',
-              processing_status: 'publish_failed',
-              publish_error: String(errorMsg).slice(0, 500),
-            } as any).eq('id', id);
+            const isBlocked = String(errorMsg).includes('Publish blocked');
+            if (!isBlocked) {
+              await supabase.from('intake_drafts').update({
+                review_status: 'pending',
+                processing_status: 'publish_failed',
+                publish_error: String(errorMsg).slice(0, 500),
+              } as any).eq('id', id);
+            }
             failed++;
           } else {
             success++;

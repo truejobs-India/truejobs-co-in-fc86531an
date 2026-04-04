@@ -840,6 +840,7 @@ export function EmploymentNewsManager() {
           onPastedTextChange={setPastedText}
           onIssueDetailsChange={setIssueDetails}
           onExtract={handleExtract}
+          onStopExtraction={() => { stopExtractionRef.current = true; }}
         />
       ) : (
         <>

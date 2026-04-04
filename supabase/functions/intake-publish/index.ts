@@ -136,6 +136,104 @@ async function findOrCreateExam(client: any, draft: any): Promise<{ examId: stri
   return { examId: newExam.id, created: true };
 }
 
+async function findExistingPublishedRecord(
+  client: any,
+  draft: any,
+  title: string,
+): Promise<{ id: string; table: string } | null> {
+  switch (draft.publish_target) {
+    case 'jobs':
+    case 'notifications': {
+      const { data, error } = await client
+        .from('employment_news_jobs')
+        .select('id')
+        .eq('source', 'intake_pipeline')
+        .ilike('enriched_title', title)
+        .limit(1);
+
+      if (error) {
+        console.error('[intake-publish] Orphan lookup failed for employment_news_jobs:', error.message);
+        return null;
+      }
+
+      return data && data.length > 0 ? { id: data[0].id, table: 'employment_news_jobs' } : null;
+    }
+
+    case 'exams': {
+      const examName = (draft.exam_name || title || '').trim();
+      if (!examName) return null;
+
+      const { data, error } = await client
+        .from('govt_exams')
+        .select('id, conducting_body')
+        .ilike('exam_name', examName)
+        .limit(5);
+
+      if (error) {
+        console.error('[intake-publish] Orphan lookup failed for govt_exams:', error.message);
+        return null;
+      }
+
+      if (!data || data.length === 0) return null;
+
+      const org = (draft.organisation_name || '').toLowerCase();
+      const match = org
+        ? data.find((row: any) => row.conducting_body && row.conducting_body.toLowerCase().includes(org))
+        : data[0];
+
+      return match ? { id: match.id, table: 'govt_exams' } : null;
+    }
+
+    case 'results': {
+      const { data, error } = await client
+        .from('govt_results')
+        .select('id')
+        .ilike('result_title', title)
+        .limit(1);
+
+      if (error) {
+        console.error('[intake-publish] Orphan lookup failed for govt_results:', error.message);
+        return null;
+      }
+
+      return data && data.length > 0 ? { id: data[0].id, table: 'govt_results' } : null;
+    }
+
+    case 'admit_cards': {
+      const { data, error } = await client
+        .from('govt_admit_cards')
+        .select('id')
+        .ilike('title', title)
+        .limit(1);
+
+      if (error) {
+        console.error('[intake-publish] Orphan lookup failed for govt_admit_cards:', error.message);
+        return null;
+      }
+
+      return data && data.length > 0 ? { id: data[0].id, table: 'govt_admit_cards' } : null;
+    }
+
+    case 'answer_keys': {
+      const { data, error } = await client
+        .from('govt_answer_keys')
+        .select('id')
+        .ilike('title', title)
+        .limit(1);
+
+      if (error) {
+        console.error('[intake-publish] Orphan lookup failed for govt_answer_keys:', error.message);
+        return null;
+      }
+
+      return data && data.length > 0 ? { id: data[0].id, table: 'govt_answer_keys' } : null;
+    }
+
+    default:
+      return null;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
@@ -215,32 +313,20 @@ Deno.serve(async (req) => {
       });
     }
 
-    // ── Change 3: Orphan detection for failed retries ──
+    // ── Change 3: Table-aware orphan detection for failed retries ──
     if (draft.processing_status === 'publish_failed' && !draft.published_record_id) {
-      const targetTable = draft.publish_target === 'jobs' || draft.publish_target === 'notifications'
-        ? 'employment_news_jobs' : draft.publish_target === 'exams' ? 'govt_exams'
-        : draft.publish_target === 'results' ? 'govt_results'
-        : draft.publish_target === 'admit_cards' ? 'govt_admit_cards'
-        : draft.publish_target === 'answer_keys' ? 'govt_answer_keys' : null;
+      const existing = await findExistingPublishedRecord(client, draft, title);
 
-      if (targetTable) {
-        // Check if a record was already inserted by a previous attempt
-        const { data: existing } = await client.from(targetTable)
-          .select('id')
-          .eq('source', 'intake_pipeline')
-          .ilike('enriched_title', title)
-          .limit(1);
-        if (existing && existing.length > 0) {
-          // Found orphan — heal the draft record
-          await client.from('intake_drafts').update({
-            processing_status: 'published',
-            published_record_id: existing[0].id,
-            published_table_name: targetTable,
-            published_at: new Date().toISOString(),
-            publish_error: null,
-          }).eq('id', draftId);
-          return json({ success: true, published_id: existing[0].id, table: targetTable, healed: true });
-        }
+      if (existing) {
+        await client.from('intake_drafts').update({
+          processing_status: 'published',
+          published_record_id: existing.id,
+          published_table_name: existing.table,
+          published_at: new Date().toISOString(),
+          publish_error: null,
+        }).eq('id', draftId);
+
+        return json({ success: true, published_id: existing.id, table: existing.table, healed: true });
       }
     }
 
@@ -329,11 +415,11 @@ Deno.serve(async (req) => {
               seo_content: draft.draft_content_html || draft.summary,
               meta_title: draft.seo_title || title,
               meta_description: draft.meta_description,
-              qualification: draft.qualification_text,
+              qualification_required: draft.qualification_text,
               age_limit: draft.age_limit_text,
               total_vacancies: draft.vacancy_count,
               application_fee: draft.application_fee_text,
-              selection_process: draft.selection_process_text,
+              selection_stages: draft.selection_process_text,
               official_website: draft.official_website_link,
               notification_pdf_url: draft.official_notification_link,
               apply_link: draft.official_apply_link,
@@ -364,7 +450,6 @@ Deno.serve(async (req) => {
               result_title: title,
               result_date: draft.result_date || null,
               result_link: draft.result_link || draft.official_notification_link,
-              description: draft.draft_content_html || draft.summary,
               status: 'published',
             })
             .select('id')
@@ -393,7 +478,7 @@ Deno.serve(async (req) => {
               title: title,
               release_date: draft.admit_card_date || null,
               download_link: draft.admit_card_link || draft.official_notification_link,
-              description: draft.draft_content_html || draft.summary,
+              instructions: draft.draft_content_text || draft.summary,
               status: 'active',
             })
             .select('id')
@@ -422,7 +507,6 @@ Deno.serve(async (req) => {
               title: title,
               release_date: draft.answer_key_date || null,
               download_link: draft.answer_key_link || draft.official_notification_link,
-              description: draft.draft_content_html || draft.summary,
               status: 'published',
             })
             .select('id')

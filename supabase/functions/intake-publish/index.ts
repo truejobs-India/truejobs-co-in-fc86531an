@@ -437,14 +437,24 @@ Deno.serve(async (req) => {
           return json({ error: `Unsupported publish target: ${draft.publish_target}` }, 400);
       }
 
-      // Update intake draft with publish result
-      await client.from('intake_drafts').update({
+      // ── Change 2: Verify the UPDATE succeeded after publish ──
+      const { error: updateErr } = await client.from('intake_drafts').update({
         processing_status: 'published',
         published_record_id: publishedId,
         published_table_name: publishedTable,
         published_at: new Date().toISOString(),
         publish_error: null,
       }).eq('id', draftId);
+
+      if (updateErr) {
+        console.error('[intake-publish] Published but failed to update draft:', updateErr.message);
+        return json({
+          success: true,
+          published_id: publishedId,
+          table: publishedTable,
+          warning: 'Published but draft status update failed — will self-heal on retry',
+        });
+      }
 
       return json({
         success: true,

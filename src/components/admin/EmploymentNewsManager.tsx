@@ -343,6 +343,7 @@ export function EmploymentNewsManager() {
 
   const handleExtract = async () => {
     setIsExtracting(true);
+    stopExtractionRef.current = false;
     setExtractProgress({ current: 0, total: 0, newCount: 0, updatedCount: 0 });
     let activeBatchId: string | null = null;
     let completedChunksCount = 0;

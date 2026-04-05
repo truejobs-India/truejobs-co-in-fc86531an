@@ -168,6 +168,8 @@ export default function SarkariJobs({ presetDept }: SarkariJobsProps = {}) {
       </div>
 
       <div className="container mx-auto px-4 py-8">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-6">
+        <div>
         {/* Filters Bar */}
         {!presetDept && (
           <div className="flex flex-col sm:flex-row gap-3 mb-6">
@@ -272,6 +274,13 @@ export default function SarkariJobs({ presetDept }: SarkariJobsProps = {}) {
             </Button>
           </div>
         )}
+      </div>
+        <aside className="hidden lg:block">
+          <div className="sticky top-20">
+            <AdPlaceholder variant="sidebar" />
+          </div>
+        </aside>
+        </div>
       </div>
       <PopularExamsBlock />
     </Layout>

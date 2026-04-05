@@ -67,6 +67,8 @@ export default function LatestGovtJobs() {
       </section>
 
       <div className="container mx-auto px-4 py-8">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-6">
+        <div>
         <p className="text-sm text-muted-foreground mb-6">
           Showing {jobs.length} most recently published government jobs
         </p>
@@ -139,6 +141,13 @@ export default function LatestGovtJobs() {
           <Link to="/sarkari-jobs" className="text-primary hover:underline font-medium inline-flex items-center gap-1">
             Browse All Sarkari Jobs <ArrowRight className="h-4 w-4" />
           </Link>
+        </div>
+      </div>
+        <aside className="hidden lg:block">
+          <div className="sticky top-20">
+            <AdPlaceholder variant="sidebar" />
+          </div>
+        </aside>
         </div>
       </div>
       <PopularExamsBlock />

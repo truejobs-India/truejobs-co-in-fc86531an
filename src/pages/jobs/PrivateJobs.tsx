@@ -109,6 +109,8 @@ export default function PrivateJobs() {
       {/* Job Listings */}
       <section className="py-10 md:py-14 bg-muted/30">
         <div className="container mx-auto px-4">
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-6">
+          <div>
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-xl md:text-2xl font-bold text-foreground">
               {isLoading ? 'Loading...' : `${filteredJobs?.length || 0} Private Jobs Found`}
@@ -197,6 +199,13 @@ export default function PrivateJobs() {
               </p>
             </div>
           )}
+          </div>
+          <aside className="hidden lg:block">
+            <div className="sticky top-20">
+              <AdPlaceholder variant="sidebar" />
+            </div>
+          </aside>
+          </div>
         </div>
       </section>
 

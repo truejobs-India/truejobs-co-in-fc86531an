@@ -183,5 +183,6 @@ export default function CustomLongTailPage() {
         </aside>
         </div>
       </div>
+    </Layout>
   );
 }

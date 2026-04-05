@@ -227,5 +227,6 @@ export default function QualificationJobsPage() {
         </aside>
         </div>
       </div>
+    </Layout>
   );
 }

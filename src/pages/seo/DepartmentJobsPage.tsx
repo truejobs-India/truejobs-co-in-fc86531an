@@ -200,5 +200,6 @@ export default function DepartmentJobsPage() {
         </aside>
         </div>
       </div>
+    </Layout>
   );
 }

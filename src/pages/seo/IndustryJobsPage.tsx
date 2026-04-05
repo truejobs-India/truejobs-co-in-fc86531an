@@ -161,5 +161,6 @@ export default function IndustryJobsPage() {
         </aside>
         </div>
       </div>
+    </Layout>
   );
 }

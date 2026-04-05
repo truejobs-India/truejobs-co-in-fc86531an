@@ -116,7 +116,9 @@ export default function ExamAuthorityPage() {
         noindex={false}
       />
 
-      <article className="container mx-auto px-4 py-8 max-w-4xl content-area my-8">
+      <div className="container mx-auto px-4 py-8 my-8">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-8">
+        <article className="content-area min-w-0">
         <h1 className="text-3xl md:text-4xl font-bold text-foreground mb-3">{config.h1}</h1>
 
         <div className="flex flex-wrap gap-2 mb-6">
@@ -390,6 +392,13 @@ export default function ExamAuthorityPage() {
           departmentSlug={config.departmentSlug}
         />
       </article>
+        <aside className="hidden lg:block">
+          <div className="sticky top-24">
+            <AdPlaceholder variant="sidebar" />
+          </div>
+        </aside>
+        </div>
+      </div>
     </Layout>
   );
 }

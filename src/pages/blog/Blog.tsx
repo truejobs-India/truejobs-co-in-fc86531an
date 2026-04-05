@@ -200,7 +200,9 @@ export default function Blog() {
         <AdPlaceholder variant="banner" />
       </div>
 
-      <div className="max-w-4xl mx-auto px-4 lg:px-8 py-12">
+      <div className="container mx-auto px-4 py-12">
+       <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-8">
+       <div className="min-w-0">
         {isLoading ? (
           <div className="space-y-8">
             {/* Featured skeleton */}
@@ -390,6 +392,13 @@ export default function Blog() {
             )}
           </div>
         )}
+       </div>
+       <aside className="hidden lg:block">
+         <div className="sticky top-24">
+           <AdPlaceholder variant="sidebar" />
+         </div>
+       </aside>
+       </div>
       </div>
 
       <div className="container mx-auto px-4">

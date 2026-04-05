@@ -105,7 +105,9 @@ export default function BoardResultBoardPage() {
         {faqSchema && <script type="application/ld+json">{JSON.stringify(faqSchema)}</script>}
       </Helmet>
 
-      <article className="container mx-auto max-w-4xl px-4 py-8">
+      <div className="container mx-auto px-4 py-8">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-8">
+        <article className="min-w-0">
         {/* Breadcrumb */}
         <nav className="text-sm text-muted-foreground mb-6">
           <Link to="/" className="hover:text-primary">Home</Link>
@@ -221,6 +223,13 @@ export default function BoardResultBoardPage() {
 
         <GovtDisclaimer />
       </article>
+        <aside className="hidden lg:block">
+          <div className="sticky top-24">
+            <AdPlaceholder variant="sidebar" />
+          </div>
+        </aside>
+        </div>
+      </div>
     </Layout>
   );
 }

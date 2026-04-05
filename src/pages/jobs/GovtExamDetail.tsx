@@ -224,6 +224,8 @@ function ExamDetailView({ slug }: { slug: string | undefined }) {
       </Helmet>
 
       <div className="container mx-auto px-4 py-6">
+       <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-8">
+       <div className="min-w-0">
         <nav className="flex items-center gap-1 text-sm text-muted-foreground mb-4">
           <Link to="/" className="hover:text-foreground">Home</Link>
           <ChevronRight className="h-3 w-3" />
@@ -454,6 +456,13 @@ function ExamDetailView({ slug }: { slug: string | undefined }) {
         <RelatedExamLinks departmentSlug={exam.department_slug || ''} />
         <QuickLinksBlock />
         <ContextualLinks departmentSlug={exam.department_slug} states={exam.states} />
+       </div>
+       <aside className="hidden lg:block">
+         <div className="sticky top-24">
+           <AdPlaceholder variant="sidebar" />
+         </div>
+       </aside>
+       </div>
       </div>
     </Layout>
   );

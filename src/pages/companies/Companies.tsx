@@ -236,6 +236,8 @@ export default function Companies() {
       </div>
 
       <div className="container mx-auto px-4 py-8">
+       <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-8">
+       <div className="min-w-0">
         {isLoading ? (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {[...Array(6)].map((_, i) => (
@@ -420,6 +422,13 @@ export default function Companies() {
             <ExploreMoreSection />
           </div>
         )}
+       </div>
+       <aside className="hidden lg:block">
+         <div className="sticky top-24">
+           <AdPlaceholder variant="sidebar" />
+         </div>
+       </aside>
+       </div>
       </div>
     </Layout>
   );

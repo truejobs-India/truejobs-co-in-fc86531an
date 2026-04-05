@@ -750,6 +750,9 @@ export default function JobDetail() {
               />
             )}
             <JobAlertCTA variant="compact" context="Job Updates" className="mt-4" />
+            <div className="mt-4 hidden lg:block">
+              <AdPlaceholder variant="sidebar" />
+            </div>
           </div>
         </div>
       </div>

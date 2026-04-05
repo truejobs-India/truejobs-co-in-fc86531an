@@ -110,6 +110,8 @@ export default function AllSarkariJobsHub() {
       </section>
 
       <div className="container mx-auto px-4 py-6">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-6">
+        <div>
         {/* Quick letter nav */}
         <div className="flex flex-wrap gap-1 mb-6">
           {grouped.map(([letter]) => (
@@ -182,6 +184,13 @@ export default function AllSarkariJobsHub() {
         </div>
 
         <JobAlertCTA variant="banner" context="Sarkari Jobs" className="mt-8" />
+      </div>
+        <aside className="hidden lg:block">
+          <div className="sticky top-20">
+            <AdPlaceholder variant="sidebar" />
+          </div>
+        </aside>
+        </div>
       </div>
 
       <PopularExamsBlock />

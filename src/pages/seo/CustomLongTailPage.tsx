@@ -62,7 +62,9 @@ export default function CustomLongTailPage() {
         {faqSchema && <script type="application/ld+json">{JSON.stringify(faqSchema)}</script>}
       </Helmet>
 
-      <div className="container mx-auto px-4 py-8 max-w-4xl content-area my-8">
+      <div className="container mx-auto px-4 py-8">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-6">
+        <div className="content-area my-8">
         {/* Header */}
         <div className="mb-6">
           <div className="flex items-center gap-2 text-sm text-muted-foreground mb-3">
@@ -173,6 +175,13 @@ export default function CustomLongTailPage() {
           </p>
         </section>
         <JobAlertCTA variant="compact" context={config.h1} className="mt-6 mb-6" />
+      </div>
+        <aside className="hidden lg:block">
+          <div className="sticky top-20">
+            <AdPlaceholder variant="sidebar" />
+          </div>
+        </aside>
+        </div>
       </div>
     </Layout>
   );

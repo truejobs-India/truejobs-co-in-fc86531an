@@ -3,6 +3,11 @@
  * Renders <ins class="adsbygoogle"> with multi-signal readiness gating.
  * Respects NoAdsContext — returns null on admin/auth pages.
  * Route-aware: re-initializes on SPA navigation via key-based remount.
+ *
+ * Reliability features:
+ * - All retry timer IDs tracked in a ref array and cleared on unmount.
+ * - Abort flag prevents stale retries after navigation.
+ * - One controlled retry on push({}) failure.
  */
 
 import { useContext, useEffect, useRef } from 'react';
@@ -73,9 +78,7 @@ const IS_DEV = !IS_PROD_DOMAIN;
 function isAdSenseReady(): boolean {
   if (typeof window === 'undefined') return false;
   const arr = window.adsbygoogle;
-  // After load, AdSense replaces the plain array with a proxy object
   if (arr && !Array.isArray(arr)) return true;
-  // Also check if push has been overridden (some AdSense versions keep array-like)
   if (arr && typeof arr.push === 'function' && arr.push !== Array.prototype.push) return true;
   return false;
 }
@@ -92,19 +95,33 @@ export function AdPlaceholder({ variant, className = '' }: AdPlaceholderProps) {
   const noAds = useContext(NoAdsContext);
   const location = useLocation();
   const adRef = useRef<HTMLModElement>(null);
-  const retries = useRef(0);
+  const timerIds = useRef<number[]>([]);
+  const abortRef = useRef(false);
   const config = variantConfig[variant];
 
-  // Key forces React to fully remount <ins> on route change,
-  // giving AdSense a fresh element without stale status attributes.
   const insKey = `${variant}-${location.pathname}`;
+
+  /** Track a timeout so cleanup can clear it. */
+  const trackTimeout = (fn: () => void, delay: number): void => {
+    const id = window.setTimeout(fn, delay);
+    timerIds.current.push(id);
+  };
+
+  /** Clear every tracked timer. */
+  const clearAllTimers = () => {
+    timerIds.current.forEach((id) => window.clearTimeout(id));
+    timerIds.current = [];
+  };
 
   useEffect(() => {
     if (noAds || typeof window === 'undefined' || !IS_PROD_DOMAIN) return;
 
-    retries.current = 0;
+    abortRef.current = false;
+    clearAllTimers();
 
-    const initAd = () => {
+    const initAd = (isRetry = false) => {
+      if (abortRef.current) return;
+
       const el = adRef.current;
       if (!el) return;
 
@@ -115,7 +132,7 @@ export function AdPlaceholder({ variant, className = '' }: AdPlaceholderProps) {
 
       if (IS_DEV) {
         console.debug(
-          `[AdSense] ${variant} | path=${location.pathname} | scriptReady=${scriptReady} | width=${containerWidth} | visible=${isVisible} | done=${alreadyDone} | retry=${retries.current}`
+          `[AdSense] ${variant} | path=${location.pathname} | scriptReady=${scriptReady} | width=${containerWidth} | visible=${isVisible} | done=${alreadyDone} | retry=${isRetry}`
         );
       }
 
@@ -130,17 +147,53 @@ export function AdPlaceholder({ variant, className = '' }: AdPlaceholderProps) {
           if (IS_DEV) console.debug(`[AdSense] ${variant} → pushed OK`);
         } catch (e) {
           if (IS_DEV) console.debug(`[AdSense] ${variant} → push error`, e);
+          // One controlled retry on push failure
+          if (!isRetry) {
+            trackTimeout(() => initAd(true), 2000);
+          }
         }
-      } else if (retries.current < MAX_RETRIES) {
-        retries.current += 1;
-        setTimeout(initAd, RETRY_INTERVAL);
-      } else if (IS_DEV) {
-        console.debug(`[AdSense] ${variant} → gave up after ${MAX_RETRIES} retries`);
+      } else if (!isRetry) {
+        // Retry loop — only from the initial path, not from error retry
+        let retryCount = 0;
+        const retryLoop = () => {
+          if (abortRef.current || retryCount >= MAX_RETRIES) {
+            if (IS_DEV && retryCount >= MAX_RETRIES) {
+              console.debug(`[AdSense] ${variant} → gave up after ${MAX_RETRIES} retries`);
+            }
+            return;
+          }
+          retryCount += 1;
+          trackTimeout(() => {
+            if (abortRef.current) return;
+            const el2 = adRef.current;
+            if (!el2) return;
+            const done = el2.getAttribute('data-adsbygoogle-status') === 'done';
+            if (done) return;
+            const ready = isAdSenseReady();
+            const width = el2.offsetWidth ?? 0;
+            const vis = document.visibilityState === 'visible';
+            if (ready && width > 0 && vis) {
+              try {
+                (window.adsbygoogle = window.adsbygoogle || []).push({});
+                if (IS_DEV) console.debug(`[AdSense] ${variant} → pushed OK on retry ${retryCount}`);
+              } catch (e2) {
+                if (IS_DEV) console.debug(`[AdSense] ${variant} → retry push error`, e2);
+              }
+            } else {
+              retryLoop();
+            }
+          }, RETRY_INTERVAL);
+        };
+        retryLoop();
       }
     };
 
-    const timer = setTimeout(initAd, STAGGER_DELAY[variant]);
-    return () => clearTimeout(timer);
+    trackTimeout(() => initAd(false), STAGGER_DELAY[variant]);
+
+    return () => {
+      abortRef.current = true;
+      clearAllTimers();
+    };
   }, [noAds, variant, location.pathname]);
 
   if (noAds) return null;

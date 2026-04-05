@@ -148,6 +148,8 @@ export default function DeadlineJobsPage() {
       </Helmet>
 
       <div className="container mx-auto px-4 py-6">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-6">
+        <div>
         <nav className="flex items-center gap-1 text-sm text-muted-foreground mb-4">
           <Link to="/" className="hover:text-foreground">Home</Link>
           <span>›</span>
@@ -246,6 +248,13 @@ export default function DeadlineJobsPage() {
 
         <PopularExamsBlock />
         <JobAlertCTA variant="compact" context="Upcoming Deadlines" className="mt-6" />
+      </div>
+        <aside className="hidden lg:block">
+          <div className="sticky top-20">
+            <AdPlaceholder variant="sidebar" />
+          </div>
+        </aside>
+        </div>
       </div>
     </Layout>
   );

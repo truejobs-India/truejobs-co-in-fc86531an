@@ -66,6 +66,8 @@ export default function EmploymentNewsJobs() {
         canonical="https://truejobs.co.in/jobs/employment-news"
       />
       <div className="container mx-auto py-8 px-4">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-6">
+        <div>
         <h1 className="text-3xl font-bold mb-2">Government Jobs from Employment News</h1>
         <p className="text-muted-foreground mb-6">
           Latest government job notifications from Employment News / Rozgar Samachar
@@ -192,6 +194,13 @@ export default function EmploymentNewsJobs() {
             </Button>
           </div>
         )}
+      </div>
+        <aside className="hidden lg:block">
+          <div className="sticky top-20">
+            <AdPlaceholder variant="sidebar" />
+          </div>
+        </aside>
+        </div>
       </div>
     </Layout>
   );

@@ -22,7 +22,7 @@ const CARDS = [
     title: 'Exam Calendar',
     desc: 'Track upcoming recruitment dates and important deadlines.',
     img: infoExamCalendar,
-    href: '/sarkari-jobs',
+    href: '/govt-exam-calendar',
   },
   {
     title: 'Notifications',

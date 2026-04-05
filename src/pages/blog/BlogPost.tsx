@@ -18,6 +18,7 @@ import { CategoryCluster } from '@/components/blog/CategoryCluster';
 import { TableOfContents } from '@/components/blog/TableOfContents';
 import { DistributionSidebar } from '@/components/distribution/DistributionSidebar';
 import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
+import { GovtJobsCrossLink } from '@/pages/seo/components/GovtJobsCrossLink';
 import {
   generateArticleSchema,
   generateFAQSchema,
@@ -602,6 +603,11 @@ export default function BlogPostPage() {
                 category={post.category}
                 tags={post.tags}
               />
+
+              {/* Cross-link to Govt Jobs for relevant categories */}
+              {post.category && ['Current Affairs', 'Government Jobs', 'Exam Preparation', 'Sarkari Result', 'Defence Jobs', 'Banking Jobs'].includes(post.category) && (
+                <GovtJobsCrossLink />
+              )}
             </div>
           </aside>
         </div>

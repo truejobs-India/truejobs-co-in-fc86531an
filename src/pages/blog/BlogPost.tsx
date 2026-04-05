@@ -129,6 +129,15 @@ export default function BlogPostPage() {
     void fetchPost();
   }, [slug, previewId, authLoading, navigate]);
 
+  // Strict Hindi-dominance detection (40% threshold)
+  const isHindiDominant = useMemo(() => {
+    if (!post?.title) return false;
+    const sample = (post.title + ' ' + (post.content || '').slice(0, 500));
+    const devanagariChars = (sample.match(/[\u0900-\u097F]/g) || []).length;
+    const alphaChars = (sample.match(/[a-zA-Z\u0900-\u097F]/g) || []).length;
+    return alphaChars > 0 && devanagariChars / alphaChars > 0.4;
+  }, [post?.title, post?.content]);
+
   const headings = useMemo(() => {
     if (!post?.content) return [];
     return extractHeadings(post.content);
@@ -286,13 +295,8 @@ export default function BlogPostPage() {
     );
   }
 
-  // Strict Hindi-dominance detection (40% threshold)
-  const isHindiDominant = useMemo(() => {
-    const sample = (post.title + ' ' + (post.content || '').slice(0, 500));
-    const devanagariChars = (sample.match(/[\u0900-\u097F]/g) || []).length;
-    const alphaChars = (sample.match(/[a-zA-Z\u0900-\u097F]/g) || []).length;
-    return alphaChars > 0 && devanagariChars / alphaChars > 0.4;
-  }, [post.title, post.content]);
+
+
 
   const primaryKeyword = extractPrimaryKeyword(post.title, post.slug, post.content);
   const autoAlt = post.featured_image_alt || generateImageAlt(post.title, post.category || undefined);

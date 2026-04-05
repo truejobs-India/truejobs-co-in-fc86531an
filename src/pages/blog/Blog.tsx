@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { supabase } from '@/integrations/supabase/client';
 import { formatDistanceToNow } from 'date-fns';
 import { Calendar, Clock, ArrowRight, BookOpen, Search } from 'lucide-react';
-import { categoryToSlug } from '@/lib/blogUtils';
+
 import searchJobsBtn from '@/assets/btn-search-jobs.png';
 import aiResumeBtn from '@/assets/btn-ai-resume.png';
 import { AdPlaceholder } from '@/components/ads/AdPlaceholder';
@@ -372,6 +372,20 @@ export default function Blog() {
                     </Card>
                   </Link>
                 ))}
+              </div>
+            )}
+
+            {/* Load More Button */}
+            {hasMore && !isLoading && posts.length > 0 && (
+              <div className="text-center mt-8">
+                <Button
+                  variant="outline"
+                  size="lg"
+                  onClick={handleLoadMore}
+                  disabled={isLoadingMore}
+                >
+                  {isLoadingMore ? 'Loading…' : 'Load More Articles'}
+                </Button>
               </div>
             )}
           </div>

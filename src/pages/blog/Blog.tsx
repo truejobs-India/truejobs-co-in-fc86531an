@@ -31,31 +31,45 @@ interface BlogPost {
   tags: string[] | null;
 }
 
+const PAGE_SIZE = 12;
+
 export default function Blog() {
   const [posts, setPosts] = useState<BlogPost[]>([]);
   const [featuredPost, setFeaturedPost] = useState<BlogPost | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [page, setPage] = useState(0);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Reset and fetch when filters change
   useEffect(() => {
-    fetchPosts();
+    setPosts([]);
+    setFeaturedPost(null);
+    setPage(0);
+    setHasMore(true);
+    fetchPosts(0, true);
   }, [selectedCategory, searchQuery]);
 
-  const fetchPosts = async () => {
-    setIsLoading(true);
-    
+  const fetchPosts = async (pageNum: number, isReset: boolean) => {
+    if (isReset) setIsLoading(true);
+    else setIsLoadingMore(true);
+
+    const from = pageNum * PAGE_SIZE;
+    const to = from + PAGE_SIZE - 1;
+
     let query = supabase
       .from('blog_posts')
       .select('id, title, slug, excerpt, cover_image_url, published_at, created_at, reading_time, category, tags')
       .eq('is_published', true)
-      .order('published_at', { ascending: false });
+      .order('published_at', { ascending: false })
+      .range(from, to);
 
     if (selectedCategory) {
       query = query.eq('category', selectedCategory);
     }
 
-    // Apply search filter using ilike for title and excerpt
     if (searchQuery.trim()) {
       query = query.or(`title.ilike.%${searchQuery}%,excerpt.ilike.%${searchQuery}%`);
     }
@@ -63,16 +77,33 @@ export default function Blog() {
     const { data, error } = await query;
 
     if (!error && data) {
-      // Set first post as featured if no category filter and no search
-      if (!selectedCategory && !searchQuery.trim() && data.length > 0) {
-        setFeaturedPost(data[0]);
-        setPosts(data.slice(1));
+      if (data.length < PAGE_SIZE) setHasMore(false);
+
+      if (isReset) {
+        if (!selectedCategory && !searchQuery.trim() && data.length > 0) {
+          setFeaturedPost(data[0]);
+          setPosts(data.slice(1));
+        } else {
+          setFeaturedPost(null);
+          setPosts(data);
+        }
       } else {
-        setFeaturedPost(null);
-        setPosts(data);
+        // Deduplicate by id on append
+        setPosts(prev => {
+          const existingIds = new Set(prev.map(p => p.id));
+          const newPosts = data.filter(p => !existingIds.has(p.id));
+          return [...prev, ...newPosts];
+        });
       }
     }
     setIsLoading(false);
+    setIsLoadingMore(false);
+  };
+
+  const handleLoadMore = () => {
+    const nextPage = page + 1;
+    setPage(nextPage);
+    fetchPosts(nextPage, false);
   };
 
   const structuredData = {
@@ -281,7 +312,7 @@ export default function Blog() {
                   <Link key={post.id} to={`/blog/${post.slug}`}>
                     <Card className="h-full hover:shadow-lg transition-shadow overflow-hidden group">
                       {post.cover_image_url ? (
-                        <div className="h-48 overflow-hidden">
+                      <div className="aspect-[16/9] overflow-hidden">
                           <img
                             src={post.cover_image_url}
                             alt={`Cover image for ${post.title}`}
@@ -290,7 +321,7 @@ export default function Blog() {
                           />
                         </div>
                       ) : (
-                        <div className="h-48 bg-gradient-to-br from-primary/20 to-secondary/20 flex items-center justify-center">
+                        <div className="aspect-[16/9] bg-gradient-to-br from-primary/20 to-secondary/20 flex items-center justify-center">
                           <BookOpen className="h-12 w-12 text-primary/50" />
                         </div>
                       )}
@@ -321,7 +352,7 @@ export default function Blog() {
                           {post.title}
                         </CardTitle>
                         {post.excerpt && (
-                          <CardDescription className="line-clamp-3">
+                          <CardDescription className="line-clamp-2">
                             {post.excerpt}
                           </CardDescription>
                         )}

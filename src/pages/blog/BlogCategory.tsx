@@ -9,7 +9,9 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { formatDistanceToNow } from 'date-fns';
-import { Calendar, Clock, ArrowRight, ArrowLeft, Tag, Briefcase, FileText, Users, TrendingUp, Bot, Search } from 'lucide-react';
+import { Calendar, Clock, ArrowRight, ArrowLeft, Tag, BookOpen } from 'lucide-react';
+import { BLOG_CATEGORIES } from '@/lib/blogCategories';
+import { slugToCategory } from '@/lib/blogUtils';
 
 interface BlogPost {
   id: string;
@@ -24,29 +26,6 @@ interface BlogPost {
   tags: string[] | null;
 }
 
-const BLOG_CATEGORIES = [
-  { slug: 'job-search', name: 'Job Search', icon: Search, description: 'Tips and strategies for finding your dream job in India' },
-  { slug: 'career-advice', name: 'Career Advice', icon: Briefcase, description: 'Expert guidance on career development and growth' },
-  { slug: 'resume', name: 'Resume', icon: FileText, description: 'Resume writing tips, templates, and optimization' },
-  { slug: 'interview', name: 'Interview', icon: Users, description: 'Interview preparation, questions, and success strategies' },
-  { slug: 'hr-recruitment', name: 'HR & Recruitment', icon: Users, description: 'Insights for HR professionals and recruiters' },
-  { slug: 'hiring-trends', name: 'Hiring Trends', icon: TrendingUp, description: 'Latest trends in the Indian job market' },
-  { slug: 'ai-in-recruitment', name: 'AI in Recruitment', icon: Bot, description: 'How AI is transforming the hiring landscape' },
-];
-
-function slugToCategory(slug: string): string {
-  const mapping: Record<string, string> = {
-    'job-search': 'Job Search',
-    'career-advice': 'Career Advice',
-    'resume': 'Resume',
-    'interview': 'Interview',
-    'hr-recruitment': 'HR & Recruitment',
-    'hiring-trends': 'Hiring Trends',
-    'ai-in-recruitment': 'AI in Recruitment',
-  };
-  return mapping[slug] || slug;
-}
-
 export default function BlogCategory() {
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
@@ -55,7 +34,6 @@ export default function BlogCategory() {
 
   const categoryInfo = BLOG_CATEGORIES.find(c => c.slug === slug);
   const categoryName = categoryInfo?.name || slugToCategory(slug || '');
-  const CategoryIcon = categoryInfo?.icon || Tag;
 
   useEffect(() => {
     if (slug) {
@@ -65,13 +43,13 @@ export default function BlogCategory() {
 
   const fetchPosts = async () => {
     setIsLoading(true);
-    const categoryName = slugToCategory(slug || '');
+    const catName = slugToCategory(slug || '');
     
     const { data, error } = await supabase
       .from('blog_posts')
       .select('id, title, slug, excerpt, cover_image_url, published_at, created_at, reading_time, category, tags')
       .eq('is_published', true)
-      .eq('category', categoryName)
+      .eq('category', catName)
       .order('published_at', { ascending: false });
 
     if (!error && data) {
@@ -84,7 +62,7 @@ export default function BlogCategory() {
     '@context': 'https://schema.org',
     '@type': 'CollectionPage',
     name: `${categoryName} - TrueJobs Blog`,
-    description: categoryInfo?.description || `Read the latest ${categoryName} articles from TrueJobs`,
+    description: `Read the latest ${categoryName} articles from TrueJobs`,
     url: `https://truejobs.co.in/blog/category/${slug}`,
     isPartOf: {
       '@type': 'Blog',
@@ -97,7 +75,7 @@ export default function BlogCategory() {
     <Layout>
       <SEO 
         title={`${categoryName} - Career Tips & Insights`}
-        description={categoryInfo?.description || `Read the latest ${categoryName} articles, tips, and insights from TrueJobs to advance your career in India.`}
+        description={`Read the latest ${categoryName} articles, tips, and insights from TrueJobs to advance your career in India.`}
         url={`/blog/category/${slug}`}
         structuredData={structuredData}
       />
@@ -138,14 +116,9 @@ export default function BlogCategory() {
           
           <div className="text-center">
             <div className="inline-flex items-center justify-center h-16 w-16 rounded-full bg-primary/10 mb-4">
-              <CategoryIcon className="h-8 w-8 text-primary" />
+              <Tag className="h-8 w-8 text-primary" />
             </div>
             <h1 className="text-4xl font-bold mb-4">{categoryName}</h1>
-            {categoryInfo?.description && (
-              <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-                {categoryInfo.description}
-              </p>
-            )}
             <Badge variant="secondary" className="mt-4">
               {posts.length} {posts.length === 1 ? 'Article' : 'Articles'}
             </Badge>
@@ -153,7 +126,7 @@ export default function BlogCategory() {
         </div>
       </section>
 
-      {/* Category Navigation */}
+      {/* Category Navigation — canonical 16 categories */}
       <section className="border-b">
         <div className="container mx-auto px-4 py-4">
           <div className="flex flex-wrap gap-2 justify-center">
@@ -177,7 +150,7 @@ export default function BlogCategory() {
           <div className="grid md:grid-cols-2 gap-6">
             {[...Array(6)].map((_, i) => (
               <Card key={i}>
-                <Skeleton className="h-48 w-full rounded-t-lg" />
+                <Skeleton className="aspect-[16/9] w-full rounded-t-lg" />
                 <CardHeader>
                   <Skeleton className="h-6 w-3/4" />
                   <Skeleton className="h-4 w-full mt-2" />
@@ -188,7 +161,7 @@ export default function BlogCategory() {
         ) : posts.length === 0 ? (
           <Card className="max-w-lg mx-auto">
             <CardContent className="text-center py-12">
-              <CategoryIcon className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+              <BookOpen className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
               <h3 className="text-lg font-semibold mb-2">No Articles Yet</h3>
               <p className="text-muted-foreground mb-4">
                 We're working on great {categoryName.toLowerCase()} content. Check back soon!
@@ -204,7 +177,7 @@ export default function BlogCategory() {
               <Link key={post.id} to={`/blog/${post.slug}`}>
                 <Card className="h-full hover:shadow-lg transition-shadow overflow-hidden group">
                   {post.cover_image_url ? (
-                    <div className="h-48 overflow-hidden">
+                    <div className="aspect-[16/9] overflow-hidden">
                       <img
                         src={post.cover_image_url}
                         alt={`Featured image for ${post.title}`}
@@ -213,8 +186,8 @@ export default function BlogCategory() {
                       />
                     </div>
                   ) : (
-                    <div className="h-48 bg-gradient-to-br from-primary/20 to-secondary/20 flex items-center justify-center">
-                      <CategoryIcon className="h-12 w-12 text-primary/50" />
+                    <div className="aspect-[16/9] bg-gradient-to-br from-primary/20 to-secondary/20 flex items-center justify-center">
+                      <BookOpen className="h-12 w-12 text-primary/50" />
                     </div>
                   )}
                   <CardHeader>
@@ -239,7 +212,7 @@ export default function BlogCategory() {
                       {post.title}
                     </CardTitle>
                     {post.excerpt && (
-                      <CardDescription className="line-clamp-3">
+                      <CardDescription className="line-clamp-2">
                         {post.excerpt}
                       </CardDescription>
                     )}

@@ -95,7 +95,9 @@ export default function EmploymentNewsJobDetail() {
         canonical={`https://truejobs.co.in${canonicalPath}`}
         structuredData={job.schema_markup ? (job.schema_markup as unknown as object) : undefined}
       />
-      <div className="container mx-auto py-8 px-4 max-w-4xl content-area my-8">
+      <div className="container mx-auto py-8 px-4">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-6">
+        <div className="content-area my-8">
         {/* Breadcrumb */}
         {job.job_category === 'Notification' ? (
           <Link to="/notifications" className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-4">

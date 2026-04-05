@@ -110,6 +110,8 @@ export default function AllSarkariJobsHub() {
       </section>
 
       <div className="container mx-auto px-4 py-6">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-6">
+        <div>
         {/* Quick letter nav */}
         <div className="flex flex-wrap gap-1 mb-6">
           {grouped.map(([letter]) => (

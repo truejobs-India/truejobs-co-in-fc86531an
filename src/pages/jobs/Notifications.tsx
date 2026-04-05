@@ -55,6 +55,8 @@ export default function Notifications() {
         canonical="https://truejobs.co.in/notifications"
       />
       <div className="container mx-auto py-8 px-4">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-6">
+        <div>
         <h1 className="text-3xl font-bold mb-2">Latest Official Notifications</h1>
         <p className="text-muted-foreground mb-6">
           Official recruitment notifications, exam notices, corrigenda, shortlists & important updates

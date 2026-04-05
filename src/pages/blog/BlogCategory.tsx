@@ -144,7 +144,9 @@ export default function BlogCategory() {
         </div>
       </section>
 
-      <div className="max-w-4xl mx-auto px-4 lg:px-8 py-12">
+      <div className="container mx-auto px-4 py-12">
+       <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-8">
+       <div className="min-w-0">
         <AdPlaceholder variant="banner" />
         {isLoading ? (
           <div className="grid md:grid-cols-2 gap-6">
@@ -234,6 +236,13 @@ export default function BlogCategory() {
             ))}
           </div>
         )}
+       </div>
+       <aside className="hidden lg:block">
+         <div className="sticky top-24">
+           <AdPlaceholder variant="sidebar" />
+         </div>
+       </aside>
+       </div>
       </div>
 
       {/* CTA Section */}

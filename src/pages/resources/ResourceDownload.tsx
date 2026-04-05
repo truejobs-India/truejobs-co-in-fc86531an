@@ -116,7 +116,9 @@ export default function ResourceDownload() {
         noindex={true}
       />
 
-      <div className="container mx-auto px-4 py-8 max-w-3xl">
+      <div className="container mx-auto px-4 py-8">
+       <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-8">
+       <div className="min-w-0">
         {/* Breadcrumb */}
         <nav className="text-sm text-muted-foreground mb-6">
           <Link to="/" className="hover:text-primary">Home</Link>
@@ -220,6 +222,13 @@ export default function ResourceDownload() {
           title="More Resources You May Like"
           limit={3}
         />
+       </div>
+       <aside className="hidden lg:block">
+         <div className="sticky top-24">
+           <AdPlaceholder variant="sidebar" />
+         </div>
+       </aside>
+       </div>
       </div>
     </Layout>
   );

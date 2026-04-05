@@ -2,9 +2,11 @@
  * Real Google AdSense ad unit component.
  * Renders <ins class="adsbygoogle"> with multi-signal readiness gating.
  * Respects NoAdsContext — returns null on admin/auth pages.
+ * Route-aware: re-initializes on SPA navigation via key-based remount.
  */
 
 import { useContext, useEffect, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { NoAdsContext } from '@/components/layout/Layout';
 
 declare global {
@@ -26,6 +28,16 @@ const SLOT_IDS: Record<AdPlaceholderProps['variant'], string> = {
   'in-content': '9228297609',
   footer: '7728214373',
 };
+
+const STAGGER_DELAY: Record<AdPlaceholderProps['variant'], number> = {
+  banner: 150,
+  'in-content': 300,
+  sidebar: 500,
+  footer: 700,
+};
+
+const MAX_RETRIES = 8;
+const RETRY_INTERVAL = 1500;
 
 const variantConfig = {
   banner: {
@@ -57,6 +69,17 @@ const IS_PROD_DOMAIN =
 
 const IS_DEV = !IS_PROD_DOMAIN;
 
+/** Check if AdSense library has actually loaded (not just script tag present). */
+function isAdSenseReady(): boolean {
+  if (typeof window === 'undefined') return false;
+  const arr = window.adsbygoogle;
+  // After load, AdSense replaces the plain array with a proxy object
+  if (arr && !Array.isArray(arr)) return true;
+  // Also check if push has been overridden (some AdSense versions keep array-like)
+  if (arr && typeof arr.push === 'function' && arr.push !== Array.prototype.push) return true;
+  return false;
+}
+
 function AdLabel() {
   return (
     <p className="text-[10px] text-muted-foreground text-center uppercase tracking-widest mb-1 select-none">
@@ -67,45 +90,58 @@ function AdLabel() {
 
 export function AdPlaceholder({ variant, className = '' }: AdPlaceholderProps) {
   const noAds = useContext(NoAdsContext);
+  const location = useLocation();
   const adRef = useRef<HTMLModElement>(null);
-  const pushed = useRef(false);
   const retries = useRef(0);
   const config = variantConfig[variant];
 
+  // Key forces React to fully remount <ins> on route change,
+  // giving AdSense a fresh element without stale status attributes.
+  const insKey = `${variant}-${location.pathname}`;
+
   useEffect(() => {
-    if (pushed.current || noAds || typeof window === 'undefined' || !IS_PROD_DOMAIN) {
-      return;
-    }
+    if (noAds || typeof window === 'undefined' || !IS_PROD_DOMAIN) return;
+
+    retries.current = 0;
 
     const initAd = () => {
-      const scriptPresent = !!document.querySelector('script[src*="adsbygoogle"]');
-      const containerWidth = adRef.current?.offsetWidth ?? 0;
+      const el = adRef.current;
+      if (!el) return;
+
+      const alreadyDone = el.getAttribute('data-adsbygoogle-status') === 'done';
+      const containerWidth = el.offsetWidth ?? 0;
       const isVisible = document.visibilityState === 'visible';
+      const scriptReady = isAdSenseReady();
 
       if (IS_DEV) {
-        console.debug(`[AdSense] ${variant} | path=${window.location.pathname} | script=${scriptPresent} | width=${containerWidth} | visible=${isVisible} | retry=${retries.current}`);
+        console.debug(
+          `[AdSense] ${variant} | path=${location.pathname} | scriptReady=${scriptReady} | width=${containerWidth} | visible=${isVisible} | done=${alreadyDone} | retry=${retries.current}`
+        );
       }
 
-      if (scriptPresent && containerWidth > 0 && isVisible) {
+      if (alreadyDone) {
+        if (IS_DEV) console.debug(`[AdSense] ${variant} → already processed, skipping`);
+        return;
+      }
+
+      if (scriptReady && containerWidth > 0 && isVisible) {
         try {
           (window.adsbygoogle = window.adsbygoogle || []).push({});
-          pushed.current = true;
           if (IS_DEV) console.debug(`[AdSense] ${variant} → pushed OK`);
         } catch (e) {
           if (IS_DEV) console.debug(`[AdSense] ${variant} → push error`, e);
         }
-      } else if (retries.current < 3) {
+      } else if (retries.current < MAX_RETRIES) {
         retries.current += 1;
-        setTimeout(initAd, 1000);
+        setTimeout(initAd, RETRY_INTERVAL);
       } else if (IS_DEV) {
-        console.debug(`[AdSense] ${variant} → gave up after 3 retries`);
+        console.debug(`[AdSense] ${variant} → gave up after ${MAX_RETRIES} retries`);
       }
     };
 
-    // Defer first attempt slightly to allow layout to settle
-    const timer = setTimeout(initAd, 100);
+    const timer = setTimeout(initAd, STAGGER_DELAY[variant]);
     return () => clearTimeout(timer);
-  }, [noAds, variant]);
+  }, [noAds, variant, location.pathname]);
 
   if (noAds) return null;
 
@@ -115,6 +151,7 @@ export function AdPlaceholder({ variant, className = '' }: AdPlaceholderProps) {
     <div className={`${config.wrapper} ${className}`}>
       <AdLabel />
       <ins
+        key={insKey}
         ref={adRef}
         className="adsbygoogle"
         style={{

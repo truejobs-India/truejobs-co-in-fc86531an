@@ -259,6 +259,13 @@ export default function EmploymentNewsJobDetail() {
           />
           <GovtJobsCrossLink context={job.state ? `in ${job.state}` : undefined} />
         </div>
+        </div>
+        <aside className="hidden lg:block">
+          <div className="sticky top-20">
+            <AdPlaceholder variant="sidebar" />
+          </div>
+        </aside>
+        </div>
       </div>
     </Layout>
   );

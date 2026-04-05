@@ -185,6 +185,13 @@ export default function AllSarkariJobsHub() {
 
         <JobAlertCTA variant="banner" context="Sarkari Jobs" className="mt-8" />
       </div>
+        <aside className="hidden lg:block">
+          <div className="sticky top-20">
+            <AdPlaceholder variant="sidebar" />
+          </div>
+        </aside>
+        </div>
+      </div>
 
       <PopularExamsBlock />
     </Layout>

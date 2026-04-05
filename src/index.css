@@ -606,6 +606,17 @@ All colors MUST be HSL.
     }
   }
 
+  /* Hindi / Devanagari content body */
+  .hindi-content .content-area,
+  .hindi-content .content-area p,
+  .hindi-content .content-area li,
+  .hindi-content .content-area td,
+  .hindi-content .content-area blockquote {
+    font-family: 'Noto Sans Devanagari', sans-serif;
+    line-height: 1.7;
+    font-weight: 400;
+  }
+
   /* Marquee animation for logos */
   .animate-marquee {
     animation: marquee 30s linear infinite;

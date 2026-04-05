@@ -176,5 +176,6 @@ export default function CategoryJobsPage() {
         </aside>
         </div>
       </div>
+    </Layout>
   );
 }

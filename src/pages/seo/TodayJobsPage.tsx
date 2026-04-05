@@ -142,7 +142,9 @@ export default function TodayJobsPage() {
         <script type="application/ld+json">{JSON.stringify(breadcrumbSchema)}</script>
       </Helmet>
 
-      <main className="container mx-auto px-4 py-8 md:py-12 max-w-4xl content-area my-8">
+      <div className="container mx-auto px-4 py-8 md:py-12">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-6">
+        <main className="content-area my-8">
         <nav aria-label="Breadcrumb" className="mb-6 text-sm text-muted-foreground">
           <ol className="flex items-center gap-1.5 flex-wrap">
             <li><Link to="/" className="hover:text-foreground transition-colors">Home</Link></li>

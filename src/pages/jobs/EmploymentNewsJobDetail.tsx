@@ -11,6 +11,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { ChevronLeft, MapPin, Calendar, Users, IndianRupee, ExternalLink, Briefcase } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import { JobAlertCTA } from '@/components/shared/JobAlertCTA';
+import { QuickLinksBlock } from '@/components/govt/QuickLinksBlock';
+import { GovtJobsCrossLink } from '@/pages/seo/components/GovtJobsCrossLink';
 
 export default function EmploymentNewsJobDetail() {
   const { slug } = useParams<{ slug: string }>();
@@ -247,6 +249,14 @@ export default function EmploymentNewsJobDetail() {
             <JobAlertCTA variant="strong" context={job?.org_name || job?.post || 'Government Jobs'} className="mt-8" />
           </CardContent>
         </Card>
+
+        <div className="mt-6">
+          <QuickLinksBlock
+            states={job.state ? [job.state] : undefined}
+            qualificationRequired={job.qualification}
+          />
+          <GovtJobsCrossLink context={job.state ? `in ${job.state}` : undefined} />
+        </div>
       </div>
     </Layout>
   );

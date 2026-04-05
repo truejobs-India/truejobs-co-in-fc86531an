@@ -241,5 +241,6 @@ export default function GovtComboPage() {
         </aside>
         </div>
       </div>
+    </Layout>
   );
 }

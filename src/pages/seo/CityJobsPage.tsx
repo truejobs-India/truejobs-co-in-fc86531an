@@ -204,5 +204,6 @@ export default function CityJobsPage() {
         </aside>
         </div>
       </div>
+    </Layout>
   );
 }

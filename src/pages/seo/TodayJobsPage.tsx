@@ -250,5 +250,6 @@ export default function TodayJobsPage() {
         </aside>
         </div>
       </div>
+    </Layout>
   );
 }

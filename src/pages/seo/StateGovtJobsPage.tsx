@@ -288,5 +288,6 @@ export default function StateGovtJobsPage() {
         </aside>
         </div>
       </div>
+    </Layout>
   );
 }

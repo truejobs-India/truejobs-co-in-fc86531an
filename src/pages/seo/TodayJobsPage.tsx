@@ -243,6 +243,12 @@ export default function TodayJobsPage() {
         {/* CTA */}
         <JobAlertCTA variant="banner" context="Today's Jobs" className="mb-6" />
       </main>
-    </Layout>
+        <aside className="hidden lg:block">
+          <div className="sticky top-20">
+            <AdPlaceholder variant="sidebar" />
+          </div>
+        </aside>
+        </div>
+      </div>
   );
 }

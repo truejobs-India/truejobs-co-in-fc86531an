@@ -154,6 +154,12 @@ export default function IndustryJobsPage() {
         />
         <JobAlertCTA variant="compact" context={`${config.industry} Jobs`} className="mt-8" />
       </main>
-    </Layout>
+        <aside className="hidden lg:block">
+          <div className="sticky top-20">
+            <AdPlaceholder variant="sidebar" />
+          </div>
+        </aside>
+        </div>
+      </div>
   );
 }

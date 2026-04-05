@@ -176,6 +176,12 @@ export default function CustomLongTailPage() {
         </section>
         <JobAlertCTA variant="compact" context={config.h1} className="mt-6 mb-6" />
       </div>
-    </Layout>
+        <aside className="hidden lg:block">
+          <div className="sticky top-20">
+            <AdPlaceholder variant="sidebar" />
+          </div>
+        </aside>
+        </div>
+      </div>
   );
 }

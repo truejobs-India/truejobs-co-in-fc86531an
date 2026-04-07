@@ -1094,7 +1094,7 @@ function buildNovaCanvasPrompt(body: any): { text: string; negativeText: string 
   };
 }
 
-
+async function generateViaNovaCanvas(
   body: any,
   slug: string,
   imagePrompt: string,

@@ -1246,7 +1246,7 @@ export function BlogPostEditor() {
   const handleBulkGenerate = async () => {
     const topics = bulkTopics.split('\n').map(t => t.trim()).filter(t => t.length > 0);
     if (topics.length === 0) { toast({ title: 'Enter at least one topic', variant: 'destructive' }); return; }
-    if (topics.length > 20) { toast({ title: 'Maximum 20 topics at a time', variant: 'destructive' }); return; }
+    if (topics.length > 100) { toast({ title: 'Maximum 100 topics at a time', variant: 'destructive' }); return; }
 
     bulkGenerateAbortRef.current = false;
     setIsBulkGenerating(true);
@@ -1693,9 +1693,12 @@ export function BlogPostEditor() {
                 value={bulkTopics}
                 onChange={(e) => { setBulkTopics(e.target.value); setDuplicateCheckResults([]); }}
                 placeholder={"SSC CGL 2026 Notification Details\nRailway Group D Vacancy Update\nUPSC Civil Services Preparation Tips"}
-                rows={4}
+                rows={8}
                 className="text-xs"
               />
+              <p className="text-xs text-muted-foreground">
+                {bulkTopics.split('\n').filter(t => t.trim().length > 0).length} / 100 topics
+              </p>
               {/* Duplicate checker */}
               <div className="flex items-center gap-2">
                 <Button

@@ -708,7 +708,7 @@ Deno.serve(async (req) => {
     const authResult = await verifyAdmin(req);
     if (authResult instanceof Response) return authResult;
 
-    const { topic, category, tags, targetWordCount, aiModel, outputLanguage: rawOutputLang } = await req.json();
+    const { topic, category, tags, targetWordCount, aiModel, outputLanguage: rawOutputLang, contentMode, pageTemplate, primaryKeyword, targetExam, targetState, targetDepartment, targetYear, officialSourceUrl } = await req.json();
     if (!topic || typeof topic !== 'string') {
       return new Response(JSON.stringify({ error: 'topic is required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }

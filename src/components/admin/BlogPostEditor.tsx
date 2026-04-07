@@ -65,6 +65,7 @@ import { VertexAITools } from './blog/VertexAITools';
 import { AiModelSelector } from '@/components/admin/AiModelSelector';
 import { getModelDef, getRecommendedModelsForTarget } from '@/lib/aiModels';
 import { useBulkAutoFix } from '@/hooks/useBulkAutoFix';
+import { LongTailSeoPanel } from './blog/LongTailSeoPanel';
 
 interface BlogPost {
   id: string;
@@ -206,7 +207,7 @@ export function BlogPostEditor() {
 
   // Search, filter, pagination
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'published' | 'draft'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'published' | 'draft' | 'long_tail'>('all');
   const [currentPage, setCurrentPage] = useState(1);
 
   // Image cleanup selection state
@@ -868,7 +869,8 @@ export function BlogPostEditor() {
       post.slug.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === 'all' ||
       (statusFilter === 'published' && post.is_published) ||
-      (statusFilter === 'draft' && !post.is_published);
+      (statusFilter === 'draft' && !post.is_published) ||
+      (statusFilter === 'long_tail' && (post as any).content_mode === 'long_tail_seo');
     return matchesSearch && matchesStatus;
   });
 
@@ -1679,6 +1681,9 @@ export function BlogPostEditor() {
 
       {/* Image cleanup buttons are now inline in the article table */}
 
+      {/* ── Long Tail SEO Pages ── */}
+      <LongTailSeoPanel onRefresh={fetchPosts} />
+
       {/* ── Bulk Article Generator ── */}
       <div className="px-6 pb-4 border-b">
         <Collapsible open={showBulkGenerator} onOpenChange={setShowBulkGenerator}>
@@ -1974,6 +1979,7 @@ export function BlogPostEditor() {
               <SelectItem value="all">All Posts</SelectItem>
               <SelectItem value="published">Published</SelectItem>
               <SelectItem value="draft">Drafts</SelectItem>
+              <SelectItem value="long_tail">Long Tail SEO</SelectItem>
             </SelectContent>
           </Select>
         </div>

@@ -937,6 +937,11 @@ Format: {"title": "...", "slug": "...", "content": "...", "metaTitle": "...", "m
 No markdown code blocks. Return ONLY the JSON object.`;
     }
 
+    // Inject freshness safety block if source validation requires it
+    if (freshnessBlock) {
+      prompt = freshnessBlock + '\n' + prompt;
+    }
+
     prompt += '\n\n' + buildWordCountInstruction(wordTarget, useModel);
 
     const raw = await callAI(useModel, prompt, wordTarget);
@@ -1074,6 +1079,13 @@ No markdown code blocks. Return ONLY the JSON object.`;
         resolved: resolvedLang,
         mismatch: languageMismatch,
         retried,
+      },
+      sourceFreshnessValidation: {
+        warnings: sourceFreshness.warnings,
+        riskLevel: sourceFreshness.riskLevel,
+        hedgingInjected: sourceFreshness.hedgingRequired,
+        reducedSpecificity: sourceFreshness.reduceFactualSpecificity,
+        blockSafeReady: sourceFreshness.blockSafeReady,
       },
     }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   } catch (err) {

@@ -342,6 +342,21 @@ export const AI_MODELS: readonly AiModelDef[] = [
     supportsContinuationPass: false,
   },
 
+  // ── Amazon Bedrock image model ──
+  {
+    value: 'nova-canvas',
+    label: 'Amazon Nova Canvas (From API)',
+    desc: 'Your API · Image generation · ~20s',
+    speed: 20,
+    source: 'external-api',
+    provider: 'Amazon',
+    capabilities: ['image'],
+    recommendedMaxWords: 0,
+    warnAboveWords: 0,
+    longFormReliability: 'poor',
+    supportsContinuationPass: false,
+  },
+
   // ── Sarvam AI models (Indian languages specialist) ──
   {
     value: 'sarvam-30b',

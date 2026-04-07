@@ -1237,7 +1237,7 @@ function buildNovaCanvasPrompt(body: any): { text: string; negativeText: string 
         width: dims.width,
         height: dims.height,
       }],
-      promptUsed: truncatedPrompt,
+      promptUsed: novaPrompt.text,
     },
     model: NOVA_CANVAS_MODEL_ID,
     action: 'generate-image',

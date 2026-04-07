@@ -1281,6 +1281,7 @@ export function BlogPostEditor() {
         } else if (data.wordCountValidation?.status === 'warn') {
           toast({ title: `ℹ Word count: ${data.wordCountValidation.actualWordCount}/${data.wordCountValidation.targetWordCount} words — slightly outside range.` });
         }
+        const isFreshnessBlocked = data.sourceFreshnessValidation?.blockSafeReady === true;
         const { data: inserted, error: insertErr } = await supabase.from('blog_posts').insert({
           title: data.title, slug: data.slug, content: data.content,
           excerpt: data.excerpt || null, meta_title: data.metaTitle || null,
@@ -1288,6 +1289,8 @@ export function BlogPostEditor() {
           tags: data.tags || [], author_id: user!.id, author_name: 'TrueJobs Editorial Team',
           canonical_url: `https://truejobs.co.in/blog/${data.slug}`,
           is_published: false, word_count: wordCount, reading_time: Math.max(1, Math.ceil(wordCount / 200)),
+          review_status: isFreshnessBlocked ? 'freshness_blocked' : undefined,
+          noindex: isFreshnessBlocked || undefined,
         }).select('id').single();
         if (insertErr) throw new Error(insertErr.message);
         setBulkResults(prev => prev.map((r, idx) => idx === i ? { ...r, status: 'success', articleId: inserted?.id } : r));
@@ -1342,6 +1345,7 @@ export function BlogPostEditor() {
         } else if (data.wordCountValidation?.status === 'warn') {
           toast({ title: `ℹ Word count: ${data.wordCountValidation.actualWordCount}/${data.wordCountValidation.targetWordCount} words — slightly outside range.` });
         }
+        const isFreshnessBlocked2 = data.sourceFreshnessValidation?.blockSafeReady === true;
         const { data: inserted, error: insertErr } = await supabase.from('blog_posts').insert({
           title: data.title, slug: data.slug, content: data.content,
           excerpt: data.excerpt || null, meta_title: data.metaTitle || null,
@@ -1349,6 +1353,8 @@ export function BlogPostEditor() {
           tags: data.tags || [], author_id: user!.id, author_name: 'TrueJobs Editorial Team',
           canonical_url: `https://truejobs.co.in/blog/${data.slug}`,
           is_published: false, word_count: wordCount, reading_time: Math.max(1, Math.ceil(wordCount / 200)),
+          review_status: isFreshnessBlocked2 ? 'freshness_blocked' : undefined,
+          noindex: isFreshnessBlocked2 || undefined,
         }).select('id').single();
         if (insertErr) throw new Error(insertErr.message);
         setBulkResults(prev => prev.map((r, idx) => idx === i ? { ...r, status: 'success', articleId: inserted?.id } : r));

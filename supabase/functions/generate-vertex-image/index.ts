@@ -1056,7 +1056,45 @@ const NOVA_CANVAS_DIMENSIONS: Record<string, { width: number; height: number }> 
   '9:16': { width: 720,  height: 1280 },
 };
 
-async function generateViaNovaCanvas(
+// ── Build Nova Canvas-specific prompt (positive ≤1024, negative ≤1024) ──
+function buildNovaCanvasPrompt(body: any): { text: string; negativeText: string } {
+  const title = (body.title || '').substring(0, 120);
+  const category = (body.category || 'government jobs').substring(0, 60);
+  const tagsSnippet = Array.isArray(body.tags) && body.tags.length > 0
+    ? `Topics: ${body.tags.slice(0, 5).join(', ')}.`
+    : '';
+  const excerptSnippet = body.excerpt
+    ? `Context: ${body.excerpt.substring(0, 150)}.`
+    : '';
+
+  const positivePrompt = [
+    `Photorealistic editorial photograph for blog article titled "${title}" about ${category}.`,
+    tagsSnippet,
+    excerptSnippet,
+    'Style: True-to-life, cinematic, magazine-quality photo with realistic lighting,',
+    'textures, depth of field, natural color grading. Warm professional colors suitable',
+    'for Indian government jobs portal. Young Indian men and women with youthful, fair,',
+    'polished, aspirational, premium appearance. Realistic facial detail, skin texture,',
+    'clothing, posture in believable real environments. Highly relevant to the specific',
+    'article topic. No text overlays or watermarks. English only if any text needed.',
+  ].filter(Boolean).join(' ');
+
+  const negativeText = [
+    'vector art, flat illustration, cartoon, infographic, poster, sketch, clipart,',
+    'icon, stylized artwork, diagram board, labeled panels, text-heavy composition,',
+    'simplified faces, low-detail faces, Hindi text, Devanagari script, Hinglish,',
+    'Indic script, watermarks, government seals, emblems, logos, generic stock photo,',
+    'abstract symbolic composition',
+  ].join(' ');
+
+  // Safety: hard-cap at 1024 chars each
+  return {
+    text: positivePrompt.length > 1024 ? positivePrompt.substring(0, 1024) : positivePrompt,
+    negativeText: negativeText.length > 1024 ? negativeText.substring(0, 1024) : negativeText,
+  };
+}
+
+
   body: any,
   slug: string,
   imagePrompt: string,
@@ -1085,14 +1123,18 @@ async function generateViaNovaCanvas(
   const slotNumber = body.slotNumber;
   console.log(`[nova-canvas] slug=${slug} purpose=${purpose} ratio=${mappedRatio} ${dims.width}x${dims.height}`);
 
-  // ── Truncate prompt to Nova Canvas 1024-char limit ──
-  const truncatedPrompt = imagePrompt.length > 1024 ? imagePrompt.substring(0, 1024) : imagePrompt;
+  // ── Build Nova Canvas-optimized prompt (positive + negative, each ≤1024 chars) ──
+  const novaPrompt = buildNovaCanvasPrompt(body);
+  console.log(`[nova-canvas] prompt: ${novaPrompt.text.length} chars, negativeText: ${novaPrompt.negativeText.length} chars`);
 
   const region = Deno.env.get('AWS_REGION') || 'us-east-1';
   const host = `bedrock-runtime.${region}.amazonaws.com`;
   const invokePayload = JSON.stringify({
     taskType: 'TEXT_IMAGE',
-    textToImageParams: { text: truncatedPrompt },
+    textToImageParams: {
+      text: novaPrompt.text,
+      negativeText: novaPrompt.negativeText,
+    },
     imageGenerationConfig: {
       width: dims.width,
       height: dims.height,
@@ -1195,7 +1237,7 @@ async function generateViaNovaCanvas(
         width: dims.width,
         height: dims.height,
       }],
-      promptUsed: truncatedPrompt,
+      promptUsed: novaPrompt.text,
     },
     model: NOVA_CANVAS_MODEL_ID,
     action: 'generate-image',

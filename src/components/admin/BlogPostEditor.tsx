@@ -65,6 +65,7 @@ import { VertexAITools } from './blog/VertexAITools';
 import { AiModelSelector } from '@/components/admin/AiModelSelector';
 import { getModelDef, getRecommendedModelsForTarget } from '@/lib/aiModels';
 import { useBulkAutoFix } from '@/hooks/useBulkAutoFix';
+import { LongTailSeoPanel } from './blog/LongTailSeoPanel';
 
 interface BlogPost {
   id: string;
@@ -1678,6 +1679,9 @@ export function BlogPostEditor() {
       <BulkEnrichByWordCount blogTextModel={blogTextModel} onComplete={fetchPosts} />
 
       {/* Image cleanup buttons are now inline in the article table */}
+
+      {/* ── Long Tail SEO Pages ── */}
+      <LongTailSeoPanel onRefresh={fetchPosts} />
 
       {/* ── Bulk Article Generator ── */}
       <div className="px-6 pb-4 border-b">

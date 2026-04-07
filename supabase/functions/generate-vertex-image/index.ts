@@ -8,6 +8,7 @@
  */
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { awsSigV4Fetch } from '../_shared/bedrock-nova.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -38,6 +39,7 @@ const KNOWN_IMAGE_MODEL_KEYS = new Set([
   'vertex-3.1-flash-image',
   'vertex-pro', // has image capability in aiModels.ts
   'vertex-flash-image', // Gemini 2.5 Flash Image via direct Vertex AI
+  'nova-canvas', // Amazon Nova Canvas via Bedrock InvokeModel
 ]);
 
 const IMAGEN_TIMEOUT_MS = 120_000;

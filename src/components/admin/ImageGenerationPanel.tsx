@@ -1,9 +1,9 @@
 /**
  * ImageGenerationPanel — Reusable top-level panel for generating cover and inline images.
  * Works for Board Results, Custom Pages, and any content with title/slug/content.
+ * Uses the global image request queue to serialize requests and avoid Vertex AI 429s.
  */
 import { useState, useCallback, useRef } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -15,6 +15,7 @@ import {
   detectInlineSlots, insertInlineImage, getContextForSlot,
   buildArticleImagesMetadata,
 } from '@/lib/blogInlineImages';
+import { enqueueImageRequest, clearImageQueue, getImageQueueDepth } from '@/lib/imageRequestQueue';
 
 export interface ImageTarget {
   id: string;
@@ -82,35 +83,27 @@ export function ImageGenerationPanel({
 
     let done = 0, failed = 0;
     let consecutiveFailures = 0;
-    const INTER_REQUEST_DELAY = 5000; // 5s between requests to avoid rate limits
 
     for (const target of eligible) {
       if (stopCoverRef.current) {
+        clearImageQueue();
         toast({ title: 'Cover generation stopped', description: `Completed ${done}/${eligible.length}` });
         break;
       }
 
-      // Add delay between requests (skip for first)
-      if (done + failed > 0) {
-        await new Promise(r => setTimeout(r, INTER_REQUEST_DELAY));
-      }
-
       try {
-        const { data, error } = await supabase.functions.invoke('generate-vertex-image', {
-          body: {
-            slug: target.slug,
-            title: target.title,
-            category: target.category || 'General',
-            tags: target.tags || [],
-            model: coverModel,
-            purpose: 'cover',
-            imageCount: 1,
-            aspectRatio: '16:9',
-          },
+        const result = await enqueueImageRequest({
+          slug: target.slug,
+          title: target.title,
+          category: target.category || 'General',
+          tags: target.tags || [],
+          model: coverModel,
+          purpose: 'cover',
+          imageCount: 1,
+          aspectRatio: '16:9',
         });
-        if (error) throw error;
-        if (data?.success === false) throw new Error(data.error || 'Failed');
-        const img = data?.data?.images?.[0];
+        if (!result.success) throw new Error(result.error || 'Failed');
+        const img = result.data?.data?.images?.[0];
         if (!img?.url) throw new Error('No image returned');
         await onCoverGenerated(target.id, img.url, img.altText || target.title);
         done++;
@@ -121,7 +114,6 @@ export function ImageGenerationPanel({
         const msg = err.message || '';
         console.error(`Cover failed for ${target.slug}:`, msg);
 
-        // Auto-stop on quota/credit exhaustion (3 consecutive failures)
         if (consecutiveFailures >= 3 || msg.includes('quota exceeded') || msg.includes('402') || msg.includes('payment')) {
           toast({
             title: 'Image generation paused — rate limit / quota hit',
@@ -154,17 +146,12 @@ export function ImageGenerationPanel({
 
     let done = 0, failed = 0;
     let consecutiveFailures = 0;
-    const INTER_REQUEST_DELAY = 5000;
 
     for (const target of eligible) {
       if (stopInlineRef.current) {
+        clearImageQueue();
         toast({ title: 'Inline generation stopped', description: `Completed ${done}/${eligible.length}` });
         break;
-      }
-
-      // Delay between targets
-      if (done + failed > 0) {
-        await new Promise(r => setTimeout(r, INTER_REQUEST_DELAY));
       }
 
       try {
@@ -183,19 +170,17 @@ export function ImageGenerationPanel({
         // Slot 1
         if (!slotStatus.slot1Filled && slotStatus.canPlaceSlot1) {
           const ctx = getContextForSlot(updatedContent, 1, target.title, target.category);
-          const { data, error } = await supabase.functions.invoke('generate-vertex-image', {
-            body: {
-              slug: target.slug, title: target.title,
-              category: target.category || 'General', tags: target.tags || [],
-              model: inlineModel, purpose: 'inline', slotNumber: 1,
-              contextSnippet: ctx.nearbyText, nearbyHeading: ctx.nearbyHeading,
-            },
+          const result = await enqueueImageRequest({
+            slug: target.slug, title: target.title,
+            category: target.category || 'General', tags: target.tags || [],
+            model: inlineModel, purpose: 'inline', slotNumber: 1,
+            contextSnippet: ctx.nearbyText, nearbyHeading: ctx.nearbyHeading,
           });
-          if (error || data?.success === false) {
-            const msg = data?.error || error?.message || '';
-            if (msg.includes('quota exceeded') || msg.includes('402')) slotFailed = true;
-          } else if (data?.data?.images?.[0]?.url) {
-            const img = data.data.images[0];
+          if (!result.success) {
+            const msg = result.error || '';
+            if (msg.includes('quota exceeded') || msg.includes('402') || result.rateLimited) slotFailed = true;
+          } else if (result.data?.data?.images?.[0]?.url) {
+            const img = result.data.data.images[0];
             const newHtml = insertInlineImage(updatedContent, 1, img.url, img.altText || target.title);
             if (newHtml) {
               updatedContent = newHtml;
@@ -205,24 +190,17 @@ export function ImageGenerationPanel({
           }
         }
 
-        // Delay between slot 1 and slot 2
-        if (!slotFailed && !slotStatus.slot2Filled && slotStatus.canPlaceSlot2) {
-          await new Promise(r => setTimeout(r, 3000));
-        }
-
         // Slot 2
         if (!slotFailed && !slotStatus.slot2Filled && slotStatus.canPlaceSlot2) {
           const ctx = getContextForSlot(updatedContent, 2, target.title, target.category);
-          const { data, error } = await supabase.functions.invoke('generate-vertex-image', {
-            body: {
-              slug: target.slug, title: target.title,
-              category: target.category || 'General', tags: target.tags || [],
-              model: inlineModel, purpose: 'inline', slotNumber: 2,
-              contextSnippet: ctx.nearbyText, nearbyHeading: ctx.nearbyHeading,
-            },
+          const result = await enqueueImageRequest({
+            slug: target.slug, title: target.title,
+            category: target.category || 'General', tags: target.tags || [],
+            model: inlineModel, purpose: 'inline', slotNumber: 2,
+            contextSnippet: ctx.nearbyText, nearbyHeading: ctx.nearbyHeading,
           });
-          if (!error && data?.data?.images?.[0]?.url) {
-            const img = data.data.images[0];
+          if (result.success && result.data?.data?.images?.[0]?.url) {
+            const img = result.data.data.images[0];
             const newHtml = insertInlineImage(updatedContent, 2, img.url, img.altText || target.title);
             if (newHtml) {
               updatedContent = newHtml;

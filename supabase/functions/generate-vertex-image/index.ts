@@ -1261,6 +1261,9 @@ serve(async (req) => {
       const selectedCoverModel = body.model || 'gemini-flash-image';
       const imagePrompt = buildCoverImagePrompt(body);
       console.log(`[generate-vertex-image] purpose=cover → ${selectedCoverModel}`);
+      if (selectedCoverModel === 'nova-canvas') {
+        return await generateViaNovaCanvas(body, slug, imagePrompt, adminClient, startMs, strict);
+      }
       if (selectedCoverModel === 'vertex-imagen' || isImagenAliasModel(selectedCoverModel)) {
         const aspectRatio = ASPECT_RATIOS[body.aspectRatio || '16:9'] || '16:9';
         return await generateViaImagen(body, slug, imagePrompt, 1, aspectRatio, adminClient, startMs, strict);
@@ -1286,6 +1289,9 @@ serve(async (req) => {
       const imagePrompt = buildInlineImagePrompt(body);
       const aspectRatio = '4:3';
       console.log(`[generate-vertex-image] ENFORCED: purpose=inline → ${selectedInlineModel}, slot=${body.slotNumber}`);
+      if (selectedInlineModel === 'nova-canvas') {
+        return await generateViaNovaCanvas({ ...body, purpose: 'inline' }, slug, imagePrompt, adminClient, startMs, strict);
+      }
       if (selectedInlineModel === 'vertex-imagen' || isImagenAliasModel(selectedInlineModel)) {
         return await generateViaImagen(body, slug, imagePrompt, 1, aspectRatio, adminClient, startMs, strict);
       }
@@ -1311,6 +1317,9 @@ serve(async (req) => {
     const aspectRatio = ASPECT_RATIOS[body.aspectRatio || '16:9'] || '16:9';
     const imagePrompt = buildCoverImagePrompt(body);
 
+    if (selectedModel === 'nova-canvas') {
+      return await generateViaNovaCanvas(body, slug, imagePrompt, adminClient, startMs, strict);
+    }
     if (selectedModel === 'vertex-imagen' || isImagenAliasModel(selectedModel)) {
       return await generateViaImagen(body, slug, imagePrompt, imageCount, aspectRatio, adminClient, startMs, strict);
     }

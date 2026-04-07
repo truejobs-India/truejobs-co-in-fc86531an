@@ -253,8 +253,8 @@ export function LongTailSeoPanel({ onRefresh }: LongTailSeoPanelProps) {
       duplicate_risk_reason: dupReason,
       thin_content_risk: !qualityResult.passed,
       thin_content_reason: qualityResult.reason,
-      noindex: !qualityResult.passed || dupScore > 70,
-      review_status: 'pending',
+      noindex: !qualityResult.passed || dupScore > 70 || data.sourceFreshnessValidation?.blockSafeReady,
+      review_status: data.sourceFreshnessValidation?.blockSafeReady ? 'freshness_blocked' : 'pending',
       stale_after: staleAfter,
       long_tail_metadata: {
         templateUsed: eff.template,
@@ -270,6 +270,7 @@ export function LongTailSeoPanel({ onRefresh }: LongTailSeoPanelProps) {
         qualityScore: qualityResult.score,
         qualityChecks: qualityResult.checks,
         modelUsed: aiModel,
+        sourceFreshness: data.sourceFreshnessValidation || null,
       },
     } as any).select('id').single();
 

@@ -83,6 +83,10 @@ export function computeMaxTokens(targetWordCount: number, modelId: string): numb
       // Nova Premier hard output limit is ~10000 tokens
       return Math.min(target * 2, 10000);
 
+    case 'nemotron-120b':
+      // Nemotron 120B via Bedrock — generous output budget
+      return Math.min(target * 2, 8192);
+
     case 'claude-sonnet':
     case 'claude':
       // Claude can do more but gets slow — cap at 8192 to avoid platform timeouts
@@ -136,7 +140,7 @@ export function buildWordCountInstruction(target: number, modelId?: string): str
   let instruction = `STRICT Word count target: ${target} words. Do NOT exceed ${max115} words. Do NOT write fewer than ${min85} words. Currently your output must be approximately ${target} words long.`;
 
   // Nova-specific reinforcement — these models tend to stop early
-  if (modelId === 'nova-pro' || modelId === 'nova-premier') {
+  if (modelId === 'nova-pro' || modelId === 'nova-premier' || modelId === 'nemotron-120b') {
     instruction += `\nYou have a strict budget. Your response MUST be approximately ${target} words. Do NOT stop writing early. Keep generating content until you reach ${min85} words at minimum.`;
   }
 
@@ -200,7 +204,7 @@ const CONTINUATION_ELIGIBLE_MODELS = new Set([
   'gemini-flash', 'gemini-pro', 'vertex-flash', 'vertex-pro',
   'vertex-3.1-pro', 'vertex-3-flash',
   'claude-sonnet', 'claude', 'gpt5', 'gpt5-mini', 'lovable-gemini', 'mistral',
-  'nova-pro', 'nova-premier',
+  'nova-pro', 'nova-premier', 'nemotron-120b',
 ]);
 
 /** Models where continuation is NOT useful — they stop early by design */

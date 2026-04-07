@@ -254,7 +254,7 @@ async function callLovableGemini(prompt: string, maxTokens: number): Promise<str
 // Unified dispatcher — NO silent fallback
 // ═══════════════════════════════════════════════════════════════
 
-const SUPPORTED_MODELS = ['gemini', 'gemini-flash', 'gemini-pro', 'mistral', 'claude-sonnet', 'claude', 'openai', 'gpt5', 'gpt5-mini', 'groq', 'lovable-gemini', 'vertex-flash', 'vertex-pro', 'vertex-3.1-pro', 'vertex-3-flash', 'vertex-3.1-flash-lite', 'nova-pro', 'nova-premier'];
+const SUPPORTED_MODELS = ['gemini', 'gemini-flash', 'gemini-pro', 'mistral', 'claude-sonnet', 'claude', 'openai', 'gpt5', 'gpt5-mini', 'groq', 'lovable-gemini', 'vertex-flash', 'vertex-pro', 'vertex-3.1-pro', 'vertex-3-flash', 'vertex-3.1-flash-lite', 'nova-pro', 'nova-premier', 'nemotron-120b'];
 
 async function callAI(aiModel: string, prompt: string, maxTokens: number, options?: { systemPrompt?: string }): Promise<{ raw: string; finishReason: string; actualProvider: string; actualModelId: string; usage?: { inputTokens?: number; outputTokens?: number } }> {
   const model = aiModel || 'gemini';
@@ -330,13 +330,13 @@ async function callAI(aiModel: string, prompt: string, maxTokens: number, option
       actualProvider = 'vertex-ai'; actualModelId = 'gemini-3.1-flash-lite-preview';
       break;
     }
-    case 'nova-pro': case 'nova-premier': {
+    case 'nova-pro': case 'nova-premier': case 'nemotron-120b': {
       const { callBedrockNovaWithMeta } = await import('../_shared/bedrock-nova.ts');
       // Pass maxTokens directly — already computed model-aware by computeMaxTokens at caller
       const result = await callBedrockNovaWithMeta(model, prompt, { maxTokens, temperature: 0.5 });
       resultJson = JSON.stringify({ __raw: result.text, __finishReason: result.stopReason });
       usage = result.usage;
-      actualProvider = 'aws-bedrock'; actualModelId = model === 'nova-pro' ? 'us.amazon.nova-pro-v1:0' : 'us.amazon.nova-premier-v1:0'; break;
+      actualProvider = 'aws-bedrock'; actualModelId = model; break;
     }
     default:
       throw new Error(`Unsupported AI model: "${model}". Supported models: ${SUPPORTED_MODELS.join(', ')}`);

@@ -31,7 +31,7 @@ const VERTEX_MODEL_MAP: Record<string, { vertexModel: string; timeoutMs: number 
   'vertex-3.1-flash-lite': { vertexModel: 'gemini-3.1-flash-lite-preview', timeoutMs: 60_000 },
 };
 
-const BEDROCK_MODELS = new Set(['nova-pro', 'nova-premier', 'mistral']);
+const BEDROCK_MODELS = new Set(['nova-pro', 'nova-premier', 'nemotron-120b', 'mistral']);
 
 function json(data: any, status = 200) {
   return new Response(JSON.stringify(data), {

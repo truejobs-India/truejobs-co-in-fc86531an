@@ -15,7 +15,7 @@ import {
   detectInlineSlots, insertInlineImage, getContextForSlot,
   buildArticleImagesMetadata,
 } from '@/lib/blogInlineImages';
-import { enqueueImageRequest, clearImageQueue, getImageQueueDepth } from '@/lib/imageRequestQueue';
+import { enqueueImageRequest, clearImageQueue } from '@/lib/imageRequestQueue';
 
 export interface ImageTarget {
   id: string;

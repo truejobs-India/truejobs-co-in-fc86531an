@@ -183,10 +183,10 @@ async function callAI(model: string, prompt: string): Promise<string> {
       return import('../_shared/vertex-ai.ts').then(m => m.callVertexGemini('gemini-3-flash-preview', prompt, 90_000));
     case 'vertex-3.1-flash-lite':
       return import('../_shared/vertex-ai.ts').then(m => m.callVertexGemini('gemini-3.1-flash-lite-preview', prompt, 60_000));
-    case 'nova-pro': case 'nova-premier':
+    case 'nova-pro': case 'nova-premier': case 'nemotron-120b':
       return import('../_shared/bedrock-nova.ts').then(m => m.callBedrockNova(model, prompt, { maxTokens: 8192, temperature: 0.4 }));
     default:
-      throw new Error(`Unsupported AI model: "${model}". Supported: gemini, mistral, claude-sonnet, openai, groq, lovable-gemini, vertex-flash, vertex-pro, vertex-3.1-pro, vertex-3-flash, vertex-3.1-flash-lite, nova-pro, nova-premier`);
+      throw new Error(`Unsupported AI model: "${model}". Supported: gemini, mistral, claude-sonnet, openai, groq, lovable-gemini, vertex-flash, vertex-pro, vertex-3.1-pro, vertex-3-flash, vertex-3.1-flash-lite, nova-pro, nova-premier, nemotron-120b`);
   }
 }
 

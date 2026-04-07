@@ -658,6 +658,7 @@ function resolveProviderInfo(model: string): { provider: string; apiModel: strin
     case 'gpt5-mini': return { provider: 'lovable-gateway', apiModel: 'openai/gpt-5-mini' };
     case 'nova-pro': return { provider: 'bedrock', apiModel: 'us.amazon.nova-pro-v1:0' };
     case 'nova-premier': return { provider: 'bedrock', apiModel: 'us.amazon.nova-premier-v1:0' };
+    case 'nemotron-120b': return { provider: 'bedrock', apiModel: 'nvidia.nemotron-super-3-120b-a12b' };
     default: return { provider: model, apiModel: model };
   }
 }
@@ -776,7 +777,8 @@ async function callAI(
       rawText = await callOpenAIRaw(prompt, 'openai/gpt-5-mini', timeout, maxTokens || 16384);
       return { data: tryParseJSON(rawText) };
     case 'nova-pro':
-    case 'nova-premier': {
+    case 'nova-premier':
+    case 'nemotron-120b': {
       const { callBedrockNova } = await import('../_shared/bedrock-nova.ts');
       rawText = await callBedrockNova(model, prompt, { maxTokens: maxTokens || 16384, temperature: 0.5, timeoutMs: timeout });
       return { data: tryParseJSON(rawText) };

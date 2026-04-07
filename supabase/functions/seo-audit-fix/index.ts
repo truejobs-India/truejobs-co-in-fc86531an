@@ -52,6 +52,8 @@ function resolveProvider(uiModelKey: string): ProviderRoute {
       return { provider: 'bedrock-nova', modelKey: 'nova-pro' };
     case 'nova-premier':
       return { provider: 'bedrock-nova', modelKey: 'nova-premier' };
+    case 'nemotron-120b':
+      return { provider: 'bedrock-nova', modelKey: 'nemotron-120b' };
     case 'mistral':
       return { provider: 'bedrock-mistral' };
     case 'gemini-pro':

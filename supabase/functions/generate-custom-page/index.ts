@@ -166,7 +166,7 @@ async function callAI(model: string, prompt: string, maxTokens = 8192): Promise<
       const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
       return callVertexGemini('gemini-3.1-flash-lite-preview', prompt, 60_000, { maxOutputTokens: maxTokens, temperature: 0.6 });
     }
-    case 'nova-pro': case 'nova-premier': {
+    case 'nova-pro': case 'nova-premier': case 'nemotron-120b': {
       const { callBedrockNova } = await import('../_shared/bedrock-nova.ts');
       const { computeMaxTokens } = await import('../_shared/word-count-enforcement.ts');
       const novaBudget = computeMaxTokens(Math.ceil(maxTokens / 2), model);

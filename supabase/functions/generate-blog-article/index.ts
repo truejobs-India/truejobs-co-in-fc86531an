@@ -505,6 +505,7 @@ function resolveProviderInfo(model: string): { provider: string; apiModel: strin
     case 'gpt5-mini': return { provider: 'openai', apiModel: 'gpt-4o' };
     case 'nova-pro': return { provider: 'bedrock', apiModel: 'us.amazon.nova-pro-v1:0' };
     case 'nova-premier': return { provider: 'bedrock', apiModel: 'us.amazon.nova-premier-v1:0' };
+    case 'nemotron-120b': return { provider: 'bedrock', apiModel: 'nvidia.nemotron-super-3-120b-a12b' };
     case 'sarvam-30b': return { provider: 'sarvam', apiModel: 'sarvam-30b' };
     case 'sarvam-105b': return { provider: 'sarvam', apiModel: 'sarvam-105b' };
     default: return { provider: model, apiModel: model };
@@ -597,7 +598,7 @@ async function callAI(model: string, prompt: string, wordLimit = 1500): Promise<
       const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
       return callVertexGemini('gemini-3.1-flash-lite-preview', GEMINI_SYSTEM_PROMPT + '\n\n' + prompt, 60_000, { maxOutputTokens: mt, temperature: 0.65 });
     }
-    case 'nova-pro': case 'nova-premier': {
+    case 'nova-pro': case 'nova-premier': case 'nemotron-120b': {
       const { callBedrockNova } = await import('../_shared/bedrock-nova.ts');
       return callBedrockNova(model, prompt, { maxTokens: mt, temperature: 0.5 });
     }

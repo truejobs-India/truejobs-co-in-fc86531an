@@ -15,7 +15,7 @@ const VERTEX_MODEL_MAP: Record<string, { vertexModel: string; timeoutMs: number 
   'vertex-3.1-flash-lite': { vertexModel: 'gemini-3.1-flash-lite-preview', timeoutMs: 60_000 },
 };
 
-const BEDROCK_MODELS = new Set(['nova-pro', 'nova-premier', 'mistral']);
+const BEDROCK_MODELS = new Set(['nova-pro', 'nova-premier', 'nemotron-120b', 'mistral']);
 const SARVAM_MODELS = new Set(['sarvam-30b', 'sarvam-105b']);
 
 const ALL_ALLOWED_MODELS = new Set([
@@ -82,7 +82,7 @@ async function callAI(
     });
   }
   // ── Route: Bedrock Nova ──
-  else if (aiModel === 'nova-pro' || aiModel === 'nova-premier') {
+  else if (aiModel === 'nova-pro' || aiModel === 'nova-premier' || aiModel === 'nemotron-120b') {
     console.log(`[ai-clean-drafts] routing to Bedrock Nova: ${aiModel}`);
     const { callBedrockNova } = await import('../_shared/bedrock-nova.ts');
     // Hindi safeguard fires automatically inside callBedrockNova

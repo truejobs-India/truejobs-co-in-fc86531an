@@ -1043,6 +1043,174 @@ async function generateViaImagen(
 }
 
 // ═══════════════════════════════════════════════════════════════
+// AMAZON NOVA CANVAS — via Bedrock InvokeModel API
+// ═══════════════════════════════════════════════════════════════
+
+const NOVA_CANVAS_MODEL_ID = 'amazon.nova-canvas-v1:0';
+
+const NOVA_CANVAS_DIMENSIONS: Record<string, { width: number; height: number }> = {
+  '1:1':  { width: 1024, height: 1024 },
+  '16:9': { width: 1280, height: 720 },
+  '4:3':  { width: 1024, height: 768 },
+  '3:4':  { width: 768,  height: 1024 },
+  '9:16': { width: 720,  height: 1280 },
+};
+
+async function generateViaNovaCanvas(
+  body: any,
+  slug: string,
+  imagePrompt: string,
+  adminClient: any,
+  startMs: number,
+  strict: boolean,
+): Promise<Response> {
+  const meta: StrictMeta = {
+    selectedModelKey: 'nova-canvas',
+    resolvedProvider: 'bedrock',
+    resolvedRuntimeModelId: NOVA_CANVAS_MODEL_ID,
+  };
+
+  // ── Resolve aspect ratio ──
+  const requestedRatio = body.aspectRatio || '16:9';
+  // Map ASPECT_RATIOS value (e.g. '3:2' → '3:4') then resolve to Nova Canvas dims
+  const mappedRatio = ASPECT_RATIOS[requestedRatio] || requestedRatio;
+  const dims = NOVA_CANVAS_DIMENSIONS[mappedRatio];
+  if (!dims) {
+    return buildStrictErrorResponse(400,
+      `Unsupported aspect ratio "${requestedRatio}" for Nova Canvas. Supported: ${Object.keys(NOVA_CANVAS_DIMENSIONS).join(', ')}`,
+      meta);
+  }
+
+  const purpose = body.purpose || 'cover';
+  const slotNumber = body.slotNumber;
+  console.log(`[nova-canvas] slug=${slug} purpose=${purpose} ratio=${mappedRatio} ${dims.width}x${dims.height}`);
+
+  // ── Truncate prompt to Nova Canvas 1024-char limit ──
+  const truncatedPrompt = imagePrompt.length > 1024 ? imagePrompt.substring(0, 1024) : imagePrompt;
+
+  const region = Deno.env.get('AWS_REGION') || 'us-east-1';
+  const host = `bedrock-runtime.${region}.amazonaws.com`;
+  const invokePayload = JSON.stringify({
+    taskType: 'TEXT_IMAGE',
+    textToImageParams: { text: truncatedPrompt },
+    imageGenerationConfig: {
+      width: dims.width,
+      height: dims.height,
+      quality: 'standard',
+      numberOfImages: 1,
+    },
+  });
+
+  // ── Retry loop: only 429 and 5xx ──
+  let resp: Response | null = null;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    if (attempt > 0) {
+      const delay = resp ? getRetryDelayFromResponse(resp, attempt) : RETRY_BASE_MS * Math.pow(2, attempt - 1);
+      console.log(`[nova-canvas] retryable error, retry ${attempt}/${MAX_RETRIES} after ${delay}ms`);
+      await new Promise(r => setTimeout(r, delay));
+    }
+
+    try {
+      resp = await Promise.race([
+        awsSigV4Fetch(host, `/model/${NOVA_CANVAS_MODEL_ID}/invoke`, invokePayload, region, 'bedrock'),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Nova Canvas timeout after 120s')), IMAGEN_TIMEOUT_MS),
+        ),
+      ]);
+    } catch (fetchErr: any) {
+      const isTimeout = fetchErr?.message?.includes('timeout');
+      console.error(`[nova-canvas] ${isTimeout ? 'timeout' : 'fetch error'}: ${fetchErr.message}`);
+      return buildStrictErrorResponse(isTimeout ? 504 : 502,
+        `Nova Canvas ${isTimeout ? 'timeout' : 'network error'}: ${fetchErr.message}. No fallback was used.`, meta);
+    }
+
+    // Non-retryable errors: fail immediately
+    if (resp.status === 400 || resp.status === 401 || resp.status === 403 || resp.status === 422) {
+      const errText = await resp.text().catch(() => 'unknown');
+      console.error(`[nova-canvas] non-retryable ${resp.status}: ${errText.substring(0, 300)}`);
+      return buildStrictErrorResponse(resp.status,
+        `Nova Canvas error ${resp.status}: ${errText.substring(0, 300)}. No fallback was used.`, meta);
+    }
+
+    // Retryable: 429 and 5xx
+    if (resp.status === 429 || resp.status >= 500) {
+      if (attempt === MAX_RETRIES) {
+        const errText = await resp.text().catch(() => 'unknown');
+        console.error(`[nova-canvas] exhausted ${MAX_RETRIES} retries on ${resp.status}`);
+        return buildStrictErrorResponse(resp.status,
+          `Nova Canvas ${resp.status} after ${MAX_RETRIES} retries: ${errText.substring(0, 200)}. No fallback was used.`, meta);
+      }
+      continue;
+    }
+
+    // Success or other status — break out
+    break;
+  }
+
+  if (!resp || !resp.ok) {
+    const errText = resp ? await resp.text().catch(() => 'unknown') : 'no response';
+    return buildStrictErrorResponse(resp?.status || 500,
+      `Nova Canvas error: ${errText.substring(0, 300)}. No fallback was used.`, meta);
+  }
+
+  // ── Parse response ──
+  const data = await resp.json();
+  if (data.error) {
+    console.error(`[nova-canvas] API returned error field: ${data.error}`);
+    return buildStrictErrorResponse(422, `Nova Canvas: ${data.error}. No fallback was used.`, meta);
+  }
+
+  const base64Image = data.images?.[0];
+  if (!base64Image) {
+    console.error('[nova-canvas] no image in response');
+    return buildStrictErrorResponse(422, 'Nova Canvas returned no image. Prompt may have been safety-filtered. No fallback was used.', meta);
+  }
+
+  // ── Upload to blog-assets using existing conventions ──
+  const isInline = purpose === 'inline';
+  const pathPrefix = isInline ? 'inline' : 'covers';
+  const slotSuffix = isInline && slotNumber ? `-slot${slotNumber}` : '';
+  const filePath = `${pathPrefix}/${slug}-nova-canvas${slotSuffix}.png`;
+
+  const uploadResult = await uploadGeneratedImage({
+    adminClient,
+    imageBase64: base64Image,
+    mimeType: 'image/png',
+    filePath,
+  });
+
+  if (uploadResult instanceof Response) return uploadResult;
+
+  const elapsed = Date.now() - startMs;
+  console.log(`[nova-canvas] completed in ${elapsed}ms, uploaded to ${filePath}`);
+
+  const successBody = addStrictMetadata({
+    success: true,
+    data: {
+      images: [{
+        url: uploadResult.publicUrl,
+        path: filePath,
+        altText: body.title || body.topic || `Blog image for ${slug}`,
+        mimeType: 'image/png',
+        width: dims.width,
+        height: dims.height,
+      }],
+      promptUsed: truncatedPrompt,
+    },
+    model: NOVA_CANVAS_MODEL_ID,
+    action: 'generate-image',
+    purpose,
+    slotNumber,
+    elapsedMs: elapsed,
+  }, { strict: true, ...meta });
+
+  return new Response(JSON.stringify(successBody), {
+    status: 200,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
 // HANDLER — routes based on body.purpose (enforced) or body.model (backward compat)
 // ═══════════════════════════════════════════════════════════════
 

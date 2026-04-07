@@ -1085,14 +1085,18 @@ async function generateViaNovaCanvas(
   const slotNumber = body.slotNumber;
   console.log(`[nova-canvas] slug=${slug} purpose=${purpose} ratio=${mappedRatio} ${dims.width}x${dims.height}`);
 
-  // ── Truncate prompt to Nova Canvas 1024-char limit ──
-  const truncatedPrompt = imagePrompt.length > 1024 ? imagePrompt.substring(0, 1024) : imagePrompt;
+  // ── Build Nova Canvas-optimized prompt (positive + negative, each ≤1024 chars) ──
+  const novaPrompt = buildNovaCanvasPrompt(body);
+  console.log(`[nova-canvas] prompt: ${novaPrompt.text.length} chars, negativeText: ${novaPrompt.negativeText.length} chars`);
 
   const region = Deno.env.get('AWS_REGION') || 'us-east-1';
   const host = `bedrock-runtime.${region}.amazonaws.com`;
   const invokePayload = JSON.stringify({
     taskType: 'TEXT_IMAGE',
-    textToImageParams: { text: truncatedPrompt },
+    textToImageParams: {
+      text: novaPrompt.text,
+      negativeText: novaPrompt.negativeText,
+    },
     imageGenerationConfig: {
       width: dims.width,
       height: dims.height,

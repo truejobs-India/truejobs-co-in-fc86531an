@@ -42,8 +42,8 @@ const KNOWN_IMAGE_MODEL_KEYS = new Set([
 
 const IMAGEN_TIMEOUT_MS = 120_000;
 const GATEWAY_TIMEOUT_MS = 120_000;
-const MAX_RETRIES = 3;
-const RETRY_BASE_MS = 2000; // 2s, 4s, 8s exponential backoff
+const MAX_RETRIES = 5;
+const RETRY_BASE_MS = 5000; // 5s, 10s, 20s, 40s, 80s exponential backoff
 
 // ── Strict mode helpers ──
 

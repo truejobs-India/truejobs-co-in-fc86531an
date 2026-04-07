@@ -15,9 +15,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { AiModelSelector } from '@/components/admin/AiModelSelector';
 import { TEMPLATE_OPTIONS, getTemplate, getTemplateLabel } from '@/lib/longTailTemplates';
-import { normalizeKeyword, findDuplicates, findBatchDuplicates, type TopicInput, type ExistingPage, type DuplicateMatch } from '@/lib/longTailKeywordNorm';
+import { findDuplicates, findBatchDuplicates, type TopicInput, type ExistingPage, type DuplicateMatch } from '@/lib/longTailKeywordNorm';
 import { runQualityGates, computeStaleAfter } from '@/lib/longTailQualityGates';
-import { calcLiveWordCount, calcReadingTime } from '@/lib/blogWordCount';
+import { calcLiveWordCount } from '@/lib/blogWordCount';
 import { normalizeBlogCategory } from '@/lib/blogCategoryUtils';
 import { ChevronDown, Sparkles, Loader2, Check, X, AlertTriangle, Search, RotateCcw, Square, ExternalLink, FileText } from 'lucide-react';
 

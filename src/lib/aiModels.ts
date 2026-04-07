@@ -357,6 +357,21 @@ export const AI_MODELS: readonly AiModelDef[] = [
     supportsContinuationPass: false,
   },
 
+  // ── NVIDIA Nemotron via AWS Bedrock ──
+  {
+    value: 'nemotron-120b',
+    label: 'NVIDIA Nemotron 120B (From API)',
+    desc: 'Your API · Agentic/reasoning · ~35s/page',
+    speed: 35,
+    source: 'external-api',
+    provider: 'Amazon',
+    capabilities: ['text', 'text-premium'],
+    recommendedMaxWords: 2000,
+    warnAboveWords: 1500,
+    longFormReliability: 'good',
+    supportsContinuationPass: true,
+  },
+
   // ── Sarvam AI models (Indian languages specialist) ──
   {
     value: 'sarvam-30b',
@@ -418,6 +433,7 @@ export const SEO_FIX_MODEL_VALUES = [
   'vertex-3.1-pro',
   'vertex-3-flash',
   'vertex-3.1-flash-lite',
+  'nemotron-120b',
 ] as const;
 
 const LEGACY_MODEL_ALIASES: Record<string, string> = {

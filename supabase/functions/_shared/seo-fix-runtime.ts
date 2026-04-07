@@ -73,6 +73,12 @@ const MODEL_POLICIES: Partial<Record<string, SeoFixModelPolicy>> = {
     throttleMs: 750,
     maxOutputTokens: 4096,
   },
+  'nemotron-120b': {
+    retryCount: 3,
+    baseRetryDelayMs: 2500,
+    throttleMs: 1000,
+    maxOutputTokens: 8192,
+  },
 };
 
 export function getSeoFixModelPolicy(aiModel: string): SeoFixModelPolicy {

@@ -110,6 +110,10 @@ export const NOVA_MODELS: Record<string, { modelId: string; label: string }> = {
     modelId: 'us.amazon.nova-premier-v1:0',
     label: 'Amazon Nova Premier',
   },
+  'nemotron-120b': {
+    modelId: 'nvidia.nemotron-super-3-120b-a12b',
+    label: 'NVIDIA Nemotron 120B',
+  },
 };
 
 // ── Hindi font safeguard for Nova ──

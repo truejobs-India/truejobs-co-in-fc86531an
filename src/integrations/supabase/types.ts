@@ -656,9 +656,13 @@ export type Database = {
           canonical_url: string | null
           category: string | null
           content: string
+          content_mode: string
           cover_image_url: string | null
           created_at: string
+          duplicate_risk_reason: string | null
+          duplicate_risk_score: number | null
           excerpt: string | null
+          fact_confidence: string | null
           faq_count: number | null
           faq_schema: Json | null
           featured_image_alt: string | null
@@ -670,16 +674,37 @@ export type Database = {
           last_bulk_fix_status: string | null
           last_bulk_fixed_at: string | null
           last_bulk_scanned_at: string | null
+          last_verified_at: string | null
+          long_tail_metadata: Json | null
           meta_description: string | null
           meta_title: string | null
+          needs_revalidation: boolean | null
+          noindex: boolean | null
+          official_source_label: string | null
+          official_source_url: string | null
+          page_template: string | null
+          primary_keyword: string | null
           published_at: string | null
           reading_time: number | null
           remaining_auto_fixable_count: number | null
+          review_status: string | null
           scheduled_at: string | null
           schema_json: string | null
+          search_intent: string | null
+          secondary_keywords: string[] | null
           slug: string
+          source_evidence: Json | null
+          stale_after: string | null
           status: string | null
           tags: string[] | null
+          target_category: string | null
+          target_department: string | null
+          target_exam: string | null
+          target_language: string | null
+          target_state: string | null
+          target_year: string | null
+          thin_content_reason: string | null
+          thin_content_risk: boolean | null
           title: string
           updated_at: string
           word_count: number | null
@@ -692,9 +717,13 @@ export type Database = {
           canonical_url?: string | null
           category?: string | null
           content: string
+          content_mode?: string
           cover_image_url?: string | null
           created_at?: string
+          duplicate_risk_reason?: string | null
+          duplicate_risk_score?: number | null
           excerpt?: string | null
+          fact_confidence?: string | null
           faq_count?: number | null
           faq_schema?: Json | null
           featured_image_alt?: string | null
@@ -706,16 +735,37 @@ export type Database = {
           last_bulk_fix_status?: string | null
           last_bulk_fixed_at?: string | null
           last_bulk_scanned_at?: string | null
+          last_verified_at?: string | null
+          long_tail_metadata?: Json | null
           meta_description?: string | null
           meta_title?: string | null
+          needs_revalidation?: boolean | null
+          noindex?: boolean | null
+          official_source_label?: string | null
+          official_source_url?: string | null
+          page_template?: string | null
+          primary_keyword?: string | null
           published_at?: string | null
           reading_time?: number | null
           remaining_auto_fixable_count?: number | null
+          review_status?: string | null
           scheduled_at?: string | null
           schema_json?: string | null
+          search_intent?: string | null
+          secondary_keywords?: string[] | null
           slug: string
+          source_evidence?: Json | null
+          stale_after?: string | null
           status?: string | null
           tags?: string[] | null
+          target_category?: string | null
+          target_department?: string | null
+          target_exam?: string | null
+          target_language?: string | null
+          target_state?: string | null
+          target_year?: string | null
+          thin_content_reason?: string | null
+          thin_content_risk?: boolean | null
           title: string
           updated_at?: string
           word_count?: number | null
@@ -728,9 +778,13 @@ export type Database = {
           canonical_url?: string | null
           category?: string | null
           content?: string
+          content_mode?: string
           cover_image_url?: string | null
           created_at?: string
+          duplicate_risk_reason?: string | null
+          duplicate_risk_score?: number | null
           excerpt?: string | null
+          fact_confidence?: string | null
           faq_count?: number | null
           faq_schema?: Json | null
           featured_image_alt?: string | null
@@ -742,16 +796,37 @@ export type Database = {
           last_bulk_fix_status?: string | null
           last_bulk_fixed_at?: string | null
           last_bulk_scanned_at?: string | null
+          last_verified_at?: string | null
+          long_tail_metadata?: Json | null
           meta_description?: string | null
           meta_title?: string | null
+          needs_revalidation?: boolean | null
+          noindex?: boolean | null
+          official_source_label?: string | null
+          official_source_url?: string | null
+          page_template?: string | null
+          primary_keyword?: string | null
           published_at?: string | null
           reading_time?: number | null
           remaining_auto_fixable_count?: number | null
+          review_status?: string | null
           scheduled_at?: string | null
           schema_json?: string | null
+          search_intent?: string | null
+          secondary_keywords?: string[] | null
           slug?: string
+          source_evidence?: Json | null
+          stale_after?: string | null
           status?: string | null
           tags?: string[] | null
+          target_category?: string | null
+          target_department?: string | null
+          target_exam?: string | null
+          target_language?: string | null
+          target_state?: string | null
+          target_year?: string | null
+          thin_content_reason?: string | null
+          thin_content_risk?: boolean | null
           title?: string
           updated_at?: string
           word_count?: number | null

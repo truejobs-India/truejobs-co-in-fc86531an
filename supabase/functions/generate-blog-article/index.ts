@@ -733,6 +733,42 @@ Deno.serve(async (req) => {
     console.log(`[generate-blog-article] model=${useModel} outputLanguage=${outputLanguage} resolvedLang=${resolvedLang} autoDetected=${autoDetected} topicPreview="${topic.substring(0, 60)}"`);
 
     const wordTarget = Math.min(Math.max(Number(targetWordCount) || 1500, 800), 3000);
+
+    // ═══════════════════════════════════════════════════════════════
+    // Pre-generation Source Freshness Validation
+    // ═══════════════════════════════════════════════════════════════
+    const sourceFreshness = validateSourceFreshness(topic, contentMode, pageTemplate, targetYear, targetExam, officialSourceUrl);
+
+    console.log(JSON.stringify({
+      tag: '[SOURCE_FRESHNESS]',
+      model: useModel,
+      contentMode: contentMode || 'article',
+      pageTemplate: pageTemplate || null,
+      targetYear: targetYear || null,
+      targetExam: targetExam || null,
+      hasOfficialSource: !!officialSourceUrl,
+      warnings: sourceFreshness.warnings,
+      riskLevel: sourceFreshness.riskLevel,
+      hedgingInjected: sourceFreshness.hedgingRequired,
+      reducedSpecificity: sourceFreshness.reduceFactualSpecificity,
+      blockSafeReady: sourceFreshness.blockSafeReady,
+      topicPreview: topic.substring(0, 80),
+    }));
+
+    // Build freshness context block if needed
+    const now = new Date();
+    const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const todayStr = `${months[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}`;
+    const currentYear = now.getFullYear().toString();
+
+    let freshnessBlock = '';
+    if (sourceFreshness.hedgingRequired || sourceFreshness.reduceFactualSpecificity) {
+      freshnessBlock = `\nTODAY'S DATE: ${todayStr}\nCURRENT YEAR: ${currentYear}\n\nFRESHNESS SAFETY (MANDATORY):\n- Distinguish CONFIRMED official facts vs EXPECTED/HISTORICAL vs NOT YET ANNOUNCED\n- If official notification for current cycle is not confirmed: write "official notification is awaited" / "आधिकारिक अधिसूचना अभी जारी नहीं हुई है"\n- NEVER fabricate: application windows, exam dates, result dates, vacancy counts, cutoff marks\n- For trend-based info, prefix with "as per previous year trends" / "पिछले वर्ष के अनुसार"\n- ALL years must be consistent with the title year\n- When mentioning previous-cycle data, explicitly label it as previous cycle\n`;
+      if (sourceFreshness.reduceFactualSpecificity) {
+        freshnessBlock += `\nREDUCED SPECIFICITY MODE: Source context for this topic is weak.\nDo NOT include specific dates, vacancy numbers, or deadlines unless the topic text itself provides them.\nUse "awaited" / "not yet announced" / "based on previous trends" for all time-sensitive claims.\n`;
+      }
+    }
+
     let prompt: string;
 
     if (useModel === 'gemini' || useModel === 'mistral') {

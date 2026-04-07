@@ -697,8 +697,101 @@ function extractFieldsFromBrokenJson(json: string): Record<string, any> | null {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// Main handler
+// Pre-Generation Source Freshness Validation
 // ═══════════════════════════════════════════════════════════════
+
+interface SourceFreshnessResult {
+  warnings: string[];
+  riskLevel: 'none' | 'low' | 'medium' | 'high';
+  hedgingRequired: boolean;
+  reduceFactualSpecificity: boolean;
+  blockSafeReady: boolean;
+}
+
+const TIME_SENSITIVE_TEMPLATES = ['dates', 'admit-card', 'result', 'answer-key', 'application-fee', 'selection-process'];
+const TIME_SENSITIVE_TOKENS = [
+  'notification', 'last date', 'application form', 'admit card', 'result date',
+  'answer key', 'counseling', 'vacancy', 'vacancies', 'cutoff', 'cut off',
+  'अधिसूचना', 'आखिरी तारीख', 'प्रवेश पत्र', 'रिजल्ट', 'वैकेंसी', 'आवेदन',
+];
+const KNOWN_EXAM_PATTERNS = [
+  'ssc cgl', 'ssc chsl', 'ssc gd', 'ssc mts', 'ssc je', 'ssc stenographer',
+  'upsc cse', 'upsc nda', 'upsc cds', 'upsc capf', 'upsc ese',
+  'ibps po', 'ibps clerk', 'ibps so', 'ibps rrb', 'sbi po', 'sbi clerk',
+  'rbi grade b', 'ctet', 'railway group d', 'rrb ntpc', 'rrb je',
+  'up police', 'up si', 'bihar police', 'bpsc', 'uppsc', 'mppsc', 'rpsc',
+  'army agniveer', 'navy agniveer', 'airforce agniveer',
+];
+
+function validateSourceFreshness(
+  topic: string,
+  contentMode: string | undefined,
+  pageTemplate: string | undefined,
+  targetYear: string | undefined,
+  targetExam: string | undefined,
+  officialSourceUrl: string | undefined
+): SourceFreshnessResult {
+  const warnings: string[] = [];
+  let hedgingRequired = false;
+  let reduceFactualSpecificity = false;
+  let blockSafeReady = false;
+
+  const hasSource = !!officialSourceUrl && officialSourceUrl.trim().length > 5;
+  const runtimeYear = new Date().getFullYear();
+  const topicLower = topic.toLowerCase();
+
+  // 1. Time-sensitive template without source URL
+  if (pageTemplate && TIME_SENSITIVE_TEMPLATES.includes(pageTemplate) && !hasSource) {
+    warnings.push(`Time-sensitive template "${pageTemplate}" without official source URL`);
+    hedgingRequired = true;
+  }
+
+  // 2. Stale target year
+  if (targetYear) {
+    const yr = parseInt(targetYear, 10);
+    if (!isNaN(yr) && yr < runtimeYear) {
+      warnings.push(`Target year ${targetYear} is in the past (current: ${runtimeYear})`);
+      hedgingRequired = true;
+      reduceFactualSpecificity = true;
+    }
+  }
+
+  // 3. Time-sensitive topic keywords without source
+  const hasTimeSensitiveToken = TIME_SENSITIVE_TOKENS.some(t => topicLower.includes(t));
+  if (hasTimeSensitiveToken && !hasSource) {
+    warnings.push('Topic contains time-sensitive keywords but no official source URL provided');
+    reduceFactualSpecificity = true;
+    hedgingRequired = true;
+  }
+
+  // 4. Exam-specific topic without official source
+  const hasExamMatch = !!targetExam || KNOWN_EXAM_PATTERNS.some(e => topicLower.includes(e));
+  if (hasExamMatch && !hasSource) {
+    if (!warnings.some(w => w.includes('time-sensitive'))) {
+      warnings.push('Exam-specific topic without official source URL');
+    }
+    hedgingRequired = true;
+  }
+
+  // 5. Long-tail mode with weak context
+  if (contentMode === 'long_tail_seo' && pageTemplate && TIME_SENSITIVE_TEMPLATES.includes(pageTemplate) && !hasSource && !targetYear) {
+    warnings.push('Long-tail SEO with time-sensitive template but no source URL and no target year');
+    blockSafeReady = true;
+  }
+
+  // 6. Risk level calculation
+  let riskLevel: 'none' | 'low' | 'medium' | 'high' = 'none';
+  if (blockSafeReady || warnings.length >= 2) {
+    riskLevel = 'high';
+    blockSafeReady = true;
+  } else if (warnings.length === 1) {
+    riskLevel = 'medium';
+  }
+
+  return { warnings, riskLevel, hedgingRequired, reduceFactualSpecificity, blockSafeReady };
+}
+
+
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });

@@ -16,6 +16,7 @@ const VERTEX_MODEL_MAP: Record<string, { vertexModel: string; timeoutMs: number 
 };
 
 const BEDROCK_MODELS = new Set(['nova-pro', 'nova-premier', 'nemotron-120b', 'mistral']);
+const AZURE_OPENAI_MODELS = new Set(['azure-gpt4o-mini']);
 const SARVAM_MODELS = new Set(['sarvam-30b', 'sarvam-105b']);
 
 const ALL_ALLOWED_MODELS = new Set([

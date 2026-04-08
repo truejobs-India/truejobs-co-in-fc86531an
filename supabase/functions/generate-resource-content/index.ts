@@ -146,6 +146,11 @@ async function callAI(model: string, prompt: string): Promise<string> {
     case 'nemotron-120b':
       return callNova('nemotron-120b', prompt);
 
+    case 'azure-gpt4o-mini': {
+      const { callAzureOpenAI } = await import('../_shared/azure-openai.ts');
+      return callAzureOpenAI(prompt, { maxTokens: 4096, temperature: 0.5 });
+    }
+
     // ── Lovable AI Gateway models (platform-provided, no user key needed) ──
     case 'gemini-pro':
       return callLovableGateway(prompt, 'google/gemini-2.5-pro');

@@ -45,7 +45,7 @@ type ProviderRoute =
   | { provider: 'vertex-ai'; vertexModel: string }
   | { provider: 'bedrock-nova'; modelKey: string }
   | { provider: 'bedrock-mistral' }
-  | { provider: 'azure-openai' };
+  | { provider: 'azure-openai'; azureModel?: string };
 
 function resolveProvider(uiModelKey: string): ProviderRoute {
   switch (uiModelKey) {
@@ -57,6 +57,8 @@ function resolveProvider(uiModelKey: string): ProviderRoute {
       return { provider: 'bedrock-nova', modelKey: 'nemotron-120b' };
     case 'azure-gpt4o-mini':
       return { provider: 'azure-openai' };
+    case 'azure-gpt41-mini':
+      return { provider: 'azure-openai', azureModel: 'azure-gpt41-mini' };
     case 'mistral':
       return { provider: 'bedrock-mistral' };
     case 'gemini-pro':
@@ -227,7 +229,8 @@ async function callAI(route: ProviderRoute, system: string, user: string, rawMod
   } else if (route.provider === 'bedrock-nova') {
     return callBedrockNovaForSeo(route.modelKey, system, user, modelPolicy.maxOutputTokens);
   } else if (route.provider === 'azure-openai') {
-    return callAzureOpenAIForSeo(system, user, modelPolicy.maxOutputTokens);
+    const useGPT41 = (route as any).azureModel === 'azure-gpt41-mini';
+    return callAzureOpenAIForSeo(system, user, modelPolicy.maxOutputTokens, useGPT41);
   } else {
     return callBedrockMistralForSeo(system, user, modelPolicy.maxOutputTokens);
   }
@@ -327,7 +330,17 @@ async function callBedrockNovaForSeo(modelKey: string, system: string, user: str
   return { text, attemptsMade: 1, retryEvents: [] };
 }
 
-async function callAzureOpenAIForSeo(system: string, user: string, maxTokens: number): Promise<AiCallResult> {
+async function callAzureOpenAIForSeo(system: string, user: string, maxTokens: number, useGPT41Mini = false): Promise<AiCallResult> {
+  if (useGPT41Mini) {
+    const { callAzureGPT41Mini } = await import('../_shared/azure-openai.ts');
+    const text = await callAzureGPT41Mini(user, {
+      maxTokens,
+      temperature: 0.3,
+      timeoutMs: 120_000,
+      systemPrompt: system,
+    });
+    return { text, attemptsMade: 1, retryEvents: [] };
+  }
   const { callAzureOpenAI } = await import('../_shared/azure-openai.ts');
   const text = await callAzureOpenAI(user, {
     maxTokens,
@@ -490,7 +503,7 @@ async function generateFixesForPage(page: FixRequest, route: ProviderRoute, rawM
     : route.provider === 'bedrock-nova'
       ? (route as any).modelKey
     : route.provider === 'azure-openai'
-      ? 'azure-gpt4o-mini'
+      ? ((route as any).azureModel || 'azure-gpt4o-mini')
       : 'mistral';
   console.log(`[SEO-FIX] ${page.slug}: ${parsed.length} fixes via ${providerLabel}, truncated=${truncated}`);
 

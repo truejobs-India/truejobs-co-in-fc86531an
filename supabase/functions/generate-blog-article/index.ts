@@ -507,6 +507,7 @@ function resolveProviderInfo(model: string): { provider: string; apiModel: strin
     case 'nova-premier': return { provider: 'bedrock', apiModel: 'us.amazon.nova-premier-v1:0' };
     case 'nemotron-120b': return { provider: 'bedrock', apiModel: 'nvidia.nemotron-super-3-120b-a12b' };
     case 'azure-gpt4o-mini': return { provider: 'azure-openai', apiModel: 'gpt-4o-mini' };
+    case 'azure-gpt41-mini': return { provider: 'azure-openai', apiModel: 'gpt-4.1-mini' };
     case 'sarvam-30b': return { provider: 'sarvam', apiModel: 'sarvam-30b' };
     case 'sarvam-105b': return { provider: 'sarvam', apiModel: 'sarvam-105b' };
     default: return { provider: model, apiModel: model };
@@ -606,6 +607,10 @@ async function callAI(model: string, prompt: string, wordLimit = 1500): Promise<
     case 'azure-gpt4o-mini': {
       const { callAzureOpenAI } = await import('../_shared/azure-openai.ts');
       return callAzureOpenAI(prompt, { maxTokens: mt, temperature: 0.5 });
+    }
+    case 'azure-gpt41-mini': {
+      const { callAzureGPT41Mini } = await import('../_shared/azure-openai.ts');
+      return callAzureGPT41Mini(prompt, { maxTokens: mt, temperature: 0.5 });
     }
     case 'sarvam-30b': case 'sarvam-105b': {
       return callSarvamChat(model, prompt, mt);

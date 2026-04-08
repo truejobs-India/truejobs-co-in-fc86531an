@@ -372,11 +372,24 @@ export const AI_MODELS: readonly AiModelDef[] = [
     supportsContinuationPass: true,
   },
 
-  // ── Azure OpenAI (user-deployed gpt-4o-mini) ──
+  // ── Azure OpenAI (user-deployed models) ──
   {
     value: 'azure-gpt4o-mini',
     label: 'Azure GPT-4o Mini (From API)',
     desc: 'Your API · Fast & efficient · ~15s/page',
+    speed: 15,
+    source: 'external-api',
+    provider: 'Azure OpenAI',
+    capabilities: ['text', 'text-premium'],
+    recommendedMaxWords: 2000,
+    warnAboveWords: 1500,
+    longFormReliability: 'good',
+    supportsContinuationPass: true,
+  },
+  {
+    value: 'azure-gpt41-mini',
+    label: 'Azure GPT-4.1 Mini (From API)',
+    desc: 'Your API · Strong article writing · ~15s/page',
     speed: 15,
     source: 'external-api',
     provider: 'Azure OpenAI',
@@ -450,6 +463,7 @@ export const SEO_FIX_MODEL_VALUES = [
   'vertex-3.1-flash-lite',
   'nemotron-120b',
   'azure-gpt4o-mini',
+  'azure-gpt41-mini',
 ] as const;
 
 const LEGACY_MODEL_ALIASES: Record<string, string> = {

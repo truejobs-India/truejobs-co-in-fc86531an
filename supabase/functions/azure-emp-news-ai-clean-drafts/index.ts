@@ -16,7 +16,7 @@ const VERTEX_MODEL_MAP: Record<string, { vertexModel: string; timeoutMs: number 
 };
 
 const BEDROCK_MODELS = new Set(['nova-pro', 'nova-premier', 'nemotron-120b', 'mistral']);
-const AZURE_OPENAI_MODELS = new Set(['azure-gpt4o-mini']);
+const AZURE_OPENAI_MODELS = new Set(['azure-gpt4o-mini', 'azure-gpt41-mini']);
 const SARVAM_MODELS = new Set(['sarvam-30b', 'sarvam-105b']);
 
 const ALL_ALLOWED_MODELS = new Set([
@@ -116,8 +116,13 @@ async function callAI(
   // ── Route: Azure OpenAI ──
   else if (AZURE_OPENAI_MODELS.has(aiModel)) {
     console.log(`[ai-clean-drafts] routing to Azure OpenAI: ${aiModel}`);
-    const { callAzureOpenAI } = await import('../_shared/azure-openai.ts');
-    rawText = await callAzureOpenAI(fullPrompt, { maxTokens: 4096, temperature: 0.3, timeoutMs: 120_000 });
+    if (aiModel === 'azure-gpt41-mini') {
+      const { callAzureGPT41Mini } = await import('../_shared/azure-openai.ts');
+      rawText = await callAzureGPT41Mini(fullPrompt, { maxTokens: 4096, temperature: 0.3, timeoutMs: 120_000 });
+    } else {
+      const { callAzureOpenAI } = await import('../_shared/azure-openai.ts');
+      rawText = await callAzureOpenAI(fullPrompt, { maxTokens: 4096, temperature: 0.3, timeoutMs: 120_000 });
+    }
   }
   // ── Route: Sarvam AI ──
   else if (SARVAM_MODELS.has(aiModel)) {

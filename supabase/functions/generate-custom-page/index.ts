@@ -176,6 +176,10 @@ async function callAI(model: string, prompt: string, maxTokens = 8192): Promise<
       const { callAzureOpenAI } = await import('../_shared/azure-openai.ts');
       return callAzureOpenAI(prompt, { maxTokens, temperature: 0.6 });
     }
+    case 'azure-gpt41-mini': {
+      const { callAzureGPT41Mini } = await import('../_shared/azure-openai.ts');
+      return callAzureGPT41Mini(prompt, { maxTokens, temperature: 0.6 });
+    }
     default:
       throw new Error(`Unsupported AI model: "${model}". Select a valid model.`);
   }

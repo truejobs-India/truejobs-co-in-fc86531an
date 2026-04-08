@@ -327,6 +327,17 @@ async function callBedrockNovaForSeo(modelKey: string, system: string, user: str
   return { text, attemptsMade: 1, retryEvents: [] };
 }
 
+async function callAzureOpenAIForSeo(system: string, user: string, maxTokens: number): Promise<AiCallResult> {
+  const { callAzureOpenAI } = await import('../_shared/azure-openai.ts');
+  const text = await callAzureOpenAI(user, {
+    maxTokens,
+    temperature: 0.3,
+    timeoutMs: 120_000,
+    systemPrompt: system,
+  });
+  return { text, attemptsMade: 1, retryEvents: [] };
+}
+
 async function callBedrockMistralForSeo(system: string, user: string, maxTokens: number): Promise<AiCallResult> {
   const { awsSigV4Fetch } = await import('../_shared/bedrock-nova.ts');
   const modelId = 'mistral.mistral-large-2407-v1:0';
@@ -478,6 +489,8 @@ async function generateFixesForPage(page: FixRequest, route: ProviderRoute, rawM
       ? (route as any).vertexModel
     : route.provider === 'bedrock-nova'
       ? (route as any).modelKey
+    : route.provider === 'azure-openai'
+      ? 'azure-gpt4o-mini'
       : 'mistral';
   console.log(`[SEO-FIX] ${page.slug}: ${parsed.length} fixes via ${providerLabel}, truncated=${truncated}`);
 

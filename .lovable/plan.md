@@ -1,79 +1,47 @@
 
 
-# FLUX-Only Strict Realism Prompt Layer
+# Fix: Literal `\n` Artifacts Leaking Into Blog Article Rendering
 
 ## Root Cause
-FLUX outputs drift toward beautified, stereotyped stock-photo aesthetics because it receives the same `BLOG_IMAGE_MANDATORY_RULES` as all other models — which includes directives like "very fair complexion, beautiful and handsome features, polished, aspirational, premium look" (rule 10). These work fine for Gemini/Imagen but cause FLUX to over-beautify.
 
-## Architecture
+The AI content generator outputs HTML with literal newline characters embedded inside tags — for example `<p>\n</p>`, `<p> \n\n</p>`, `<li><p>\n</p></li>`. These are stored as-is in the `content` column. 657 out of 659 published articles are affected.
 
-The prompt flows like this today:
+The existing cleanup on line 173 of `BlogPost.tsx` only handles `\\n` (backslash-n escape sequences), not actual newline characters inside HTML tags. Since `isRichHTML` detects `<p>` tags and takes the HTML-passthrough branch, the newline-only paragraphs render as visible whitespace artifacts.
 
-```text
-buildCoverImagePrompt(body) → imagePrompt → generateViaAzureFlux() → callAzureFlux(imagePrompt)
-```
+## Fix Strategy
 
-All 3 FLUX call sites (cover, inline, backward-compat) in `generate-vertex-image/index.ts` pass `imagePrompt` directly. The fix adds a FLUX-only prompt transformation at a single point.
+Two-layer approach: fix rendering (immediate) + fix generation (prevent future articles from having the same issue).
 
-## Changes
+### 1. Rendering fix — `src/pages/blog/BlogPost.tsx` → `renderContent()`
 
-### File 1: `supabase/functions/_shared/blog-image-prompt-policy.ts`
+After line 174, add HTML cleanup that:
+- Removes empty `<p>` tags that contain only whitespace/newlines: `<p>\n</p>`, `<p> \n\n</p>`, `<p></p>`
+- Removes empty `<li><p>\n</p></li>` list items (these create blank bullet points)
+- Collapses excessive whitespace between HTML tags
+- Does NOT touch `<p>` tags that have actual text content
 
-Add a new exported constant `FLUX_STRICT_REALISM_RULES` and a function `applyFluxRealismLayer(prompt, userPrompt?)`.
+This runs before the `isRichHTML` check so both branches benefit.
 
-The function:
-- Appends FLUX-specific strict realism directives that **override** conflicting rules from the shared block (e.g., replaces "very fair, beautiful, polished, aspirational" with "authentic, natural, ordinary student")
-- Adds negative constraints block (no bindi, no tilak, no heavy makeup, no glamour, no stock-photo aesthetic, no heavy gold jewellery, etc.)
-- Preserves explicit user intent: if the user's custom prompt contains keywords like "traditional", "bridal", "festive", "bindi", "tilak", "makeup", "jewellery", those negative constraints are softened
-- Keeps the prompt concise and well-structured
+### 2. Generation fix — `supabase/functions/generate-blog-article/index.ts`
 
-### File 2: `supabase/functions/generate-vertex-image/index.ts`
+Add a post-processing sanitization step after extracting the `content` field from the AI response. Before saving to the database, strip:
+- `<p>` tags containing only whitespace
+- Empty `<li>` wrappers
+- Excessive whitespace between tags
 
-In `generateViaAzureFlux()` (line ~1283), wrap `imagePrompt` through `applyFluxRealismLayer()` before passing to `callAzureFlux()`. This is the single insertion point — all 3 routing branches (cover, inline, backward-compat) call this same function.
+This prevents future articles from storing the artifacts.
 
-No other model's prompt path is touched.
+### 3. Also patch `EnrichedSection.tsx`
 
-## FLUX-Only Prompt Content (condensed)
+The HTML branch uses `dangerouslySetInnerHTML` without stripping empty paragraphs — add the same cleanup there.
 
-**Positive directives:**
-- Documentary-style candid editorial photography
-- Authentic real-life Indian environments
-- Ordinary college-going students/aspirants, not fashion models
-- Age-appropriate appearance, grounded everyday clothing
-- Natural skin texture, realistic facial proportions, natural expressions
-- Realistic classroom/study/exam-prep environments
-- Natural lighting, believable imperfections
-
-**Negative constraints (FLUX-only):**
-- NO bindi, tilak, heavy makeup, bright lipstick, glamour styling
-- NO heavy gold/bridal/ornate jewellery (subtle casual jewellery OK)
-- NO stock-photo aesthetic, beauty-shot styling, artificial face smoothing
-- NO fashion-model look, surreal symmetry, over-retouched portraits
-- NO nonsense text on blackboards, books, screens, walls
-- NO decorative irrelevant symbolism
-
-**User-intent preservation:** If user prompt contains "traditional", "bridal", "festive", "bindi", "tilak", "makeup", or "jewellery", the negative constraints for those specific elements are excluded.
-
-## Example Before/After
-
-**Example 1 — Cover image for "SSC CGL 2026 Preparation Tips":**
-
-Before (current): `Create a clean, professional photorealistic editorial image for a blog article titled "SSC CGL 2026 Preparation Tips" about Government Jobs. ... depict young Indian men and young Indian women with youthful appearance, very fair complexion, beautiful and handsome features, polished, aspirational, premium look...`
-
-After (with FLUX layer): Same base prompt + `FLUX-SPECIFIC REALISM DIRECTIVES: Documentary-style candid editorial photography. Depict authentic ordinary Indian college-going students/aspirants with natural appearance, realistic skin texture, natural facial proportions, grounded everyday student clothing. Realistic study environment with believable books and materials. FLUX NEGATIVE CONSTRAINTS: Do NOT add bindi, tilak, heavy makeup, bright lipstick, glamour styling, heavy gold jewellery, bridal or ornate jewellery, stock-photo beauty aesthetic, artificial face smoothing, fashion-model look, nonsense text on any surface.`
-
-**Example 2 — Inline image for "Best Books for UPSC Prelims":**
-
-Before: `Create a contextual photorealistic editorial image for a section about "Recommended Study Materials"... very fair complexion, beautiful and handsome features...`
-
-After: Same + FLUX realism layer appended, pushing toward a natural student browsing books at a desk with realistic environment.
-
-## Files Changed Summary
+## Detailed Changes
 
 | File | Change |
 |---|---|
-| `supabase/functions/_shared/blog-image-prompt-policy.ts` | Add `FLUX_STRICT_REALISM_RULES` constant + `applyFluxRealismLayer()` function |
-| `supabase/functions/generate-vertex-image/index.ts` | Import `applyFluxRealismLayer`, call it in `generateViaAzureFlux()` (~1 line change) |
+| `src/pages/blog/BlogPost.tsx` | Add HTML sanitization regex after line 174 to strip empty `<p>`, empty `<li>` wrappers, and inter-tag whitespace |
+| `supabase/functions/generate-blog-article/index.ts` | Add `sanitizeGeneratedHtml()` helper; apply it to extracted content before DB insert |
+| `src/components/govt/EnrichedSection.tsx` | Apply same empty-tag cleanup in the HTML rendering branch |
 
-No other files touched. No routing changes. No selector changes. No storage changes.
+No routing, storage, model selection, or other systems are affected.
 

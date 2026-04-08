@@ -116,6 +116,14 @@ serve(async (req: Request) => {
           status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
+    } else if (route.provider === 'azure-openai') {
+      const ep = Deno.env.get('AZURE_OPENAI_ENDPOINT');
+      const ak = Deno.env.get('AZURE_OPENAI_API_KEY');
+      if (!ep || !ak) {
+        return new Response(JSON.stringify({ error: 'Azure OpenAI credentials not configured' }), {
+          status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
     } else {
       const ak = Deno.env.get('AWS_ACCESS_KEY_ID');
       const sk = Deno.env.get('AWS_SECRET_ACCESS_KEY');
@@ -218,6 +226,8 @@ async function callAI(route: ProviderRoute, system: string, user: string, rawMod
     return callVertexForSeo(route.vertexModel, system, user, modelPolicy.maxOutputTokens);
   } else if (route.provider === 'bedrock-nova') {
     return callBedrockNovaForSeo(route.modelKey, system, user, modelPolicy.maxOutputTokens);
+  } else if (route.provider === 'azure-openai') {
+    return callAzureOpenAIForSeo(system, user, modelPolicy.maxOutputTokens);
   } else {
     return callBedrockMistralForSeo(system, user, modelPolicy.maxOutputTokens);
   }

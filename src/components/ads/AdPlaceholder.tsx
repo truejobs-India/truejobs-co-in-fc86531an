@@ -382,7 +382,7 @@ export function AdPlaceholder({ variant, className = '' }: AdPlaceholderProps) {
       className={`${config.wrapper} ${className}`}
       style={
         isLoading
-          ? { minHeight: `${config.filledMinHeight}px`, opacity: 0 }
+          ? { minHeight: `${config.filledMinHeight}px` }
           : isFilled
             ? { minHeight: `${config.filledMinHeight}px` }
             : undefined

@@ -228,6 +228,16 @@ async function callAI(
     }
   }
 
+  if (AZURE_OPENAI_MODELS.has(modelKey)) {
+    const fullPrompt = `${systemPrompt}\n\n${userPrompt}\n\nReturn valid JSON matching this schema:\n${JSON.stringify(toolDef.parameters, null, 2)}`;
+    console.log(`[intake-ai-classify] routing to Azure OpenAI: ${modelKey}`);
+    const { callAzureOpenAI } = await import('../_shared/azure-openai.ts');
+    const text = await callAzureOpenAI(fullPrompt, { maxTokens: 8192, temperature: 0.3 });
+    const m = text.match(/\{[\s\S]*\}/);
+    if (m) return JSON.parse(m[0]);
+    throw new Error('Azure OpenAI did not return valid JSON');
+  }
+
   const gatewayModelId = GATEWAY_MODEL_MAP[modelKey] || DEFAULT_MODEL;
   console.log(`[intake-ai-classify] routing to AI Gateway: ${gatewayModelId}`);
 

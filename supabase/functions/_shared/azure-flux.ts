@@ -47,7 +47,7 @@ export async function callAzureFlux(
 ): Promise<AzureFluxResult> {
   const baseUrl = Deno.env.get('AZURE_FLUX_BASE_URL');
   const apiKey = Deno.env.get('AZURE_FLUX_API_KEY');
-  const deployment = Deno.env.get('AZURE_FLUX_DEPLOYMENT') || 'flux-1-kontext-pro';
+  const deployment = Deno.env.get('AZURE_FLUX_DEPLOYMENT');
 
   if (!baseUrl) throw new Error('AZURE_FLUX_BASE_URL not configured');
   if (!apiKey) throw new Error('AZURE_FLUX_API_KEY not configured');
@@ -59,17 +59,32 @@ export async function callAzureFlux(
     timeoutMs = DEFAULT_TIMEOUT_MS,
   } = options;
 
-  // Map aspect ratios to FLUX-supported sizes
   const resolvedSize = size;
-
   const cleanBase = baseUrl.replace(/\/+$/, '');
-  const url = `${cleanBase}/openai/deployments/${deployment}/images/generations?api-version=${DEFAULT_API_VERSION}`;
+
+  // Extract resource name from URL for BFL endpoint
+  const resourceMatch = cleanBase.match(/https?:\/\/([^.]+)/);
+  const resourceName = resourceMatch?.[1] || '';
+
+  // Build endpoint URL:
+  // If AZURE_FLUX_DEPLOYMENT is set, use OpenAI Image API path
+  // Otherwise, use BFL provider-specific API path (no deployment needed)
+  let url: string;
+  let apiVersion: string;
+  if (deployment) {
+    url = `${cleanBase}/openai/deployments/${deployment}/images/generations?api-version=${DEFAULT_API_VERSION}`;
+    apiVersion = DEFAULT_API_VERSION;
+  } else {
+    // BFL provider API — uses .services.ai.azure.com base with provider path
+    url = `${cleanBase}/providers/blackforestlabs/v1/flux-kontext-pro?api-version=${BFL_API_VERSION}`;
+    apiVersion = BFL_API_VERSION;
+  }
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    console.log(`[azure-flux] Calling ${deployment} @ ${cleanBase}, size=${resolvedSize}, n=${n}`);
+    console.log(`[azure-flux] Calling ${deployment || 'flux-kontext-pro (BFL API)'} @ ${cleanBase}, size=${resolvedSize}, n=${n}, apiVersion=${apiVersion}`);
 
     const resp = await fetch(url, {
       method: 'POST',
@@ -82,7 +97,6 @@ export async function callAzureFlux(
         n,
         size: resolvedSize,
         response_format: outputFormat,
-        model: 'flux.1-kontext-pro',
       }),
       signal: controller.signal,
     });

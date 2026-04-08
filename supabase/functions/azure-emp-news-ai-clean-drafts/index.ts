@@ -23,6 +23,7 @@ const ALL_ALLOWED_MODELS = new Set([
   ...Object.keys(VERTEX_MODEL_MAP),
   ...BEDROCK_MODELS,
   ...SARVAM_MODELS,
+  ...AZURE_OPENAI_MODELS,
 ]);
 
 // ── Schema for structured extraction ──
@@ -111,6 +112,12 @@ async function callAI(
     }
     const data = await resp.json();
     rawText = data?.output?.message?.content?.[0]?.text || '';
+  }
+  // ── Route: Azure OpenAI ──
+  else if (AZURE_OPENAI_MODELS.has(aiModel)) {
+    console.log(`[ai-clean-drafts] routing to Azure OpenAI: ${aiModel}`);
+    const { callAzureOpenAI } = await import('../_shared/azure-openai.ts');
+    rawText = await callAzureOpenAI(fullPrompt, { maxTokens: 4096, temperature: 0.3, timeoutMs: 120_000 });
   }
   // ── Route: Sarvam AI ──
   else if (SARVAM_MODELS.has(aiModel)) {

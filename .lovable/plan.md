@@ -1,155 +1,81 @@
 
 
-# Add Slow Fallback Retries + Revenue-First Corrections
+# Fix Inconsistent Hide-If-Empty in AdPlaceholder
 
-## File: `src/components/ads/AdPlaceholder.tsx` — only file changed.
+## Root Causes Found (3 distinct bugs)
 
-## 5 Problems in Current Code
+### Bug 1: False-positive fill detection
+`hasRealFill()` (line 88-97) checks if **any** child element has `offsetHeight > 0`. AdSense routinely injects empty container `<div>`s with non-zero height even when no monetized ad fills. This causes the component to set `filled` state on slots with no real ad — showing the "Advertisement" label over blank space.
 
-1. **Line 353**: `height: 0; overflow: hidden` during loading — `<ins>` has zero dimensions, AdSense cannot measure/fill it.
-2. **Lines 321-326**: 20s absolute timeout forces `unfilled` — kills slots that haven't had a fair chance.
-3. **Lines 268-270, 280-282**: Fast retry exhaustion and push errors set `unfilled` — slot dies permanently with no further attempts.
-4. **Lines 185-186**: 5s fill-check timeout sets `unfilled` without checking for AdSense's explicit `unfilled` signal.
-5. **No slow fallback retries**: After 8 fast retries (12s), if push never succeeded, the slot is abandoned forever. AdSense script may become ready later but no code path will attempt push again.
+**Fix**: Require the presence of an `<iframe>` inside the `<ins>` element. Real AdSense fills always render via an iframe. An empty container div is not a fill.
 
-## Changes
+### Bug 2: Loading state occupies layout space permanently
+When `adStatus === 'loading'`, the wrapper renders with `opacity-0` but **still has min-height** (90px or 250px via both CSS classes and inline style). This is invisible but occupies vertical space — creating blank white rectangles in the layout. Slots that never enter the viewport stay in `loading` forever, permanently reserving space.
 
-### 1. Add `SLOW_RETRY_INTERVAL` constant
-```
-const SLOW_RETRY_INTERVAL = 8000; // 8s between fallback retries
-```
+**Fix**: During `loading`, render with `height: 0; overflow: hidden` instead of `opacity-0` with min-height. This makes loading slots take zero layout space. When the ad fills, it expands naturally.
 
-### 2. Add `slowRetryRef` to track the interval ID for cleanup
-```
-const slowRetryRef = useRef<number | null>(null);
-```
+### Bug 3: No absolute maximum timeout
+If a below-fold slot never enters the viewport, `hasBeenVisible` stays `false`, and the slot stays `loading` forever. The viewport-aware deferral has no upper bound.
 
-### 3. Restore reserved space during loading (lines 351-357)
-Replace `height: 0; overflow: hidden` with reserved min-height + `opacity: 0`:
-```
-isLoading
-  ? { minHeight: `${config.filledMinHeight}px`, opacity: 0 }
-  : isFilled
-    ? { minHeight: `${config.filledMinHeight}px` }
-    : undefined
-```
-Also give `<ins>` its minHeight during loading:
-```
-minHeight: (isFilled || isLoading) ? `${config.insMinHeight}px` : undefined,
-```
+**Fix**: Add an absolute maximum timeout (20 seconds from mount). If still `loading` after 20s regardless of viewport status, force `unfilled` → collapse.
 
-### 4. Delete 20s absolute timeout (lines 321-326)
-Remove entirely. No timeout should force `unfilled`.
+## File Changed
 
-### 5. Remove `setAdStatus('unfilled')` from retry exhaustion (lines 268-270, 280-282)
-- Line 268-270: push error retry path — instead of setting unfilled, start slow fallback retries.
-- Line 280-282: fast retry exhaustion — instead of setting unfilled, start slow fallback retries.
+`src/components/ads/AdPlaceholder.tsx` — only file.
 
-### 6. Add slow fallback retry function
-After fast retries exhaust without success, start `setInterval` at 8s:
-```typescript
-const startSlowRetries = () => {
-  if (slowRetryRef.current !== null) return; // already running
-  slowRetryRef.current = window.setInterval(() => {
-    if (abortRef.current || pushSucceeded.current) {
-      if (slowRetryRef.current !== null) {
-        clearInterval(slowRetryRef.current);
-        slowRetryRef.current = null;
-      }
-      return;
-    }
-    const el = adRef.current;
-    if (!el) return;
-    // Check if AdSense explicitly marked unfilled
-    if (el.getAttribute('data-adsbygoogle-status') === 'unfilled') {
-      setAdStatus('unfilled');
-      clearInterval(slowRetryRef.current!);
-      slowRetryRef.current = null;
-      return;
-    }
-    // Check if already done (filled externally)
-    if (el.getAttribute('data-adsbygoogle-status') === 'done') {
-      pushSucceeded.current = true;
-      if (hasBeenVisible.current) startFillObservation();
-      clearInterval(slowRetryRef.current!);
-      slowRetryRef.current = null;
-      return;
-    }
-    // Attempt push if conditions are met
-    const ready = isAdSenseReady();
-    const width = el.offsetWidth ?? 0;
-    if (ready && width > 0) {
-      try {
-        (window.adsbygoogle = window.adsbygoogle || []).push({});
-        pushSucceeded.current = true;
-        if (hasBeenVisible.current) startFillObservation();
-        clearInterval(slowRetryRef.current!);
-        slowRetryRef.current = null;
-      } catch { /* continue retrying */ }
-    }
-  }, SLOW_RETRY_INTERVAL);
-};
-```
+## Exact Changes
 
-### 7. Fix fill-check safety timeout (lines 185-186)
-Only set `unfilled` if AdSense explicitly signals it:
-```typescript
-} else if (el?.getAttribute('data-adsbygoogle-status') === 'unfilled') {
-  setAdStatus('unfilled');
-}
-// else: stay 'loading' — uncertain, keep reserved
-```
-
-### 8. Broaden `hasRealFill()` (lines 91-106)
-Accept any child with `offsetHeight > 1` when status is `done`, not iframe-only:
+### 1. Tighten `hasRealFill()` — require iframe
 ```typescript
 function hasRealFill(el: HTMLElement): boolean {
   const status = el.getAttribute('data-adsbygoogle-status');
   if (status !== 'done') return false;
+  // Real AdSense fills always contain an iframe
+  const iframes = el.querySelectorAll('iframe');
+  for (let i = 0; i < iframes.length; i++) {
+    if (iframes[i].offsetHeight > 0 && iframes[i].offsetWidth > 0) return true;
+  }
+  // Also check for ins > div > iframe (nested containers)
   for (let i = 0; i < el.children.length; i++) {
-    if ((el.children[i] as HTMLElement).offsetHeight > 1) return true;
+    const child = el.children[i] as HTMLElement;
+    if (child.offsetHeight > 0 && child.querySelector('iframe')) return true;
   }
   return false;
 }
 ```
 
-### 9. Cleanup includes slow retry interval
-In `cleanup()`, add:
+### 2. Loading state: zero layout space
+Replace the loading wrapper rendering (line 331-332):
+- Remove `opacity-0` approach with min-height
+- Use `height: 0; overflow: hidden` during loading so the wrapper takes no space
+- When filled, render normally (no inline height constraint)
+
+### 3. Add absolute max timeout (20s)
+Inside the `useEffect`, after the stagger delay kickoff, add:
 ```typescript
-if (slowRetryRef.current !== null) {
-  clearInterval(slowRetryRef.current);
-  slowRetryRef.current = null;
-}
+trackTimeout(() => {
+  if (abortRef.current) return;
+  // Force unfilled if still loading after 20s
+  setAdStatus(prev => prev === 'loading' ? 'unfilled' : prev);
+}, 20000);
 ```
 
-## Retry Lifecycle (mount → resolution)
+### 4. Remove min-height from wrapper CSS classes
+The `variantConfig` wrapper strings include `min-h-[110px]` / `min-h-[280px]`. These force minimum height even after ads fill (which is fine) but also during loading (which is the bug). Move min-height to only apply in `filled` state via inline style instead of CSS classes, so the wrapper is truly zero-height during loading.
 
-```text
-Mount
-  ↓ stagger delay (150-700ms)
-  ↓
-Phase 1: Fast retries (up to 8 × 1.5s = 12s)
-  ├─ push succeeds → start fill observation → done
-  ├─ push error → retry
-  └─ retries exhaust → Phase 2
-  ↓
-Phase 2: Slow fallback retries (every 8s, indefinitely)
-  ├─ push succeeds → fill observation → done
-  ├─ status="unfilled" detected → collapse → done
-  ├─ status="done" detected → fill observation → done
-  └─ unmount/route change → cleanup → done
-```
+## Why Previous Logic Failed
+- `offsetHeight > 0` on any child is too weak — AdSense injects empty wrappers with height
+- `opacity-0` hides visually but doesn't collapse layout space
+- No timeout ceiling means indefinite blank space for never-scrolled-to slots
 
-## Duplicate Push Prevention
-- `pushSucceeded.current` is checked at the top of every retry. Once true, slow retries self-terminate via the guard clause. Fast retries also check `alreadyDone` status.
+## Why New Logic Is More Reliable
+- Iframe check is the strongest client-side heuristic for real ad content
+- Zero-height loading state means no blank space is ever visible regardless of fill timing
+- 20s absolute cap guarantees eventual collapse for all edge cases
+- Trade-off: minor CLS when a real ad fills (element goes from 0 to ad height), but this is far better than permanent blank holes across the site
 
-## Why Safer for Revenue
-- Current code: after 12s of fast retries, slot is abandoned forever — if AdSense loads at 15s, the ad is permanently missed.
-- New code: slow retries continue attempting push every 8s — if AdSense loads at 15s, 30s, or 60s, the next retry will succeed.
-- No code path sets `unfilled` except explicit AdSense signal.
-- Reserved space ensures AdSense always has a measurable container.
-
-## Remaining Edge Cases
-- Slot may hold reserved invisible space indefinitely if AdSense never fills and never signals `unfilled`. Acceptable per revenue-first priority.
-- Very slow connections where AdSense script loads after minutes — slow retries will still catch it.
+## Edge Cases Still Remaining
+- If AdSense ever changes to render ads without iframes (unlikely but possible) — would cause false negatives
+- The 20s absolute timeout could collapse a very slow-loading below-fold ad — but 20s is generous
+- CLS on fill is a trade-off accepted in favor of eliminating blank holes
 

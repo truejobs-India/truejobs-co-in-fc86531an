@@ -14,6 +14,7 @@
  */
 
 const DEFAULT_API_VERSION = '2025-04-01-preview';
+const BFL_API_VERSION = 'preview';
 const DEFAULT_TIMEOUT_MS = 120_000;
 
 export interface AzureFluxOptions {

@@ -372,6 +372,21 @@ export const AI_MODELS: readonly AiModelDef[] = [
     supportsContinuationPass: true,
   },
 
+  // ── Azure OpenAI (user-deployed gpt-4o-mini) ──
+  {
+    value: 'azure-gpt4o-mini',
+    label: 'Azure GPT-4o Mini (From API)',
+    desc: 'Your API · Fast & efficient · ~15s/page',
+    speed: 15,
+    source: 'external-api',
+    provider: 'Azure OpenAI',
+    capabilities: ['text', 'text-premium'],
+    recommendedMaxWords: 2000,
+    warnAboveWords: 1500,
+    longFormReliability: 'good',
+    supportsContinuationPass: true,
+  },
+
   // ── Sarvam AI models (Indian languages specialist) ──
   {
     value: 'sarvam-30b',
@@ -434,6 +449,7 @@ export const SEO_FIX_MODEL_VALUES = [
   'vertex-3-flash',
   'vertex-3.1-flash-lite',
   'nemotron-120b',
+  'azure-gpt4o-mini',
 ] as const;
 
 const LEGACY_MODEL_ALIASES: Record<string, string> = {

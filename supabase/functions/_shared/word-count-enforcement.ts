@@ -118,6 +118,7 @@ export function computeMaxTokens(targetWordCount: number, modelId: string): numb
     case 'gpt5':
     case 'gpt5-mini':
     case 'openai':
+    case 'azure-gpt4o-mini':
       return Math.min(Math.ceil(target * 2), 16384);
 
     default:

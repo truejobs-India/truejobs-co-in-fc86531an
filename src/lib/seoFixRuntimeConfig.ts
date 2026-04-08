@@ -67,6 +67,12 @@ const MODEL_CONFIGS: Partial<Record<string, SeoFixRuntimeConfig>> = {
     baseRetryDelayMs: 1500,
     throttleMs: 1500,
   },
+  'azure-gpt4o-mini': {
+    maxConcurrency: 2,
+    retryCount: 1,
+    baseRetryDelayMs: 2000,
+    throttleMs: 2000,
+  },
 };
 
 export function getSeoFixRuntimeConfig(aiModel: string): SeoFixRuntimeConfig {

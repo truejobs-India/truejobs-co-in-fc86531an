@@ -143,7 +143,7 @@ export async function callAzureFlux(
     };
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') {
-      throw new Error(`Azure FLUX ${deployment} timeout after ${timeoutMs / 1000}s`);
+      throw new Error(`Azure FLUX ${deployment || 'flux-kontext-pro'} timeout after ${timeoutMs / 1000}s`);
     }
     throw err;
   } finally {

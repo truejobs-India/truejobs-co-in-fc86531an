@@ -32,7 +32,7 @@ const VERTEX_MODEL_MAP: Record<string, { vertexModel: string; timeoutMs: number 
 };
 
 const BEDROCK_MODELS = new Set(['nova-pro', 'nova-premier', 'nemotron-120b', 'mistral']);
-const AZURE_OPENAI_MODELS = new Set(['azure-gpt4o-mini']);
+const AZURE_OPENAI_MODELS = new Set(['azure-gpt4o-mini', 'azure-gpt41-mini']);
 
 function json(data: any, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -231,6 +231,13 @@ async function callAI(
   if (AZURE_OPENAI_MODELS.has(modelKey)) {
     const fullPrompt = `${systemPrompt}\n\n${userPrompt}\n\nReturn valid JSON matching this schema:\n${JSON.stringify(toolDef.parameters, null, 2)}`;
     console.log(`[intake-ai-classify] routing to Azure OpenAI: ${modelKey}`);
+    if (modelKey === 'azure-gpt41-mini') {
+      const { callAzureGPT41Mini } = await import('../_shared/azure-openai.ts');
+      const text = await callAzureGPT41Mini(fullPrompt, { maxTokens: 8192, temperature: 0.3 });
+      const m2 = text.match(/\{[\s\S]*\}/);
+      if (m2) return JSON.parse(m2[0]);
+      throw new Error('Azure GPT-4.1 Mini did not return valid JSON');
+    }
     const { callAzureOpenAI } = await import('../_shared/azure-openai.ts');
     const text = await callAzureOpenAI(fullPrompt, { maxTokens: 8192, temperature: 0.3 });
     const m = text.match(/\{[\s\S]*\}/);

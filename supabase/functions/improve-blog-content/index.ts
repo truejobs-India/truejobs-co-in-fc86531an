@@ -343,6 +343,12 @@ async function callAI(aiModel: string, prompt: string, maxTokens: number, option
       resultJson = JSON.stringify({ __raw: text, __finishReason: 'stop' });
       actualProvider = 'azure-openai'; actualModelId = 'gpt-4o-mini'; break;
     }
+    case 'azure-gpt41-mini': {
+      const { callAzureGPT41Mini } = await import('../_shared/azure-openai.ts');
+      const text = await callAzureGPT41Mini(prompt, { maxTokens, temperature: 0.5 });
+      resultJson = JSON.stringify({ __raw: text, __finishReason: 'stop' });
+      actualProvider = 'azure-openai'; actualModelId = 'gpt-4.1-mini'; break;
+    }
     default:
       throw new Error(`Unsupported AI model: "${model}". Supported models: ${SUPPORTED_MODELS.join(', ')}`);
   }

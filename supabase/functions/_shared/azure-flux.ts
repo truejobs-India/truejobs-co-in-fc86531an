@@ -1,20 +1,18 @@
 /**
  * Shared Azure FLUX image caller — server-side only.
  *
- * Uses Azure AI Foundry Image API (OpenAI-compatible) for FLUX.1-Kontext-pro.
+ * Uses Azure AI Foundry OpenAI-compatible Image API for FLUX.1-Kontext-pro.
  *
  * ── Required env vars ──
- *   AZURE_FLUX_BASE_URL    – e.g. https://truejobsflux-resource (resource name only, or full URL)
+ *   AZURE_FLUX_BASE_URL    – e.g. https://truejobsflux-resource.services.ai.azure.com
  *   AZURE_FLUX_API_KEY     – Azure resource API key
  *
- * ── Endpoint format (BFL provider API) ──
- *   POST https://<resource>.services.ai.azure.com/openai/deployments/<deployment>/images/generations?api-version=2025-04-01-preview
- *   OR (fallback BFL native):
- *   POST https://<resource>.api.cognitive.microsoft.com/providers/blackforestlabs/v1/flux-kontext-pro?api-version=preview
+ * ── Endpoint ──
+ *   POST {BASE_URL}/openai/v1/images/generations
+ *   Body: { model: "FLUX.1-Kontext-pro", prompt, n, size, response_format }
  */
 
-const DEFAULT_API_VERSION = '2025-04-01-preview';
-const BFL_API_VERSION = 'preview';
+const MODEL_NAME = 'FLUX.1-Kontext-pro';
 const DEFAULT_TIMEOUT_MS = 120_000;
 
 export interface AzureFluxOptions {
@@ -47,7 +45,6 @@ export async function callAzureFlux(
 ): Promise<AzureFluxResult> {
   const baseUrl = Deno.env.get('AZURE_FLUX_BASE_URL');
   const apiKey = Deno.env.get('AZURE_FLUX_API_KEY');
-  const deployment = Deno.env.get('AZURE_FLUX_DEPLOYMENT');
 
   if (!baseUrl) throw new Error('AZURE_FLUX_BASE_URL not configured');
   if (!apiKey) throw new Error('AZURE_FLUX_API_KEY not configured');
@@ -59,32 +56,14 @@ export async function callAzureFlux(
     timeoutMs = DEFAULT_TIMEOUT_MS,
   } = options;
 
-  const resolvedSize = size;
   const cleanBase = baseUrl.replace(/\/+$/, '');
-
-  // Extract resource name from URL for BFL endpoint
-  const resourceMatch = cleanBase.match(/https?:\/\/([^.]+)/);
-  const resourceName = resourceMatch?.[1] || '';
-
-  // Build endpoint URL:
-  // If AZURE_FLUX_DEPLOYMENT is set, use OpenAI Image API path
-  // Otherwise, use BFL provider-specific API path (no deployment needed)
-  let url: string;
-  let apiVersion: string;
-  if (deployment) {
-    url = `${cleanBase}/openai/deployments/${deployment}/images/generations?api-version=${DEFAULT_API_VERSION}`;
-    apiVersion = DEFAULT_API_VERSION;
-  } else {
-    // BFL provider API — uses .services.ai.azure.com base with provider path
-    url = `${cleanBase}/providers/blackforestlabs/v1/flux-kontext-pro?api-version=${BFL_API_VERSION}`;
-    apiVersion = BFL_API_VERSION;
-  }
+  const url = `${cleanBase}/openai/v1/images/generations`;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    console.log(`[azure-flux] Calling ${deployment || 'flux-kontext-pro (BFL API)'} @ ${cleanBase}, size=${resolvedSize}, n=${n}, apiVersion=${apiVersion}`);
+    console.log(`[azure-flux] Calling ${MODEL_NAME} @ ${cleanBase}, size=${size}, n=${n}`);
 
     const resp = await fetch(url, {
       method: 'POST',
@@ -93,9 +72,10 @@ export async function callAzureFlux(
         'api-key': apiKey,
       },
       body: JSON.stringify({
+        model: MODEL_NAME,
         prompt,
         n,
-        size: resolvedSize,
+        size,
         response_format: outputFormat,
       }),
       signal: controller.signal,
@@ -103,8 +83,7 @@ export async function callAzureFlux(
 
     if (!resp.ok) {
       const errText = await resp.text().catch(() => 'unknown');
-      const label = deployment || 'flux-kontext-pro';
-      throw new Error(`Azure FLUX ${label} error ${resp.status}: ${errText.substring(0, 500)}`);
+      throw new Error(`Azure FLUX ${MODEL_NAME} error ${resp.status}: ${errText.substring(0, 500)}`);
     }
 
     const data = await resp.json();
@@ -134,7 +113,7 @@ export async function callAzureFlux(
       throw new Error('Azure FLUX returned no image data (no b64_json or url)');
     }
 
-    console.log(`[azure-flux] ${deployment || 'flux-kontext-pro'} success, base64 length=${imageBase64.length}`);
+    console.log(`[azure-flux] ${MODEL_NAME} success, base64 length=${imageBase64.length}`);
 
     return {
       imageBase64,
@@ -143,7 +122,7 @@ export async function callAzureFlux(
     };
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') {
-      throw new Error(`Azure FLUX ${deployment || 'flux-kontext-pro'} timeout after ${timeoutMs / 1000}s`);
+      throw new Error(`Azure FLUX ${MODEL_NAME} timeout after ${timeoutMs / 1000}s`);
     }
     throw err;
   } finally {
@@ -156,7 +135,7 @@ export function fluxSizeFromAspectRatio(ratio: string): string {
   switch (ratio) {
     case '16:9': return '1792x1024';
     case '9:16': return '1024x1792';
-    case '4:3':  return '1024x768';   // closest standard
+    case '4:3':  return '1024x768';
     case '3:4':  return '768x1024';
     case '1:1':
     default:     return '1024x1024';

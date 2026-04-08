@@ -1,81 +1,45 @@
 
 
-# Fix Inconsistent Hide-If-Empty in AdPlaceholder
+# Revised Tier 2 Width Threshold in `hasRealFill()`
 
-## Root Causes Found (3 distinct bugs)
+## 1. Revised Tier 2 Rule
 
-### Bug 1: False-positive fill detection
-`hasRealFill()` (line 88-97) checks if **any** child element has `offsetHeight > 0`. AdSense routinely injects empty container `<div>`s with non-zero height even when no monetized ad fills. This causes the component to set `filled` state on slots with no real ad — showing the "Advertisement" label over blank space.
-
-**Fix**: Require the presence of an `<iframe>` inside the `<ins>` element. Real AdSense fills always render via an iframe. An empty container div is not a fill.
-
-### Bug 2: Loading state occupies layout space permanently
-When `adStatus === 'loading'`, the wrapper renders with `opacity-0` but **still has min-height** (90px or 250px via both CSS classes and inline style). This is invisible but occupies vertical space — creating blank white rectangles in the layout. Slots that never enter the viewport stay in `loading` forever, permanently reserving space.
-
-**Fix**: During `loading`, render with `height: 0; overflow: hidden` instead of `opacity-0` with min-height. This makes loading slots take zero layout space. When the ad fills, it expands naturally.
-
-### Bug 3: No absolute maximum timeout
-If a below-fold slot never enters the viewport, `hasBeenVisible` stays `false`, and the slot stays `loading` forever. The viewport-aware deferral has no upper bound.
-
-**Fix**: Add an absolute maximum timeout (20 seconds from mount). If still `loading` after 20s regardless of viewport status, force `unfilled` → collapse.
-
-## File Changed
-
-`src/components/ads/AdPlaceholder.tsx` — only file.
-
-## Exact Changes
-
-### 1. Tighten `hasRealFill()` — require iframe
 ```typescript
-function hasRealFill(el: HTMLElement): boolean {
-  const status = el.getAttribute('data-adsbygoogle-status');
-  if (status !== 'done') return false;
-  // Real AdSense fills always contain an iframe
-  const iframes = el.querySelectorAll('iframe');
-  for (let i = 0; i < iframes.length; i++) {
-    if (iframes[i].offsetHeight > 0 && iframes[i].offsetWidth > 0) return true;
-  }
-  // Also check for ins > div > iframe (nested containers)
-  for (let i = 0; i < el.children.length; i++) {
-    const child = el.children[i] as HTMLElement;
-    if (child.offsetHeight > 0 && child.querySelector('iframe')) return true;
-  }
-  return false;
+// Tier 2: any direct child large enough to be a real ad
+// 50px height filters shells/icons; 100px width filters AdChoices but accepts narrow sidebar formats
+for (let i = 0; i < el.children.length; i++) {
+  const child = el.children[i] as HTMLElement;
+  if (child.offsetHeight >= 50 && child.offsetWidth >= 100) return true;
 }
 ```
 
-### 2. Loading state: zero layout space
-Replace the loading wrapper rendering (line 331-332):
-- Remove `opacity-0` approach with min-height
-- Use `height: 0; overflow: hidden` during loading so the wrapper takes no space
-- When filled, render normally (no inline height constraint)
+Threshold changed from `width >= 200` to `width >= 100`.
 
-### 3. Add absolute max timeout (20s)
-Inside the `useEffect`, after the stagger delay kickoff, add:
-```typescript
-trackTimeout(() => {
-  if (abortRef.current) return;
-  // Force unfilled if still loading after 20s
-  setAdStatus(prev => prev === 'loading' ? 'unfilled' : prev);
-}, 20000);
-```
+## 2. Why 200px Was Too High
 
-### 4. Remove min-height from wrapper CSS classes
-The `variantConfig` wrapper strings include `min-h-[110px]` / `min-h-[280px]`. These force minimum height even after ads fill (which is fine) but also during loading (which is the bug). Move min-height to only apply in `filled` state via inline style instead of CSS classes, so the wrapper is truly zero-height during loading.
+Valid sidebar ad formats that could render as non-iframe content include:
+- **120×600** (skyscraper) — width 120, fails ≥200
+- **160×600** (wide skyscraper) — width 160, fails ≥200
+- **125×125** (button) — width 125, fails ≥200
+- Responsive sidebar units on narrower containers can render at 150-180px width
 
-## Why Previous Logic Failed
-- `offsetHeight > 0` on any child is too weak — AdSense injects empty wrappers with height
-- `opacity-0` hides visually but doesn't collapse layout space
-- No timeout ceiling means indefinite blank space for never-scrolled-to slots
+All of these are legitimate IAB formats that would be falsely rejected by the 200px floor, causing the slot to stay in `loading` with no label even though a real ad is present.
 
-## Why New Logic Is More Reliable
-- Iframe check is the strongest client-side heuristic for real ad content
-- Zero-height loading state means no blank space is ever visible regardless of fill timing
-- 20s absolute cap guarantees eventual collapse for all edge cases
-- Trade-off: minor CLS when a real ad fills (element goes from 0 to ad height), but this is far better than permanent blank holes across the site
+## 3. Why 100px Is Safer Without Reintroducing False Positives
 
-## Edge Cases Still Remaining
-- If AdSense ever changes to render ads without iframes (unlikely but possible) — would cause false negatives
-- The 20s absolute timeout could collapse a very slow-loading below-fold ad — but 20s is generous
-- CLS on fill is a trade-off accepted in favor of eliminating blank holes
+| Element | Typical size | Passes 50h × 100w? |
+|---|---|---|
+| AdChoices icon | 15-20 × 15-20 | No |
+| Shell/wrapper div | 2-10px height | No (height) |
+| Tracking pixel | 1×1 to 5×5 | No |
+| 120×600 skyscraper | 120w | Yes |
+| 160×600 wide skyscraper | 160w | Yes |
+| 300×250 medium rectangle | 300w | Yes |
+| 320×50 mobile banner | 320w | Yes |
+
+No known AdSense utility artifact reaches 100px width AND 50px height simultaneously. The smallest real ad format (120×600) clears both thresholds comfortably.
+
+## 4. Approval Readiness
+
+The plan is now approval-ready. All other parts remain unchanged. Only the Tier 2 width floor moved from 200 to 100, closing the sidebar false-negative gap without reopening false-positive risk.
 

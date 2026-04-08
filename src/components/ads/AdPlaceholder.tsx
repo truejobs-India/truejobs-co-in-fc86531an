@@ -71,7 +71,7 @@ const variantConfig = {
   footer: {
     filledMinHeight: 110,
     insMinHeight: 90,
-    wrapper: 'w-full mt-5 mb-[88px] md:mb-5 px-4 flex flex-col items-center',
+    wrapper: 'w-full mt-5 mb-2 px-4 flex flex-col items-center',
     format: 'horizontal' as const,
   },
 };

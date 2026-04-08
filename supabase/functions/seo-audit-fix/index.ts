@@ -44,7 +44,8 @@ type ProviderRoute =
   | { provider: 'lovable-gateway'; gatewayModel: string }
   | { provider: 'vertex-ai'; vertexModel: string }
   | { provider: 'bedrock-nova'; modelKey: string }
-  | { provider: 'bedrock-mistral' };
+  | { provider: 'bedrock-mistral' }
+  | { provider: 'azure-openai' };
 
 function resolveProvider(uiModelKey: string): ProviderRoute {
   switch (uiModelKey) {
@@ -54,6 +55,8 @@ function resolveProvider(uiModelKey: string): ProviderRoute {
       return { provider: 'bedrock-nova', modelKey: 'nova-premier' };
     case 'nemotron-120b':
       return { provider: 'bedrock-nova', modelKey: 'nemotron-120b' };
+    case 'azure-gpt4o-mini':
+      return { provider: 'azure-openai' };
     case 'mistral':
       return { provider: 'bedrock-mistral' };
     case 'gemini-pro':

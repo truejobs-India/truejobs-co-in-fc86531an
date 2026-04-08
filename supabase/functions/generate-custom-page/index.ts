@@ -172,6 +172,10 @@ async function callAI(model: string, prompt: string, maxTokens = 8192): Promise<
       const novaBudget = computeMaxTokens(Math.ceil(maxTokens / 2), model);
       return callBedrockNova(model, prompt, { maxTokens: novaBudget, temperature: 0.6 });
     }
+    case 'azure-gpt4o-mini': {
+      const { callAzureOpenAI } = await import('../_shared/azure-openai.ts');
+      return callAzureOpenAI(prompt, { maxTokens, temperature: 0.6 });
+    }
     default:
       throw new Error(`Unsupported AI model: "${model}". Select a valid model.`);
   }

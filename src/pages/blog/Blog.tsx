@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Layout } from '@/components/layout/Layout';
 import { SEO } from '@/components/SEO';
@@ -310,70 +310,84 @@ export default function Blog() {
             {/* Post Grid */}
             {posts.length > 0 && (
               <div className="grid md:grid-cols-2 gap-6">
-                {posts.map((post) => (
-                  <Link key={post.id} to={`/blog/${post.slug}`}>
-                    <Card className="h-full hover:shadow-lg transition-shadow overflow-hidden group">
-                      {post.cover_image_url ? (
-                      <div className="aspect-[16/9] overflow-hidden">
-                          <img
-                            src={post.cover_image_url}
-                            alt={`Cover image for ${post.title}`}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                            loading="lazy"
-                          />
-                        </div>
-                      ) : (
-                        <div className="aspect-[16/9] bg-gradient-to-br from-primary/20 to-secondary/20 flex items-center justify-center">
-                          <BookOpen className="h-12 w-12 text-primary/50" />
-                        </div>
-                      )}
-                      <CardHeader>
-                        <div className="flex items-center justify-between text-sm text-muted-foreground mb-2">
-                          <div className="flex items-center gap-2">
-                            <Calendar className="h-4 w-4" />
-                            <span>
-                              {post.published_at 
-                                ? formatDistanceToNow(new Date(post.published_at), { addSuffix: true })
-                                : formatDistanceToNow(new Date(post.created_at), { addSuffix: true })
-                              }
-                            </span>
+                {posts.map((post, index) => (
+                  <React.Fragment key={post.id}>
+                    {/* Insert in-content ad after 6th post (index 5) */}
+                    {index === 6 && (
+                      <div className="md:col-span-2">
+                        <AdPlaceholder variant="in-content" />
+                      </div>
+                    )}
+                    <Link to={`/blog/${post.slug}`}>
+                      <Card className="h-full hover:shadow-lg transition-shadow overflow-hidden group">
+                        {post.cover_image_url ? (
+                        <div className="aspect-[16/9] overflow-hidden">
+                            <img
+                              src={post.cover_image_url}
+                              alt={`Cover image for ${post.title}`}
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                              loading="lazy"
+                            />
                           </div>
-                          {post.reading_time && (
-                            <span className="flex items-center gap-1">
-                              <Clock className="h-4 w-4" />
-                              {post.reading_time} min
-                            </span>
+                        ) : (
+                          <div className="aspect-[16/9] bg-gradient-to-br from-primary/20 to-secondary/20 flex items-center justify-center">
+                            <BookOpen className="h-12 w-12 text-primary/50" />
+                          </div>
+                        )}
+                        <CardHeader>
+                          <div className="flex items-center justify-between text-sm text-muted-foreground mb-2">
+                            <div className="flex items-center gap-2">
+                              <Calendar className="h-4 w-4" />
+                              <span>
+                                {post.published_at 
+                                  ? formatDistanceToNow(new Date(post.published_at), { addSuffix: true })
+                                  : formatDistanceToNow(new Date(post.created_at), { addSuffix: true })
+                                }
+                              </span>
+                            </div>
+                            {post.reading_time && (
+                              <span className="flex items-center gap-1">
+                                <Clock className="h-4 w-4" />
+                                {post.reading_time} min
+                              </span>
+                            )}
+                          </div>
+                          {post.category && (
+                            <Badge variant="secondary" className="w-fit mb-2">
+                              {post.category}
+                            </Badge>
                           )}
-                        </div>
-                        {post.category && (
-                          <Badge variant="secondary" className="w-fit mb-2">
-                            {post.category}
-                          </Badge>
-                        )}
-                        <CardTitle className="line-clamp-2 group-hover:text-primary transition-colors">
-                          {post.title}
-                        </CardTitle>
-                        {post.excerpt && (
-                          <CardDescription className="line-clamp-2">
-                            {post.excerpt}
-                          </CardDescription>
-                        )}
-                        {post.tags && post.tags.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-3">
-                            {post.tags.slice(0, 3).map((tag, i) => (
-                              <Badge key={i} variant="outline" className="text-xs">
-                                {tag}
-                              </Badge>
-                            ))}
+                          <CardTitle className="line-clamp-2 group-hover:text-primary transition-colors">
+                            {post.title}
+                          </CardTitle>
+                          {post.excerpt && (
+                            <CardDescription className="line-clamp-2">
+                              {post.excerpt}
+                            </CardDescription>
+                          )}
+                          {post.tags && post.tags.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-3">
+                              {post.tags.slice(0, 3).map((tag, i) => (
+                                <Badge key={i} variant="outline" className="text-xs">
+                                  {tag}
+                                </Badge>
+                              ))}
+                            </div>
+                          )}
+                          <div className="flex items-center gap-1 text-primary font-medium mt-3">
+                            Read More <ArrowRight className="h-4 w-4" />
                           </div>
-                        )}
-                        <div className="flex items-center gap-1 text-primary font-medium mt-3">
-                          Read More <ArrowRight className="h-4 w-4" />
-                        </div>
-                      </CardHeader>
-                    </Card>
-                  </Link>
+                        </CardHeader>
+                      </Card>
+                    </Link>
+                  </React.Fragment>
                 ))}
+                {/* If fewer than 7 posts, ad goes at the end of the grid */}
+                {posts.length > 0 && posts.length <= 6 && (
+                  <div className="md:col-span-2">
+                    <AdPlaceholder variant="in-content" />
+                  </div>
+                )}
               </div>
             )}
 
@@ -401,9 +415,7 @@ export default function Blog() {
        </div>
       </div>
 
-      <div className="container mx-auto px-4">
-        <AdPlaceholder variant="in-content" />
-      </div>
+
 
       {/* Category Browse Section */}
       <section className="bg-muted/30 py-12">

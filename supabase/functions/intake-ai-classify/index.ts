@@ -32,6 +32,7 @@ const VERTEX_MODEL_MAP: Record<string, { vertexModel: string; timeoutMs: number 
 };
 
 const BEDROCK_MODELS = new Set(['nova-pro', 'nova-premier', 'nemotron-120b', 'mistral']);
+const AZURE_OPENAI_MODELS = new Set(['azure-gpt4o-mini']);
 
 function json(data: any, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -225,6 +226,16 @@ async function callAI(
       if (m) return JSON.parse(m[0]);
       throw new Error('Nova did not return valid JSON');
     }
+  }
+
+  if (AZURE_OPENAI_MODELS.has(modelKey)) {
+    const fullPrompt = `${systemPrompt}\n\n${userPrompt}\n\nReturn valid JSON matching this schema:\n${JSON.stringify(toolDef.parameters, null, 2)}`;
+    console.log(`[intake-ai-classify] routing to Azure OpenAI: ${modelKey}`);
+    const { callAzureOpenAI } = await import('../_shared/azure-openai.ts');
+    const text = await callAzureOpenAI(fullPrompt, { maxTokens: 8192, temperature: 0.3 });
+    const m = text.match(/\{[\s\S]*\}/);
+    if (m) return JSON.parse(m[0]);
+    throw new Error('Azure OpenAI did not return valid JSON');
   }
 
   const gatewayModelId = GATEWAY_MODEL_MAP[modelKey] || DEFAULT_MODEL;

@@ -659,6 +659,7 @@ function resolveProviderInfo(model: string): { provider: string; apiModel: strin
     case 'nova-pro': return { provider: 'bedrock', apiModel: 'us.amazon.nova-pro-v1:0' };
     case 'nova-premier': return { provider: 'bedrock', apiModel: 'us.amazon.nova-premier-v1:0' };
     case 'nemotron-120b': return { provider: 'bedrock', apiModel: 'nvidia.nemotron-super-3-120b-a12b' };
+    case 'azure-gpt4o-mini': return { provider: 'azure-openai', apiModel: 'gpt-4o-mini' };
     default: return { provider: model, apiModel: model };
   }
 }
@@ -781,6 +782,11 @@ async function callAI(
     case 'nemotron-120b': {
       const { callBedrockNova } = await import('../_shared/bedrock-nova.ts');
       rawText = await callBedrockNova(model, prompt, { maxTokens: maxTokens || 16384, temperature: 0.5, timeoutMs: timeout });
+      return { data: tryParseJSON(rawText) };
+    }
+    case 'azure-gpt4o-mini': {
+      const { callAzureOpenAI } = await import('../_shared/azure-openai.ts');
+      rawText = await callAzureOpenAI(prompt, { maxTokens: maxTokens || 4096, temperature: 0.5, timeoutMs: timeout });
       return { data: tryParseJSON(rawText) };
     }
     default:

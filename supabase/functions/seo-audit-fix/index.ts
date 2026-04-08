@@ -44,7 +44,8 @@ type ProviderRoute =
   | { provider: 'lovable-gateway'; gatewayModel: string }
   | { provider: 'vertex-ai'; vertexModel: string }
   | { provider: 'bedrock-nova'; modelKey: string }
-  | { provider: 'bedrock-mistral' };
+  | { provider: 'bedrock-mistral' }
+  | { provider: 'azure-openai' };
 
 function resolveProvider(uiModelKey: string): ProviderRoute {
   switch (uiModelKey) {
@@ -54,6 +55,8 @@ function resolveProvider(uiModelKey: string): ProviderRoute {
       return { provider: 'bedrock-nova', modelKey: 'nova-premier' };
     case 'nemotron-120b':
       return { provider: 'bedrock-nova', modelKey: 'nemotron-120b' };
+    case 'azure-gpt4o-mini':
+      return { provider: 'azure-openai' };
     case 'mistral':
       return { provider: 'bedrock-mistral' };
     case 'gemini-pro':
@@ -110,6 +113,14 @@ serve(async (req: Request) => {
       const projectId = Deno.env.get('GCP_PROJECT_ID');
       if (!clientEmail || !privateKey || !projectId) {
         return new Response(JSON.stringify({ error: 'Vertex AI credentials not configured' }), {
+          status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    } else if (route.provider === 'azure-openai') {
+      const ep = Deno.env.get('AZURE_OPENAI_ENDPOINT');
+      const ak = Deno.env.get('AZURE_OPENAI_API_KEY');
+      if (!ep || !ak) {
+        return new Response(JSON.stringify({ error: 'Azure OpenAI credentials not configured' }), {
           status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
@@ -215,6 +226,8 @@ async function callAI(route: ProviderRoute, system: string, user: string, rawMod
     return callVertexForSeo(route.vertexModel, system, user, modelPolicy.maxOutputTokens);
   } else if (route.provider === 'bedrock-nova') {
     return callBedrockNovaForSeo(route.modelKey, system, user, modelPolicy.maxOutputTokens);
+  } else if (route.provider === 'azure-openai') {
+    return callAzureOpenAIForSeo(system, user, modelPolicy.maxOutputTokens);
   } else {
     return callBedrockMistralForSeo(system, user, modelPolicy.maxOutputTokens);
   }
@@ -306,6 +319,17 @@ async function callLovableGateway(model: string, system: string, user: string, m
 async function callBedrockNovaForSeo(modelKey: string, system: string, user: string, maxTokens: number): Promise<AiCallResult> {
   const { callBedrockNova } = await import('../_shared/bedrock-nova.ts');
   const text = await callBedrockNova(modelKey, user, {
+    maxTokens,
+    temperature: 0.3,
+    timeoutMs: 120_000,
+    systemPrompt: system,
+  });
+  return { text, attemptsMade: 1, retryEvents: [] };
+}
+
+async function callAzureOpenAIForSeo(system: string, user: string, maxTokens: number): Promise<AiCallResult> {
+  const { callAzureOpenAI } = await import('../_shared/azure-openai.ts');
+  const text = await callAzureOpenAI(user, {
     maxTokens,
     temperature: 0.3,
     timeoutMs: 120_000,
@@ -465,6 +489,8 @@ async function generateFixesForPage(page: FixRequest, route: ProviderRoute, rawM
       ? (route as any).vertexModel
     : route.provider === 'bedrock-nova'
       ? (route as any).modelKey
+    : route.provider === 'azure-openai'
+      ? 'azure-gpt4o-mini'
       : 'mistral';
   console.log(`[SEO-FIX] ${page.slug}: ${parsed.length} fixes via ${providerLabel}, truncated=${truncated}`);
 

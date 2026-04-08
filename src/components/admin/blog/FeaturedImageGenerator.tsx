@@ -46,7 +46,7 @@ export function FeaturedImageGenerator({
     setIsGenerating(true);
     try {
       // Route based on selected model
-      if (imageModel === 'gemini-flash-image' || imageModel === 'vertex-imagen' || imageModel === 'nova-canvas') {
+      if (imageModel === 'gemini-flash-image' || imageModel === 'vertex-imagen' || imageModel === 'nova-canvas' || imageModel === 'azure-flux-kontext') {
         // Both go through generate-vertex-image with model routing
         const { data, error } = await supabase.functions.invoke('generate-vertex-image', {
           body: { slug, title, category: category || 'General', tags: tags || [], model: imageModel, imageCount: 1, aspectRatio: '16:9' },

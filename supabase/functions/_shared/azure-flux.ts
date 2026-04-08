@@ -103,7 +103,8 @@ export async function callAzureFlux(
 
     if (!resp.ok) {
       const errText = await resp.text().catch(() => 'unknown');
-      throw new Error(`Azure FLUX ${deployment} error ${resp.status}: ${errText.substring(0, 500)}`);
+      const label = deployment || 'flux-kontext-pro';
+      throw new Error(`Azure FLUX ${label} error ${resp.status}: ${errText.substring(0, 500)}`);
     }
 
     const data = await resp.json();

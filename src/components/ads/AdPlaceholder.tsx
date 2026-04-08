@@ -48,6 +48,7 @@ const MAX_FAST_RETRIES = 8;
 const FAST_RETRY_INTERVAL = 1500;
 const SLOW_RETRY_INTERVAL = 8000;
 const FILL_CHECK_TIMEOUT = 5000;
+const FILL_CONFIRM_DELAY = 500;
 
 const variantConfig = {
   banner: {

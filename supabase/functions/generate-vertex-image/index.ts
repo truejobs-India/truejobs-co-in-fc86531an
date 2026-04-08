@@ -1277,10 +1277,13 @@ async function generateViaAzureFlux(
   const requestedRatio = body.aspectRatio || '16:9';
   const fluxSize = fluxSizeFromAspectRatio(requestedRatio);
 
+  // Apply FLUX-only strict realism layer (does not affect any other model)
+  const fluxPrompt = applyFluxRealismLayer(imagePrompt, body.prompt);
+
   console.log(`[azure-flux] slug=${slug} purpose=${purpose} size=${fluxSize}`);
 
   try {
-    const result = await callAzureFlux(imagePrompt, {
+    const result = await callAzureFlux(fluxPrompt, {
       size: fluxSize,
       n: 1,
     });

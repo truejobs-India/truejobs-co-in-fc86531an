@@ -573,6 +573,11 @@ export default function JobDetail() {
               </Card>
             )}
 
+            {/* Second In-Content Ad — substantial job pages only */}
+            {job.description && job.description.length > 500 && (
+              <AdPlaceholder variant="in-content" />
+            )}
+
             {/* Skills */}
             {job.skills_required.length > 0 && (
               <Card>

@@ -546,6 +546,9 @@ export default function BlogPostPage() {
               </section>
             )}
 
+            {/* Second In-Content Ad — long articles only */}
+            {post.content?.length > 3000 && <AdPlaceholder variant="in-content" className="my-8" />}
+
             <Separator className="my-10" />
 
             {/* Enhanced Author Box */}

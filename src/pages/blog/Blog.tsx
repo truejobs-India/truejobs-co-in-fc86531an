@@ -415,9 +415,7 @@ export default function Blog() {
        </div>
       </div>
 
-      <div className="container mx-auto px-4">
-        <AdPlaceholder variant="in-content" />
-      </div>
+
 
       {/* Category Browse Section */}
       <section className="bg-muted/30 py-12">

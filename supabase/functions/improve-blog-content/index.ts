@@ -254,7 +254,7 @@ async function callLovableGemini(prompt: string, maxTokens: number): Promise<str
 // Unified dispatcher — NO silent fallback
 // ═══════════════════════════════════════════════════════════════
 
-const SUPPORTED_MODELS = ['gemini', 'gemini-flash', 'gemini-pro', 'mistral', 'claude-sonnet', 'claude', 'openai', 'gpt5', 'gpt5-mini', 'groq', 'lovable-gemini', 'vertex-flash', 'vertex-pro', 'vertex-3.1-pro', 'vertex-3-flash', 'vertex-3.1-flash-lite', 'nova-pro', 'nova-premier', 'nemotron-120b', 'azure-gpt4o-mini'];
+const SUPPORTED_MODELS = ['gemini', 'gemini-flash', 'gemini-pro', 'mistral', 'claude-sonnet', 'claude', 'openai', 'gpt5', 'gpt5-mini', 'groq', 'lovable-gemini', 'vertex-flash', 'vertex-pro', 'vertex-3.1-pro', 'vertex-3-flash', 'vertex-3.1-flash-lite', 'nova-pro', 'nova-premier', 'nemotron-120b', 'azure-gpt4o-mini', 'azure-gpt41-mini'];
 
 async function callAI(aiModel: string, prompt: string, maxTokens: number, options?: { systemPrompt?: string }): Promise<{ raw: string; finishReason: string; actualProvider: string; actualModelId: string; usage?: { inputTokens?: number; outputTokens?: number } }> {
   const model = aiModel || 'gemini';

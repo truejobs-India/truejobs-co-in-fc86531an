@@ -42,6 +42,7 @@ function resolveProviderInfo(model: string): { provider: string; apiModel: strin
     case 'nova-premier': return { provider: 'bedrock', apiModel: 'us.amazon.nova-premier-v1:0' };
     case 'nemotron-120b': return { provider: 'bedrock', apiModel: 'nvidia.nemotron-super-3-120b-a12b' };
     case 'azure-gpt4o-mini': return { provider: 'azure-openai', apiModel: 'gpt-4o-mini' };
+    case 'azure-gpt41-mini': return { provider: 'azure-openai', apiModel: 'gpt-4.1-mini' };
     case 'lovable-gemini': return { provider: 'lovable-gateway', apiModel: 'google/gemini-2.5-flash' };
     case 'gpt5': return { provider: 'lovable-gateway', apiModel: 'openai/gpt-5' };
     case 'gpt5-mini': return { provider: 'lovable-gateway', apiModel: 'openai/gpt-5-mini' };
@@ -116,6 +117,11 @@ async function callTextAI(model: string, prompt: string, maxTokens?: number): Pr
   if (model === 'azure-gpt4o-mini') {
     const { callAzureOpenAI } = await import('../_shared/azure-openai.ts');
     return callAzureOpenAI(prompt, { maxTokens: maxTokens || 4096, temperature: 0.5 });
+  }
+
+  if (model === 'azure-gpt41-mini') {
+    const { callAzureGPT41Mini } = await import('../_shared/azure-openai.ts');
+    return callAzureGPT41Mini(prompt, { maxTokens: maxTokens || 4096, temperature: 0.5 });
   }
 
   // Known Lovable Gateway models

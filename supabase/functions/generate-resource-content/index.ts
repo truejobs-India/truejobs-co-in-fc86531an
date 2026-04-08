@@ -151,6 +151,11 @@ async function callAI(model: string, prompt: string): Promise<string> {
       return callAzureOpenAI(prompt, { maxTokens: 4096, temperature: 0.5 });
     }
 
+    case 'azure-gpt41-mini': {
+      const { callAzureGPT41Mini } = await import('../_shared/azure-openai.ts');
+      return callAzureGPT41Mini(prompt, { maxTokens: 4096, temperature: 0.5 });
+    }
+
     // ── Lovable AI Gateway models (platform-provided, no user key needed) ──
     case 'gemini-pro':
       return callLovableGateway(prompt, 'google/gemini-2.5-pro');

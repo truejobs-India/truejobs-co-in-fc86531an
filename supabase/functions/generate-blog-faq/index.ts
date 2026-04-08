@@ -187,8 +187,10 @@ async function callAI(model: string, prompt: string): Promise<string> {
       return import('../_shared/bedrock-nova.ts').then(m => m.callBedrockNova(model, prompt, { maxTokens: 8192, temperature: 0.4 }));
     case 'azure-gpt4o-mini':
       return import('../_shared/azure-openai.ts').then(m => m.callAzureOpenAI(prompt, { maxTokens: 4096, temperature: 0.4 }));
+    case 'azure-gpt41-mini':
+      return import('../_shared/azure-openai.ts').then(m => m.callAzureGPT41Mini(prompt, { maxTokens: 4096, temperature: 0.4 }));
     default:
-      throw new Error(`Unsupported AI model: "${model}". Supported: gemini, mistral, claude-sonnet, openai, groq, lovable-gemini, vertex-flash, vertex-pro, vertex-3.1-pro, vertex-3-flash, vertex-3.1-flash-lite, nova-pro, nova-premier, nemotron-120b, azure-gpt4o-mini`);
+      throw new Error(`Unsupported AI model: "${model}". Supported: gemini, mistral, claude-sonnet, openai, groq, lovable-gemini, vertex-flash, vertex-pro, vertex-3.1-pro, vertex-3-flash, vertex-3.1-flash-lite, nova-pro, nova-premier, nemotron-120b, azure-gpt4o-mini, azure-gpt41-mini`);
   }
 }
 

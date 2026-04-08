@@ -169,15 +169,34 @@ export function AdPlaceholder({ variant, className = '' }: AdPlaceholderProps) {
     mutObserverRef.current = null;
   };
 
+  /**
+   * Confirm fill with a delayed re-check to filter transient shell iframes.
+   * If hasRealFill() is still true after FILL_CONFIRM_DELAY, set filled.
+   * If not, stay in loading (revenue-first: no false label, no collapse).
+   */
+  const confirmFill = (source: string) => {
+    trackTimeout(() => {
+      if (abortRef.current) return;
+      const el = adRef.current;
+      if (!el) return;
+      if (hasRealFill(el)) {
+        setAdStatus('filled');
+        if (IS_DEV) console.debug(`[AdSense] ${variant} → filled (confirmed, ${source})`);
+      } else {
+        // Shell was transient — stay loading, do not collapse
+        if (IS_DEV) console.debug(`[AdSense] ${variant} → fill not confirmed after ${FILL_CONFIRM_DELAY}ms, staying loading (${source})`);
+      }
+    }, FILL_CONFIRM_DELAY);
+  };
+
   /** Start MutationObserver on <ins> to detect real fill. */
   const startFillObservation = () => {
     const el = adRef.current;
     if (!el || abortRef.current) return;
 
-    // Immediate check
+    // Immediate check — schedule confirmation re-check instead of instant fill
     if (hasRealFill(el)) {
-      setAdStatus('filled');
-      if (IS_DEV) console.debug(`[AdSense] ${variant} → filled (immediate)`);
+      confirmFill('immediate');
       return;
     }
 
@@ -190,10 +209,9 @@ export function AdPlaceholder({ variant, className = '' }: AdPlaceholderProps) {
     const mo = new MutationObserver(() => {
       if (abortRef.current) return;
       if (el && hasRealFill(el)) {
-        setAdStatus('filled');
         mo.disconnect();
         mutObserverRef.current = null;
-        if (IS_DEV) console.debug(`[AdSense] ${variant} → filled (observer)`);
+        confirmFill('observer');
       } else if (el && isExplicitlyUnfilled(el)) {
         setAdStatus('unfilled');
         mo.disconnect();
@@ -213,8 +231,7 @@ export function AdPlaceholder({ variant, className = '' }: AdPlaceholderProps) {
       mutObserverRef.current = null;
 
       if (el && hasRealFill(el)) {
-        setAdStatus('filled');
-        if (IS_DEV) console.debug(`[AdSense] ${variant} → filled (safety timeout final)`);
+        confirmFill('safety timeout');
       } else if (el && isExplicitlyUnfilled(el)) {
         setAdStatus('unfilled');
         if (IS_DEV) console.debug(`[AdSense] ${variant} → unfilled (explicit, safety timeout)`);

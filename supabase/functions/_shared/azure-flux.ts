@@ -4,15 +4,13 @@
  * Uses Azure AI Foundry Image API (OpenAI-compatible) for FLUX.1-Kontext-pro.
  *
  * ── Required env vars ──
- *   AZURE_FLUX_BASE_URL    – e.g. https://truejobsflux-resource.services.ai.azure.com
+ *   AZURE_FLUX_BASE_URL    – e.g. https://truejobsflux-resource (resource name only, or full URL)
  *   AZURE_FLUX_API_KEY     – Azure resource API key
- *   AZURE_FLUX_DEPLOYMENT  – e.g. flux-1-kontext-pro
  *
- * ── Endpoint format ──
- *   POST {base}/openai/deployments/{deployment}/images/generations?api-version=2025-04-01-preview
- *
- * ── How to change deployment later ──
- *   Update the AZURE_FLUX_DEPLOYMENT secret value. No code changes needed.
+ * ── Endpoint format (BFL provider API) ──
+ *   POST https://<resource>.services.ai.azure.com/openai/deployments/<deployment>/images/generations?api-version=2025-04-01-preview
+ *   OR (fallback BFL native):
+ *   POST https://<resource>.api.cognitive.microsoft.com/providers/blackforestlabs/v1/flux-kontext-pro?api-version=preview
  */
 
 const DEFAULT_API_VERSION = '2025-04-01-preview';

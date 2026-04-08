@@ -134,7 +134,7 @@ export async function callAzureFlux(
       throw new Error('Azure FLUX returned no image data (no b64_json or url)');
     }
 
-    console.log(`[azure-flux] ${deployment} success, base64 length=${imageBase64.length}`);
+    console.log(`[azure-flux] ${deployment || 'flux-kontext-pro'} success, base64 length=${imageBase64.length}`);
 
     return {
       imageBase64,

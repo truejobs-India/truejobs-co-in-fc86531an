@@ -1,16 +1,17 @@
 /**
- * Real Google AdSense ad unit component.
- * Renders <ins class="adsbygoogle"> with multi-signal readiness gating.
- * Respects NoAdsContext — returns null on admin/auth pages.
- * Route-aware: re-initializes on SPA navigation via key-based remount.
+ * Google AdSense ad unit with robust fill detection and hide-if-empty.
  *
- * Reliability features:
- * - All retry timer IDs tracked in a ref array and cleared on unmount.
- * - Abort flag prevents stale retries after navigation.
- * - One controlled retry on push({}) failure.
+ * Three-state lifecycle: loading → filled | unfilled
+ * - loading:  silent reserved-height placeholder (no label)
+ * - filled:   visible ad with "Advertisement" label
+ * - unfilled: returns null — complete collapse
+ *
+ * Fill detection uses MutationObserver + status/child-height heuristic.
+ * Viewport-aware: below-fold slots defer unfilled timeout until visible.
+ * Route-aware: re-initializes on SPA navigation via key-based remount.
  */
 
-import { useContext, useEffect, useRef } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { NoAdsContext } from '@/components/layout/Layout';
 
@@ -43,6 +44,7 @@ const STAGGER_DELAY: Record<AdPlaceholderProps['variant'], number> = {
 
 const MAX_RETRIES = 8;
 const RETRY_INTERVAL = 1500;
+const FILL_CHECK_TIMEOUT = 5000; // 5s after push or viewport entry
 
 const variantConfig = {
   banner: {
@@ -74,12 +76,23 @@ const IS_PROD_DOMAIN =
 
 const IS_DEV = !IS_PROD_DOMAIN;
 
-/** Check if AdSense library has actually loaded (not just script tag present). */
 function isAdSenseReady(): boolean {
   if (typeof window === 'undefined') return false;
   const arr = window.adsbygoogle;
   if (arr && !Array.isArray(arr)) return true;
   if (arr && typeof arr.push === 'function' && arr.push !== Array.prototype.push) return true;
+  return false;
+}
+
+/** Check if the <ins> element has real rendered ad content. */
+function hasRealFill(el: HTMLElement): boolean {
+  const status = el.getAttribute('data-adsbygoogle-status');
+  if (status !== 'done') return false;
+  // Check for child content with real height (iframe or div injected by AdSense)
+  for (let i = 0; i < el.children.length; i++) {
+    const child = el.children[i] as HTMLElement;
+    if (child.offsetHeight > 0) return true;
+  }
   return false;
 }
 
@@ -95,30 +108,111 @@ export function AdPlaceholder({ variant, className = '' }: AdPlaceholderProps) {
   const noAds = useContext(NoAdsContext);
   const location = useLocation();
   const adRef = useRef<HTMLModElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const timerIds = useRef<number[]>([]);
   const abortRef = useRef(false);
-  const config = variantConfig[variant];
+  const hasBeenVisible = useRef(false);
+  const pushSucceeded = useRef(false);
+  const mutObserverRef = useRef<MutationObserver | null>(null);
+  const intObserverRef = useRef<IntersectionObserver | null>(null);
 
+  const [adStatus, setAdStatus] = useState<'loading' | 'filled' | 'unfilled'>('loading');
+
+  const config = variantConfig[variant];
   const insKey = `${variant}-${location.pathname}`;
 
-  /** Track a timeout so cleanup can clear it. */
   const trackTimeout = (fn: () => void, delay: number): void => {
     const id = window.setTimeout(fn, delay);
     timerIds.current.push(id);
   };
 
-  /** Clear every tracked timer. */
   const clearAllTimers = () => {
     timerIds.current.forEach((id) => window.clearTimeout(id));
     timerIds.current = [];
   };
 
+  const cleanup = () => {
+    abortRef.current = true;
+    clearAllTimers();
+    mutObserverRef.current?.disconnect();
+    mutObserverRef.current = null;
+    intObserverRef.current?.disconnect();
+    intObserverRef.current = null;
+  };
+
+  /** Start MutationObserver on <ins> to detect real fill, with a safety timeout. */
+  const startFillObservation = () => {
+    const el = adRef.current;
+    if (!el || abortRef.current) return;
+
+    // Immediate check — might already be filled
+    if (hasRealFill(el)) {
+      setAdStatus('filled');
+      if (IS_DEV) console.debug(`[AdSense] ${variant} → filled (immediate)`);
+      return;
+    }
+
+    const mo = new MutationObserver(() => {
+      if (abortRef.current) return;
+      if (el && hasRealFill(el)) {
+        setAdStatus('filled');
+        mo.disconnect();
+        mutObserverRef.current = null;
+        if (IS_DEV) console.debug(`[AdSense] ${variant} → filled (observer)`);
+      }
+    });
+
+    mo.observe(el, { childList: true, subtree: true, attributes: true });
+    mutObserverRef.current = mo;
+
+    // Safety timeout: if not filled after FILL_CHECK_TIMEOUT, do final check
+    trackTimeout(() => {
+      if (abortRef.current) return;
+      mo.disconnect();
+      mutObserverRef.current = null;
+      if (el && hasRealFill(el)) {
+        setAdStatus('filled');
+        if (IS_DEV) console.debug(`[AdSense] ${variant} → filled (timeout final check)`);
+      } else {
+        setAdStatus('unfilled');
+        if (IS_DEV) console.debug(`[AdSense] ${variant} → unfilled (timeout expired)`);
+      }
+    }, FILL_CHECK_TIMEOUT);
+  };
+
   useEffect(() => {
     if (noAds || typeof window === 'undefined' || !IS_PROD_DOMAIN) return;
 
+    // Reset state for new route
     abortRef.current = false;
+    hasBeenVisible.current = false;
+    pushSucceeded.current = false;
+    setAdStatus('loading');
     clearAllTimers();
+    mutObserverRef.current?.disconnect();
+    intObserverRef.current?.disconnect();
 
+    // --- IntersectionObserver for viewport awareness ---
+    const wrapper = wrapperRef.current;
+    if (wrapper) {
+      const io = new IntersectionObserver(
+        ([entry]) => {
+          if (entry.isIntersecting && !hasBeenVisible.current) {
+            hasBeenVisible.current = true;
+            if (IS_DEV) console.debug(`[AdSense] ${variant} → entered viewport`);
+            // If push already succeeded but fill observation was deferred, start it now
+            if (pushSucceeded.current) {
+              startFillObservation();
+            }
+          }
+        },
+        { threshold: 0, rootMargin: '200px' }
+      );
+      io.observe(wrapper);
+      intObserverRef.current = io;
+    }
+
+    // --- Ad initialization with retries ---
     const initAd = (isRetry = false) => {
       if (abortRef.current) return;
 
@@ -137,28 +231,46 @@ export function AdPlaceholder({ variant, className = '' }: AdPlaceholderProps) {
       }
 
       if (alreadyDone) {
-        if (IS_DEV) console.debug(`[AdSense] ${variant} → already processed, skipping`);
+        // Already processed — check if it actually filled
+        if (hasBeenVisible.current) {
+          startFillObservation();
+        } else {
+          pushSucceeded.current = true; // defer observation
+        }
         return;
       }
 
       if (scriptReady && containerWidth > 0 && isVisible) {
         try {
           (window.adsbygoogle = window.adsbygoogle || []).push({});
+          pushSucceeded.current = true;
           if (IS_DEV) console.debug(`[AdSense] ${variant} → pushed OK`);
+
+          // Start fill observation if already in viewport, otherwise defer
+          if (hasBeenVisible.current) {
+            startFillObservation();
+          }
         } catch (e) {
           if (IS_DEV) console.debug(`[AdSense] ${variant} → push error`, e);
-          // One controlled retry on push failure
           if (!isRetry) {
             trackTimeout(() => initAd(true), 2000);
+          } else {
+            // Push failed on retry too — mark unfilled if visible
+            if (hasBeenVisible.current) {
+              setAdStatus('unfilled');
+            }
           }
         }
       } else if (!isRetry) {
-        // Retry loop — only from the initial path, not from error retry
         let retryCount = 0;
         const retryLoop = () => {
           if (abortRef.current || retryCount >= MAX_RETRIES) {
-            if (IS_DEV && retryCount >= MAX_RETRIES) {
-              console.debug(`[AdSense] ${variant} → gave up after ${MAX_RETRIES} retries`);
+            if (retryCount >= MAX_RETRIES) {
+              if (IS_DEV) console.debug(`[AdSense] ${variant} → gave up after ${MAX_RETRIES} retries`);
+              // Only mark unfilled if slot was visible
+              if (hasBeenVisible.current) {
+                setAdStatus('unfilled');
+              }
             }
             return;
           }
@@ -168,16 +280,23 @@ export function AdPlaceholder({ variant, className = '' }: AdPlaceholderProps) {
             const el2 = adRef.current;
             if (!el2) return;
             const done = el2.getAttribute('data-adsbygoogle-status') === 'done';
-            if (done) return;
+            if (done) {
+              pushSucceeded.current = true;
+              if (hasBeenVisible.current) startFillObservation();
+              return;
+            }
             const ready = isAdSenseReady();
             const width = el2.offsetWidth ?? 0;
             const vis = document.visibilityState === 'visible';
             if (ready && width > 0 && vis) {
               try {
                 (window.adsbygoogle = window.adsbygoogle || []).push({});
+                pushSucceeded.current = true;
                 if (IS_DEV) console.debug(`[AdSense] ${variant} → pushed OK on retry ${retryCount}`);
+                if (hasBeenVisible.current) startFillObservation();
               } catch (e2) {
                 if (IS_DEV) console.debug(`[AdSense] ${variant} → retry push error`, e2);
+                retryLoop();
               }
             } else {
               retryLoop();
@@ -190,19 +309,29 @@ export function AdPlaceholder({ variant, className = '' }: AdPlaceholderProps) {
 
     trackTimeout(() => initAd(false), STAGGER_DELAY[variant]);
 
-    return () => {
-      abortRef.current = true;
-      clearAllTimers();
-    };
+    return cleanup;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [noAds, variant, location.pathname]);
 
   if (noAds) return null;
 
+  // Non-prod: return null (no fake ad boxes in preview)
+  if (!IS_PROD_DOMAIN) return null;
+
+  // Unfilled: collapse entirely
+  if (adStatus === 'unfilled') return null;
+
   const adFormat = config.format === 'fluid' ? 'fluid' : config.format;
 
+  // Loading: silent placeholder with reserved height, no label
+  // Filled: full container with label
   return (
-    <div className={`${config.wrapper} ${className}`}>
-      <AdLabel />
+    <div
+      ref={wrapperRef}
+      className={`${config.wrapper} ${className} ${adStatus === 'loading' ? 'opacity-0' : ''}`}
+      style={adStatus === 'loading' ? { minHeight: variant === 'banner' || variant === 'footer' ? '90px' : '250px' } : undefined}
+    >
+      {adStatus === 'filled' && <AdLabel />}
       <ins
         key={insKey}
         ref={adRef}

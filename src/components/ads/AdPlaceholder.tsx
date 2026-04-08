@@ -48,23 +48,27 @@ const FILL_CHECK_TIMEOUT = 5000; // 5s after push or viewport entry
 
 const variantConfig = {
   banner: {
-    minHeight: 'min-h-[90px]',
-    wrapper: 'w-full my-5 px-4 flex flex-col items-center min-h-[110px]',
+    filledMinHeight: 110,
+    insMinHeight: 90,
+    wrapper: 'w-full my-5 px-4 flex flex-col items-center',
     format: 'horizontal' as const,
   },
   sidebar: {
-    minHeight: 'min-h-[250px]',
-    wrapper: 'w-full my-5 px-2 flex flex-col items-center min-h-[280px]',
+    filledMinHeight: 280,
+    insMinHeight: 250,
+    wrapper: 'w-full my-5 px-2 flex flex-col items-center',
     format: 'vertical' as const,
   },
   'in-content': {
-    minHeight: 'min-h-[250px]',
-    wrapper: 'w-full my-8 px-4 flex flex-col items-center border-t border-b border-muted/20 py-4 min-h-[280px]',
+    filledMinHeight: 280,
+    insMinHeight: 250,
+    wrapper: 'w-full my-8 px-4 flex flex-col items-center border-t border-b border-muted/20 py-4',
     format: 'fluid' as const,
   },
   footer: {
-    minHeight: 'min-h-[90px]',
-    wrapper: 'w-full mt-5 mb-[88px] md:mb-5 px-4 flex flex-col items-center min-h-[110px]',
+    filledMinHeight: 110,
+    insMinHeight: 90,
+    wrapper: 'w-full mt-5 mb-[88px] md:mb-5 px-4 flex flex-col items-center',
     format: 'horizontal' as const,
   },
 };
@@ -84,14 +88,19 @@ function isAdSenseReady(): boolean {
   return false;
 }
 
-/** Check if the <ins> element has real rendered ad content. */
+/** Check if the <ins> element has real rendered ad content (must contain an iframe). */
 function hasRealFill(el: HTMLElement): boolean {
   const status = el.getAttribute('data-adsbygoogle-status');
   if (status !== 'done') return false;
-  // Check for child content with real height (iframe or div injected by AdSense)
+  // Real AdSense fills always render via an iframe
+  const iframes = el.querySelectorAll('iframe');
+  for (let i = 0; i < iframes.length; i++) {
+    if (iframes[i].offsetHeight > 0 && iframes[i].offsetWidth > 0) return true;
+  }
+  // Also check for ins > div > iframe (nested containers)
   for (let i = 0; i < el.children.length; i++) {
     const child = el.children[i] as HTMLElement;
-    if (child.offsetHeight > 0) return true;
+    if (child.offsetHeight > 0 && child.querySelector('iframe')) return true;
   }
   return false;
 }
@@ -309,6 +318,13 @@ export function AdPlaceholder({ variant, className = '' }: AdPlaceholderProps) {
 
     trackTimeout(() => initAd(false), STAGGER_DELAY[variant]);
 
+    // Absolute max timeout: force collapse if still loading after 20s
+    trackTimeout(() => {
+      if (abortRef.current) return;
+      setAdStatus(prev => prev === 'loading' ? 'unfilled' : prev);
+      if (IS_DEV) console.debug(`[AdSense] ${variant} → absolute 20s timeout reached`);
+    }, 20000);
+
     return cleanup;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [noAds, variant, location.pathname]);
@@ -325,13 +341,22 @@ export function AdPlaceholder({ variant, className = '' }: AdPlaceholderProps) {
 
   // Loading: silent placeholder with reserved height, no label
   // Filled: full container with label
+  const isFilled = adStatus === 'filled';
+  const isLoading = adStatus === 'loading';
+
   return (
     <div
       ref={wrapperRef}
-      className={`${config.wrapper} ${className} ${adStatus === 'loading' ? 'opacity-0' : ''}`}
-      style={adStatus === 'loading' ? { minHeight: variant === 'banner' || variant === 'footer' ? '90px' : '250px' } : undefined}
+      className={`${config.wrapper} ${className}`}
+      style={
+        isLoading
+          ? { height: 0, overflow: 'hidden' }
+          : isFilled
+            ? { minHeight: `${config.filledMinHeight}px` }
+            : undefined
+      }
     >
-      {adStatus === 'filled' && <AdLabel />}
+      {isFilled && <AdLabel />}
       <ins
         key={insKey}
         ref={adRef}
@@ -339,7 +364,7 @@ export function AdPlaceholder({ variant, className = '' }: AdPlaceholderProps) {
         style={{
           display: 'block',
           width: '100%',
-          minHeight: variant === 'banner' || variant === 'footer' ? '90px' : '250px',
+          minHeight: isFilled ? `${config.insMinHeight}px` : undefined,
         }}
         data-ad-client={AD_CLIENT}
         data-ad-slot={SLOT_IDS[variant]}

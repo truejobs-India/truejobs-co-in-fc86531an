@@ -39,10 +39,15 @@ interface Props {
 }
 
 export function EnrichedSection({ title, content, type = 'text' }: Props) {
-  const safeHtml = useMemo(
-    () => (type === 'html' && content?.trim() ? sanitizeHtml(content) : null),
-    [content, type]
-  );
+  const safeHtml = useMemo(() => {
+    if (type !== 'html' || !content?.trim()) return null;
+    // Strip empty HTML tags before sanitizing
+    const cleaned = content
+      .replace(/<li>\s*<p>\s*<\/p>\s*<\/li>/gi, '')
+      .replace(/<p>\s*<\/p>/gi, '')
+      .replace(/<p>\s*<br\s*\/?>\s*<\/p>/gi, '');
+    return sanitizeHtml(cleaned);
+  }, [content, type]);
 
   if (!content?.trim()) return null;
 

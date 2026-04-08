@@ -1072,7 +1072,10 @@ No markdown code blocks. Return ONLY the JSON object.`;
     return new Response(JSON.stringify({
       title: parsed.title,
       slug,
-      content: parsed.content,
+      content: (parsed.content || '')
+        .replace(/<li>\s*<p>\s*<\/p>\s*<\/li>/gi, '')
+        .replace(/<p>\s*<\/p>/gi, '')
+        .replace(/<p>\s*<br\s*\/?>\s*<\/p>/gi, ''),
       metaTitle: parsed.metaTitle || parsed.title.substring(0, 60),
       metaDescription: parsed.metaDescription || '',
       excerpt: parsed.excerpt || '',

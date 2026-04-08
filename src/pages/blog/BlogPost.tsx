@@ -173,6 +173,14 @@ export default function BlogPostPage() {
       content = content.replace(/\\n/g, '\n');
     }
 
+    // Strip empty HTML tags that contain only whitespace/newlines
+    // e.g. <p>\n</p>, <p>  \n\n</p>, <p></p>, <li><p>\n</p></li>
+    content = content
+      .replace(/<li>\s*<p>\s*<\/p>\s*<\/li>/gi, '')
+      .replace(/<p>\s*<\/p>/gi, '')
+      .replace(/<p>\s*<br\s*\/?>\s*<\/p>/gi, '')
+      .replace(/>\s{2,}</g, '> <');
+
     // Conservative: strip trailing JSON metadata that was accidentally stored in content
     // Matches patterns like: ",\n  "metaTitle": or ",  "metaTitle":
     const jsonTailMatch = content.search(/",\s*"metaTitle"\s*:/);

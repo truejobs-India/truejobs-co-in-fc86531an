@@ -342,6 +342,21 @@ export const AI_MODELS: readonly AiModelDef[] = [
     supportsContinuationPass: false,
   },
 
+  // ── Azure FLUX image model ──
+  {
+    value: 'azure-flux-kontext',
+    label: 'Azure FLUX.1 Kontext Pro (From API)',
+    desc: 'Your API · High-quality image generation · ~25s',
+    speed: 25,
+    source: 'external-api',
+    provider: 'Azure AI Foundry',
+    capabilities: ['image'],
+    recommendedMaxWords: 0,
+    warnAboveWords: 0,
+    longFormReliability: 'poor',
+    supportsContinuationPass: false,
+  },
+
   // ── Amazon Bedrock image model ──
   {
     value: 'nova-canvas',

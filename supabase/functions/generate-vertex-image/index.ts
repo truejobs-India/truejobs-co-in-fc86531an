@@ -9,6 +9,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { awsSigV4Fetch } from '../_shared/bedrock-nova.ts';
+import { callAzureFlux, fluxSizeFromAspectRatio } from '../_shared/azure-flux.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -40,6 +41,7 @@ const KNOWN_IMAGE_MODEL_KEYS = new Set([
   'vertex-pro', // has image capability in aiModels.ts
   'vertex-flash-image', // Gemini 2.5 Flash Image via direct Vertex AI
   'nova-canvas', // Amazon Nova Canvas via Bedrock InvokeModel
+  'azure-flux-kontext', // Azure FLUX.1 Kontext Pro via Azure AI Foundry
 ]);
 
 const IMAGEN_TIMEOUT_MS = 120_000;
@@ -1253,6 +1255,92 @@ async function generateViaNovaCanvas(
 }
 
 // ═══════════════════════════════════════════════════════════════
+// AZURE FLUX.1 KONTEXT PRO — via Azure AI Foundry Image API
+// ═══════════════════════════════════════════════════════════════
+
+async function generateViaAzureFlux(
+  body: any,
+  slug: string,
+  imagePrompt: string,
+  adminClient: any,
+  startMs: number,
+  strict: boolean,
+): Promise<Response> {
+  const meta: StrictMeta = {
+    selectedModelKey: 'azure-flux-kontext',
+    resolvedProvider: 'azure-ai-foundry',
+    resolvedRuntimeModelId: 'flux-1-kontext-pro',
+  };
+
+  const purpose = body.purpose || 'cover';
+  const slotNumber = body.slotNumber;
+  const requestedRatio = body.aspectRatio || '16:9';
+  const fluxSize = fluxSizeFromAspectRatio(requestedRatio);
+
+  console.log(`[azure-flux] slug=${slug} purpose=${purpose} size=${fluxSize}`);
+
+  try {
+    const result = await callAzureFlux(imagePrompt, {
+      size: fluxSize,
+      n: 1,
+    });
+
+    // Upload to blog-assets
+    const isInline = purpose === 'inline';
+    const pathPrefix = isInline ? 'inline' : 'covers';
+    const slotSuffix = isInline && slotNumber ? `-slot${slotNumber}` : '';
+    const filePath = `${pathPrefix}/${slug}-flux-kontext${slotSuffix}.png`;
+
+    const uploadResult = await uploadGeneratedImage({
+      adminClient,
+      imageBase64: result.imageBase64,
+      mimeType: result.mimeType,
+      filePath,
+    });
+
+    if (uploadResult instanceof Response) return uploadResult;
+
+    const elapsed = Date.now() - startMs;
+    console.log(`[azure-flux] completed in ${elapsed}ms, uploaded to ${filePath}`);
+
+    // Parse dimensions from size string
+    const [w, h] = fluxSize.split('x').map(Number);
+
+    const successBody = addStrictMetadata({
+      success: true,
+      data: {
+        images: [{
+          url: uploadResult.publicUrl,
+          path: filePath,
+          altText: body.title || body.topic || `Blog image for ${slug}`,
+          mimeType: result.mimeType,
+          width: w || 1024,
+          height: h || 1024,
+        }],
+        promptUsed: imagePrompt,
+      },
+      model: 'flux-1-kontext-pro',
+      action: 'generate-image',
+      purpose,
+      slotNumber,
+      elapsedMs: elapsed,
+    }, { strict: true, ...meta });
+
+    return new Response(JSON.stringify(successBody), {
+      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  } catch (err: any) {
+    console.error(`[azure-flux] error: ${err.message}`);
+    return buildStrictErrorResponse(
+      err.message?.includes('timeout') ? 504 : 502,
+      `Azure FLUX error: ${err.message}. No fallback was used.`,
+      meta,
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // HANDLER — routes based on body.purpose (enforced) or body.model (backward compat)
 // ═══════════════════════════════════════════════════════════════
 
@@ -1306,6 +1394,9 @@ serve(async (req) => {
       if (selectedCoverModel === 'nova-canvas') {
         return await generateViaNovaCanvas(body, slug, imagePrompt, adminClient, startMs, strict);
       }
+      if (selectedCoverModel === 'azure-flux-kontext') {
+        return await generateViaAzureFlux(body, slug, imagePrompt, adminClient, startMs, strict);
+      }
       if (selectedCoverModel === 'vertex-imagen' || isImagenAliasModel(selectedCoverModel)) {
         const aspectRatio = ASPECT_RATIOS[body.aspectRatio || '16:9'] || '16:9';
         return await generateViaImagen(body, slug, imagePrompt, 1, aspectRatio, adminClient, startMs, strict);
@@ -1334,6 +1425,9 @@ serve(async (req) => {
       if (selectedInlineModel === 'nova-canvas') {
         return await generateViaNovaCanvas({ ...body, purpose: 'inline' }, slug, imagePrompt, adminClient, startMs, strict);
       }
+      if (selectedInlineModel === 'azure-flux-kontext') {
+        return await generateViaAzureFlux({ ...body, purpose: 'inline' }, slug, imagePrompt, adminClient, startMs, strict);
+      }
       if (selectedInlineModel === 'vertex-imagen' || isImagenAliasModel(selectedInlineModel)) {
         return await generateViaImagen(body, slug, imagePrompt, 1, aspectRatio, adminClient, startMs, strict);
       }
@@ -1361,6 +1455,9 @@ serve(async (req) => {
 
     if (selectedModel === 'nova-canvas') {
       return await generateViaNovaCanvas(body, slug, imagePrompt, adminClient, startMs, strict);
+    }
+    if (selectedModel === 'azure-flux-kontext') {
+      return await generateViaAzureFlux(body, slug, imagePrompt, adminClient, startMs, strict);
     }
     if (selectedModel === 'vertex-imagen' || isImagenAliasModel(selectedModel)) {
       return await generateViaImagen(body, slug, imagePrompt, imageCount, aspectRatio, adminClient, startMs, strict);

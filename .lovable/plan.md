@@ -1,69 +1,155 @@
 
 
-# Fix Missing Sidebar & Footer Ads — Root Cause and Plan
+# Add Slow Fallback Retries + Revenue-First Corrections
 
-## Root Cause: Both Placements
+## File: `src/components/ads/AdPlaceholder.tsx` — only file changed.
 
-**Single root cause for both**: The loading-state wrapper renders with `opacity: 0` (line 385 of AdPlaceholder.tsx). This makes the entire ad container — including any real ad content that AdSense has already rendered — completely invisible until `hasRealFill()` confirms a fill and transitions the state to `filled`.
+## 5 Problems in Current Code
 
-If AdSense renders ad content that doesn't trigger `hasRealFill()` (e.g., a child element with `offsetHeight` of exactly 0 or 1 during initial measurement, or a rendering path that takes longer than the 5s safety timeout), the slot stays in `loading` → `opacity: 0` → the ad is present in the DOM but invisible to the user forever.
+1. **Line 353**: `height: 0; overflow: hidden` during loading — `<ins>` has zero dimensions, AdSense cannot measure/fill it.
+2. **Lines 321-326**: 20s absolute timeout forces `unfilled` — kills slots that haven't had a fair chance.
+3. **Lines 268-270, 280-282**: Fast retry exhaustion and push errors set `unfilled` — slot dies permanently with no further attempts.
+4. **Lines 185-186**: 5s fill-check timeout sets `unfilled` without checking for AdSense's explicit `unfilled` signal.
+5. **No slow fallback retries**: After 8 fast retries (12s), if push never succeeded, the slot is abandoned forever. AdSense script may become ready later but no code path will attempt push again.
 
-This is a **revenue-destroying bug**: real ads are being served and impressions may be counted by AdSense, but users never see them — meaning zero clicks and wasted fill.
+## Changes
 
-### Why the sidebar specifically
-The sidebar has a 500ms stagger delay (highest after footer at 700ms). Combined with `opacity: 0` during loading and the requirement for `hasBeenVisible` to be true before fill observation even starts, the sidebar ad can easily get stuck invisible.
+### 1. Add `SLOW_RETRY_INTERVAL` constant
+```
+const SLOW_RETRY_INTERVAL = 8000; // 8s between fallback retries
+```
 
-### Why the footer specifically
-The footer has a 700ms stagger delay. It's at the bottom of the page, so `IntersectionObserver` may not fire `hasBeenVisible = true` until the user scrolls down. Without `hasBeenVisible`, `startFillObservation()` is never called even after `push()` succeeds (lines 309-311, 267-269). The ad fills, but the component never checks — so it stays `loading` (opacity 0) forever for users who don't scroll to the bottom.
+### 2. Add `slowRetryRef` to track the interval ID for cleanup
+```
+const slowRetryRef = useRef<number | null>(null);
+```
 
-## Fix
-
-**File**: `src/components/ads/AdPlaceholder.tsx` — only file changed.
-
-### Change 1: Remove `opacity: 0` from loading state (line 385)
-
-Replace:
+### 3. Restore reserved space during loading (lines 351-357)
+Replace `height: 0; overflow: hidden` with reserved min-height + `opacity: 0`:
 ```
 isLoading
   ? { minHeight: `${config.filledMinHeight}px`, opacity: 0 }
+  : isFilled
+    ? { minHeight: `${config.filledMinHeight}px` }
+    : undefined
 ```
-With:
+Also give `<ins>` its minHeight during loading:
 ```
-isLoading
-  ? { minHeight: `${config.filledMinHeight}px` }
+minHeight: (isFilled || isLoading) ? `${config.insMinHeight}px` : undefined,
 ```
 
-The loading state now has reserved space AND is fully visible. If AdSense renders content, users see it immediately — no dependency on fill detection timing. The "Advertisement" label is already gated behind `isFilled` (line 391), so it won't appear prematurely.
+### 4. Delete 20s absolute timeout (lines 321-326)
+Remove entirely. No timeout should force `unfilled`.
 
-### Change 2: Start fill observation regardless of viewport (lines 267-269, 309-311)
+### 5. Remove `setAdStatus('unfilled')` from retry exhaustion (lines 268-270, 280-282)
+- Line 268-270: push error retry path — instead of setting unfilled, start slow fallback retries.
+- Line 280-282: fast retry exhaustion — instead of setting unfilled, start slow fallback retries.
 
-Currently, `startFillObservation()` only fires when `hasBeenVisible.current` is true. This means below-fold ads (footer, some sidebars) that receive a successful push never get their fill state confirmed, staying in `loading` forever.
-
-Fix: call `startFillObservation()` unconditionally after a successful push. The viewport check should not gate fill observation — it should only affect collapse decisions (which it already does via the safety timeout logic).
-
-Replace both instances of:
+### 6. Add slow fallback retry function
+After fast retries exhaust without success, start `setInterval` at 8s:
 ```typescript
-if (hasBeenVisible.current) {
-  startFillObservation();
+const startSlowRetries = () => {
+  if (slowRetryRef.current !== null) return; // already running
+  slowRetryRef.current = window.setInterval(() => {
+    if (abortRef.current || pushSucceeded.current) {
+      if (slowRetryRef.current !== null) {
+        clearInterval(slowRetryRef.current);
+        slowRetryRef.current = null;
+      }
+      return;
+    }
+    const el = adRef.current;
+    if (!el) return;
+    // Check if AdSense explicitly marked unfilled
+    if (el.getAttribute('data-adsbygoogle-status') === 'unfilled') {
+      setAdStatus('unfilled');
+      clearInterval(slowRetryRef.current!);
+      slowRetryRef.current = null;
+      return;
+    }
+    // Check if already done (filled externally)
+    if (el.getAttribute('data-adsbygoogle-status') === 'done') {
+      pushSucceeded.current = true;
+      if (hasBeenVisible.current) startFillObservation();
+      clearInterval(slowRetryRef.current!);
+      slowRetryRef.current = null;
+      return;
+    }
+    // Attempt push if conditions are met
+    const ready = isAdSenseReady();
+    const width = el.offsetWidth ?? 0;
+    if (ready && width > 0) {
+      try {
+        (window.adsbygoogle = window.adsbygoogle || []).push({});
+        pushSucceeded.current = true;
+        if (hasBeenVisible.current) startFillObservation();
+        clearInterval(slowRetryRef.current!);
+        slowRetryRef.current = null;
+      } catch { /* continue retrying */ }
+    }
+  }, SLOW_RETRY_INTERVAL);
+};
+```
+
+### 7. Fix fill-check safety timeout (lines 185-186)
+Only set `unfilled` if AdSense explicitly signals it:
+```typescript
+} else if (el?.getAttribute('data-adsbygoogle-status') === 'unfilled') {
+  setAdStatus('unfilled');
+}
+// else: stay 'loading' — uncertain, keep reserved
+```
+
+### 8. Broaden `hasRealFill()` (lines 91-106)
+Accept any child with `offsetHeight > 1` when status is `done`, not iframe-only:
+```typescript
+function hasRealFill(el: HTMLElement): boolean {
+  const status = el.getAttribute('data-adsbygoogle-status');
+  if (status !== 'done') return false;
+  for (let i = 0; i < el.children.length; i++) {
+    if ((el.children[i] as HTMLElement).offsetHeight > 1) return true;
+  }
+  return false;
 }
 ```
-With:
+
+### 9. Cleanup includes slow retry interval
+In `cleanup()`, add:
 ```typescript
-startFillObservation();
+if (slowRetryRef.current !== null) {
+  clearInterval(slowRetryRef.current);
+  slowRetryRef.current = null;
+}
 ```
 
-This applies to lines 268-269, 298-300, 309-311, 340-341, 351, and the slow retry callback (lines 179, 193).
+## Retry Lifecycle (mount → resolution)
 
-### What does NOT change
-- Revenue-first philosophy unchanged
-- No slot ever collapses unless AdSense explicitly signals `unfilled`
-- Reserved space during loading remains
-- Ad push fires immediately regardless of viewport (unchanged)
-- Label still only appears on confirmed fill
-- Retry strategy (fast + slow) unchanged
-- No other files touched
+```text
+Mount
+  ↓ stagger delay (150-700ms)
+  ↓
+Phase 1: Fast retries (up to 8 × 1.5s = 12s)
+  ├─ push succeeds → start fill observation → done
+  ├─ push error → retry
+  └─ retries exhaust → Phase 2
+  ↓
+Phase 2: Slow fallback retries (every 8s, indefinitely)
+  ├─ push succeeds → fill observation → done
+  ├─ status="unfilled" detected → collapse → done
+  ├─ status="done" detected → fill observation → done
+  └─ unmount/route change → cleanup → done
+```
 
-### Verification reasoning
-1. **Sidebar**: mounted inside `<aside className="hidden lg:block">` on 33+ pages. At lg+ viewport (user is at 1272px > 1024px), the aside is visible. With opacity fix, ad content is visible as soon as AdSense renders it. With fill observation fix, the component will confirm fill and show the label.
-2. **Footer**: mounted in Layout.tsx for every page. With opacity fix, visible immediately. With fill observation fix, state transitions to `filled` even if user hasn't scrolled to the bottom.
+## Duplicate Push Prevention
+- `pushSucceeded.current` is checked at the top of every retry. Once true, slow retries self-terminate via the guard clause. Fast retries also check `alreadyDone` status.
+
+## Why Safer for Revenue
+- Current code: after 12s of fast retries, slot is abandoned forever — if AdSense loads at 15s, the ad is permanently missed.
+- New code: slow retries continue attempting push every 8s — if AdSense loads at 15s, 30s, or 60s, the next retry will succeed.
+- No code path sets `unfilled` except explicit AdSense signal.
+- Reserved space ensures AdSense always has a measurable container.
+
+## Remaining Edge Cases
+- Slot may hold reserved invisible space indefinitely if AdSense never fills and never signals `unfilled`. Acceptable per revenue-first priority.
+- Very slow connections where AdSense script loads after minutes — slow retries will still catch it.
 

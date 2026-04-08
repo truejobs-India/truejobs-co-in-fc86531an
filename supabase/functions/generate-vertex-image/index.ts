@@ -188,7 +188,7 @@ async function verifyAdmin(req: Request): Promise<{ userId: string; adminClient:
 // ═══════════════════════════════════════════════════════════════
 // PROMPT BUILDERS — delegated to shared policy (single source of truth)
 // ═══════════════════════════════════════════════════════════════
-import { buildBlogCoverPrompt, buildBlogInlinePrompt } from '../_shared/blog-image-prompt-policy.ts';
+import { buildBlogCoverPrompt, buildBlogInlinePrompt, applyFluxRealismLayer } from '../_shared/blog-image-prompt-policy.ts';
 
 // Local aliases so call-sites don't need renaming everywhere
 const buildCoverImagePrompt = (body: any) => buildBlogCoverPrompt(body);
@@ -1277,10 +1277,13 @@ async function generateViaAzureFlux(
   const requestedRatio = body.aspectRatio || '16:9';
   const fluxSize = fluxSizeFromAspectRatio(requestedRatio);
 
+  // Apply FLUX-only strict realism layer (does not affect any other model)
+  const fluxPrompt = applyFluxRealismLayer(imagePrompt, body.prompt);
+
   console.log(`[azure-flux] slug=${slug} purpose=${purpose} size=${fluxSize}`);
 
   try {
-    const result = await callAzureFlux(imagePrompt, {
+    const result = await callAzureFlux(fluxPrompt, {
       size: fluxSize,
       n: 1,
     });

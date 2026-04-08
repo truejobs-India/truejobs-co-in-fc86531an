@@ -176,7 +176,7 @@ export function AdPlaceholder({ variant, className = '' }: AdPlaceholderProps) {
       // Check if already done externally
       if (el.getAttribute('data-adsbygoogle-status') === 'done') {
         pushSucceeded.current = true;
-        if (hasBeenVisible.current) startFillObservation();
+        startFillObservation();
         clearInterval(slowRetryRef.current!);
         slowRetryRef.current = null;
         return;
@@ -190,7 +190,7 @@ export function AdPlaceholder({ variant, className = '' }: AdPlaceholderProps) {
           (window.adsbygoogle = window.adsbygoogle || []).push({});
           pushSucceeded.current = true;
           if (IS_DEV) console.debug(`[AdSense] ${variant} → pushed OK (slow retry)`);
-          if (hasBeenVisible.current) startFillObservation();
+          startFillObservation();
           clearInterval(slowRetryRef.current!);
           slowRetryRef.current = null;
         } catch {
@@ -295,9 +295,7 @@ export function AdPlaceholder({ variant, className = '' }: AdPlaceholderProps) {
 
       if (alreadyDone) {
         pushSucceeded.current = true;
-        if (hasBeenVisible.current) {
-          startFillObservation();
-        }
+        startFillObservation();
         return;
       }
 
@@ -306,9 +304,7 @@ export function AdPlaceholder({ variant, className = '' }: AdPlaceholderProps) {
           (window.adsbygoogle = window.adsbygoogle || []).push({});
           pushSucceeded.current = true;
           if (IS_DEV) console.debug(`[AdSense] ${variant} → pushed OK`);
-          if (hasBeenVisible.current) {
-            startFillObservation();
-          }
+          startFillObservation();
         } catch (e) {
           if (IS_DEV) console.debug(`[AdSense] ${variant} → push error`, e);
           if (!isRetry) {
@@ -337,7 +333,7 @@ export function AdPlaceholder({ variant, className = '' }: AdPlaceholderProps) {
             const done = el2.getAttribute('data-adsbygoogle-status') === 'done';
             if (done) {
               pushSucceeded.current = true;
-              if (hasBeenVisible.current) startFillObservation();
+              startFillObservation();
               return;
             }
             const ready = isAdSenseReady();
@@ -348,7 +344,7 @@ export function AdPlaceholder({ variant, className = '' }: AdPlaceholderProps) {
                 (window.adsbygoogle = window.adsbygoogle || []).push({});
                 pushSucceeded.current = true;
                 if (IS_DEV) console.debug(`[AdSense] ${variant} → pushed OK on retry ${retryCount}`);
-                if (hasBeenVisible.current) startFillObservation();
+                startFillObservation();
               } catch (e2) {
                 if (IS_DEV) console.debug(`[AdSense] ${variant} → retry push error`, e2);
                 retryLoop();

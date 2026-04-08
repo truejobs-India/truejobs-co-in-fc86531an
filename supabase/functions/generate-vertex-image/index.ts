@@ -188,7 +188,7 @@ async function verifyAdmin(req: Request): Promise<{ userId: string; adminClient:
 // ═══════════════════════════════════════════════════════════════
 // PROMPT BUILDERS — delegated to shared policy (single source of truth)
 // ═══════════════════════════════════════════════════════════════
-import { buildBlogCoverPrompt, buildBlogInlinePrompt } from '../_shared/blog-image-prompt-policy.ts';
+import { buildBlogCoverPrompt, buildBlogInlinePrompt, applyFluxRealismLayer } from '../_shared/blog-image-prompt-policy.ts';
 
 // Local aliases so call-sites don't need renaming everywhere
 const buildCoverImagePrompt = (body: any) => buildBlogCoverPrompt(body);

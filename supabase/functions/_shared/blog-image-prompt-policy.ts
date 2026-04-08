@@ -83,3 +83,83 @@ export function buildBlogInlinePrompt(body: {
 
   return base + BLOG_IMAGE_MANDATORY_RULES;
 }
+
+// ═══════════════════════════════════════════════════════════════
+// FLUX-ONLY STRICT REALISM LAYER
+// ═══════════════════════════════════════════════════════════════
+//
+// WHY THIS EXISTS:
+//   FLUX.1-Kontext-pro interprets the shared BLOG_IMAGE_MANDATORY_RULES
+//   (especially rule 10: "very fair complexion, beautiful and handsome
+//   features, polished, aspirational, premium look") too literally,
+//   producing glamorized, stock-photo-style images with stereotypical
+//   beauty markers (bindi, heavy makeup, gold jewellery, fashion-model
+//   look). This layer overrides those tendencies for FLUX only.
+//
+// HOW TO TUNE:
+//   - Edit FLUX_REALISM_POSITIVE / FLUX_REALISM_NEGATIVE below.
+//   - The applyFluxRealismLayer() function is called ONLY inside
+//     generateViaAzureFlux() in generate-vertex-image/index.ts.
+//   - No other model is affected. Gemini, Imagen, OpenAI etc. still
+//     receive the original BLOG_IMAGE_MANDATORY_RULES unchanged.
+//
+// HOW TO UPDATE SAFELY:
+//   1. Only modify the constants in this section.
+//   2. Do NOT change BLOG_IMAGE_MANDATORY_RULES or the shared builders
+//      above — those serve all non-FLUX models.
+//   3. Test by generating a FLUX cover image from the admin panel.
+// ═══════════════════════════════════════════════════════════════
+
+const FLUX_REALISM_POSITIVE = `
+FLUX-SPECIFIC REALISM DIRECTIVES (override any conflicting aesthetic rules above):
+Style: Documentary-style candid editorial photography with natural lighting and believable imperfections.
+Subjects: Authentic ordinary Indian college-going students and aspirants — NOT fashion models. Age-appropriate appearance for young adults (18-25). Grounded everyday student clothing (simple kurta, t-shirt, jeans, salwar-kameez — whatever ordinary students actually wear). Natural skin texture with realistic pores and tonal variation. Realistic facial proportions and natural expressions — no surreal symmetry or artificial smoothing.
+Environment: Realistic classroom, study desk, library, exam hall, or campus setting with believable props (actual books, notebooks, pens). No staged commercial setups.
+Jewellery: If any jewellery is present, keep it subtle, minimal, and like ordinary college-going students might wear (simple studs, thin chain). No heavy, ornate, or gold-dominant pieces.`;
+
+const FLUX_REALISM_NEGATIVE = `
+FLUX NEGATIVE CONSTRAINTS (strictly enforced defaults):
+Do NOT add: bindi, tilak, heavy makeup, bright lipstick, glam or beauty-editorial styling, fashion-model posing, stock-photo aesthetic, artificial face smoothing or over-retouching, surreal facial symmetry, plastic or oversmoothed skin, heavy gold jewellery, bridal jewellery, ornate festive jewellery, overdressed styling that does not fit ordinary college students, nonsense or gibberish text on blackboards or books or screens or walls or posters, decorative irrelevant cultural symbolism, ad-style commercial beauty photography.`;
+
+/** Keywords that signal the user explicitly wants cultural/styling elements — suppress conflicting negatives. */
+const FLUX_USER_OVERRIDE_KEYWORDS = [
+  'traditional', 'bridal', 'festive', 'bindi', 'tilak',
+  'makeup', 'jewellery', 'jewelry', 'ornate', 'wedding',
+  'ceremonial', 'ethnic wear', 'saree', 'lehenga',
+];
+
+/**
+ * Apply the FLUX-only strict realism layer to a prompt.
+ *
+ * This function is called ONLY when the selected model is FLUX.
+ * It appends positive realism directives and negative constraints,
+ * but respects explicit user intent — if the user's custom prompt
+ * contains keywords like "traditional", "bridal", "bindi", etc.,
+ * the negative constraints for those elements are softened.
+ *
+ * @param prompt     The fully-built image prompt (from buildBlogCoverPrompt or buildBlogInlinePrompt)
+ * @param userPrompt Optional raw user-provided prompt text to check for override keywords
+ * @returns          The prompt with FLUX realism layer appended
+ */
+export function applyFluxRealismLayer(
+  prompt: string,
+  userPrompt?: string,
+): string {
+  // Always append positive realism directives
+  let result = prompt + '\n' + FLUX_REALISM_POSITIVE;
+
+  // Check if user explicitly requested cultural/styling elements
+  const lowerUser = (userPrompt || '').toLowerCase();
+  const hasOverride = FLUX_USER_OVERRIDE_KEYWORDS.some(kw => lowerUser.includes(kw));
+
+  if (hasOverride) {
+    // User explicitly wants styling elements — skip the negative block
+    // so their intent is preserved
+    result += `\nNote: User has explicitly requested specific styling. Respect the user's styling choices while maintaining photorealistic quality.`;
+  } else {
+    // Default: apply full negative constraints
+    result += '\n' + FLUX_REALISM_NEGATIVE;
+  }
+
+  return result;
+}

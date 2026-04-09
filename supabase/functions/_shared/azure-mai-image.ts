@@ -71,7 +71,7 @@ export async function callAzureMaiImage(
   validateSize(width, height);
 
   const cleanEndpoint = endpoint.replace(/\/+$/, '');
-  const url = `${cleanEndpoint}/mai/v1/images/generations`;
+  const url = `${cleanEndpoint}/mai/v1/images/generations?api-version=2025-04-01`;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);

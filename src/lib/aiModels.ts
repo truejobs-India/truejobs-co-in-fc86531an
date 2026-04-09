@@ -357,6 +357,21 @@ export const AI_MODELS: readonly AiModelDef[] = [
     supportsContinuationPass: false,
   },
 
+  // ── Azure MAI-Image-2 ──
+  {
+    value: 'azure-mai-image-2',
+    label: 'MAI-Image-2 (Azure)',
+    desc: 'Your API · High-quality image generation · ~30s',
+    speed: 30,
+    source: 'external-api',
+    provider: 'Azure AI Foundry',
+    capabilities: ['image'],
+    recommendedMaxWords: 0,
+    warnAboveWords: 0,
+    longFormReliability: 'poor',
+    supportsContinuationPass: false,
+  },
+
   // ── Amazon Bedrock image model ──
   {
     value: 'nova-canvas',

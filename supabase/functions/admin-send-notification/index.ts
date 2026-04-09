@@ -23,20 +23,18 @@ Deno.serve(async (req) => {
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
 
-  const userClient = createClient(supabaseUrl, anonKey, {
-    global: { headers: { Authorization: authHeader } },
-  });
-
+  // Use service role to validate the JWT (avoids session-not-found errors)
+  const adminClient = createClient(supabaseUrl, serviceRoleKey);
   const token = authHeader.replace("Bearer ", "");
-  const { data: claimsData, error: claimsError } = await userClient.auth.getClaims(token);
-  if (claimsError || !claimsData?.claims) {
-    console.error("Auth failed:", claimsError?.message);
-    return new Response(JSON.stringify({ error: "Unauthorized", detail: claimsError?.message || "Invalid token" }), {
+  const { data: userData, error: userError } = await adminClient.auth.getUser(token);
+  if (userError || !userData?.user) {
+    console.error("Auth failed:", userError?.message);
+    return new Response(JSON.stringify({ error: "Unauthorized", detail: userError?.message || "Invalid token" }), {
       status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 
-  const userId = claimsData.claims.sub;
+  const userId = userData.user.id;
   const adminClient = createClient(supabaseUrl, serviceRoleKey);
   const { data: roleCheck } = await adminClient.rpc("has_role", { _user_id: userId, _role: "admin" });
 

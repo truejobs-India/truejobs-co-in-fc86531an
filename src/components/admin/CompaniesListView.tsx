@@ -197,7 +197,7 @@ export function CompaniesListView({ onCompanyClick, refreshKey }: CompaniesListV
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <CardTitle className="flex items-center gap-2">
               <Building2 className="h-5 w-5" />
-              All Companies ({companies.length})
+              Registered Companies ({companies.length})
             </CardTitle>
             <div className="relative w-full sm:w-64">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -236,9 +236,6 @@ export function CompaniesListView({ onCompanyClick, refreshKey }: CompaniesListV
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="font-medium text-left">{company.name}</span>
-                        {company.id && (
-                          <Badge variant="outline" className="text-xs">Registered</Badge>
-                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">

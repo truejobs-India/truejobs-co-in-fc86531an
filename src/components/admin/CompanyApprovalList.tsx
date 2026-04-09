@@ -247,12 +247,12 @@ export function CompanyApprovalList({ onStatsChange }: CompanyApprovalListProps)
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => handleReject(company.id)}
+                          onClick={() => handleRejectAndBlock(company)}
                           disabled={processingCompany === company.id}
-                          className="text-red-600 hover:text-red-700"
+                          className="text-destructive hover:text-destructive"
+                          title="Reject & Block"
                         >
-                          <XCircle className="h-4 w-4" />
-                        </Button>
+                          <ShieldBan className="h-4 w-4" />
                       </div>
                     </TableCell>
                   </TableRow>

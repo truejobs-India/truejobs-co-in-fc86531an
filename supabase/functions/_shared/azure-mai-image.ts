@@ -1,24 +1,30 @@
 /**
  * Shared Azure MAI-Image-2 caller — server-side only.
  *
- * Uses the OpenAI-compatible endpoint on Azure AI Foundry.
+ * Uses the MAI image generation endpoint on Azure AI Foundry.
  *
- * ── Required env vars ──
- *   AZURE_MAI_ENDPOINT         – e.g. https://social-5844-resource.services.ai.azure.com/api/projects/social-5844
- *   AZURE_MAI_API_KEY          – Azure resource API key
- *   AZURE_MAI_IMAGE_DEPLOYMENT – deployment name (e.g. MAI-Image-2)
+ * ── Required env vars (internal aliases → Azure Foundry values) ──
+ *   AZURE_MAI_ENDPOINT  → Azure Foundry resource endpoint (target URL from Foundry portal)
+ *   AZURE_MAI_API_KEY   → Azure API key (from Foundry portal "Keys" section)
+ *
+ * ── Deployment name ──
+ *   AZURE_MAI_IMAGE_DEPLOYMENT → the deployed model name shown in Foundry (e.g. "MAI-Image-2")
+ *   This is an internal env-var alias; Azure does not have a setting called
+ *   "AZURE_MAI_IMAGE_DEPLOYMENT" — it maps to the `model` field in the request body.
  *
  * ── Endpoint ──
- *   POST {base}/openai/v1/images/generations
- *   Auth: Authorization: Bearer <key>
- *   Body: { model, prompt, size: "WxH", n: 1, response_format: "b64_json" }
+ *   POST {AZURE_MAI_ENDPOINT}/mai/v1/images/generations
+ *   Auth: Authorization: Bearer {AZURE_MAI_API_KEY}
+ *   Body: { model: DEPLOYMENT_NAME, prompt, width, height }
  */
 
 const DEFAULT_TIMEOUT_MS = 120_000;
 
 export interface AzureMaiImageOptions {
-  /** Size string like "1024x1024" (default: "1024x1024") */
-  size?: string;
+  /** Image width in pixels (default: 1024) */
+  width?: number;
+  /** Image height in pixels (default: 1024) */
+  height?: number;
   /** Timeout in ms (default: 120s) */
   timeoutMs?: number;
 }
@@ -46,28 +52,23 @@ export async function callAzureMaiImage(
 
   if (!endpoint) throw new Error('AZURE_MAI_ENDPOINT not configured');
   if (!apiKey) throw new Error('AZURE_MAI_API_KEY not configured');
-  if (!deployment) throw new Error('AZURE_MAI_IMAGE_DEPLOYMENT not configured');
+  if (!deployment) throw new Error('AZURE_MAI_IMAGE_DEPLOYMENT not configured (set to your Foundry deployment name, e.g. "MAI-Image-2")');
 
   const {
-    size = '1024x1024',
+    width = 1024,
+    height = 1024,
     timeoutMs = DEFAULT_TIMEOUT_MS,
   } = options;
 
-  // Strip trailing slashes
-  let cleanEndpoint = endpoint.replace(/\/+$/, '');
-  // If user provides a project-scoped URL (e.g. .../api/projects/xxx), strip the project path.
-  const projectPathIdx = cleanEndpoint.indexOf('/api/projects/');
-  if (projectPathIdx > 0) {
-    cleanEndpoint = cleanEndpoint.substring(0, projectPathIdx);
-    console.log(`[azure-mai-image] Stripped project path, using resource base: ${cleanEndpoint}`);
-  }
-  const url = `${cleanEndpoint}/openai/v1/images/generations`;
+  // Clean endpoint — strip trailing slashes only. Keep full path as provided.
+  const cleanEndpoint = endpoint.replace(/\/+$/, '');
+  const url = `${cleanEndpoint}/mai/v1/images/generations`;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    console.log(`[azure-mai-image] Calling ${deployment} @ ${cleanEndpoint}, size=${size}`);
+    console.log(`[azure-mai-image] Calling ${deployment} @ ${cleanEndpoint}, ${width}x${height}`);
 
     const resp = await fetch(url, {
       method: 'POST',
@@ -78,9 +79,8 @@ export async function callAzureMaiImage(
       body: JSON.stringify({
         model: deployment,
         prompt,
-        size,
-        n: 1,
-        response_format: 'b64_json',
+        width,
+        height,
       }),
       signal: controller.signal,
     });
@@ -96,6 +96,7 @@ export async function callAzureMaiImage(
       throw new Error('Azure MAI-Image-2 returned empty response — no image data');
     }
 
+    // Prefer b64_json if present
     const imageBase64 = imageData.b64_json;
     if (imageBase64) {
       console.log(`[azure-mai-image] success (b64_json), base64 length=${imageBase64.length}`);
@@ -133,14 +134,14 @@ export async function callAzureMaiImage(
   }
 }
 
-/** Map common aspect ratio strings to MAI-Image-2-compatible size strings */
-export function maiSizeFromAspectRatio(ratio: string): string {
+/** Map common aspect ratio strings to MAI-Image-2-compatible width/height */
+export function maiSizeFromAspectRatio(ratio: string): { width: number; height: number } {
   switch (ratio) {
-    case '16:9': return '1792x1024';
-    case '9:16': return '1024x1792';
-    case '4:3':  return '1024x768';
-    case '3:4':  return '768x1024';
+    case '16:9': return { width: 1792, height: 1024 };
+    case '9:16': return { width: 1024, height: 1792 };
+    case '4:3':  return { width: 1024, height: 768 };
+    case '3:4':  return { width: 768, height: 1024 };
     case '1:1':
-    default:     return '1024x1024';
+    default:     return { width: 1024, height: 1024 };
   }
 }

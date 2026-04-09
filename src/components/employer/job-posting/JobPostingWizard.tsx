@@ -181,6 +181,20 @@ export function JobPostingWizard() {
     setIsSubmitting(true);
 
     try {
+      // Check if company is blocked before posting
+      const { isCompanyBlocked } = await import('@/utils/companyBlockCheck');
+      const blocked = await isCompanyBlocked(company.name);
+      if (blocked) {
+        toast({
+          title: 'Company Blocked',
+          description: 'This company has been permanently blocked from posting jobs.',
+          variant: 'destructive',
+        });
+        setIsSubmitting(false);
+        return;
+      }
+
+    try {
       // Determine status based on company auto-approve setting
       const { data: companyData } = await supabase
         .from('companies')

@@ -848,7 +848,11 @@ No markdown code blocks.`;
   } catch (err) {
     console.error('improve-blog-content error:', err);
     const msg = err instanceof Error ? err.message : 'Unknown error';
-    const status = typeof msg === 'string' && msg.toLowerCase().includes('timeout') ? 504 : 500;
-    return new Response(JSON.stringify({ error: msg }), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    const isTimeout = typeof msg === 'string' && msg.toLowerCase().includes('timeout');
+    // Return 200 with error flag for timeouts to prevent platform 504 overlay
+    if (isTimeout) {
+      return new Response(JSON.stringify({ error: msg, timedOut: true }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+    return new Response(JSON.stringify({ error: msg }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 });

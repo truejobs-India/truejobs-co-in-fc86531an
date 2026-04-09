@@ -62,7 +62,7 @@ export async function callAzureMaiImage(
 
   // Clean endpoint — strip trailing slashes only. Keep full path as provided.
   const cleanEndpoint = endpoint.replace(/\/+$/, '');
-  const url = `${cleanEndpoint}/mai/v1/images/generations?api-version=2024-05-01-preview`;
+  const url = `${cleanEndpoint}/mai/v1/images/generations?api-version=2025-04-01-preview`;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);

@@ -21,7 +21,6 @@ import {
 } from '@/components/ui/dialog';
 import { 
   CheckCircle, 
-  XCircle, 
   Eye, 
   Building2,
   Loader2,
@@ -29,6 +28,7 @@ import {
   MapPin,
   Users,
   Calendar,
+  ShieldBan,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -115,23 +115,28 @@ export function CompanyApprovalList({ onStatsChange }: CompanyApprovalListProps)
     }
   };
 
-  const handleReject = async (companyId: string) => {
-    setProcessingCompany(companyId);
+  const handleRejectAndBlock = async (company: PendingCompany) => {
+    setProcessingCompany(company.id);
     
     try {
-      const { error } = await supabase
-        .from('companies')
-        .delete()
-        .eq('id', companyId);
+      const { data, error } = await supabase.rpc('permanently_remove_and_block_company', {
+        p_company_id: company.id,
+        p_company_name: company.name,
+        p_aliases: [],
+        p_reason: 'Rejected and blocked during approval review',
+      });
 
       if (error) throw error;
 
+      const result = data as any;
+      if (!result.success) throw new Error(result.error);
+
       toast({
-        title: 'Company Rejected',
-        description: 'The company profile has been removed',
+        title: 'Company Rejected & Blocked',
+        description: `${company.name} has been permanently removed and blocked from re-registering.`,
       });
 
-      setCompanies(companies.filter(c => c.id !== companyId));
+      setCompanies(companies.filter(c => c.id !== company.id));
       setSelectedCompany(null);
       onStatsChange?.();
     } catch (error) {
@@ -242,11 +247,12 @@ export function CompanyApprovalList({ onStatsChange }: CompanyApprovalListProps)
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => handleReject(company.id)}
+                          onClick={() => handleRejectAndBlock(company)}
                           disabled={processingCompany === company.id}
-                          className="text-red-600 hover:text-red-700"
+                          className="text-destructive hover:text-destructive"
+                          title="Reject & Block"
                         >
-                          <XCircle className="h-4 w-4" />
+                          <ShieldBan className="h-4 w-4" />
                         </Button>
                       </div>
                     </TableCell>
@@ -328,11 +334,11 @@ export function CompanyApprovalList({ onStatsChange }: CompanyApprovalListProps)
                 </Button>
                 <Button 
                   variant="destructive"
-                  onClick={() => handleReject(selectedCompany.id)}
+                  onClick={() => handleRejectAndBlock(selectedCompany)}
                   disabled={processingCompany === selectedCompany.id}
                 >
-                  <XCircle className="h-4 w-4 mr-2" />
-                  Reject
+                  <ShieldBan className="h-4 w-4 mr-2" />
+                  Reject & Block
                 </Button>
                 <Button 
                   onClick={() => handleApprove(selectedCompany.id)}

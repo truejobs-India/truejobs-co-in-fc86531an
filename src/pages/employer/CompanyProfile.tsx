@@ -141,6 +141,15 @@ export default function CompanyProfile() {
         .eq('id', company.id);
       error = result.error;
     } else {
+      // Check blocklist before creating company
+      const { isCompanyBlocked } = await import('@/utils/companyBlockCheck');
+      const blocked = await isCompanyBlocked(name.trim());
+      if (blocked) {
+        toast({ title: 'Company Blocked', description: 'This company name has been permanently blocked. Contact support if you believe this is an error.', variant: 'destructive' });
+        setIsSaving(false);
+        return;
+      }
+
       // Double-check no company exists before creating (prevent duplicates)
       const { data: existingCheck } = await supabase
         .from('companies')

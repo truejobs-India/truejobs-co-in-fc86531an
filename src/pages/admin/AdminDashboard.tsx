@@ -38,6 +38,7 @@ import { CronJobManager } from '@/components/admin/CronJobManager';
 import { DrilldownBreadcrumb, BreadcrumbItem } from '@/components/admin/DrilldownBreadcrumb';
 import { CompaniesListView } from '@/components/admin/CompaniesListView';
 import { CompanyJobsView } from '@/components/admin/CompanyJobsView';
+import { BlockedCompaniesManager } from '@/components/admin/BlockedCompaniesManager';
 
 import { UsersListView } from '@/components/admin/UsersListView';
 import { PollsManager } from '@/components/admin/PollsManager';
@@ -350,6 +351,7 @@ function AdminDashboardInner() {
                   onCompanyClick={(name) => setCurrentView({ type: 'company-jobs', companyName: name })}
                   refreshKey={companyRefreshKey}
                 />
+                <BlockedCompaniesManager />
               </TabsContent>
 
               <TabsContent value="engagement" className="space-y-6">

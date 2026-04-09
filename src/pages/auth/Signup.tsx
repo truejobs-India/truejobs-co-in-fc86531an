@@ -165,6 +165,19 @@ export default function Signup() {
 
       // For employers, auto-create company profile (only if none exists)
       if (role === 'employer' && companyName.trim()) {
+        // Check blocklist before creating company
+        const { isCompanyBlocked } = await import('@/utils/companyBlockCheck');
+        const blocked = await isCompanyBlocked(companyName.trim());
+        if (blocked) {
+          toast({
+            title: 'Company Blocked',
+            description: 'This company name has been permanently blocked. Contact support if you believe this is an error.',
+            variant: 'destructive',
+          });
+          setIsLoading(false);
+          return;
+        }
+
         const { data: existingCompany } = await supabase
           .from('companies')
           .select('id')

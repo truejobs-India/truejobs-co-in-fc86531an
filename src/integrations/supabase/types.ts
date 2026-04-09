@@ -452,6 +452,42 @@ export type Database = {
           },
         ]
       }
+      blocked_companies: {
+        Row: {
+          aliases: string[]
+          blocked_by: string | null
+          created_at: string
+          id: string
+          is_active: boolean
+          normalized_name: string
+          original_name: string
+          reason: string
+          website_domain: string | null
+        }
+        Insert: {
+          aliases?: string[]
+          blocked_by?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          normalized_name: string
+          original_name: string
+          reason?: string
+          website_domain?: string | null
+        }
+        Update: {
+          aliases?: string[]
+          blocked_by?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          normalized_name?: string
+          original_name?: string
+          reason?: string
+          website_domain?: string | null
+        }
+        Relationships: []
+      }
       blog_ai_audit_log: {
         Row: {
           after_value: string
@@ -2978,7 +3014,7 @@ export type Database = {
       }
       job_posting_drafts: {
         Row: {
-          company_id: string
+          company_id: string | null
           created_at: string
           current_step: number
           id: string
@@ -2988,7 +3024,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
-          company_id: string
+          company_id?: string | null
           created_at?: string
           current_step?: number
           id?: string
@@ -2998,7 +3034,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
-          company_id?: string
+          company_id?: string | null
           created_at?: string
           current_step?: number
           id?: string
@@ -4932,6 +4968,7 @@ export type Database = {
         }
         Returns: number
       }
+      is_company_blocked: { Args: { p_name: string }; Returns: boolean }
       log_chatbot_event: {
         Args: {
           p_intent: string
@@ -4955,6 +4992,15 @@ export type Database = {
           p_user_agent?: string
         }
         Returns: undefined
+      }
+      permanently_remove_and_block_company: {
+        Args: {
+          p_aliases?: string[]
+          p_company_id: string
+          p_company_name: string
+          p_reason?: string
+        }
+        Returns: Json
       }
       publish_board_result_row: {
         Args: { p_batch_row_id: string }

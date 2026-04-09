@@ -1,65 +1,62 @@
 
 
-# Fix: MAI-Image-2 — Wrong Endpoint Path, Auth Header, and Body Format
+# Fix: Blog Admin Table Shows "No blog posts yet" — Statement Timeout
 
-## Problem
+## Root Cause
 
-The user's verified curl sample proves three bugs in the current `azure-mai-image.ts`:
+The network logs prove it definitively:
 
-| Aspect | Current code (WRONG) | Correct (from curl) |
+| Query | Status | Result |
 |---|---|---|
-| **Path** | `/mai/v1/images/generations` | `/openai/v1/images/generations` |
-| **Auth header** | `api-key: <key>` | `Authorization: Bearer <key>` |
-| **Size format** | `width: 1024, height: 1024` (separate ints) | `size: "1024x1024"` (single string) |
-| **Body extras** | no `n` field | `n: 1` required |
+| `blog_posts?select=*&order=created_at.desc` (main table) | **500** | `"canceling statement due to statement timeout"` |
+| `blog_posts?select=*` (stats component) | **200** | Success |
 
-The project-path stripping logic is correct — the user's target URL (`https://social-5844-resource.services.ai.azure.com/api/projects/social-5844`) needs to be stripped to `https://social-5844-resource.services.ai.azure.com`.
+The main `fetchPosts()` query at line 264-268 of `BlogPostEditor.tsx` does `SELECT *` with `ORDER BY created_at DESC` on 660 posts. Each row contains a large `content` column (full HTML article body). Sorting 660 large rows by `created_at` exceeds the database statement timeout.
 
-## Files Changed (2)
+The stats query succeeds because it has no `ORDER BY` clause, which is cheaper for the database to execute.
 
-### 1. `supabase/functions/_shared/azure-mai-image.ts` — Full rewrite
+## Fix Strategy
 
-- **Path:** `/mai/v1/...` → `/openai/v1/images/generations`
-- **Auth:** `'api-key': apiKey` → `'Authorization': 'Bearer ' + apiKey`
-- **Body:** `{ model, prompt, width, height }` → `{ model, prompt, size: "WxH", n: 1, response_format: "b64_json" }`
-- **Options interface:** `width/height` → `size?: string`
-- **`maiSizeFromAspectRatio`:** returns `string` (`"1024x1024"`) instead of `{ width, height }`
-- **Remove:** `validateSize` function (768px constraints were wrong docs)
-- **Remove:** binary PNG response handling (API returns JSON with `b64_json`)
-- **Keep:** project-path stripping (confirmed needed), URL fallback handling, timeout logic
+Two complementary changes — both in the same file:
 
-### 2. `supabase/functions/generate-vertex-image/index.ts` — Update call site
+### Change 1: Select only needed columns in `fetchPosts()` (primary fix)
 
-`generateViaAzureMaiImage` currently does:
-```typescript
-const dims = maiSizeFromAspectRatio(requestedRatio);
-// passes dims.width, dims.height
+Replace `.select('*')` with an explicit column list that **excludes the large `content` column** from the list query. The content is only needed when editing a single post — not for rendering the table rows.
+
+Columns needed for the table: `id, title, slug, is_published, published_at, created_at, updated_at, meta_title, meta_description, cover_image_url, featured_image_alt, excerpt, category, tags, author_name, word_count, reading_time, content_mode, canonical_url`
+
+The `content` column (and possibly `article_images`) will be fetched on-demand only when the user clicks "Edit" on a specific post.
+
+### Change 2: Lazy-load content on edit
+
+When the user clicks to edit a post, fetch `content` and `article_images` for that single post from the database. This keeps the table load fast and only pulls heavy data when needed.
+
+### Optional: Add a database index
+
+If the timeout persists even without `content`, add an index on `created_at` via migration:
+```sql
+CREATE INDEX IF NOT EXISTS idx_blog_posts_created_at ON blog_posts(created_at DESC);
 ```
 
-Change to:
-```typescript
-const size = maiSizeFromAspectRatio(requestedRatio);
-// passes { size } to callAzureMaiImage
-```
+This is a safety net — the column-pruning fix should be sufficient alone.
 
-Update width/height references in the success response to parse from the size string.
+## Files Changed
+
+1. **`src/components/admin/BlogPostEditor.tsx`** — Change `fetchPosts` to select specific columns (exclude `content`, `article_images`), add lazy content fetch on edit
+2. **Database migration** (if needed) — Add index on `created_at`
 
 ## What is NOT changed
 
-- No model registry changes
-- No selector changes
-- No FLUX caller changes
-- No other model routing
-- No frontend changes
+- No layout changes
+- No stats component changes
+- No blog rendering changes
+- No other admin tools affected
 
-## Secrets
+## Why the previous behavior failed
 
-All three are already configured (`AZURE_MAI_ENDPOINT`, `AZURE_MAI_API_KEY`, `AZURE_MAI_IMAGE_DEPLOYMENT`). The user has now provided exact values — these should be updated via the secrets tool to match:
-- Endpoint: `https://social-5844-resource.services.ai.azure.com/api/projects/social-5844`
-- API key: the provided key
-- Deployment: `MAI-Image-2`
+`SELECT * ORDER BY created_at DESC` on 660 rows with multi-KB HTML content per row requires the database to load all content into memory, sort it, and return it — exceeding the statement timeout (likely 8-10 seconds for the anon/authenticated role).
 
-## Post-fix verification
+## Why the fix works
 
-Deploy the edge function and test with `curl_edge_functions` to confirm a successful image generation.
+Excluding the `content` column reduces the per-row payload from potentially 50-100KB to ~1KB. The same query with ordering becomes trivially fast. Content is loaded only for the single post being edited.
 

@@ -1,99 +1,95 @@
 
 
-# Notification Centre — Implementation Plan
+# Permanently Remove & Block Company — Final Gap Fixes + Implementation
 
-## Baseline Confirmation
+## Gaps Fixed
 
-All audit findings confirmed accurate against current code:
-- `email_subscribers`: 6 active, write-only (no delivery pipeline)
-- `telegram_subscribers`: 0 active, `TELEGRAM_BOT_TOKEN` not configured
-- WhatsApp: link-only, no backend
-- 3 orphaned components confirmed: `NewsletterSection`, `AlertSignupBanner`, `ResourceSubscribeCTA` (none imported anywhere)
-- `AlertSignupBanner` has hardcoded wrong URLs (`919876543210`, `truejobsindia` vs correct `917982306492`, `truejobs_alerts`)
-- No Notification Centre exists in admin
-- Existing email sending uses Resend directly (7 transactional edge functions). `RESEND_API_KEY` is configured
-- No `notification_send_log` table exists yet
+**Gap 1 (Public blocklist exposure):** Removed the `"Anyone can check blocked companies"` SELECT policy for anon/authenticated. `blocked_companies` is now admin-only for all direct access. Frontend block checks use only the `is_company_blocked(p_name)` RPC which is `SECURITY DEFINER` and returns only a boolean — no table contents leak.
 
-## Implementation Summary
+**Gap 2 (Storage cleanup):** Company assets are stored deterministically at `company-assets/{company_id}/*`. The RPC will list and delete all objects under the `{company_id}/` prefix inside the same transaction flow. This is safe because the path is keyed by UUID, no risk of cross-company deletion.
 
-### Phase 1: Database Migration
+---
 
-Create `notification_send_log` table:
-```
-id (uuid PK), channel (text), subject (text), message_body (text),
-audience_filter (jsonb), audience_count (int), sent_count (int),
-failed_count (int), sent_by (uuid FK profiles), status (text),
-created_at (timestamptz)
-```
-RLS: admin-only SELECT/INSERT via `has_role(auth.uid(), 'admin')`.
+## Migration Summary
 
-### Phase 2: Admin Edge Function — `admin-send-notification`
+### Single migration — FKs + blocklist table + RPC
 
-Single edge function handling email broadcast:
-- Validates admin JWT + `has_role` check (auth-first pattern)
-- Accepts: `channel`, `subject`, `message_body`, `cta_label`, `cta_url`, `audience_filter`, `test_email`
-- For email: queries `email_subscribers` (active), sends via Resend in batches (10/batch, 200ms delay)
-- Logs to `notification_send_log`
-- For telegram: queries `telegram_subscribers`, sends via existing `telegram-bot` broadcast (only if `TELEGRAM_BOT_TOKEN` exists)
-- Returns sent/failed counts
+**FK fixes:**
+- `jobs.company_id`: CASCADE → SET NULL
+- `job_posting_drafts.company_id`: CASCADE → SET NULL, drop NOT NULL
 
-### Phase 3: Frontend — Notification Centre Components
+**`blocked_companies` table:**
+- Columns: `id`, `normalized_name` (unique), `original_name`, `aliases text[]`, `website_domain`, `reason`, `blocked_by`, `created_at`, `is_active`
+- RLS: admin-only policy for ALL operations (no public/anon policy)
 
-**New files:**
-1. `src/components/admin/notifications/NotificationCentre.tsx` — main container with sub-tabs (Overview, Email, Telegram, WhatsApp, Logs, Settings)
-2. `src/components/admin/notifications/NotificationOverview.tsx` — channel health cards with subscriber counts, config status
-3. `src/components/admin/notifications/EmailSubscribersTab.tsx` — searchable table of `email_subscribers` + compose/send panel
-4. `src/components/admin/notifications/TelegramSubscribersTab.tsx` — subscriber table + honest status about bot token
-5. `src/components/admin/notifications/WhatsAppTab.tsx` — honest "link-only" status card
-6. `src/components/admin/notifications/NotificationLogs.tsx` — `notification_send_log` table
-7. `src/components/admin/notifications/NotificationSettings.tsx` — channel config status (key exists yes/no, URLs)
+**`is_company_blocked(p_name text)` function:**
+- `SECURITY DEFINER` — bypasses RLS internally
+- Returns boolean only
+- Checks `normalized_name` and `aliases` array for exact match
+- Callable by anyone (safe — returns only true/false)
 
-**Modified:**
-- `src/pages/admin/AdminDashboard.tsx` — add "Notifications" tab with Bell icon
+**`permanently_remove_and_block_company(...)` RPC:**
+- `SECURITY DEFINER`, admin-only via `has_role` check
+- Captures company `website_url`, `slug`, `logo_url`, `cover_image_url` BEFORE deletion
+- Deletes jobs by `company_id` (GET DIAGNOSTICS for count)
+- Deletes jobs by `lower(trim(company_name))` match (GET DIAGNOSTICS for count)
+- Deletes drafts by `company_id`
+- Deletes company row
+- Inserts blocklist entry (ON CONFLICT updates)
+- Purges SEO cache: exact slugs `'companies'` and `'companies/' || slug`
+- Returns: counts + list of storage paths to delete (e.g. `["{id}/logo.png", "{id}/cover.png"]` derived from `logo_url`/`cover_image_url` columns)
+- Does NOT delete storage objects itself (storage API not available in SQL)
 
-### Phase 4: Cleanup
+**Storage deletion** happens client-side immediately after RPC success:
+- Frontend calls `supabase.storage.from('company-assets').list(companyId + '/')` then `.remove(paths)`
+- This is deterministic (UUID-prefixed folder), zero risk of cross-company deletion
+- Result shown to admin: success or explicit failure with remaining paths
 
-- Delete `src/components/home/NewsletterSection.tsx`
-- Delete `src/components/home/AlertSignupBanner.tsx`
-- Delete `src/components/resources/ResourceSubscribeCTA.tsx`
+---
 
-### What Each Channel Gets
+## File-by-File Summary
 
-| Channel | View Subscribers | Send from Admin | Status |
-|---------|-----------------|-----------------|--------|
-| Email | Yes (6 active) | Yes (via Resend) | Operational |
-| Telegram | Yes (0 active) | Disabled (no bot token) | Honest disabled state |
-| WhatsApp | No (no data) | No | Link-only status shown |
+### New Files
 
-### Security
+| File | Purpose |
+|------|---------|
+| `src/utils/companyBlockCheck.ts` | Exports `isCompanyBlocked(name)` — calls `supabase.rpc('is_company_blocked', { p_name })`. No direct table read. |
+| `src/components/admin/BlockedCompaniesManager.tsx` | Admin-only searchable list of blocked companies. Unblock with confirmation. |
 
-- All admin routes use existing auth + admin role check pattern
-- Edge function uses auth-first pattern with `verify_jwt = false` + manual JWT validation
-- Send actions require confirmation dialog
-- Secret values never exposed (only "configured" / "not configured")
+### Modified Files
 
-### Files Changed Summary
+| File | Changes |
+|------|---------|
+| `src/components/admin/CompaniesListView.tsx` | Add "Permanently Remove & Block" button per registered company. Confirmation dialog with: name, ID, linked job counts (by ID and by name), draft count, storage asset check, irreversible warning, type-to-confirm. On confirm: call RPC, then delete storage objects via Storage API, show result. Remove any old simple delete. |
+| `src/components/admin/CompanyApprovalList.tsx` | Replace plain `handleReject` with "Reject & Block" calling the same RPC. |
+| `src/pages/admin/AdminDashboard.tsx` | Add `BlockedCompaniesManager` to Companies tab. |
+| `src/pages/auth/Signup.tsx` | Before `companies.insert`: call `isCompanyBlocked()` via utility. Block with error toast if matched. |
+| `src/pages/employer/CompanyProfile.tsx` | Before company insert/update: same block check. |
+| `src/components/employer/job-posting/JobPostingWizard.tsx` | Before job submit: check company name against blocklist via `isCompanyBlocked()`. |
 
-| Action | File | Purpose |
-|--------|------|---------|
-| Create | 7 admin notification components | Notification Centre UI |
-| Create | 1 edge function | Admin send capability |
-| Modify | AdminDashboard.tsx | Add Notifications tab |
-| Delete | 3 orphaned components | Cleanup dead code |
-| Migration | 1 table | `notification_send_log` |
+### RLS/Policy Summary
 
-### Post-Implementation Verification Checklist
+| Table | Policy | Access |
+|-------|--------|--------|
+| `blocked_companies` | `"Admins manage blocked companies"` — ALL operations | Admin only |
+| `blocked_companies` | No public/anon SELECT policy | None for non-admins |
+| `is_company_blocked()` | SECURITY DEFINER function | Callable by anyone, returns boolean only |
 
-1. Admin can see Notifications tab in dashboard
-2. Overview shows correct subscriber counts (Email: 6, Telegram: 0, WhatsApp: N/A)
-3. Email tab shows subscriber list with search
-4. Admin can compose and send test email to own address
-5. Admin can send broadcast to all active email subscribers
-6. Send confirmation dialog prevents accidental dispatch
-7. Send log records the broadcast
-8. Telegram tab shows "Bot token not configured" honest state
-9. WhatsApp tab shows "Link-only, no delivery backend" honest state
-10. Settings shows config health without secret values
-11. Orphaned components deleted
-12. Existing admin tabs unaffected
+### Storage Cleanup Summary
+
+**Automatic and deterministic.** After RPC succeeds:
+1. Frontend calls `supabase.storage.from('company-assets').list(companyId + '/')`
+2. If objects found, calls `.remove()` on all paths under that prefix
+3. Admin UI shows:
+   - Success: "All company storage assets removed"
+   - Partial failure: "Company removed and blocked. Storage cleanup failed for: [exact paths]. Remove manually from company-assets bucket."
+4. Path pattern `{uuid}/logo.*`, `{uuid}/cover.*` — UUID-keyed, zero cross-company risk
+
+### Verification Summary
+
+1. No public SELECT on `blocked_companies` — non-admins cannot read the table
+2. `is_company_blocked()` returns only boolean — no metadata leaks
+3. Storage cleanup is automatic via deterministic UUID-prefixed paths
+4. If storage delete fails, explicit paths shown to admin — no vague "manual if needed"
+5. All previous protections intact: identifier capture before delete, correct GET DIAGNOSTICS counts, aliases support, exact cache purge, block checks on all entry points, type-to-confirm UI
 

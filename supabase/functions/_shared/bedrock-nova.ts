@@ -119,19 +119,21 @@ export const NOVA_MODELS: Record<string, { modelId: string; label: string }> = {
 // ── Hindi font safeguard for Nova ──
 
 /**
- * If the prompt contains Hindi content markers or the output language is Hindi,
+ * If the prompt contains meaningful Devanagari content (>5% of non-whitespace chars),
  * prepend an explicit instruction for Nova to use Devanagari script.
+ *
+ * Previous implementation matched English keywords like "hindi" which caused
+ * false positives on instructional text (e.g. "Keep the same language (Hindi/English)"),
+ * forcing English articles to be output in Hindi.
  */
 export function applyNovaHindiSafeguard(prompt: string): string {
-  const hindiMarkers = [
-    'हिंदी', 'हिन्दी', 'hindi', 'in hindi', 'hindi mein', 'hindi me',
-    'hindimein', 'hindime', 'language: hindi', 'language:hindi',
-    'भाषा', 'devanagari',
-  ];
-  const lowerPrompt = prompt.toLowerCase();
-  const needsHindi = hindiMarkers.some((m) => lowerPrompt.includes(m));
+  // Count actual Devanagari characters (Unicode block U+0900–U+097F)
+  const devanagariChars = (prompt.match(/[\u0900-\u097F]/g) || []).length;
+  const totalChars = prompt.replace(/\s/g, '').length || 1;
+  const devanagariRatio = devanagariChars / totalChars;
 
-  if (!needsHindi) return prompt;
+  // Only trigger when the article content itself is meaningfully Hindi (>5%)
+  if (devanagariRatio < 0.05) return prompt;
 
   const hindiInstruction = `\n\n[IMPORTANT — Hindi Output Requirement]\nYou MUST write ALL Hindi text using the Devanagari script (हिन्दी लिपि). Do NOT use romanized/transliterated Hindi. Every Hindi word, sentence, heading, and paragraph must use proper Hindi Devanagari Unicode fonts. Example: "सरकारी नौकरी" NOT "Sarkari Naukri".\n`;
   return hindiInstruction + prompt;

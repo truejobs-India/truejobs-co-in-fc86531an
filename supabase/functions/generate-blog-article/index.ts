@@ -505,7 +505,7 @@ function resolveProviderInfo(model: string): { provider: string; apiModel: strin
     case 'gpt5-mini': return { provider: 'openai', apiModel: 'gpt-4o' };
     case 'nova-pro': return { provider: 'bedrock', apiModel: 'us.amazon.nova-pro-v1:0' };
     case 'nova-premier': return { provider: 'bedrock', apiModel: 'us.amazon.nova-premier-v1:0' };
-    case 'nemotron-120b': return { provider: 'bedrock', apiModel: 'nvidia.nemotron-super-3-120b-a12b' };
+    case 'nemotron-120b': return { provider: 'bedrock', apiModel: 'nvidia.nemotron-super-3-120b' };
     case 'azure-gpt4o-mini': return { provider: 'azure-openai', apiModel: 'gpt-4o-mini' };
     case 'azure-gpt41-mini': return { provider: 'azure-openai', apiModel: 'gpt-4.1-mini' };
     case 'sarvam-30b': return { provider: 'sarvam', apiModel: 'sarvam-30b' };

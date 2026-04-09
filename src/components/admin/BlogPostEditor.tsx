@@ -82,6 +82,7 @@ interface BlogPost {
   created_at: string;
   updated_at: string;
   word_count: number | null;
+  reading_time: number | null;
   category: string | null;
   tags: string[] | null;
   faq_count: number | null;
@@ -446,7 +447,9 @@ export function BlogPostEditor() {
   };
 
   const togglePublish = async (post: BlogPost) => {
-    const { word_count, reading_time } = wordCountFields(post.content);
+    const { word_count, reading_time } = post.content
+      ? wordCountFields(post.content)
+      : { word_count: post.word_count || 0, reading_time: post.reading_time || 1 };
     const { error } = await supabase.from('blog_posts').update({
       is_published: !post.is_published,
       published_at: !post.is_published ? new Date().toISOString() : null,
@@ -930,13 +933,13 @@ export function BlogPostEditor() {
 
   // Helper to get score for a post in the table
   const getPostScores = (post: BlogPost) => {
-    const liveWc = calcLiveWordCount(post.content);
-    const postWithLiveWc = { ...post, word_count: liveWc };
-    const meta = blogPostToMetadata(postWithLiveWc);
+    const wc = post.content ? calcLiveWordCount(post.content) : (post.word_count || 0);
+    const postWithWc = { ...post, word_count: wc };
+    const meta = blogPostToMetadata(postWithWc);
     const q = analyzeQuality(meta);
     const s = analyzeSEO(meta);
     const r = getReadinessStatus(q, s, meta);
-    return { quality: q.totalScore, seo: s.totalScore, readiness: r, wordCount: liveWc };
+    return { quality: q.totalScore, seo: s.totalScore, readiness: r, wordCount: wc };
   };
 
   // ── Image cleanup: toggle selection ──
@@ -1172,10 +1175,12 @@ export function BlogPostEditor() {
 
       // Apply safe metadata to DB
       if (Object.keys(updatePayload).length > 0) {
-        // Also recalculate word_count from content to keep it fresh
-        const { word_count, reading_time } = wordCountFields(post.content);
-        (updatePayload as any).word_count = word_count;
-        (updatePayload as any).reading_time = reading_time;
+        // Only recalculate word_count if content is loaded (edit mode)
+        if (post.content) {
+          const { word_count, reading_time } = wordCountFields(post.content);
+          (updatePayload as any).word_count = word_count;
+          (updatePayload as any).reading_time = reading_time;
+        }
         await supabase.from('blog_posts').update(updatePayload).eq('id', post.id);
       }
 

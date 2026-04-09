@@ -1366,13 +1366,12 @@ async function generateViaAzureMaiImage(
   const purpose = body.purpose || 'cover';
   const slotNumber = body.slotNumber;
   const requestedRatio = body.aspectRatio || '16:9';
-  const size = maiSizeFromAspectRatio(requestedRatio);
-  const [w, h] = size.split('x').map(Number);
+  const dims = maiSizeFromAspectRatio(requestedRatio);
 
-  console.log(`[azure-mai-image] slug=${slug} purpose=${purpose} size=${size}`);
+  console.log(`[azure-mai-image] slug=${slug} purpose=${purpose} ${dims.width}x${dims.height}`);
 
   try {
-    const result = await callAzureMaiImage(imagePrompt, { size });
+    const result = await callAzureMaiImage(imagePrompt, { width: dims.width, height: dims.height });
 
     const isInline = purpose === 'inline';
     const pathPrefix = isInline ? 'inline' : 'covers';
@@ -1399,8 +1398,8 @@ async function generateViaAzureMaiImage(
           path: filePath,
           altText: body.title || body.topic || `Blog image for ${slug}`,
           mimeType: result.mimeType,
-          width: w,
-          height: h,
+           width: dims.width,
+           height: dims.height,
         }],
         promptUsed: imagePrompt,
       },

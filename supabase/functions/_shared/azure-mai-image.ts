@@ -1,30 +1,43 @@
 /**
  * Shared Azure MAI-Image-2 caller — server-side only.
  *
- * Uses the OpenAI-compatible endpoint on Azure AI Foundry.
+ * Uses the MAI image generation endpoint on Azure AI Foundry.
  *
- * ── Required env vars ──
- *   AZURE_MAI_ENDPOINT         – e.g. https://social-5844-resource.services.ai.azure.com/api/projects/social-5844
- *   AZURE_MAI_API_KEY          – Azure resource API key
- *   AZURE_MAI_IMAGE_DEPLOYMENT – deployment name (e.g. MAI-Image-2)
+ * ── Required env vars (internal aliases → Azure Foundry values) ──
+ *   AZURE_MAI_ENDPOINT          → Azure Foundry resource endpoint
+ *                                  (e.g. https://<name>.services.ai.azure.com
+ *                                   or   https://<name>.services.ai.azure.com/api/projects/<proj>)
+ *                                  Project path is stripped automatically.
+ *   AZURE_MAI_API_KEY           → Azure API key (from Foundry portal "Keys and Endpoint")
+ *   AZURE_MAI_IMAGE_DEPLOYMENT  → deployed model name shown in Foundry (e.g. "MAI-Image-2")
+ *                                  Maps to the `model` field in the request body.
  *
- * ── Endpoint ──
- *   POST {base}/openai/v1/images/generations
- *   Auth: Authorization: Bearer <key>
- *   Body: { model, prompt, size: "WxH", n: 1, response_format: "b64_json" }
+ * ── Endpoint (per official Microsoft docs) ──
+ *   POST https://<resource>.services.ai.azure.com/mai/v1/images/generations
+ *   Auth: api-key: <key>
+ *   Body: { model, prompt, width, height }
+ *   Response: { data: [{ b64_json: "..." }] }
+ *
+ * ── Constraints ──
+ *   Both width and height must be ≥ 768 px.
+ *   width × height must not exceed 1,048,576 (equivalent to 1024×1024).
  */
 
 const DEFAULT_TIMEOUT_MS = 120_000;
+const MIN_DIMENSION = 768;
+const MAX_TOTAL_PIXELS = 1_048_576;
 
 export interface AzureMaiImageOptions {
-  /** Size string like "1024x1024" (default: "1024x1024") */
-  size?: string;
+  /** Image width in pixels (default: 1024, min: 768) */
+  width?: number;
+  /** Image height in pixels (default: 1024, min: 768) */
+  height?: number;
   /** Timeout in ms (default: 120s) */
   timeoutMs?: number;
 }
 
 export interface AzureMaiImageResult {
-  /** Base64-encoded image data */
+  /** Base64-encoded image data (PNG) */
   imageBase64: string;
   /** MIME type */
   mimeType: string;
@@ -46,41 +59,55 @@ export async function callAzureMaiImage(
 
   if (!endpoint) throw new Error('AZURE_MAI_ENDPOINT not configured');
   if (!apiKey) throw new Error('AZURE_MAI_API_KEY not configured');
-  if (!deployment) throw new Error('AZURE_MAI_IMAGE_DEPLOYMENT not configured');
+  if (!deployment) throw new Error('AZURE_MAI_IMAGE_DEPLOYMENT not configured (set to your Foundry deployment name, e.g. "MAI-Image-2")');
 
-  const {
-    size = '1024x1024',
+  let {
+    width = 1024,
+    height = 1024,
     timeoutMs = DEFAULT_TIMEOUT_MS,
   } = options;
+
+  // Enforce minimum 768px per dimension (official constraint)
+  if (width < MIN_DIMENSION) width = MIN_DIMENSION;
+  if (height < MIN_DIMENSION) height = MIN_DIMENSION;
+
+  // Enforce max total pixels
+  if (width * height > MAX_TOTAL_PIXELS) {
+    const scale = Math.sqrt(MAX_TOTAL_PIXELS / (width * height));
+    width = Math.max(MIN_DIMENSION, Math.floor(width * scale));
+    height = Math.max(MIN_DIMENSION, Math.floor(height * scale));
+  }
 
   // Strip trailing slashes
   let cleanEndpoint = endpoint.replace(/\/+$/, '');
   // If user provides a project-scoped URL (e.g. .../api/projects/xxx), strip the project path.
+  // Official docs: endpoint should be https://<resource>.services.ai.azure.com
   const projectPathIdx = cleanEndpoint.indexOf('/api/projects/');
   if (projectPathIdx > 0) {
     cleanEndpoint = cleanEndpoint.substring(0, projectPathIdx);
     console.log(`[azure-mai-image] Stripped project path, using resource base: ${cleanEndpoint}`);
   }
-  const url = `${cleanEndpoint}/openai/v1/images/generations`;
+
+  // Official MAI endpoint path (NOT the OpenAI-compatible path)
+  const url = `${cleanEndpoint}/mai/v1/images/generations`;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    console.log(`[azure-mai-image] Calling ${deployment} @ ${cleanEndpoint}, size=${size}`);
+    console.log(`[azure-mai-image] POST ${url}, model=${deployment}, ${width}x${height}`);
 
     const resp = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
+        'api-key': apiKey,
       },
       body: JSON.stringify({
         model: deployment,
         prompt,
-        size,
-        n: 1,
-        response_format: 'b64_json',
+        width,
+        height,
       }),
       signal: controller.signal,
     });
@@ -96,9 +123,10 @@ export async function callAzureMaiImage(
       throw new Error('Azure MAI-Image-2 returned empty response — no image data');
     }
 
+    // Standard response: b64_json
     const imageBase64 = imageData.b64_json;
     if (imageBase64) {
-      console.log(`[azure-mai-image] success (b64_json), base64 length=${imageBase64.length}`);
+      console.log(`[azure-mai-image] success, base64 length=${imageBase64.length}`);
       return {
         imageBase64,
         mimeType: 'image/png',
@@ -106,7 +134,7 @@ export async function callAzureMaiImage(
       };
     }
 
-    // Fallback: URL-based response
+    // Fallback: URL-based response (unlikely per docs, but safe)
     if (imageData.url) {
       const imgResp = await fetch(imageData.url);
       if (!imgResp.ok) throw new Error(`Failed to download MAI image from URL: ${imgResp.status}`);
@@ -133,14 +161,17 @@ export async function callAzureMaiImage(
   }
 }
 
-/** Map common aspect ratio strings to MAI-Image-2-compatible size strings */
-export function maiSizeFromAspectRatio(ratio: string): string {
+/**
+ * Map common aspect ratio strings to MAI-Image-2-compatible width/height.
+ * All values satisfy: w >= 768, h >= 768, w*h <= 1,048,576.
+ */
+export function maiSizeFromAspectRatio(ratio: string): { width: number; height: number } {
   switch (ratio) {
-    case '16:9': return '1792x1024';
-    case '9:16': return '1024x1792';
-    case '4:3':  return '1024x768';
-    case '3:4':  return '768x1024';
+    case '16:9': return { width: 1024, height: 768 };   // 786,432 total pixels
+    case '9:16': return { width: 768, height: 1024 };   // 786,432 total pixels
+    case '4:3':  return { width: 1024, height: 768 };   // 786,432 total pixels
+    case '3:4':  return { width: 768, height: 1024 };   // 786,432 total pixels
     case '1:1':
-    default:     return '1024x1024';
+    default:     return { width: 1024, height: 1024 };   // 1,048,576 total pixels
   }
 }

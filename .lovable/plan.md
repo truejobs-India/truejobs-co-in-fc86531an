@@ -1,95 +1,88 @@
 
 
-# Permanently Remove & Block Company — Final Gap Fixes + Implementation
+# Companies Section: Registered-Only + Scraped Jobs Cleanup
 
-## Gaps Fixed
+## Summary
 
-**Gap 1 (Public blocklist exposure):** Removed the `"Anyone can check blocked companies"` SELECT policy for anon/authenticated. `blocked_companies` is now admin-only for all direct access. Frontend block checks use only the `is_company_blocked(p_name)` RPC which is `SECURITY DEFINER` and returns only a boolean — no table contents leak.
+The Companies list currently scans ALL jobs to build name-only entries. This will be changed to query only the `companies` table (4 registered companies). Separately, the stale scraping infrastructure will be fully shut down.
 
-**Gap 2 (Storage cleanup):** Company assets are stored deterministically at `company-assets/{company_id}/*`. The RPC will list and delete all objects under the `{company_id}/` prefix inside the same transaction flow. This is safe because the path is keyed by UUID, no risk of cross-company deletion.
+## File-by-File Changes
 
----
+### 1. `src/components/admin/CompaniesListView.tsx`
 
-## Migration Summary
+**Replace the entire `fetchCompanies` function** (lines 62-113). Remove the jobs-scanning loop entirely.
 
-### Single migration — FKs + blocklist table + RPC
+New logic:
+```
+SELECT id, name FROM companies → count jobs per company_id → display
+```
 
-**FK fixes:**
-- `jobs.company_id`: CASCADE → SET NULL
-- `job_posting_drafts.company_id`: CASCADE → SET NULL, drop NOT NULL
+- Query `companies` table for `id, name`
+- For each company, query `jobs` count where `company_id = company.id` and not deleted
+- Build array sorted by job count descending
+- Remove `companyIdToName` map, the `while(hasMore)` pagination loop, and all `company_name` aggregation logic
+- Every entry will have a real `id` — the `{company.id && ...}` guard on Remove & Block stays correct naturally
+- Remove the "Registered" badge (all entries are registered now, badge is redundant)
+- Update card title from "All Companies" to "Registered Companies"
 
-**`blocked_companies` table:**
-- Columns: `id`, `normalized_name` (unique), `original_name`, `aliases text[]`, `website_domain`, `reason`, `blocked_by`, `created_at`, `is_active`
-- RLS: admin-only policy for ALL operations (no public/anon policy)
+### 2. Database: Unschedule stale cron jobs (via insert tool)
 
-**`is_company_blocked(p_name text)` function:**
-- `SECURITY DEFINER` — bypasses RLS internally
-- Returns boolean only
-- Checks `normalized_name` and `aliases` array for exact match
-- Callable by anyone (safe — returns only true/false)
+Remove these 3 stale/duplicate cron jobs:
+- **jobid 4** `daily-scrape-summary` — calls deleted `send-daily-scrape-summary`
+- **jobid 6** `nightly-duplicate-cleanup` — duplicate of jobid 5
+- **jobid 7** `crawl-govt-portal-daily` — calls deleted `crawl-govt-portal`, root cause of scraped jobs
 
-**`permanently_remove_and_block_company(...)` RPC:**
-- `SECURITY DEFINER`, admin-only via `has_role` check
-- Captures company `website_url`, `slug`, `logo_url`, `cover_image_url` BEFORE deletion
-- Deletes jobs by `company_id` (GET DIAGNOSTICS for count)
-- Deletes jobs by `lower(trim(company_name))` match (GET DIAGNOSTICS for count)
-- Deletes drafts by `company_id`
-- Deletes company row
-- Inserts blocklist entry (ON CONFLICT updates)
-- Purges SEO cache: exact slugs `'companies'` and `'companies/' || slug`
-- Returns: counts + list of storage paths to delete (e.g. `["{id}/logo.png", "{id}/cover.png"]` derived from `logo_url`/`cover_image_url` columns)
-- Does NOT delete storage objects itself (storage API not available in SQL)
+Keep: jobid 3, 5, 8, 9, 11 (legitimate)
 
-**Storage deletion** happens client-side immediately after RPC success:
-- Frontend calls `supabase.storage.from('company-assets').list(companyId + '/')` then `.remove(paths)`
-- This is deterministic (UUID-prefixed folder), zero risk of cross-company deletion
-- Result shown to admin: success or explicit failure with remaining paths
+### 3. Delete deployed edge functions
 
----
+- `crawl-govt-portal`
+- `send-daily-scrape-summary`
 
-## File-by-File Summary
+### 4. Soft-delete scraped jobs (via insert tool)
 
-### New Files
+```sql
+UPDATE jobs SET is_deleted = true WHERE source = 'scraped' AND (is_deleted IS NULL OR is_deleted = false)
+```
 
-| File | Purpose |
-|------|---------|
-| `src/utils/companyBlockCheck.ts` | Exports `isCompanyBlocked(name)` — calls `supabase.rpc('is_company_blocked', { p_name })`. No direct table read. |
-| `src/components/admin/BlockedCompaniesManager.tsx` | Admin-only searchable list of blocked companies. Unblock with confirmation. |
+142 rows affected.
 
-### Modified Files
+### 5. Migration: Add DB trigger guard
 
-| File | Changes |
-|------|---------|
-| `src/components/admin/CompaniesListView.tsx` | Add "Permanently Remove & Block" button per registered company. Confirmation dialog with: name, ID, linked job counts (by ID and by name), draft count, storage asset check, irreversible warning, type-to-confirm. On confirm: call RPC, then delete storage objects via Storage API, show result. Remove any old simple delete. |
-| `src/components/admin/CompanyApprovalList.tsx` | Replace plain `handleReject` with "Reject & Block" calling the same RPC. |
-| `src/pages/admin/AdminDashboard.tsx` | Add `BlockedCompaniesManager` to Companies tab. |
-| `src/pages/auth/Signup.tsx` | Before `companies.insert`: call `isCompanyBlocked()` via utility. Block with error toast if matched. |
-| `src/pages/employer/CompanyProfile.tsx` | Before company insert/update: same block check. |
-| `src/components/employer/job-posting/JobPostingWizard.tsx` | Before job submit: check company name against blocklist via `isCompanyBlocked()`. |
+```sql
+CREATE OR REPLACE FUNCTION public.block_orphan_scraped_inserts()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.source = 'scraped' AND NEW.company_id IS NULL THEN
+    RAISE EXCEPTION 'Scraped jobs must have a company_id';
+  END IF;
+  RETURN NEW;
+END;
+$$;
 
-### RLS/Policy Summary
+DROP TRIGGER IF EXISTS trg_block_orphan_scraped ON public.jobs;
+CREATE TRIGGER trg_block_orphan_scraped
+  BEFORE INSERT ON public.jobs
+  FOR EACH ROW EXECUTE FUNCTION public.block_orphan_scraped_inserts();
+```
 
-| Table | Policy | Access |
-|-------|--------|--------|
-| `blocked_companies` | `"Admins manage blocked companies"` — ALL operations | Admin only |
-| `blocked_companies` | No public/anon SELECT policy | None for non-admins |
-| `is_company_blocked()` | SECURITY DEFINER function | Callable by anyone, returns boolean only |
+## What is NOT touched
 
-### Storage Cleanup Summary
+- No other admin tabs
+- No public pages
+- No blog/SEO/notification/job-posting flows
+- No `CompanyApprovalList`, `BlockedCompaniesManager`, or other components
+- No employer flows
+- No RLS policies
+- No edge function code in the repo
 
-**Automatic and deterministic.** After RPC succeeds:
-1. Frontend calls `supabase.storage.from('company-assets').list(companyId + '/')`
-2. If objects found, calls `.remove()` on all paths under that prefix
-3. Admin UI shows:
-   - Success: "All company storage assets removed"
-   - Partial failure: "Company removed and blocked. Storage cleanup failed for: [exact paths]. Remove manually from company-assets bucket."
-4. Path pattern `{uuid}/logo.*`, `{uuid}/cover.*` — UUID-keyed, zero cross-company risk
+## Verification
 
-### Verification Summary
-
-1. No public SELECT on `blocked_companies` — non-admins cannot read the table
-2. `is_company_blocked()` returns only boolean — no metadata leaks
-3. Storage cleanup is automatic via deterministic UUID-prefixed paths
-4. If storage delete fails, explicit paths shown to admin — no vague "manual if needed"
-5. All previous protections intact: identifier capture before delete, correct GET DIAGNOSTICS counts, aliases support, exact cache purge, block checks on all entry points, type-to-confirm UI
+1. Companies list will show exactly 4 registered companies from `companies` table
+2. No name-only job-derived entries will appear
+3. Stale cron jobs removed → no more scraped job inserts
+4. Deployed stale functions deleted → cannot be invoked
+5. 142 existing scraped jobs soft-deleted
+6. DB trigger prevents future orphan scraped inserts
+7. Remove & Block continues working for registered companies (unchanged)
 

@@ -1,66 +1,99 @@
 
 
-# Fix: Inline Image Slots Always Show "0/2" in Blog Table
+# Notification Centre — Implementation Plan
 
-## Root Cause
+## Baseline Confirmation
 
-Same pattern as the word count bug. The performance optimization (line 273) sets `content: ''` and `article_images: null` for all posts in the list view. But the inline image status column (line 2221) calls `detectInlineSlots(post.content || '', post.article_images)` — with empty content and null images, both slots always appear unfilled, showing "0/2".
+All audit findings confirmed accurate against current code:
+- `email_subscribers`: 6 active, write-only (no delivery pipeline)
+- `telegram_subscribers`: 0 active, `TELEGRAM_BOT_TOKEN` not configured
+- WhatsApp: link-only, no backend
+- 3 orphaned components confirmed: `NewsletterSection`, `AlertSignupBanner`, `ResourceSubscribeCTA` (none imported anywhere)
+- `AlertSignupBanner` has hardcoded wrong URLs (`919876543210`, `truejobsindia` vs correct `917982306492`, `truejobs_alerts`)
+- No Notification Centre exists in admin
+- Existing email sending uses Resend directly (7 transactional edge functions). `RESEND_API_KEY` is configured
+- No `notification_send_log` table exists yet
 
-## Fix — 1 file: `src/components/admin/BlogPostEditor.tsx`
+## Implementation Summary
 
-### Change 1: Include `article_images` in the list query
+### Phase 1: Database Migration
 
-Add `article_images` to the `fetchPosts` select string (line 268). This is a small JSON field, not a large content blob — safe to include without performance impact.
-
-### Change 2: Stop overwriting `article_images` to null
-
-On line 273, change:
-```typescript
-setPosts(data.map(d => ({ ...d, content: '', article_images: null })) as BlogPost[]);
+Create `notification_send_log` table:
 ```
-to:
-```typescript
-setPosts(data.map(d => ({ ...d, content: '' })) as BlogPost[]);
+id (uuid PK), channel (text), subject (text), message_body (text),
+audience_filter (jsonb), audience_count (int), sent_count (int),
+failed_count (int), sent_by (uuid FK profiles), status (text),
+created_at (timestamptz)
 ```
+RLS: admin-only SELECT/INSERT via `has_role(auth.uid(), 'admin')`.
 
-This preserves the real `article_images` data from the database while still excluding `content` for performance.
+### Phase 2: Admin Edge Function — `admin-send-notification`
 
-### Why this is sufficient
+Single edge function handling email broadcast:
+- Validates admin JWT + `has_role` check (auth-first pattern)
+- Accepts: `channel`, `subject`, `message_body`, `cta_label`, `cta_url`, `audience_filter`, `test_email`
+- For email: queries `email_subscribers` (active), sends via Resend in batches (10/batch, 200ms delay)
+- Logs to `notification_send_log`
+- For telegram: queries `telegram_subscribers`, sends via existing `telegram-bot` broadcast (only if `TELEGRAM_BOT_TOKEN` exists)
+- Returns sent/failed counts
 
-`detectInlineSlots` has two detection paths:
-1. Parse `data-inline-slot` attributes from HTML content — won't work without content
-2. Check `articleImages.inline` JSON metadata — **will work** once we stop nullifying it
+### Phase 3: Frontend — Notification Centre Components
 
-Path 2 also verifies the URL appears in `html`, so with empty content it still won't detect filled slots purely from JSON. Therefore we also need the content — but loading full content defeats the optimization.
+**New files:**
+1. `src/components/admin/notifications/NotificationCentre.tsx` — main container with sub-tabs (Overview, Email, Telegram, WhatsApp, Logs, Settings)
+2. `src/components/admin/notifications/NotificationOverview.tsx` — channel health cards with subscriber counts, config status
+3. `src/components/admin/notifications/EmailSubscribersTab.tsx` — searchable table of `email_subscribers` + compose/send panel
+4. `src/components/admin/notifications/TelegramSubscribersTab.tsx` — subscriber table + honest status about bot token
+5. `src/components/admin/notifications/WhatsAppTab.tsx` — honest "link-only" status card
+6. `src/components/admin/notifications/NotificationLogs.tsx` — `notification_send_log` table
+7. `src/components/admin/notifications/NotificationSettings.tsx` — channel config status (key exists yes/no, URLs)
 
-**Better approach**: Since the inline slot status is really just metadata (are there 0, 1, or 2 inline images), we should compute and display it from the `article_images` JSON alone in the list view, without requiring content:
+**Modified:**
+- `src/pages/admin/AdminDashboard.tsx` — add "Notifications" tab with Bell icon
 
-### Change 3: Use `article_images` JSON directly for list display
+### Phase 4: Cleanup
 
-Replace the inline status cell logic (lines 2220-2239) to count filled slots from the `article_images.inline` array directly, without calling `detectInlineSlots` (which needs content):
+- Delete `src/components/home/NewsletterSection.tsx`
+- Delete `src/components/home/AlertSignupBanner.tsx`
+- Delete `src/components/resources/ResourceSubscribeCTA.tsx`
 
-```typescript
-{(() => {
-  const ai = post.article_images;
-  const inlineArr = Array.isArray(ai?.inline) ? ai.inline : [];
-  const filledCount = inlineArr.filter((s: any) => s?.url).length;
-  const isLoading = perArticleLoading[post.id] === 'inline';
-  if (filledCount >= 2) {
-    return <Badge variant="secondary" className="text-[10px]">2/2</Badge>;
-  }
-  return (
-    <Button ...>
-      {isLoading ? <Loader2 .../> : <Badge ...>{filledCount}/2</Badge>}
-    </Button>
-  );
-})()}
-```
+### What Each Channel Gets
 
-This shows accurate counts without needing the heavy `content` column.
+| Channel | View Subscribers | Send from Admin | Status |
+|---------|-----------------|-----------------|--------|
+| Email | Yes (6 active) | Yes (via Resend) | Operational |
+| Telegram | Yes (0 active) | Disabled (no bot token) | Honest disabled state |
+| WhatsApp | No (no data) | No | Link-only status shown |
 
-## What is NOT changed
-- The `fetchPosts` select query still excludes `content` (performance optimization preserved)
-- `detectInlineSlots` function unchanged
-- Edit dialog still lazy-loads full content + article_images
-- No database changes
+### Security
+
+- All admin routes use existing auth + admin role check pattern
+- Edge function uses auth-first pattern with `verify_jwt = false` + manual JWT validation
+- Send actions require confirmation dialog
+- Secret values never exposed (only "configured" / "not configured")
+
+### Files Changed Summary
+
+| Action | File | Purpose |
+|--------|------|---------|
+| Create | 7 admin notification components | Notification Centre UI |
+| Create | 1 edge function | Admin send capability |
+| Modify | AdminDashboard.tsx | Add Notifications tab |
+| Delete | 3 orphaned components | Cleanup dead code |
+| Migration | 1 table | `notification_send_log` |
+
+### Post-Implementation Verification Checklist
+
+1. Admin can see Notifications tab in dashboard
+2. Overview shows correct subscriber counts (Email: 6, Telegram: 0, WhatsApp: N/A)
+3. Email tab shows subscriber list with search
+4. Admin can compose and send test email to own address
+5. Admin can send broadcast to all active email subscribers
+6. Send confirmation dialog prevents accidental dispatch
+7. Send log records the broadcast
+8. Telegram tab shows "Bot token not configured" honest state
+9. WhatsApp tab shows "Link-only, no delivery backend" honest state
+10. Settings shows config health without secret values
+11. Orphaned components deleted
+12. Existing admin tabs unaffected
 

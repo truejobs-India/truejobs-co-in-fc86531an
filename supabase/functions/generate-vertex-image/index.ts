@@ -1346,6 +1346,88 @@ async function generateViaAzureFlux(
 }
 
 // ═══════════════════════════════════════════════════════════════
+// AZURE MAI-IMAGE-2 — via Azure AI Foundry MAI Image API
+// ═══════════════════════════════════════════════════════════════
+
+async function generateViaAzureMaiImage(
+  body: any,
+  slug: string,
+  imagePrompt: string,
+  adminClient: any,
+  startMs: number,
+  strict: boolean,
+): Promise<Response> {
+  const meta: StrictMeta = {
+    selectedModelKey: 'azure-mai-image-2',
+    resolvedProvider: 'azure-ai-foundry',
+    resolvedRuntimeModelId: Deno.env.get('AZURE_MAI_IMAGE_DEPLOYMENT') || 'MAI-Image-2',
+  };
+
+  const purpose = body.purpose || 'cover';
+  const slotNumber = body.slotNumber;
+  const requestedRatio = body.aspectRatio || '16:9';
+  const dims = maiSizeFromAspectRatio(requestedRatio);
+
+  console.log(`[azure-mai-image] slug=${slug} purpose=${purpose} ${dims.width}x${dims.height}`);
+
+  try {
+    const result = await callAzureMaiImage(imagePrompt, {
+      width: dims.width,
+      height: dims.height,
+    });
+
+    const isInline = purpose === 'inline';
+    const pathPrefix = isInline ? 'inline' : 'covers';
+    const slotSuffix = isInline && slotNumber ? `-slot${slotNumber}` : '';
+    const filePath = `${pathPrefix}/${slug}-mai-image-2${slotSuffix}.png`;
+
+    const uploadResult = await uploadGeneratedImage({
+      adminClient,
+      imageBase64: result.imageBase64,
+      mimeType: result.mimeType,
+      filePath,
+    });
+
+    if (uploadResult instanceof Response) return uploadResult;
+
+    const elapsed = Date.now() - startMs;
+    console.log(`[azure-mai-image] completed in ${elapsed}ms, uploaded to ${filePath}`);
+
+    const successBody = addStrictMetadata({
+      success: true,
+      data: {
+        images: [{
+          url: uploadResult.publicUrl,
+          path: filePath,
+          altText: body.title || body.topic || `Blog image for ${slug}`,
+          mimeType: result.mimeType,
+          width: dims.width,
+          height: dims.height,
+        }],
+        promptUsed: imagePrompt,
+      },
+      model: meta.resolvedRuntimeModelId,
+      action: 'generate-image',
+      purpose,
+      slotNumber,
+      elapsedMs: elapsed,
+    }, { strict: true, ...meta });
+
+    return new Response(JSON.stringify(successBody), {
+      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  } catch (err: any) {
+    console.error(`[azure-mai-image] error: ${err.message}`);
+    return buildStrictErrorResponse(
+      err.message?.includes('timeout') ? 504 : 502,
+      `Azure MAI-Image-2 error: ${err.message}. No fallback was used.`,
+      meta,
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // HANDLER — routes based on body.purpose (enforced) or body.model (backward compat)
 // ═══════════════════════════════════════════════════════════════
 

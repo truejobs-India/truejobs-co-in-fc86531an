@@ -253,6 +253,7 @@ export function CompanyApprovalList({ onStatsChange }: CompanyApprovalListProps)
                           title="Reject & Block"
                         >
                           <ShieldBan className="h-4 w-4" />
+                        </Button>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -333,11 +334,11 @@ export function CompanyApprovalList({ onStatsChange }: CompanyApprovalListProps)
                 </Button>
                 <Button 
                   variant="destructive"
-                  onClick={() => handleReject(selectedCompany.id)}
+                  onClick={() => handleRejectAndBlock(selectedCompany)}
                   disabled={processingCompany === selectedCompany.id}
                 >
-                  <XCircle className="h-4 w-4 mr-2" />
-                  Reject
+                  <ShieldBan className="h-4 w-4 mr-2" />
+                  Reject & Block
                 </Button>
                 <Button 
                   onClick={() => handleApprove(selectedCompany.id)}

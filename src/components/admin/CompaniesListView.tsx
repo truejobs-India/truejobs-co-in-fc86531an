@@ -62,53 +62,28 @@ export function CompaniesListView({ onCompanyClick, refreshKey }: CompaniesListV
   const fetchCompanies = async () => {
     setIsLoading(true);
     try {
-      const companyMap = new Map<string, { jobCount: number; id?: string }>();
-
-      const { data: registeredCompanies } = await supabase
+      // Query only registered companies from the companies table
+      const { data: registeredCompanies, error } = await supabase
         .from('companies')
         .select('id, name');
 
-      const companyIdToName = new Map<string, string>();
-      if (registeredCompanies) {
-        registeredCompanies.forEach((c) => {
-          companyIdToName.set(c.id, c.name);
-          companyMap.set(c.name, { jobCount: 0, id: c.id });
-        });
-      }
+      if (error) throw error;
 
-      const pageSize = 1000;
-      let page = 0;
-      let hasMore = true;
+      // For each company, count its non-deleted jobs
+      const companiesWithCounts: CompanyData[] = await Promise.all(
+        (registeredCompanies || []).map(async (c) => {
+          const { count } = await supabase
+            .from('jobs')
+            .select('id', { count: 'exact', head: true })
+            .eq('company_id', c.id)
+            .or('is_deleted.is.null,is_deleted.eq.false');
+          return { id: c.id, name: c.name, jobCount: count || 0 };
+        })
+      );
 
-      while (hasMore) {
-        const { data, error } = await supabase
-          .from('jobs')
-          .select('company_name, company_id')
-          .or('is_deleted.is.null,is_deleted.eq.false')
-          .range(page * pageSize, (page + 1) * pageSize - 1);
-
-        if (error || !data || data.length === 0) {
-          hasMore = false;
-        } else {
-          data.forEach((job: { company_name: string | null; company_id: string | null }) => {
-            const name = job.company_name?.trim() || 
-              (job.company_id ? companyIdToName.get(job.company_id) : null);
-            if (name) {
-              const existing = companyMap.get(name) || { jobCount: 0 };
-              companyMap.set(name, { ...existing, jobCount: existing.jobCount + 1 });
-            }
-          });
-          hasMore = data.length === pageSize;
-          page++;
-        }
-      }
-
-      const companiesArray = Array.from(companyMap.entries())
-        .map(([name, data]) => ({ name, jobCount: data.jobCount, id: data.id }))
-        .sort((a, b) => b.jobCount - a.jobCount);
-
-      setCompanies(companiesArray);
-      setFilteredCompanies(companiesArray);
+      companiesWithCounts.sort((a, b) => b.jobCount - a.jobCount);
+      setCompanies(companiesWithCounts);
+      setFilteredCompanies(companiesWithCounts);
     } catch (error) {
       console.error('Error fetching companies:', error);
     } finally {

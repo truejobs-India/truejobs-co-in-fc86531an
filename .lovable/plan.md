@@ -1,109 +1,81 @@
 
 
-# Revised Plan — Footer Diagnosis + Fill Detection
+# Revised Homepage Sidebar Viewability Fix
 
-## 1. Why the previous footer diagnosis was too weak
+## Problem
 
-`mb-[88px]` is a **bottom margin** on the ad wrapper. It pushes the `<Footer>` component down by 88px, but the ad element itself remains at its normal position between `<main>` and `<Footer>`. A bottom margin does not hide, clip, or collapse the element above it. The ad wrapper still renders with `minHeight: 110px` at its correct position.
+The hero section (lines 24-35) and top banner ad (lines 37-40) sit **outside** the sidebar grid (lines 43-79). The sidebar's sticky range is bounded by the grid container's height. Content outside the grid does not contribute to the sidebar's scroll persistence.
 
-The JobSearchBot is `position: fixed` (line 263 of JobSearchBot.tsx) — it is out of document flow. No margin compensation is needed in the layout for it.
+## The Key Structural Insight
 
-Therefore, `mb-[88px]` is cosmetically wasteful but **cannot be the root cause** of a site-wide invisible footer ad.
+The fix is not to move the banner **into the left column** (which would narrow it from full container width to `1fr` minus 300px). Instead, move the **entire grid start point upward** so that both the hero and the banner are **inside** the same grid container — but spanning the **full width** across both columns.
 
-## 2. Corrected footer diagnosis — actual possible failure modes
+In CSS Grid, an element can span all columns (`lg:col-span-2` across a `[1fr_300px]` grid) and still render at full grid width. This means:
 
-The footer ad at Layout.tsx line 21 renders `<AdPlaceholder variant="footer" />` between `<main className="flex-1">` and `<Footer>`. On production (`IS_PROD_DOMAIN` true), this renders a wrapper div with `minHeight: 110px`.
+- The banner keeps its full container width (identical to today)
+- The banner's ~130px height now contributes to the grid's total height
+- The sidebar's sticky range increases by ~130px
 
-The most likely failure modes, in order of probability:
+We can also pull the hero section inside the grid with full-span, adding another ~400px to the grid height — but only if that doesn't break the hero's internal 2fr/1fr layout.
 
-| # | Failure mode | Evidence needed |
+## Revised Plan — Single File: `src/pages/Index.tsx`
+
+### Change
+
+Merge the top banner ad into the sidebar grid as a **full-width row spanning both columns**:
+
+```
+Before (current):
+  <Hero />                    ← outside grid
+  <Banner ad />               ← outside grid (~130px wasted)
+  <Grid [1fr | 300px]>
+    <Left column>...</Left>
+    <Aside sticky />
+  </Grid>
+
+After (revised):
+  <Hero />                    ← stays outside (has its own internal grid)
+  <Grid [1fr | 300px]>
+    <div class="lg:col-span-2">   ← full-width row inside grid
+      <Banner ad />               ← same width as before, now adds to grid height
+    </div>
+    <Left column>...</Left>
+    <Aside sticky />
+  </Grid>
+```
+
+The grid becomes `lg:grid-cols-[1fr_300px]` with the banner as the first row spanning both columns via `lg:col-span-2`. The banner renders at `1fr + 300px + gap = full container width` — identical to its current width.
+
+### Why the banner is not weakened
+
+- `lg:col-span-2` on a `[1fr_300px]` grid = `1fr + 300px + 6px gap` = the full grid width, which equals the container width. The banner is the same width as today.
+- On mobile (`grid-cols-1`), `col-span-2` has no effect — it stacks normally. No mobile change.
+- The banner's AdSense slot ID, variant, and rendering logic are untouched.
+
+### Why sidebar persistence improves
+
+The banner's ~130px height is now **inside** the grid container. The sidebar's sticky element is bounded by the grid container's height. Adding ~130px to the grid height adds ~130px of sticky scroll range. Combined with the 10 content sections already in the left column (~2300px estimated), the sidebar gets meaningful persistence.
+
+### Why this is safer than moving the banner into the left column
+
+| Approach | Banner width | Revenue risk |
 |---|---|---|
-| A | AdSense never fills this slot (no demand / low-priority slot ID) | Check `data-adsbygoogle-status` on live production DOM |
-| B | Slot stays in `loading` forever — push() succeeds but AdSense never responds with `done` or `unfilled` | Check production DOM for status attribute value |
-| C | Slot gets explicit `unfilled` → component returns null → invisible (correct behavior but means lost inventory) | Check if the element is absent from DOM entirely |
-| D | Push() never succeeds despite retries (script load race, width=0 at init) | Check console debug logs on production |
-| E | The wrapper is rendered but visually unnoticeable (110px of blank space between main content and footer that users scroll past) | Visual inspection of the area above the footer |
+| Move into left column (`1fr` = ~container minus 306px) | **Narrower** by ~306px | Banner CPM/CTR may drop |
+| Full-span row inside grid (`lg:col-span-2`) | **Same** as today | Zero revenue risk |
 
-**What the plan must do:** Investigate on production before making code changes. The `mb-[88px]` can be cleaned up (it's unnecessary since JobSearchBot is fixed-position), but this is a cosmetic fix, not the root cause fix.
+The full-span approach preserves the banner's width, viewability, and value while still contributing its height to the sidebar's sticky range.
 
-### Corrected footer fix plan
+## Whether any min-height fallback is needed
 
-1. **Diagnostic step (browser verification on production):** Navigate to truejobs.co.in, scroll to the footer area, and inspect:
-   - Is the footer ad wrapper div present in DOM?
-   - What is `data-adsbygoogle-status` on the `<ins>` element?
-   - Does the wrapper have visible reserved space (110px)?
-   - Is there an iframe inside?
+Not proposed at this stage. The left column has 10 content sections plus 3 ad placements. With the banner now also contributing to grid height, the total grid height should comfortably exceed 2000px. If post-implementation measurement shows otherwise, a minimal fallback can be proposed then — but it is unlikely to be needed.
 
-2. **Code-level fix (regardless of diagnosis):** Clean up `mb-[88px] md:mb-5` → `mb-2` since the JobSearchBot is `position: fixed` and doesn't need layout compensation. This is a minor cleanup, not a root cause fix.
+## Approval Readiness
 
-3. **If the slot is `unfilled` (mode C):** This is correct behavior — AdSense has no ad for this slot. No code fix needed; the issue is demand-side (AdSense dashboard: check if the slot ID is active, check ad coverage settings).
-
-4. **If the slot stays `loading` forever (mode B):** The slow retry system should handle this. Verify that slow retries are actually firing for the footer variant by checking console output.
-
-5. **If the slot never initializes (mode D):** Check if the footer wrapper has `offsetWidth > 0` at init time. The `flex-col items-center` layout might cause a zero-width condition in some edge cases.
-
-**Key principle:** Do not change footer spacing or layout until the actual failure mode is proven.
-
----
-
-## 3. Why iframe `src` validation was too risky
-
-The proposed rule was: only count an iframe as filled if `src` is non-empty and not `about:blank`.
-
-Problems:
-- **AdSense may use `about:blank` iframes legitimately** during ad rendering (e.g., friendly iframe technique where the creative is written into the iframe via JavaScript, not via `src`)
-- **`src` may be empty at the moment of check** but populated milliseconds later — a race condition that would cause false negatives
-- **Different AdSense rendering paths** (SafeFrame, friendly iframe, cross-domain iframe) use different `src` patterns — a hard rule against `about:blank` may miss valid ads in certain rendering modes
-- This directly violates the revenue-first rule: "if uncertain, keep loading, do not suppress valid ads"
-
-## 4. Corrected false-positive fill detection plan
-
-The core problem: `data-adsbygoogle-status === 'done'` + iframe ≥50×50 can pass for shell iframes that AdSense injects during initialization but that contain no visible ad creative.
-
-### Revised approach: confirmation delay re-check
-
-Instead of adding brittle attribute checks, use a **temporal confirmation**:
-
-```
-When hasRealFill() first returns true (from MutationObserver or immediate check):
-  1. Do NOT set filled immediately
-  2. Schedule a 500ms confirmation re-check
-  3. After 500ms, call hasRealFill() again
-  4. If still true → set filled (label appears)
-  5. If now false → stay in loading (shell was transient)
-```
-
-**Why this works:**
-- Shell/placeholder iframes that AdSense injects during initialization are transient — they appear briefly then get replaced or resized to tiny dimensions
-- Real ad creatives persist and maintain their dimensions
-- 500ms is long enough for transient shells to resolve, short enough to not meaningfully delay label appearance on real ads
-- No assumption about `src`, `contentDocument`, or any cross-origin property
-- No new threshold logic that could miss valid formats
-
-**Why this is safer than iframe `src` checking:**
-- Does not depend on any specific iframe attribute value
-- Works regardless of AdSense rendering mode (SafeFrame, friendly, cross-domain)
-- If a real ad fills, the 500ms delay only affects when the label appears — the ad itself is already visible to the user in the reserved space
-- Revenue impact: zero (ad is visible immediately; only the "ADVERTISEMENT" label is delayed by 500ms)
-
-### What stays unchanged in `hasRealFill()`:
-- Still requires `data-adsbygoogle-status === 'done'`
-- Tier 1: iframe ≥ 50h × 50w (unchanged)
-- Tier 2: direct child ≥ 50h × 100w (unchanged)
-- If `hasRealFill()` returns false after confirmation, slot stays in `loading` — no label, no collapse
-
-### Implementation location:
-Modify `startFillObservation()` in AdPlaceholder.tsx:
-- Where it currently calls `setAdStatus('filled')` immediately after `hasRealFill()` returns true (lines 178, 192), instead schedule a 500ms re-check
-- Same for the safety timeout final check (line 215)
-
----
-
-## 5. Approval readiness
-
-The plan is now approval-ready with these corrections:
-- Footer: diagnostic-first approach instead of guesswork margin fix; code cleanup of `mb-[88px]` is secondary
-- Fill detection: temporal confirmation (500ms re-check) instead of brittle `src` validation
-- Both changes preserve revenue-first architecture
-- No new collapse logic, no opacity tricks, no timeout kills
+This plan is approval-ready:
+- Banner keeps full width (zero revenue risk)
+- Sidebar gains ~130px of sticky persistence naturally
+- No artificial min-height
+- No layout redesign
+- Single file change (`src/pages/Index.tsx`)
+- Mobile layout unaffected
 

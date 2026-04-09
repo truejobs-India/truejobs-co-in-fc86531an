@@ -1484,6 +1484,9 @@ serve(async (req) => {
       if (selectedCoverModel === 'azure-flux-kontext') {
         return await generateViaAzureFlux(body, slug, imagePrompt, adminClient, startMs, strict);
       }
+      if (selectedCoverModel === 'azure-mai-image-2') {
+        return await generateViaAzureMaiImage(body, slug, imagePrompt, adminClient, startMs, strict);
+      }
       if (selectedCoverModel === 'vertex-imagen' || isImagenAliasModel(selectedCoverModel)) {
         const aspectRatio = ASPECT_RATIOS[body.aspectRatio || '16:9'] || '16:9';
         return await generateViaImagen(body, slug, imagePrompt, 1, aspectRatio, adminClient, startMs, strict);
@@ -1515,6 +1518,9 @@ serve(async (req) => {
       if (selectedInlineModel === 'azure-flux-kontext') {
         return await generateViaAzureFlux({ ...body, purpose: 'inline' }, slug, imagePrompt, adminClient, startMs, strict);
       }
+      if (selectedInlineModel === 'azure-mai-image-2') {
+        return await generateViaAzureMaiImage({ ...body, purpose: 'inline' }, slug, imagePrompt, adminClient, startMs, strict);
+      }
       if (selectedInlineModel === 'vertex-imagen' || isImagenAliasModel(selectedInlineModel)) {
         return await generateViaImagen(body, slug, imagePrompt, 1, aspectRatio, adminClient, startMs, strict);
       }
@@ -1545,6 +1551,9 @@ serve(async (req) => {
     }
     if (selectedModel === 'azure-flux-kontext') {
       return await generateViaAzureFlux(body, slug, imagePrompt, adminClient, startMs, strict);
+    }
+    if (selectedModel === 'azure-mai-image-2') {
+      return await generateViaAzureMaiImage(body, slug, imagePrompt, adminClient, startMs, strict);
     }
     if (selectedModel === 'vertex-imagen' || isImagenAliasModel(selectedModel)) {
       return await generateViaImagen(body, slug, imagePrompt, imageCount, aspectRatio, adminClient, startMs, strict);

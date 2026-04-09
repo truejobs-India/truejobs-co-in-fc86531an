@@ -332,7 +332,8 @@ async function callAI(aiModel: string, prompt: string, maxTokens: number, option
     }
     case 'nova-pro': case 'nova-premier': case 'nemotron-120b': {
       const { callBedrockNovaWithMeta } = await import('../_shared/bedrock-nova.ts');
-      const result = await callBedrockNovaWithMeta(model, prompt, { maxTokens, temperature: 0.5 });
+      const nemotronTimeout = model === 'nemotron-120b' ? 140_000 : 120_000;
+      const result = await callBedrockNovaWithMeta(model, prompt, { maxTokens, temperature: 0.5, timeoutMs: nemotronTimeout });
       resultJson = JSON.stringify({ __raw: result.text, __finishReason: result.stopReason });
       usage = result.usage;
       actualProvider = 'aws-bedrock'; actualModelId = model; break;

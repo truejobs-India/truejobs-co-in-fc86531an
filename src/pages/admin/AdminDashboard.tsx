@@ -28,6 +28,7 @@ import {
   Rss,
   Search,
   Bug,
+  Bell,
 } from 'lucide-react';
 import { RssIntakeManager } from '@/components/admin/rss-intake/RssIntakeManager';
 import { EmploymentNewsManager } from '@/components/admin/EmploymentNewsManager';
@@ -61,6 +62,7 @@ import { ChatbotAnalytics } from '@/components/admin/ChatbotAnalytics';
 import { SitewideSeoAudit } from '@/components/admin/SitewideSeoAudit';
 import { FirecrawlDraftsManager } from '@/components/admin/firecrawl/FirecrawlDraftsManager';
 import { IntakeDraftsManager } from '@/components/admin/intake/IntakeDraftsManager';
+import { NotificationCentre } from '@/components/admin/notifications/NotificationCentre';
 import { useNavigate } from 'react-router-dom';
 
 type DrilldownView = 
@@ -331,6 +333,10 @@ function AdminDashboardInner() {
                   <ClipboardList className="h-4 w-4" />
                   <span className="hidden sm:inline">Intake</span>
                 </TabsTrigger>
+                <TabsTrigger value="notifications" className="flex items-center gap-2">
+                  <Bell className="h-4 w-4" />
+                  <span className="hidden sm:inline">Notifications</span>
+                </TabsTrigger>
               </TabsList>
 
               <TabsContent value="users">
@@ -428,6 +434,10 @@ function AdminDashboardInner() {
 
               <TabsContent value="intake" className="w-full max-w-none">
                 <IntakeDraftsManager />
+              </TabsContent>
+
+              <TabsContent value="notifications">
+                <NotificationCentre />
               </TabsContent>
             </Tabs>
           </>

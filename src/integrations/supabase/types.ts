@@ -3468,6 +3468,62 @@ export type Database = {
         }
         Relationships: []
       }
+      notification_send_log: {
+        Row: {
+          audience_count: number
+          audience_filter: Json | null
+          channel: string
+          created_at: string
+          cta_label: string | null
+          cta_url: string | null
+          failed_count: number
+          id: string
+          message_body: string
+          sent_by: string | null
+          sent_count: number
+          status: string
+          subject: string | null
+        }
+        Insert: {
+          audience_count?: number
+          audience_filter?: Json | null
+          channel: string
+          created_at?: string
+          cta_label?: string | null
+          cta_url?: string | null
+          failed_count?: number
+          id?: string
+          message_body: string
+          sent_by?: string | null
+          sent_count?: number
+          status?: string
+          subject?: string | null
+        }
+        Update: {
+          audience_count?: number
+          audience_filter?: Json | null
+          channel?: string
+          created_at?: string
+          cta_label?: string | null
+          cta_url?: string | null
+          failed_count?: number
+          id?: string
+          message_body?: string
+          sent_by?: string | null
+          sent_count?: number
+          status?: string
+          subject?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_send_log_sent_by_fkey"
+            columns: ["sent_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
       notifications: {
         Row: {
           created_at: string

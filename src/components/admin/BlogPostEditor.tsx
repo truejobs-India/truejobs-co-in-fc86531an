@@ -265,12 +265,12 @@ export function BlogPostEditor() {
   const fetchPosts = async () => {
     const { data, error } = await supabase
       .from('blog_posts')
-      .select('id,title,slug,is_published,published_at,created_at,updated_at,meta_title,meta_description,cover_image_url,featured_image_alt,excerpt,category,tags,author_name,word_count,reading_time,content_mode,canonical_url,author_id,status,primary_keyword,secondary_keywords,search_intent,noindex,schema_json,page_template,language,target_category,target_department,target_exam,target_language,target_state,target_year,scheduled_at,stale_after,last_verified_at,review_status,needs_revalidation,official_source_url,official_source_label,source_evidence,fact_confidence,has_faq_schema,faq_schema,faq_count,thin_content_risk,thin_content_reason,duplicate_risk_score,duplicate_risk_reason,long_tail_metadata,internal_links,ai_fixed_at,last_bulk_scanned_at,last_bulk_fixed_at,last_bulk_fix_status,remaining_auto_fixable_count')
+      .select('id,title,slug,is_published,published_at,created_at,updated_at,meta_title,meta_description,cover_image_url,featured_image_alt,excerpt,category,tags,author_name,word_count,reading_time,content_mode,canonical_url,author_id,status,primary_keyword,secondary_keywords,search_intent,noindex,schema_json,page_template,language,target_category,target_department,target_exam,target_language,target_state,target_year,scheduled_at,stale_after,last_verified_at,review_status,needs_revalidation,official_source_url,official_source_label,source_evidence,fact_confidence,has_faq_schema,faq_schema,faq_count,thin_content_risk,thin_content_reason,duplicate_risk_score,duplicate_risk_reason,long_tail_metadata,internal_links,ai_fixed_at,last_bulk_scanned_at,last_bulk_fixed_at,last_bulk_fix_status,remaining_auto_fixable_count,article_images')
       .order('created_at', { ascending: false });
 
     if (!error && data) {
       // Content is not fetched here for performance — loaded on-demand when editing
-      setPosts(data.map(d => ({ ...d, content: '', article_images: null })) as BlogPost[]);
+      setPosts(data.map(d => ({ ...d, content: '' })) as BlogPost[]);
     }
     setIsLoading(false);
   };
@@ -2218,10 +2218,11 @@ export function BlogPostEditor() {
                       </TableCell>
                       <TableCell>
                         {(() => {
-                          const inlineStatus = detectInlineSlots(post.content || '', post.article_images);
-                          const filledCount = (inlineStatus.slot1Filled ? 1 : 0) + (inlineStatus.slot2Filled ? 1 : 0);
+                          const ai = post.article_images as any;
+                          const inlineArr = Array.isArray(ai?.inline) ? ai.inline : [];
+                          const filledCount = inlineArr.filter((s: any) => s?.url).length;
                           const isLoading = perArticleLoading[post.id] === 'inline';
-                          if (filledCount === 2) {
+                          if (filledCount >= 2) {
                             return <Badge variant="secondary" className="text-[10px]">2/2</Badge>;
                           }
                           return (

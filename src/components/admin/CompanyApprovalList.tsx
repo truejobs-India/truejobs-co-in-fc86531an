@@ -115,23 +115,28 @@ export function CompanyApprovalList({ onStatsChange }: CompanyApprovalListProps)
     }
   };
 
-  const handleReject = async (companyId: string) => {
-    setProcessingCompany(companyId);
+  const handleRejectAndBlock = async (company: PendingCompany) => {
+    setProcessingCompany(company.id);
     
     try {
-      const { error } = await supabase
-        .from('companies')
-        .delete()
-        .eq('id', companyId);
+      const { data, error } = await supabase.rpc('permanently_remove_and_block_company', {
+        p_company_id: company.id,
+        p_company_name: company.name,
+        p_aliases: [],
+        p_reason: 'Rejected and blocked during approval review',
+      });
 
       if (error) throw error;
 
+      const result = data as any;
+      if (!result.success) throw new Error(result.error);
+
       toast({
-        title: 'Company Rejected',
-        description: 'The company profile has been removed',
+        title: 'Company Rejected & Blocked',
+        description: `${company.name} has been permanently removed and blocked from re-registering.`,
       });
 
-      setCompanies(companies.filter(c => c.id !== companyId));
+      setCompanies(companies.filter(c => c.id !== company.id));
       setSelectedCompany(null);
       onStatsChange?.();
     } catch (error) {

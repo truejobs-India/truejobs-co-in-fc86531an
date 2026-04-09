@@ -21,7 +21,6 @@ import {
 } from '@/components/ui/dialog';
 import { 
   CheckCircle, 
-  XCircle, 
   Eye, 
   Building2,
   Loader2,
@@ -29,6 +28,7 @@ import {
   MapPin,
   Users,
   Calendar,
+  ShieldBan,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';

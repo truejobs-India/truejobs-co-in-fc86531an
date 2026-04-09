@@ -192,9 +192,7 @@ export function JobPostingWizard() {
         });
         setIsSubmitting(false);
         return;
-      }
 
-    try {
       // Determine status based on company auto-approve setting
       const { data: companyData } = await supabase
         .from('companies')

@@ -82,6 +82,7 @@ interface BlogPost {
   created_at: string;
   updated_at: string;
   word_count: number | null;
+  reading_time: number | null;
   category: string | null;
   tags: string[] | null;
   faq_count: number | null;

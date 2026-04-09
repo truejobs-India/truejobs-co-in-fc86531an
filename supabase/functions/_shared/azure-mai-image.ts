@@ -70,7 +70,14 @@ export async function callAzureMaiImage(
 
   validateSize(width, height);
 
-  const cleanEndpoint = endpoint.replace(/\/+$/, '');
+  let cleanEndpoint = endpoint.replace(/\/+$/, '');
+  // MAI API is resource-scoped, not project-scoped.
+  // If user provides a project-scoped URL (e.g. .../api/projects/xxx), strip the project path.
+  const projectPathIdx = cleanEndpoint.indexOf('/api/projects/');
+  if (projectPathIdx > 0) {
+    cleanEndpoint = cleanEndpoint.substring(0, projectPathIdx);
+    console.log(`[azure-mai-image] Stripped project path, using resource base: ${cleanEndpoint}`);
+  }
   const url = `${cleanEndpoint}/mai/v1/images/generations`;
 
   const controller = new AbortController();

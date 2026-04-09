@@ -1,81 +1,105 @@
 
 
-# Revised Homepage Sidebar Viewability Fix
+# Revised Plan: MAI-Image-2 (Azure) Integration
 
-## Problem
+## Critical Endpoint Correction
 
-The hero section (lines 24-35) and top banner ad (lines 37-40) sit **outside** the sidebar grid (lines 43-79). The sidebar's sticky range is bounded by the grid container's height. Content outside the grid does not contribute to the sidebar's scroll persistence.
+The previous plan assumed MAI-Image-2 uses the same endpoint path as Azure FLUX (`/openai/v1/images/generations`). **This is wrong.**
 
-## The Key Structural Insight
+Per verified Microsoft documentation:
 
-The fix is not to move the banner **into the left column** (which would narrow it from full container width to `1fr` minus 300px). Instead, move the **entire grid start point upward** so that both the hero and the banner are **inside** the same grid container — but spanning the **full width** across both columns.
-
-In CSS Grid, an element can span all columns (`lg:col-span-2` across a `[1fr_300px]` grid) and still render at full grid width. This means:
-
-- The banner keeps its full container width (identical to today)
-- The banner's ~130px height now contributes to the grid's total height
-- The sidebar's sticky range increases by ~130px
-
-We can also pull the hero section inside the grid with full-span, adding another ~400px to the grid height — but only if that doesn't break the hero's internal 2fr/1fr layout.
-
-## Revised Plan — Single File: `src/pages/Index.tsx`
-
-### Change
-
-Merge the top banner ad into the sidebar grid as a **full-width row spanning both columns**:
-
-```
-Before (current):
-  <Hero />                    ← outside grid
-  <Banner ad />               ← outside grid (~130px wasted)
-  <Grid [1fr | 300px]>
-    <Left column>...</Left>
-    <Aside sticky />
-  </Grid>
-
-After (revised):
-  <Hero />                    ← stays outside (has its own internal grid)
-  <Grid [1fr | 300px]>
-    <div class="lg:col-span-2">   ← full-width row inside grid
-      <Banner ad />               ← same width as before, now adds to grid height
-    </div>
-    <Left column>...</Left>
-    <Aside sticky />
-  </Grid>
-```
-
-The grid becomes `lg:grid-cols-[1fr_300px]` with the banner as the first row spanning both columns via `lg:col-span-2`. The banner renders at `1fr + 300px + gap = full container width` — identical to its current width.
-
-### Why the banner is not weakened
-
-- `lg:col-span-2` on a `[1fr_300px]` grid = `1fr + 300px + 6px gap` = the full grid width, which equals the container width. The banner is the same width as today.
-- On mobile (`grid-cols-1`), `col-span-2` has no effect — it stacks normally. No mobile change.
-- The banner's AdSense slot ID, variant, and rendering logic are untouched.
-
-### Why sidebar persistence improves
-
-The banner's ~130px height is now **inside** the grid container. The sidebar's sticky element is bounded by the grid container's height. Adding ~130px to the grid height adds ~130px of sticky scroll range. Combined with the 10 content sections already in the left column (~2300px estimated), the sidebar gets meaningful persistence.
-
-### Why this is safer than moving the banner into the left column
-
-| Approach | Banner width | Revenue risk |
+| | Azure FLUX (existing) | MAI-Image-2 (new) |
 |---|---|---|
-| Move into left column (`1fr` = ~container minus 306px) | **Narrower** by ~306px | Banner CPM/CTR may drop |
-| Full-span row inside grid (`lg:col-span-2`) | **Same** as today | Zero revenue risk |
+| **Path** | `/openai/v1/images/generations` | `/mai/v1/images/generations` |
+| **Size params** | `size: "1024x1024"` (single string) | `width: 1024, height: 1024` (separate integers) |
+| **Output format** | `response_format: "b64_json"` | Always PNG binary — no `response_format` param |
+| **Auth header** | `api-key: <key>` | `api-key: <key>` (same) |
+| **Body model field** | `model: "FLUX.1-Kontext-pro"` | `model: "<deployment-name>"` |
+| **Size constraints** | Fixed sizes (1024x1024, 1792x1024, etc.) | Both dims ≥ 768px, total pixels ≤ 1,048,576 |
 
-The full-span approach preserves the banner's width, viewability, and value while still contributing its height to the sidebar's sticky range.
+Reusing the FLUX caller would produce a **404 or 400** because the path and body format are different.
 
-## Whether any min-height fallback is needed
+## Files Changed (4 total)
 
-Not proposed at this stage. The left column has 10 content sections plus 3 ad placements. With the banner now also contributing to grid height, the total grid height should comfortably exceed 2000px. If post-implementation measurement shows otherwise, a minimal fallback can be proposed then — but it is unlikely to be needed.
+### 1. `src/lib/aiModels.ts` — Add registry entry
 
-## Approval Readiness
+One new entry with `capabilities: ['image']`, `source: 'external-api'`, label `MAI-Image-2 (Azure)`. This automatically populates every `AiModelSelector` filtered by `capability="image"`.
 
-This plan is approval-ready:
-- Banner keeps full width (zero revenue risk)
-- Sidebar gains ~130px of sticky persistence naturally
-- No artificial min-height
-- No layout redesign
-- Single file change (`src/pages/Index.tsx`)
-- Mobile layout unaffected
+### 2. `supabase/functions/_shared/azure-mai-image.ts` — New dedicated caller
+
+**Endpoint:** `POST {AZURE_MAI_ENDPOINT}/mai/v1/images/generations`
+
+**Request body:**
+```json
+{
+  "model": "<AZURE_MAI_IMAGE_DEPLOYMENT>",
+  "prompt": "...",
+  "width": 1024,
+  "height": 576
+}
+```
+
+**Auth:** `api-key` header (same pattern as FLUX).
+
+**Response handling:** MAI-Image-2 returns PNG. The response format from the docs uses the same `data[].b64_json` structure. The caller will handle both b64_json and raw binary responses defensively.
+
+**Size validation:** Both dimensions ≥ 768px, width × height ≤ 1,048,576. Aspect ratio mapping:
+- 16:9 → 1024×768 (max within pixel budget)
+- 1:1 → 1024×1024
+- 9:16 → 768×1024
+
+### 3. `supabase/functions/generate-vertex-image/index.ts` — Add routing
+
+- Import `callAzureMaiImage` + size helper
+- Add `'azure-mai-image-2'` to `KNOWN_IMAGE_MODEL_KEYS`
+- Add `generateViaAzureMaiImage` function (same pattern as `generateViaAzureFlux`)
+- Add routing `if` block in all three routing sections (cover, inline, backward-compat)
+
+### 4. `src/components/admin/blog/FeaturedImageGenerator.tsx` — Add to routing guard
+
+Add `'azure-mai-image-2'` to the condition on line 49.
+
+## Env Vars Required
+
+| Name | Purpose |
+|---|---|
+| `AZURE_MAI_ENDPOINT` | Base URL (e.g. `https://your-resource.services.ai.azure.com`) |
+| `AZURE_MAI_API_KEY` | API key |
+| `AZURE_MAI_IMAGE_DEPLOYMENT` | Deployment name (e.g. `MAI-Image-2`) |
+
+## Selector-by-Selector Verification Plan
+
+After implementation, each of the following 13 locations will be explicitly verified:
+
+| # | File | Location | Verify appears | Verify routes to MAI only | Verify no fallback | Verify others unchanged |
+|---|---|---|---|---|---|---|
+| 1 | `BlogPostEditor.tsx:1612` | Single post image selector | Yes | Yes | Yes | Yes |
+| 2 | `BlogPostEditor.tsx:1643` | Cover image bulk selector | Yes | Yes | Yes | Yes |
+| 3 | `BlogPostEditor.tsx:1658` | Inline image bulk selector | Yes | Yes | Yes | Yes |
+| 4 | `ImageGenerationPanel.tsx:292` | Cover model selector | Yes | Yes | Yes | Yes |
+| 5 | `ImageGenerationPanel.tsx:333` | Inline model selector | Yes | Yes | Yes | Yes |
+| 6 | `BoardResultGenerator.tsx:993` | Image model selector | Yes | Yes | Yes | Yes |
+| 7 | `BoardResultAITools.tsx:404` | Cover image model selector | Yes | Yes | Yes | Yes |
+| 8 | `BoardResultAITools.tsx:433` | (second image selector in same component) | Yes | Yes | Yes | Yes |
+| 9 | `PdfResourcesManager.tsx:1079` | Image AI selector (top bar) | Yes | Yes | Yes | Yes |
+| 10 | `PdfResourcesManager.tsx:1405` | Image AI selector (bottom bar) | Yes | Yes | Yes | Yes |
+| 11 | `HubPageGenerator.tsx:163` | Image model selector | Yes | Yes | Yes | Yes |
+| 12 | `DraftJobsSection.tsx:751` | Image model selector | Yes | Yes | Yes | Yes |
+| 13 | `FeaturedImageGenerator.tsx` | Single post cover generator | Yes | Yes | Yes | Yes |
+
+**Verification method for each:**
+1. **Appears:** The model registry entry has `capabilities: ['image']`, and every selector above uses `capability="image"` — all read from the same `AI_MODELS` array. Adding one entry guarantees appearance in all 13.
+2. **Routes to MAI only:** The edge function checks `selectedModel === 'azure-mai-image-2'` and calls the dedicated `callAzureMaiImage` function. No other code path is reached.
+3. **No fallback:** The MAI caller throws on error. In strict mode, errors are returned as-is. In non-strict mode, the existing fallback logic does not include MAI as a fallback target for other models.
+4. **Others unchanged:** No existing model key, routing `if` block, or caller function is modified.
+
+After code changes, a live test will be performed via `supabase--curl_edge_functions` with `model: "azure-mai-image-2"` to confirm the endpoint is hit and images are returned (or a clear env-var-missing error if secrets aren't set yet).
+
+## What Is NOT Changed
+
+- No other model's routing, prompt, or behavior
+- No GPT-image code paths
+- No text-only selectors
+- No prompt policies
+- FLUX caller (`azure-flux.ts`) is untouched
 

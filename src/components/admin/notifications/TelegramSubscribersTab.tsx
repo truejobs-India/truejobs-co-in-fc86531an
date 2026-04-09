@@ -10,8 +10,8 @@ interface TelegramSub {
   telegram_chat_id: string;
   telegram_username: string | null;
   is_active: boolean;
-  subscribed_at: string;
-  categories: string[] | null;
+  created_at: string;
+  categories: string[];
 }
 
 export function TelegramSubscribersTab() {
@@ -22,8 +22,8 @@ export function TelegramSubscribersTab() {
     (async () => {
       const { data } = await supabase
         .from('telegram_subscribers')
-        .select('id, telegram_chat_id, telegram_username, is_active, subscribed_at, categories')
-        .order('subscribed_at', { ascending: false });
+        .select('id, telegram_chat_id, telegram_username, is_active, created_at, categories')
+        .order('created_at', { ascending: false });
       setSubscribers((data as TelegramSub[]) || []);
       setLoading(false);
     })();
@@ -104,7 +104,7 @@ export function TelegramSubscribersTab() {
                         </Badge>
                       </td>
                       <td className="py-2 pr-4">{s.categories?.join(', ') || '—'}</td>
-                      <td className="py-2">{new Date(s.subscribed_at).toLocaleDateString()}</td>
+                      <td className="py-2">{new Date(s.created_at).toLocaleDateString()}</td>
                     </tr>
                   ))}
                 </tbody>

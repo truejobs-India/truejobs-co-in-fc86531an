@@ -1,53 +1,42 @@
 
 
-# Fix: Word Count Shows 0 in Blog Admin Table
+# Fix: Hindi Safeguard Triggers on English Articles
 
-## Root Cause
+## Problem
+`applyNovaHindiSafeguard()` in `bedrock-nova.ts` matches English words like `"hindi"` that appear in instructional prompt text (e.g., "Keep the same language (Hindi/English)"). This causes ALL enrichment calls — even for English articles — to get a strong "write in Devanagari" instruction prepended, producing Hindi/garbage output.
 
-The previous optimization (excluding `content` from the list query) caused a cascading bug:
+## Fix — 1 file only: `supabase/functions/_shared/bedrock-nova.ts`
 
-- **Line 933**: `getPostScores()` calls `calcLiveWordCount(post.content)` — but `post.content` is now `undefined` (not fetched), so it returns **0**.
-- **Line 934**: This zero overwrites the real `word_count` from the database: `{ ...post, word_count: liveWc }`.
-- **Line 2185**: The table displays `scores.wordCount` which is this calculated zero.
+Rewrite the `applyNovaHindiSafeguard()` function (lines 125-138) to use **Devanagari character ratio detection** instead of keyword matching:
 
-The stored `word_count` in the database is correct (all 660 posts have non-zero values), but the UI recalculates from missing content and displays 0.
-
-Secondary breakage:
-- **Line 449**: `togglePublish` calls `wordCountFields(post.content)` — would also write 0 to the database if toggled from the list (content is undefined).
-- **Line 1176**: Auto-fix also recalculates from `post.content` which is undefined in the list context.
-
-## Fix (1 file)
-
-### `src/components/admin/BlogPostEditor.tsx`
-
-**Change 1 — `getPostScores()`** (line 932-939): Use the stored `post.word_count` from the database instead of recalculating from content. Content is no longer available in list context. Only recalculate when content is actually present (edit mode).
+1. **Remove all English keyword markers** (`'hindi'`, `'in hindi'`, `'hindi mein'`, `'devanagari'`, etc.) — these cause false positives on instructional text
+2. **Keep only Devanagari script markers** (`'हिंदी'`, `'हिन्दी'`, `'भाषा'`)
+3. **Add a Devanagari character ratio check**: count characters in the `\u0900-\u097F` range. Only trigger the safeguard if either a Devanagari marker is found **AND** >5% of the prompt's non-whitespace characters are Devanagari. This ensures the article content itself is actually Hindi, not just mentioned in passing.
 
 ```typescript
-const getPostScores = (post: BlogPost) => {
-  const wc = post.content ? calcLiveWordCount(post.content) : (post.word_count || 0);
-  const postWithWc = { ...post, word_count: wc };
-  const meta = blogPostToMetadata(postWithWc);
-  const q = analyzeQuality(meta);
-  const s = analyzeSEO(meta);
-  const r = getReadinessStatus(q, s, meta);
-  return { quality: q.totalScore, seo: s.totalScore, readiness: r, wordCount: wc };
-};
+export function applyNovaHindiSafeguard(prompt: string): string {
+  // Only trigger on actual Devanagari content, not English mentions of "hindi"
+  const devanagariChars = (prompt.match(/[\u0900-\u097F]/g) || []).length;
+  const totalChars = prompt.replace(/\s/g, '').length || 1;
+  const devanagariRatio = devanagariChars / totalChars;
+
+  // Need meaningful Devanagari presence (>5%) to trigger
+  if (devanagariRatio < 0.05) return prompt;
+
+  const hindiInstruction = `\n\n[IMPORTANT — Hindi Output Requirement]...`;
+  return hindiInstruction + prompt;
+}
 ```
-
-**Change 2 — `togglePublish()`** (line 448-455): Guard against undefined content — use stored word_count if content isn't loaded.
-
-```typescript
-const { word_count, reading_time } = post.content 
-  ? wordCountFields(post.content)
-  : { word_count: post.word_count || 0, reading_time: post.reading_time || 1 };
-```
-
-**Change 3 — auto-fix recalculation** (line 1175-1178): Same guard — skip word count recalculation if content isn't loaded.
 
 ## What is NOT changed
+- No other file is touched
+- No model prompts in `improve-blog-content`, `generate-blog-article`, `enrich-authority-pages`, or `rss-ai-process` are modified
+- No routing logic changed
+- The `callBedrockNova` and `callBedrockNovaWithMeta` functions remain identical except they now call the corrected safeguard
 
-- Database values (all correct)
-- Select query (optimization stays)
-- Lazy-load on edit (stays)
-- Editor word count display (uses formData.content which is loaded on edit)
+## Deployment
+Redeploy all edge functions that import from `_shared/bedrock-nova.ts`: `improve-blog-content`, `generate-blog-article`, `enrich-authority-pages`, `rss-ai-process`.
+
+## Verification
+Test enrichment of an English article with Nemotron — confirm output is entirely English with no Hindi contamination.
 

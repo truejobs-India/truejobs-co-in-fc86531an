@@ -71,9 +71,8 @@ export async function callAzureMaiImage(
   validateSize(width, height);
 
   const cleanEndpoint = endpoint.replace(/\/+$/, '');
-  // Project-scoped endpoints require api-version; resource-level ones may not.
-  // We always append it for safety — 'v1' is the standard Foundry REST version.
-  const url = `${cleanEndpoint}/mai/v1/images/generations?api-version=v1`;
+  // Project-scoped Foundry endpoints require api-version query param
+  const url = `${cleanEndpoint}/mai/v1/images/generations?api-version=2024-12-01-preview`;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);

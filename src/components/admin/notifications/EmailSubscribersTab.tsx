@@ -98,7 +98,8 @@ export function EmailSubscribersTab() {
       toast.success(`Sent: ${data.sent_count}, Failed: ${data.failed_count}`);
     } catch (err: any) {
       console.error('Send error:', err);
-      toast.error(err?.message || 'Send failed');
+      const functionError = err?.context ? await err.context.json().catch(() => null) : null;
+      toast.error(functionError?.detail || functionError?.error || err?.message || 'Send failed');
     } finally {
       setSending(false);
     }

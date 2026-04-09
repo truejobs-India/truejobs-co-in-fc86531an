@@ -34,14 +34,13 @@ export default function Index() {
         </div>
       </section>
 
-      {/* Top banner ad — high viewability placement */}
-      <div className="container mx-auto px-4 mt-4">
-        <AdPlaceholder variant="banner" />
-      </div>
-
       {/* Main content + desktop sidebar */}
       <div className="container mx-auto px-4">
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-6">
+          {/* Top banner ad — full-span row inside grid for sidebar persistence */}
+          <div className="lg:col-span-2 mt-4">
+            <AdPlaceholder variant="banner" />
+          </div>
           {/* Left: main content */}
           <div>
             <LatestGovtJobs />

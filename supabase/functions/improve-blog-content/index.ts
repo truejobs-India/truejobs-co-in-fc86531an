@@ -332,7 +332,8 @@ async function callAI(aiModel: string, prompt: string, maxTokens: number, option
     }
     case 'nova-pro': case 'nova-premier': case 'nemotron-120b': {
       const { callBedrockNovaWithMeta } = await import('../_shared/bedrock-nova.ts');
-      const result = await callBedrockNovaWithMeta(model, prompt, { maxTokens, temperature: 0.5 });
+      const nemotronTimeout = model === 'nemotron-120b' ? 140_000 : 120_000;
+      const result = await callBedrockNovaWithMeta(model, prompt, { maxTokens, temperature: 0.5, timeoutMs: nemotronTimeout });
       resultJson = JSON.stringify({ __raw: result.text, __finishReason: result.stopReason });
       usage = result.usage;
       actualProvider = 'aws-bedrock'; actualModelId = model; break;
@@ -847,7 +848,11 @@ No markdown code blocks.`;
   } catch (err) {
     console.error('improve-blog-content error:', err);
     const msg = err instanceof Error ? err.message : 'Unknown error';
-    const status = typeof msg === 'string' && msg.toLowerCase().includes('timeout') ? 504 : 500;
-    return new Response(JSON.stringify({ error: msg }), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    const isTimeout = typeof msg === 'string' && msg.toLowerCase().includes('timeout');
+    // Return 200 with error flag for timeouts to prevent platform 504 overlay
+    if (isTimeout) {
+      return new Response(JSON.stringify({ error: msg, timedOut: true }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+    return new Response(JSON.stringify({ error: msg }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 });

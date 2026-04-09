@@ -1,28 +1,24 @@
 /**
  * Shared Azure MAI-Image-2 caller — server-side only.
  *
- * Uses Azure AI Foundry MAI Image API (NOT Azure OpenAI).
+ * Uses the OpenAI-compatible endpoint on Azure AI Foundry.
  *
  * ── Required env vars ──
- *   AZURE_MAI_ENDPOINT         – e.g. https://your-resource.services.ai.azure.com
+ *   AZURE_MAI_ENDPOINT         – e.g. https://social-5844-resource.services.ai.azure.com/api/projects/social-5844
  *   AZURE_MAI_API_KEY          – Azure resource API key
  *   AZURE_MAI_IMAGE_DEPLOYMENT – deployment name (e.g. MAI-Image-2)
  *
  * ── Endpoint ──
- *   POST {ENDPOINT}/mai/v1/images/generations
- *   Body: { model: "<deployment>", prompt, width, height }
- *
- * ── Size constraints ──
- *   Both dimensions ≥ 768px, total pixels ≤ 1,048,576
+ *   POST {base}/openai/v1/images/generations
+ *   Auth: Authorization: Bearer <key>
+ *   Body: { model, prompt, size: "WxH", n: 1, response_format: "b64_json" }
  */
 
 const DEFAULT_TIMEOUT_MS = 120_000;
 
 export interface AzureMaiImageOptions {
-  /** Image width (default: 1024, min: 768) */
-  width?: number;
-  /** Image height (default: 1024, min: 768) */
-  height?: number;
+  /** Size string like "1024x1024" (default: "1024x1024") */
+  size?: string;
   /** Timeout in ms (default: 120s) */
   timeoutMs?: number;
 }
@@ -34,16 +30,6 @@ export interface AzureMaiImageResult {
   mimeType: string;
   /** Revised prompt if returned by API */
   revisedPrompt?: string;
-}
-
-/** Validate MAI-Image-2 size constraints: both dims ≥ 768, total pixels ≤ 1,048,576 */
-function validateSize(width: number, height: number): void {
-  if (width < 768) throw new Error(`MAI-Image-2 width must be ≥ 768px (got ${width})`);
-  if (height < 768) throw new Error(`MAI-Image-2 height must be ≥ 768px (got ${height})`);
-  const totalPixels = width * height;
-  if (totalPixels > 1_048_576) {
-    throw new Error(`MAI-Image-2 total pixels must be ≤ 1,048,576 (got ${width}×${height} = ${totalPixels})`);
-  }
 }
 
 /**
@@ -63,40 +49,38 @@ export async function callAzureMaiImage(
   if (!deployment) throw new Error('AZURE_MAI_IMAGE_DEPLOYMENT not configured');
 
   const {
-    width = 1024,
-    height = 1024,
+    size = '1024x1024',
     timeoutMs = DEFAULT_TIMEOUT_MS,
   } = options;
 
-  validateSize(width, height);
-
+  // Strip trailing slashes
   let cleanEndpoint = endpoint.replace(/\/+$/, '');
-  // MAI API is resource-scoped, not project-scoped.
   // If user provides a project-scoped URL (e.g. .../api/projects/xxx), strip the project path.
   const projectPathIdx = cleanEndpoint.indexOf('/api/projects/');
   if (projectPathIdx > 0) {
     cleanEndpoint = cleanEndpoint.substring(0, projectPathIdx);
     console.log(`[azure-mai-image] Stripped project path, using resource base: ${cleanEndpoint}`);
   }
-  const url = `${cleanEndpoint}/mai/v1/images/generations`;
+  const url = `${cleanEndpoint}/openai/v1/images/generations`;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    console.log(`[azure-mai-image] Calling ${deployment} @ ${cleanEndpoint}, ${width}x${height}`);
+    console.log(`[azure-mai-image] Calling ${deployment} @ ${cleanEndpoint}, size=${size}`);
 
     const resp = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'api-key': apiKey,
+        'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
         model: deployment,
         prompt,
-        width,
-        height,
+        size,
+        n: 1,
+        response_format: 'b64_json',
       }),
       signal: controller.signal,
     });
@@ -106,58 +90,39 @@ export async function callAzureMaiImage(
       throw new Error(`Azure MAI-Image-2 error ${resp.status}: ${errText.substring(0, 500)}`);
     }
 
-    // MAI-Image-2 may return b64_json in data array or raw binary PNG
-    const contentType = resp.headers.get('content-type') || '';
-
-    if (contentType.includes('application/json')) {
-      const data = await resp.json();
-      const imageData = data?.data?.[0];
-      if (!imageData) {
-        throw new Error('Azure MAI-Image-2 returned empty response — no image data');
-      }
-
-      const imageBase64 = imageData.b64_json;
-      if (imageBase64) {
-        console.log(`[azure-mai-image] success (b64_json), base64 length=${imageBase64.length}`);
-        return {
-          imageBase64,
-          mimeType: 'image/png',
-          revisedPrompt: imageData.revised_prompt,
-        };
-      }
-
-      // Fallback: URL-based response
-      if (imageData.url) {
-        const imgResp = await fetch(imageData.url);
-        if (!imgResp.ok) throw new Error(`Failed to download MAI image from URL: ${imgResp.status}`);
-        const arrBuf = await imgResp.arrayBuffer();
-        const bytes = new Uint8Array(arrBuf);
-        let binary = '';
-        for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-        console.log(`[azure-mai-image] success (url download), bytes=${bytes.length}`);
-        return {
-          imageBase64: btoa(binary),
-          mimeType: imgResp.headers.get('content-type') || 'image/png',
-          revisedPrompt: imageData.revised_prompt,
-        };
-      }
-
-      throw new Error('Azure MAI-Image-2 returned no image data (no b64_json or url)');
+    const data = await resp.json();
+    const imageData = data?.data?.[0];
+    if (!imageData) {
+      throw new Error('Azure MAI-Image-2 returned empty response — no image data');
     }
 
-    // Raw binary PNG response
-    const arrBuf = await resp.arrayBuffer();
-    const bytes = new Uint8Array(arrBuf);
-    if (bytes.length < 100) {
-      throw new Error(`Azure MAI-Image-2 returned suspiciously small response (${bytes.length} bytes)`);
+    const imageBase64 = imageData.b64_json;
+    if (imageBase64) {
+      console.log(`[azure-mai-image] success (b64_json), base64 length=${imageBase64.length}`);
+      return {
+        imageBase64,
+        mimeType: 'image/png',
+        revisedPrompt: imageData.revised_prompt,
+      };
     }
-    let binary = '';
-    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-    console.log(`[azure-mai-image] success (binary PNG), bytes=${bytes.length}`);
-    return {
-      imageBase64: btoa(binary),
-      mimeType: contentType.includes('image/') ? contentType.split(';')[0] : 'image/png',
-    };
+
+    // Fallback: URL-based response
+    if (imageData.url) {
+      const imgResp = await fetch(imageData.url);
+      if (!imgResp.ok) throw new Error(`Failed to download MAI image from URL: ${imgResp.status}`);
+      const arrBuf = await imgResp.arrayBuffer();
+      const bytes = new Uint8Array(arrBuf);
+      let binary = '';
+      for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+      console.log(`[azure-mai-image] success (url download), bytes=${bytes.length}`);
+      return {
+        imageBase64: btoa(binary),
+        mimeType: imgResp.headers.get('content-type') || 'image/png',
+        revisedPrompt: imageData.revised_prompt,
+      };
+    }
+
+    throw new Error('Azure MAI-Image-2 returned no image data (no b64_json or url)');
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') {
       throw new Error(`Azure MAI-Image-2 timeout after ${timeoutMs / 1000}s`);
@@ -168,15 +133,14 @@ export async function callAzureMaiImage(
   }
 }
 
-/** Map common aspect ratio strings to MAI-Image-2-compatible width/height.
- *  Constraints: both dims ≥ 768, total pixels ≤ 1,048,576 */
-export function maiSizeFromAspectRatio(ratio: string): { width: number; height: number } {
+/** Map common aspect ratio strings to MAI-Image-2-compatible size strings */
+export function maiSizeFromAspectRatio(ratio: string): string {
   switch (ratio) {
-    case '16:9': return { width: 1024, height: 768 };
-    case '9:16': return { width: 768, height: 1024 };
-    case '4:3':  return { width: 1024, height: 768 };
-    case '3:4':  return { width: 768, height: 1024 };
+    case '16:9': return '1792x1024';
+    case '9:16': return '1024x1792';
+    case '4:3':  return '1024x768';
+    case '3:4':  return '768x1024';
     case '1:1':
-    default:     return { width: 1024, height: 1024 };
+    default:     return '1024x1024';
   }
 }

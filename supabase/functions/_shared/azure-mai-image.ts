@@ -71,8 +71,7 @@ export async function callAzureMaiImage(
   validateSize(width, height);
 
   const cleanEndpoint = endpoint.replace(/\/+$/, '');
-  // Azure AI Foundry MAI endpoint — api-version required by Azure gateway
-  const url = `${cleanEndpoint}/mai/v1/images/generations?api-version=2025-03-01-preview`;
+  const url = `${cleanEndpoint}/mai/v1/images/generations`;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);

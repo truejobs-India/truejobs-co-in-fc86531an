@@ -120,11 +120,14 @@ export async function callAzureOpenAI(
  */
 export async function callAzureGPT41Mini(
   prompt: string,
-  options: Omit<AzureOpenAIOptions, 'deploymentName' | 'endpoint'> = {},
+  options: Omit<AzureOpenAIOptions, 'deploymentName' | 'endpoint' | 'apiKey'> = {},
 ): Promise<string> {
+  const gpt41ApiKey = Deno.env.get('AZURE_GPT41_MINI_API_KEY');
+  if (!gpt41ApiKey) throw new Error('AZURE_GPT41_MINI_API_KEY not configured');
   return callAzureOpenAI(prompt, {
     ...options,
     deploymentName: GPT41_MINI_DEPLOYMENT,
     endpoint: GPT41_MINI_ENDPOINT,
+    apiKey: gpt41ApiKey,
   });
 }

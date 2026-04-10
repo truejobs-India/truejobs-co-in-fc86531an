@@ -15,6 +15,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { Checkbox } from '@/components/ui/checkbox';
 import { useAdminToast } from '@/contexts/AdminMessagesContext';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
@@ -138,6 +140,43 @@ export function GovtSourcesManager() {
   const [open, setOpen] = useState(true);
   const [busySources, setBusySources] = useState<Record<string, string>>({});
   const [bulkToggling, setBulkToggling] = useState(false);
+
+  // Selection & bulk delete state
+  const [selectedSourceIds, setSelectedSourceIds] = useState<Set<string>>(new Set());
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+
+  const toggleSelectSource = (id: string) => {
+    setSelectedSourceIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAllSources = () => {
+    if (selectedSourceIds.size === sources.length) {
+      setSelectedSourceIds(new Set());
+    } else {
+      setSelectedSourceIds(new Set(sources.map(s => s.id)));
+    }
+  };
+
+  const bulkDeleteSources = async () => {
+    if (selectedSourceIds.size === 0) return;
+    setBulkDeleting(true);
+    const ids = [...selectedSourceIds];
+    const { error } = await supabase.from('firecrawl_sources').delete().in('id', ids);
+    setBulkDeleting(false);
+    setDeleteConfirmOpen(false);
+    if (error) {
+      toast({ title: 'Delete failed', description: error.message, variant: 'destructive' });
+    } else {
+      toast({ title: `${ids.length} source(s) permanently deleted` });
+      setSelectedSourceIds(new Set());
+      fetchSources();
+    }
+  };
 
   // Bulk run state
   const [batchRunning, setBatchRunning] = useState(false);

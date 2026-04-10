@@ -11,7 +11,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Upload, FileText, AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Upload, FileText, AlertTriangle, CheckCircle2, Loader2, Download } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
 
@@ -398,12 +399,63 @@ export function IntakeCsvUploader({ onImportComplete }: { onImportComplete?: (im
     }
   };
 
+  const TEMPLATE_COLUMNS = ['raw_title', 'source_url', 'source_domain', 'source_name', 'raw_text', 'raw_html', 'raw_file_url', 'raw_file_type', 'source_type'];
+  const TEMPLATE_SAMPLE: Record<string, string> = {
+    raw_title: 'SSC CGL 2025 – Combined Graduate Level Examination Notification',
+    source_url: 'https://ssc.nic.in/Portal/Notices',
+    source_domain: 'ssc.nic.in',
+    source_name: 'SSC Official',
+    raw_text: 'Staff Selection Commission invites applications for CGL 2025...',
+    raw_html: '',
+    raw_file_url: 'https://ssc.nic.in/Portal/Notices/cgl-2025.pdf',
+    raw_file_type: 'pdf',
+    source_type: 'crawler',
+  };
+
+  const downloadTemplate = (format: 'xlsx' | 'csv' | 'json') => {
+    if (format === 'xlsx') {
+      const ws = XLSX.utils.json_to_sheet([TEMPLATE_SAMPLE], { header: TEMPLATE_COLUMNS });
+      XLSX.utils.sheet_add_aoa(ws, [TEMPLATE_COLUMNS.map(c => `Column: ${c}`)], { origin: 'A2' });
+      ws['!cols'] = TEMPLATE_COLUMNS.map(() => ({ wch: 20 }));
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Template');
+      XLSX.writeFile(wb, 'intake_template.xlsx');
+    } else if (format === 'csv') {
+      const csv = [TEMPLATE_COLUMNS.join(','), TEMPLATE_COLUMNS.map(c => `"${(TEMPLATE_SAMPLE[c] || '').replace(/"/g, '""')}"`).join(',')].join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = 'intake_template.csv'; a.click();
+      URL.revokeObjectURL(url);
+    } else {
+      const json = JSON.stringify([TEMPLATE_SAMPLE], null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = 'intake_template.json'; a.click();
+      URL.revokeObjectURL(url);
+    }
+  };
+
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Upload className="h-5 w-5" />
           Import File (Excel / CSV / JSON)
+          <div className="ml-auto">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm">
+                  <Download className="h-4 w-4 mr-1" />
+                  Download Template
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuItem onClick={() => downloadTemplate('xlsx')}>Excel (.xlsx)</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => downloadTemplate('csv')}>CSV (.csv)</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => downloadTemplate('json')}>JSON (.json)</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">

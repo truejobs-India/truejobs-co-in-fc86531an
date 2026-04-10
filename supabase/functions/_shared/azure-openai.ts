@@ -31,6 +31,8 @@ export interface AzureOpenAIOptions {
   deploymentName?: string;
   /** Override Azure endpoint URL (default: AZURE_OPENAI_ENDPOINT env var) */
   endpoint?: string;
+  /** Override API key (default: AZURE_OPENAI_API_KEY env var) */
+  apiKey?: string;
 }
 
 /**

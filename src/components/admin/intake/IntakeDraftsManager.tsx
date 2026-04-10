@@ -52,9 +52,10 @@ type IntakeDraft = {
   created_at: string;
 };
 
-type TabKey = 'ready' | 'low_confidence' | 'published' | 'rejected';
+type TabKey = 'imported' | 'ready' | 'low_confidence' | 'published' | 'rejected';
 
 const TAB_LABELS: Record<TabKey, string> = {
+  imported: 'Imported',
   ready: 'Ready Drafts',
   low_confidence: 'Low Confidence',
   published: 'Published',
@@ -88,6 +89,9 @@ function isLowConfidence(d: IntakeDraft): boolean {
 function filterDrafts(drafts: IntakeDraft[], tab: TabKey, searchQuery: string): IntakeDraft[] {
   let filtered: IntakeDraft[];
   switch (tab) {
+    case 'imported':
+      filtered = drafts.filter(d => d.processing_status === 'imported');
+      break;
     case 'ready':
       filtered = drafts.filter(d =>
         d.primary_status === 'publish_ready' &&
@@ -191,6 +195,8 @@ export function IntakeDraftsManager() {
       // Pass 1: Classify all imported rows
       let remainingIds = [...importedIds];
       const totalPass1 = remainingIds.length;
+      let batchErrors = 0;
+      let lastError = '';
       setProcessProgress({ current: 0, total: totalPass1, phase: 'AI Classification (Pass 1)' });
 
       while (remainingIds.length > 0 && processingRef.current) {
@@ -198,15 +204,28 @@ export function IntakeDraftsManager() {
         remainingIds = remainingIds.slice(15);
 
         try {
-          await supabase.functions.invoke('intake-ai-classify', {
+          const { data: respData, error: invokeError } = await supabase.functions.invoke('intake-ai-classify', {
             body: { draft_ids: batch, aiModel },
             headers: { Authorization: `Bearer ${session.access_token}` },
           });
+          if (invokeError) {
+            batchErrors++;
+            lastError = String(invokeError);
+            console.error('Classification batch error:', invokeError);
+          } else if (respData?.error) {
+            batchErrors++;
+            lastError = String(respData.error);
+            console.error('Classification batch error:', respData.error);
+          }
         } catch (err) {
+          batchErrors++;
+          lastError = String(err);
           console.error('Classification batch error:', err);
         }
 
         setProcessProgress(prev => ({ ...prev, current: totalPass1 - remainingIds.length }));
+        // Refresh list after each batch so UI stays current
+        fetchDrafts();
 
         if (remainingIds.length > 0 && processingRef.current) {
           await new Promise(r => setTimeout(r, 1500));
@@ -216,6 +235,15 @@ export function IntakeDraftsManager() {
       if (!processingRef.current) {
         toast({ title: 'Processing Stopped', description: 'You can resume by re-importing or refreshing.' });
         return;
+      }
+
+      // If all batches failed, surface the error clearly
+      const totalBatches = Math.ceil(totalPass1 / 15);
+      if (batchErrors > 0 && batchErrors >= totalBatches) {
+        toast({ title: 'AI processing failed', description: lastError || 'All classification batches failed', variant: 'destructive' });
+        return;
+      } else if (batchErrors > 0) {
+        toast({ title: 'AI processing partially failed', description: `${batchErrors}/${totalBatches} batches failed. Last error: ${lastError}`, variant: 'destructive' });
       }
 
       // Pass 2: Retry weak rows with enhanced extraction
@@ -237,10 +265,11 @@ export function IntakeDraftsManager() {
           retryRemaining = retryRemaining.slice(15);
 
           try {
-            await supabase.functions.invoke('intake-ai-classify', {
+            const { error: invokeError } = await supabase.functions.invoke('intake-ai-classify', {
               body: { draft_ids: batch, aiModel, retry_enhanced: true },
               headers: { Authorization: `Bearer ${session.access_token}` },
             });
+            if (invokeError) console.error('Retry batch error:', invokeError);
           } catch (err) {
             console.error('Retry batch error:', err);
           }
@@ -253,9 +282,11 @@ export function IntakeDraftsManager() {
         }
       }
 
-      toast({ title: 'AI Processing Complete', description: `Processed ${totalPass1} rows. ${retryIds.length} retried.` });
+      if (batchErrors === 0) {
+        toast({ title: 'AI Processing Complete', description: `Processed ${totalPass1} rows. ${retryIds.length} retried.` });
+      }
     } catch (err) {
-      toast({ title: 'Processing Error', description: String(err), variant: 'destructive' });
+      toast({ title: 'AI processing failed', description: String(err), variant: 'destructive' });
     } finally {
       processingRef.current = false;
       setProcessing(false);
@@ -474,6 +505,7 @@ export function IntakeDraftsManager() {
   const visibleDrafts = filterDrafts(allDrafts, activeTab, searchQuery);
 
   const tabCounts = {
+    imported: filterDrafts(allDrafts, 'imported', '').length,
     ready: filterDrafts(allDrafts, 'ready', '').length,
     low_confidence: filterDrafts(allDrafts, 'low_confidence', '').length,
     published: filterDrafts(allDrafts, 'published', '').length,
@@ -496,10 +528,17 @@ export function IntakeDraftsManager() {
     }
   };
 
-  // Import handler
+  // Import handler — separate upload success from processing
   const onImportComplete = (importedIds: string[], scrapeRunId: string) => {
     setShowUploader(false);
     if (importedIds.length > 0) {
+      // Show upload success immediately
+      toast({ title: `${importedIds.length} rows uploaded to Imported`, description: 'Starting AI classification…' });
+      // Switch to Imported tab so rows are visible
+      setActiveTab('imported');
+      // Refresh to show imported rows right away
+      fetchDrafts();
+      // Start processing in background — errors shown separately
       runAutoProcessing(importedIds, scrapeRunId);
     }
   };
@@ -572,8 +611,9 @@ export function IntakeDraftsManager() {
       )}
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {([
+          { key: 'imported' as TabKey, icon: UploadIcon, color: 'text-blue-600' },
           { key: 'ready' as TabKey, icon: CheckCircle2, color: 'text-green-600' },
           { key: 'low_confidence' as TabKey, icon: AlertTriangle, color: 'text-amber-600' },
           { key: 'published' as TabKey, icon: Send, color: 'text-emerald-600' },

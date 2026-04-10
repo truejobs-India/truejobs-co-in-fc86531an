@@ -47,7 +47,7 @@ export async function callAzureOpenAI(
   const endpointOverride = options.endpoint;
 
   const endpoint = endpointOverride || Deno.env.get('AZURE_OPENAI_ENDPOINT');
-  const apiKey = Deno.env.get('AZURE_OPENAI_API_KEY');
+  const apiKey = options.apiKey || Deno.env.get('AZURE_OPENAI_API_KEY');
 
   if (!endpoint) throw new Error('AZURE_OPENAI_ENDPOINT not configured');
   if (!apiKey) throw new Error('AZURE_OPENAI_API_KEY not configured');

@@ -1374,6 +1374,29 @@ export function DraftJobsSection({ sourceTypeTag }: DraftJobsSectionProps) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Bulk Delete Draft Jobs Confirmation */}
+      <AlertDialog open={draftDeleteConfirmOpen} onOpenChange={setDraftDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Permanently Delete {selectedDraftIds.size} Draft Job(s)?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete {selectedDraftIds.size} draft job(s) and all associated data. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={bulkDraftDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={bulkDeleteDrafts}
+              disabled={bulkDraftDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {bulkDraftDeleting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Trash2 className="h-4 w-4 mr-1" />}
+              Delete Permanently
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

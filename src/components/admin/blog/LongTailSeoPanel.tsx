@@ -286,7 +286,7 @@ export function LongTailSeoPanel({ onRefresh }: LongTailSeoPanelProps) {
   // ── Generate all ──
   const handleGenerate = async () => {
     if (topicLines.length === 0) { toast({ title: 'Enter at least one keyword', variant: 'destructive' }); return; }
-    if (topicLines.length > 50) { toast({ title: 'Maximum 50 keywords at a time', variant: 'destructive' }); return; }
+    if (topicLines.length > 500) { toast({ title: 'Maximum 500 keywords at a time', variant: 'destructive' }); return; }
     if (!user) { toast({ title: 'Not authenticated', variant: 'destructive' }); return; }
 
     abortRef.current = false;
@@ -365,15 +365,15 @@ export function LongTailSeoPanel({ onRefresh }: LongTailSeoPanelProps) {
 
           {/* Keywords input — PRIMARY */}
           <div className="space-y-1">
-            <Label className="text-xs">Keywords (one per line, max 50)</Label>
+            <Label className="text-xs">Keywords (one per line, max 500)</Label>
             <Textarea
               value={keywords}
               onChange={e => { setKeywords(e.target.value); setDupResults([]); }}
               placeholder={"ssc cgl age limit for obc\nup police constable syllabus in hindi\nrailway group d salary after 7th pay commission\nssc chsl selection process step by step"}
-              rows={6}
+              rows={10}
               className="text-xs"
             />
-            <p className="text-xs text-muted-foreground">{topicLines.length} / 50 keywords</p>
+            <p className="text-xs text-muted-foreground">{topicLines.length} / 500 keywords</p>
           </div>
 
           {/* Controls row — word count, language, model */}

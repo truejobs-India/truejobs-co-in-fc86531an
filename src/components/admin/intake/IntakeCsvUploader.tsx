@@ -335,6 +335,23 @@ export function IntakeCsvUploader({ onImportComplete }: { onImportComplete?: (im
           mapped.structured_data_json = row;
         }
 
+        // Normalize source_type to allowed enum values
+        const VALID_SOURCE_TYPES = ['crawler', 'rss', 'employment_news', 'manual'];
+        const SOURCE_TYPE_MAP: Record<string, string> = { cf: 'crawler', df: 'crawler', crawl: 'crawler', feed: 'rss' };
+        if (mapped.source_type) {
+          const st = String(mapped.source_type).trim().toLowerCase();
+          mapped.source_type = SOURCE_TYPE_MAP[st] || (VALID_SOURCE_TYPES.includes(st) ? st : 'manual');
+        } else {
+          mapped.source_type = 'manual';
+        }
+
+        // Normalize raw_file_type to allowed enum values
+        const VALID_FILE_TYPES = ['html', 'pdf', 'doc', 'image', 'unknown'];
+        if (mapped.raw_file_type) {
+          const ft = String(mapped.raw_file_type).trim().toLowerCase();
+          mapped.raw_file_type = VALID_FILE_TYPES.includes(ft) ? ft : 'unknown';
+        }
+
         if (mapped.source_url && !mapped.source_domain) {
           try { mapped.source_domain = new URL(mapped.source_url).hostname.toLowerCase(); } catch { /* ignore */ }
         }
@@ -389,7 +406,9 @@ export function IntakeCsvUploader({ onImportComplete }: { onImportComplete?: (im
       }
 
       setSummary(stats);
-      toast({ title: 'Import Complete', description: `${stats.imported} imported, ${stats.skippedExactDupes} draft dupes skipped, ${stats.skippedPublishedDupes} published dupes skipped` });
+      const parts = [`${stats.imported} imported`, `${stats.skippedExactDupes} draft dupes skipped`, `${stats.skippedPublishedDupes} published dupes skipped`];
+      if (stats.errors > 0) parts.push(`${stats.errors} failed`);
+      toast({ title: 'Import Complete', description: parts.join(', ') });
       onImportComplete?.(allInsertedIds, scrapeRunId);
     } catch (err) {
       console.error('Import error:', err);

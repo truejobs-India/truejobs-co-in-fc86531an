@@ -952,6 +952,35 @@ export function DraftJobsSection({ sourceTypeTag }: DraftJobsSectionProps) {
             ))}
           </div>
 
+          {/* Pipeline funnel summary */}
+          {pipelineSummary && (
+            <div className="mb-3 p-2.5 rounded-lg border bg-muted/30 flex flex-wrap items-center gap-3 text-xs">
+              <span className="font-medium text-foreground">Pipeline:</span>
+              <span className="text-muted-foreground">
+                Staged {pipelineSummary.pending + pipelineSummary.extracting + pipelineSummary.extracted + pipelineSummary.skipped + pipelineSummary.failed}
+              </span>
+              <span>→</span>
+              {pipelineSummary.pending > 0 ? (
+                <Badge className="bg-orange-500 text-white border-orange-600 text-[10px]">
+                  <AlertTriangle className="h-3 w-3 mr-1" />{pipelineSummary.pending} pending
+                </Badge>
+              ) : (
+                <span className="text-muted-foreground">0 pending</span>
+              )}
+              <span>→</span>
+              <span className="text-green-600 dark:text-green-400">{pipelineSummary.extracted} extracted</span>
+              {pipelineSummary.skipped > 0 && <span className="text-muted-foreground">({pipelineSummary.skipped} skipped)</span>}
+              {pipelineSummary.failed > 0 && <span className="text-red-600">{pipelineSummary.failed} failed</span>}
+              <span>→</span>
+              <span className="font-medium text-foreground">{pipelineSummary.drafts} drafts</span>
+              {pipelineSummary.pending > 0 && (
+                <span className="text-orange-600 dark:text-orange-400 font-medium ml-1">
+                  ⚠ Run "Scrape & Extract" on sources to process {pipelineSummary.pending} pending items
+                </span>
+              )}
+            </div>
+          )}
+
           {/* Bulk progress bars */}
           {bulkRunning && bulkProgress && (
             <div className="mb-3 p-3 rounded-lg border bg-muted/50 space-y-2">

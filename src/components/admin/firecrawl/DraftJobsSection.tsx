@@ -1113,6 +1113,7 @@ export function DraftJobsSection({ sourceTypeTag }: DraftJobsSectionProps) {
                             onCheckedChange={() => toggleSelectDraft(draft.id)}
                           />
                         </TableCell>
+                        <TableCell>
                           <div className="space-y-0.5">
                             <p className="font-medium text-sm line-clamp-1">{draft.title || 'Untitled'}</p>
                             <p className="text-xs text-muted-foreground line-clamp-1">{draft.organization_name || draft.post_name || '—'}</p>

@@ -1648,8 +1648,8 @@ async function handleGovtScrapeExtract(
         results.push({ url: item.page_url, status: 'extracted', draft_id: draft.id, confidence: extraction.confidence });
       }
 
-      // Rate limit: 2 seconds between govt scrapes
-      await new Promise(r => setTimeout(r, 2000));
+      // Rate limit: 1 second between govt scrapes (reduced from 2s for faster batch processing)
+      await new Promise(r => setTimeout(r, 1000));
     } catch (e) {
       failed++;
       results.push({ url: item.page_url, status: 'error', error: e instanceof Error ? e.message : String(e) });

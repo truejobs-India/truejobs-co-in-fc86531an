@@ -241,6 +241,9 @@ export function DraftJobsSection({ sourceTypeTag }: DraftJobsSectionProps) {
   const [selectedModel, setSelectedModel] = useState(() => getLastUsedModel('text', 'gemini-flash', [...SEO_FIX_MODEL_VALUES]));
   const [selectedImageModel, setSelectedImageModel] = useState(() => getLastUsedModel('image', 'gemini-flash-image-2'));
 
+  // Pipeline funnel stats
+  const [pipelineSummary, setPipelineSummary] = useState<{ pending: number; extracting: number; extracted: number; skipped: number; failed: number; drafts: number } | null>(null);
+
   // Bulk run state
   const [bulkRunning, setBulkRunning] = useState(false);
   const [bulkProgress, setBulkProgress] = useState<BulkProgress | null>(null);
@@ -376,6 +379,23 @@ export function DraftJobsSection({ sourceTypeTag }: DraftJobsSectionProps) {
     return rows;
   }, [sourceTypeTag]);
 
+  const fetchPipelineSummary = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('firecrawl_staged_items')
+      .select('extraction_status, firecrawl_source_id, firecrawl_sources!inner(source_type)')
+      .eq('firecrawl_sources.source_type', sourceTypeTag === 'government' ? 'government' : 'firecrawl_sitemap');
+    if (error || !data) return;
+    const counts = { pending: 0, extracting: 0, extracted: 0, skipped: 0, failed: 0, drafts: 0 };
+    for (const row of data as any[]) {
+      const s = row.extraction_status;
+      if (s in counts) counts[s as keyof typeof counts]++;
+    }
+    // Also count drafts
+    const { count } = await supabase.from('firecrawl_draft_jobs').select('id', { count: 'exact', head: true }).eq('source_type_tag', sourceTypeTag);
+    counts.drafts = count || 0;
+    setPipelineSummary(counts);
+  }, [sourceTypeTag]);
+
   const fetchDrafts = useCallback(async () => {
     setLoading(true);
     let query = supabase
@@ -425,7 +445,8 @@ export function DraftJobsSection({ sourceTypeTag }: DraftJobsSectionProps) {
     setBulkRunCandidates(bulkRunResult.data);
     setImageCandidates(imageResult.data);
     setLoading(false);
-  }, [activeFilter, sourceTypeTag, isGovt, fetchFieldFixCandidates, fetchBulkRunCandidates, fetchImageCandidates]);
+    fetchPipelineSummary();
+  }, [activeFilter, sourceTypeTag, isGovt, fetchFieldFixCandidates, fetchBulkRunCandidates, fetchImageCandidates, fetchPipelineSummary]);
 
   useEffect(() => { fetchDrafts(); }, [fetchDrafts]);
 
@@ -930,6 +951,35 @@ export function DraftJobsSection({ sourceTypeTag }: DraftJobsSectionProps) {
               </Button>
             ))}
           </div>
+
+          {/* Pipeline funnel summary */}
+          {pipelineSummary && (
+            <div className="mb-3 p-2.5 rounded-lg border bg-muted/30 flex flex-wrap items-center gap-3 text-xs">
+              <span className="font-medium text-foreground">Pipeline:</span>
+              <span className="text-muted-foreground">
+                Staged {pipelineSummary.pending + pipelineSummary.extracting + pipelineSummary.extracted + pipelineSummary.skipped + pipelineSummary.failed}
+              </span>
+              <span>→</span>
+              {pipelineSummary.pending > 0 ? (
+                <Badge className="bg-orange-500 text-white border-orange-600 text-[10px]">
+                  <AlertTriangle className="h-3 w-3 mr-1" />{pipelineSummary.pending} pending
+                </Badge>
+              ) : (
+                <span className="text-muted-foreground">0 pending</span>
+              )}
+              <span>→</span>
+              <span className="text-green-600 dark:text-green-400">{pipelineSummary.extracted} extracted</span>
+              {pipelineSummary.skipped > 0 && <span className="text-muted-foreground">({pipelineSummary.skipped} skipped)</span>}
+              {pipelineSummary.failed > 0 && <span className="text-red-600">{pipelineSummary.failed} failed</span>}
+              <span>→</span>
+              <span className="font-medium text-foreground">{pipelineSummary.drafts} drafts</span>
+              {pipelineSummary.pending > 0 && (
+                <span className="text-orange-600 dark:text-orange-400 font-medium ml-1">
+                  ⚠ Run "Scrape & Extract" on sources to process {pipelineSummary.pending} pending items
+                </span>
+              )}
+            </div>
+          )}
 
           {/* Bulk progress bars */}
           {bulkRunning && bulkProgress && (

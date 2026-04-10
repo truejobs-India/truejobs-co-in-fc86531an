@@ -241,6 +241,9 @@ export function DraftJobsSection({ sourceTypeTag }: DraftJobsSectionProps) {
   const [selectedModel, setSelectedModel] = useState(() => getLastUsedModel('text', 'gemini-flash', [...SEO_FIX_MODEL_VALUES]));
   const [selectedImageModel, setSelectedImageModel] = useState(() => getLastUsedModel('image', 'gemini-flash-image-2'));
 
+  // Pipeline funnel stats
+  const [pipelineSummary, setPipelineSummary] = useState<{ pending: number; extracting: number; extracted: number; skipped: number; failed: number; drafts: number } | null>(null);
+
   // Bulk run state
   const [bulkRunning, setBulkRunning] = useState(false);
   const [bulkProgress, setBulkProgress] = useState<BulkProgress | null>(null);

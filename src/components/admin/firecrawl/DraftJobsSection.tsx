@@ -1072,6 +1072,12 @@ export function DraftJobsSection({ sourceTypeTag }: DraftJobsSectionProps) {
               <Table className="min-w-[1720px] table-auto">
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-10">
+                      <Checkbox
+                        checked={drafts.length > 0 && selectedDraftIds.size === drafts.length}
+                        onCheckedChange={toggleSelectAllDrafts}
+                      />
+                    </TableHead>
                     <TableHead className="min-w-[220px]">Title / Org</TableHead>
                     <TableHead className="min-w-[72px]">State</TableHead>
                     <TableHead className="min-w-[72px]">Ready</TableHead>
@@ -1100,8 +1106,13 @@ export function DraftJobsSection({ sourceTypeTag }: DraftJobsSectionProps) {
                     const readinessTooltip = blockers.length > 0 ? `Blockers: ${blockers.join(', ')}` : warnings.length > 0 ? `Warnings: ${warnings.join(', ')}` : 'Ready for review';
 
                     return (
-                      <TableRow key={draft.id} className={busyRows[draft.id] ? 'opacity-70' : ''}>
+                      <TableRow key={draft.id} className={busyRows[draft.id] ? 'opacity-70' : ''} data-state={selectedDraftIds.has(draft.id) ? 'selected' : undefined}>
                         <TableCell>
+                          <Checkbox
+                            checked={selectedDraftIds.has(draft.id)}
+                            onCheckedChange={() => toggleSelectDraft(draft.id)}
+                          />
+                        </TableCell>
                           <div className="space-y-0.5">
                             <p className="font-medium text-sm line-clamp-1">{draft.title || 'Untitled'}</p>
                             <p className="text-xs text-muted-foreground line-clamp-1">{draft.organization_name || draft.post_name || '—'}</p>

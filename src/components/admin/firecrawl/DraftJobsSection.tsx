@@ -4,6 +4,7 @@
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -273,6 +274,43 @@ export function DraftJobsSection({ sourceTypeTag }: DraftJobsSectionProps) {
   const [govtPublishReport, setGovtPublishReport] = useState<{ published: number; failed: number; total: number; results: any[]; timestamp: string } | null>(null);
   const [govtRetryRunning, setGovtRetryRunning] = useState(false);
   const [govtValidateRunning, setGovtValidateRunning] = useState(false);
+
+  // Selection & bulk delete state
+  const [selectedDraftIds, setSelectedDraftIds] = useState<Set<string>>(new Set());
+  const [draftDeleteConfirmOpen, setDraftDeleteConfirmOpen] = useState(false);
+  const [bulkDraftDeleting, setBulkDraftDeleting] = useState(false);
+
+  const toggleSelectDraft = (id: string) => {
+    setSelectedDraftIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAllDrafts = () => {
+    if (selectedDraftIds.size === drafts.length) {
+      setSelectedDraftIds(new Set());
+    } else {
+      setSelectedDraftIds(new Set(drafts.map(d => d.id)));
+    }
+  };
+
+  const bulkDeleteDrafts = async () => {
+    if (selectedDraftIds.size === 0) return;
+    setBulkDraftDeleting(true);
+    const ids = [...selectedDraftIds];
+    const { error } = await supabase.from('firecrawl_draft_jobs').delete().in('id', ids);
+    setBulkDraftDeleting(false);
+    setDraftDeleteConfirmOpen(false);
+    if (error) {
+      toast({ title: 'Delete failed', description: error.message, variant: 'destructive' });
+    } else {
+      toast({ title: `${ids.length} draft job(s) permanently deleted` });
+      setSelectedDraftIds(new Set());
+      fetchDrafts();
+    }
+  };
 
   // ── Data fetching (all scoped to sourceTypeTag) ──
   const fetchFieldFixCandidates = useCallback(async (): Promise<FieldFixCandidate[]> => {

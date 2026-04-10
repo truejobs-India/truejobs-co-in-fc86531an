@@ -901,6 +901,15 @@ export function DraftJobsSection({ sourceTypeTag }: DraftJobsSectionProps) {
                 </>
               )}
 
+              {selectedDraftIds.size > 0 && (
+                <Button
+                  variant="destructive" size="sm"
+                  onClick={() => setDraftDeleteConfirmOpen(true)}
+                >
+                  <Trash2 className="h-3.5 w-3.5 mr-1.5" />Delete {selectedDraftIds.size} Selected
+                </Button>
+              )}
+
               <Button variant="outline" size="sm" onClick={fetchDrafts} disabled={loading}>
                 <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} />Refresh
               </Button>

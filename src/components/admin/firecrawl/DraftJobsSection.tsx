@@ -379,6 +379,23 @@ export function DraftJobsSection({ sourceTypeTag }: DraftJobsSectionProps) {
     return rows;
   }, [sourceTypeTag]);
 
+  const fetchPipelineSummary = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('firecrawl_staged_items')
+      .select('extraction_status, firecrawl_source_id, firecrawl_sources!inner(source_type)')
+      .eq('firecrawl_sources.source_type', sourceTypeTag === 'government' ? 'government' : 'firecrawl_sitemap');
+    if (error || !data) return;
+    const counts = { pending: 0, extracting: 0, extracted: 0, skipped: 0, failed: 0, drafts: 0 };
+    for (const row of data as any[]) {
+      const s = row.extraction_status;
+      if (s in counts) counts[s as keyof typeof counts]++;
+    }
+    // Also count drafts
+    const { count } = await supabase.from('firecrawl_draft_jobs').select('id', { count: 'exact', head: true }).eq('source_type_tag', sourceTypeTag);
+    counts.drafts = count || 0;
+    setPipelineSummary(counts);
+  }, [sourceTypeTag]);
+
   const fetchDrafts = useCallback(async () => {
     setLoading(true);
     let query = supabase
@@ -428,7 +445,8 @@ export function DraftJobsSection({ sourceTypeTag }: DraftJobsSectionProps) {
     setBulkRunCandidates(bulkRunResult.data);
     setImageCandidates(imageResult.data);
     setLoading(false);
-  }, [activeFilter, sourceTypeTag, isGovt, fetchFieldFixCandidates, fetchBulkRunCandidates, fetchImageCandidates]);
+    fetchPipelineSummary();
+  }, [activeFilter, sourceTypeTag, isGovt, fetchFieldFixCandidates, fetchBulkRunCandidates, fetchImageCandidates, fetchPipelineSummary]);
 
   useEffect(() => { fetchDrafts(); }, [fetchDrafts]);
 

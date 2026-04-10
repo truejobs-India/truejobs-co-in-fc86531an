@@ -141,6 +141,9 @@ export function GovtSourcesManager() {
   const [busySources, setBusySources] = useState<Record<string, string>>({});
   const [bulkToggling, setBulkToggling] = useState(false);
 
+  // Pipeline stats per source: { sourceId: { pending: N, extracted: N, skipped: N, failed: N } }
+  const [pipelineStats, setPipelineStats] = useState<Record<string, Record<string, number>>>({});
+
   // Selection & bulk delete state
   const [selectedSourceIds, setSelectedSourceIds] = useState<Set<string>>(new Set());
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -203,6 +206,22 @@ export function GovtSourcesManager() {
   const [addMinistry, setAddMinistry] = useState('');
   const [addSaving, setAddSaving] = useState(false);
 
+  /* ─── Fetch pipeline stats (staged items per source) ─── */
+  const fetchPipelineStats = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('firecrawl_staged_items')
+      .select('firecrawl_source_id, extraction_status');
+    if (error || !data) return;
+    const stats: Record<string, Record<string, number>> = {};
+    for (const row of data) {
+      const sid = (row as any).firecrawl_source_id;
+      const es = (row as any).extraction_status;
+      if (!stats[sid]) stats[sid] = {};
+      stats[sid][es] = (stats[sid][es] || 0) + 1;
+    }
+    setPipelineStats(stats);
+  }, []);
+
   /* ─── Fetch sources ─── */
   const fetchSources = useCallback(async () => {
     setLoading(true);
@@ -223,7 +242,7 @@ export function GovtSourcesManager() {
     setLoading(false);
   }, []);
 
-  useEffect(() => { fetchSources(); }, [fetchSources]);
+  useEffect(() => { fetchSources(); fetchPipelineStats(); }, [fetchSources, fetchPipelineStats]);
 
   /* ─── Toggle enabled ─── */
   const toggleEnabled = async (id: string, enabled: boolean) => {
@@ -756,7 +775,9 @@ export function GovtSourcesManager() {
                       <TableHead>Source</TableHead>
                       <TableHead>Domain</TableHead>
                       <TableHead>State</TableHead>
-                      <TableHead className="text-right">Items</TableHead>
+                      <TableHead className="text-right">Staged</TableHead>
+                      <TableHead className="text-right">Pending</TableHead>
+                      <TableHead className="text-right">Extracted</TableHead>
                       <TableHead>Last Run</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead className="text-right min-w-[260px]">Actions</TableHead>
@@ -784,7 +805,24 @@ export function GovtSourcesManager() {
                           {extractDomain(source.seed_url)}
                         </TableCell>
                         <TableCell className="text-xs">{source.govt_meta?.state || '—'}</TableCell>
-                        <TableCell className="text-right text-xs">{source.total_items_found}</TableCell>
+                        <TableCell className="text-right text-xs">
+                          {(() => {
+                            const s = pipelineStats[source.id];
+                            const total = s ? Object.values(s).reduce((a, b) => a + b, 0) : source.total_items_found;
+                            return total || 0;
+                          })()}
+                        </TableCell>
+                        <TableCell className="text-right text-xs">
+                          {(() => {
+                            const pending = pipelineStats[source.id]?.pending || 0;
+                            return pending > 0
+                              ? <Badge className="bg-orange-500 text-white border-orange-600 text-[10px]">{pending}</Badge>
+                              : <span className="text-muted-foreground">0</span>;
+                          })()}
+                        </TableCell>
+                        <TableCell className="text-right text-xs">
+                          {pipelineStats[source.id]?.extracted || 0}
+                        </TableCell>
                         <TableCell className="text-xs text-muted-foreground">
                           {source.last_fetched_at ? new Date(source.last_fetched_at).toLocaleDateString() : 'Never'}
                         </TableCell>
@@ -809,13 +847,18 @@ export function GovtSourcesManager() {
                               <span className="ml-0.5">Disc</span>
                             </Button>
                             <Button
-                              size="sm" variant="ghost" className="h-6 text-[9px] px-1.5"
+                              size="sm" variant="ghost" className="h-6 text-[9px] px-1.5 relative"
                               disabled={!!busySources[source.id]}
                               onClick={() => runScrapeExtract(source)}
-                              title="Scrape & Extract"
+                              title={`Scrape & Extract${(pipelineStats[source.id]?.pending || 0) > 0 ? ` (${pipelineStats[source.id].pending} pending)` : ''}`}
                             >
                               {busySources[source.id] === 'scraping' ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileText className="h-3 w-3" />}
                               <span className="ml-0.5">S&E</span>
+                              {(pipelineStats[source.id]?.pending || 0) > 0 && (
+                                <span className="absolute -top-1 -right-1 bg-orange-500 text-white text-[8px] rounded-full h-3.5 min-w-[14px] flex items-center justify-center px-0.5">
+                                  {pipelineStats[source.id].pending}
+                                </span>
+                              )}
                             </Button>
                             <Button
                               size="sm" variant="ghost" className="h-6 text-[9px] px-1.5"

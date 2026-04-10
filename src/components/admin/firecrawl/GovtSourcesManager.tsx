@@ -15,6 +15,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { Checkbox } from '@/components/ui/checkbox';
 import { useAdminToast } from '@/contexts/AdminMessagesContext';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
@@ -138,6 +140,43 @@ export function GovtSourcesManager() {
   const [open, setOpen] = useState(true);
   const [busySources, setBusySources] = useState<Record<string, string>>({});
   const [bulkToggling, setBulkToggling] = useState(false);
+
+  // Selection & bulk delete state
+  const [selectedSourceIds, setSelectedSourceIds] = useState<Set<string>>(new Set());
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+
+  const toggleSelectSource = (id: string) => {
+    setSelectedSourceIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAllSources = () => {
+    if (selectedSourceIds.size === sources.length) {
+      setSelectedSourceIds(new Set());
+    } else {
+      setSelectedSourceIds(new Set(sources.map(s => s.id)));
+    }
+  };
+
+  const bulkDeleteSources = async () => {
+    if (selectedSourceIds.size === 0) return;
+    setBulkDeleting(true);
+    const ids = [...selectedSourceIds];
+    const { error } = await supabase.from('firecrawl_sources').delete().in('id', ids);
+    setBulkDeleting(false);
+    setDeleteConfirmOpen(false);
+    if (error) {
+      toast({ title: 'Delete failed', description: error.message, variant: 'destructive' });
+    } else {
+      toast({ title: `${ids.length} source(s) permanently deleted` });
+      setSelectedSourceIds(new Set());
+      fetchSources();
+    }
+  };
 
   // Bulk run state
   const [batchRunning, setBatchRunning] = useState(false);
@@ -508,6 +547,16 @@ export function GovtSourcesManager() {
               {open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
             </CollapsibleTrigger>
             <div className="flex items-center gap-1.5 flex-wrap">
+              {selectedSourceIds.size > 0 && (
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  className="h-7 text-xs"
+                  onClick={() => setDeleteConfirmOpen(true)}
+                >
+                  <Trash2 className="h-3 w-3 mr-1" /> Delete {selectedSourceIds.size} Selected
+                </Button>
+              )}
               <Badge variant="outline" className="text-xs">
                 {enabledCount} active · {totalItems} items{failedCount > 0 ? ` · ${failedCount} errors` : ''}
               </Badge>
@@ -697,6 +746,12 @@ export function GovtSourcesManager() {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-10">
+                        <Checkbox
+                          checked={sources.length > 0 && selectedSourceIds.size === sources.length}
+                          onCheckedChange={toggleSelectAllSources}
+                        />
+                      </TableHead>
                       <TableHead className="w-10">On</TableHead>
                       <TableHead>Source</TableHead>
                       <TableHead>Domain</TableHead>
@@ -709,7 +764,13 @@ export function GovtSourcesManager() {
                   </TableHeader>
                   <TableBody>
                     {sources.map(source => (
-                      <TableRow key={source.id}>
+                      <TableRow key={source.id} data-state={selectedSourceIds.has(source.id) ? 'selected' : undefined}>
+                        <TableCell>
+                          <Checkbox
+                            checked={selectedSourceIds.has(source.id)}
+                            onCheckedChange={() => toggleSelectSource(source.id)}
+                          />
+                        </TableCell>
                         <TableCell>
                           <Switch
                             checked={source.is_enabled}
@@ -901,6 +962,28 @@ export function GovtSourcesManager() {
           )}
         </DialogContent>
       </Dialog>
+      {/* Bulk Delete Confirmation Dialog */}
+      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Permanently Delete {selectedSourceIds.size} Source(s)?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete {selectedSourceIds.size} source(s) and all their fetch runs, staged items, and draft jobs. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={bulkDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={bulkDeleteSources}
+              disabled={bulkDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {bulkDeleting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Trash2 className="h-4 w-4 mr-1" />}
+              Delete Permanently
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Collapsible>
   );
 }

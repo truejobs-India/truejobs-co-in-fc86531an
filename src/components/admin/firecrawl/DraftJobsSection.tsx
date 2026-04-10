@@ -4,6 +4,7 @@
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -273,6 +274,43 @@ export function DraftJobsSection({ sourceTypeTag }: DraftJobsSectionProps) {
   const [govtPublishReport, setGovtPublishReport] = useState<{ published: number; failed: number; total: number; results: any[]; timestamp: string } | null>(null);
   const [govtRetryRunning, setGovtRetryRunning] = useState(false);
   const [govtValidateRunning, setGovtValidateRunning] = useState(false);
+
+  // Selection & bulk delete state
+  const [selectedDraftIds, setSelectedDraftIds] = useState<Set<string>>(new Set());
+  const [draftDeleteConfirmOpen, setDraftDeleteConfirmOpen] = useState(false);
+  const [bulkDraftDeleting, setBulkDraftDeleting] = useState(false);
+
+  const toggleSelectDraft = (id: string) => {
+    setSelectedDraftIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAllDrafts = () => {
+    if (selectedDraftIds.size === drafts.length) {
+      setSelectedDraftIds(new Set());
+    } else {
+      setSelectedDraftIds(new Set(drafts.map(d => d.id)));
+    }
+  };
+
+  const bulkDeleteDrafts = async () => {
+    if (selectedDraftIds.size === 0) return;
+    setBulkDraftDeleting(true);
+    const ids = [...selectedDraftIds];
+    const { error } = await supabase.from('firecrawl_draft_jobs').delete().in('id', ids);
+    setBulkDraftDeleting(false);
+    setDraftDeleteConfirmOpen(false);
+    if (error) {
+      toast({ title: 'Delete failed', description: error.message, variant: 'destructive' });
+    } else {
+      toast({ title: `${ids.length} draft job(s) permanently deleted` });
+      setSelectedDraftIds(new Set());
+      fetchDrafts();
+    }
+  };
 
   // ── Data fetching (all scoped to sourceTypeTag) ──
   const fetchFieldFixCandidates = useCallback(async (): Promise<FieldFixCandidate[]> => {
@@ -863,6 +901,15 @@ export function DraftJobsSection({ sourceTypeTag }: DraftJobsSectionProps) {
                 </>
               )}
 
+              {selectedDraftIds.size > 0 && (
+                <Button
+                  variant="destructive" size="sm"
+                  onClick={() => setDraftDeleteConfirmOpen(true)}
+                >
+                  <Trash2 className="h-3.5 w-3.5 mr-1.5" />Delete {selectedDraftIds.size} Selected
+                </Button>
+              )}
+
               <Button variant="outline" size="sm" onClick={fetchDrafts} disabled={loading}>
                 <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} />Refresh
               </Button>
@@ -1025,6 +1072,12 @@ export function DraftJobsSection({ sourceTypeTag }: DraftJobsSectionProps) {
               <Table className="min-w-[1720px] table-auto">
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-10">
+                      <Checkbox
+                        checked={drafts.length > 0 && selectedDraftIds.size === drafts.length}
+                        onCheckedChange={toggleSelectAllDrafts}
+                      />
+                    </TableHead>
                     <TableHead className="min-w-[220px]">Title / Org</TableHead>
                     <TableHead className="min-w-[72px]">State</TableHead>
                     <TableHead className="min-w-[72px]">Ready</TableHead>
@@ -1053,7 +1106,13 @@ export function DraftJobsSection({ sourceTypeTag }: DraftJobsSectionProps) {
                     const readinessTooltip = blockers.length > 0 ? `Blockers: ${blockers.join(', ')}` : warnings.length > 0 ? `Warnings: ${warnings.join(', ')}` : 'Ready for review';
 
                     return (
-                      <TableRow key={draft.id} className={busyRows[draft.id] ? 'opacity-70' : ''}>
+                      <TableRow key={draft.id} className={busyRows[draft.id] ? 'opacity-70' : ''} data-state={selectedDraftIds.has(draft.id) ? 'selected' : undefined}>
+                        <TableCell>
+                          <Checkbox
+                            checked={selectedDraftIds.has(draft.id)}
+                            onCheckedChange={() => toggleSelectDraft(draft.id)}
+                          />
+                        </TableCell>
                         <TableCell>
                           <div className="space-y-0.5">
                             <p className="font-medium text-sm line-clamp-1">{draft.title || 'Untitled'}</p>
@@ -1312,6 +1371,29 @@ export function DraftJobsSection({ sourceTypeTag }: DraftJobsSectionProps) {
                 {publishValidation.warnings.length > 0 ? 'Publish Anyway' : 'Publish'}
               </AlertDialogAction>
             )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Bulk Delete Draft Jobs Confirmation */}
+      <AlertDialog open={draftDeleteConfirmOpen} onOpenChange={setDraftDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Permanently Delete {selectedDraftIds.size} Draft Job(s)?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete {selectedDraftIds.size} draft job(s) and all associated data. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={bulkDraftDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={bulkDeleteDrafts}
+              disabled={bulkDraftDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {bulkDraftDeleting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Trash2 className="h-4 w-4 mr-1" />}
+              Delete Permanently
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

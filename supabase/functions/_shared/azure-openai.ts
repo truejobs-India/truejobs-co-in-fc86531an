@@ -20,7 +20,7 @@ const DEFAULT_API_VERSION = '2024-12-01-preview';
 
 // GPT-4.1 Mini deployment on TrueJobs Azure resource
 const GPT41_MINI_DEPLOYMENT = 'gpt-4.1-mini';
-const GPT41_MINI_ENDPOINT = 'https://truejobs.openai.azure.com';
+const GPT41_MINI_ENDPOINT = 'https://truejobsgpt41mini-resource.services.ai.azure.com';
 
 export interface AzureOpenAIOptions {
   maxTokens?: number;

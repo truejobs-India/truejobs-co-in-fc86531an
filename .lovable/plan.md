@@ -1,51 +1,28 @@
 
 
-# Select & Delete: Government Sources and Government Draft Jobs
+# Restore GPT-4.1-mini to use the real TrueJobs endpoint
 
-## Overview
-Add checkbox-based multi-select with Select All capability to both the Government Sources table and the Government Draft Jobs table, along with bulk delete actions that permanently remove selected items and all cascading data.
+## Problem
+The previous fix incorrectly fell back `azure-gpt41-mini` to use `gpt-4o-mini` in `generate-blog-article/index.ts`. The shared caller (`azure-openai.ts`) already points to `https://truejobs.openai.azure.com` with deployment name `gpt-4.1-mini` — which is correct per your confirmation.
 
-## Changes
+## Fix
+One file change: revert `generate-blog-article/index.ts` line 611-615 to use `callAzureGPT41Mini` (the proper wrapper) instead of the fallback `callAzureOpenAI`.
 
-### 1. Government Sources — Select & Delete (`GovtSourcesManager.tsx`)
+### File: `supabase/functions/generate-blog-article/index.ts`
+Change the `azure-gpt41-mini` case from:
+```typescript
+case 'azure-gpt41-mini': {
+  const { callAzureOpenAI } = await import('../_shared/azure-openai.ts');
+  return callAzureOpenAI(prompt, { maxTokens: mt, temperature: 0.5 });
+}
+```
+To:
+```typescript
+case 'azure-gpt41-mini': {
+  const { callAzureGPT41Mini } = await import('../_shared/azure-openai.ts');
+  return callAzureGPT41Mini(prompt, { maxTokens: mt, temperature: 0.5 });
+}
+```
 
-**Selection state:**
-- Add `selectedSourceIds: Set<string>` state
-- Add a checkbox column (first column) in the table with Select All in header
-- "Select All" toggles all currently visible sources
-
-**Delete action:**
-- Add a "Delete Selected" destructive button in the header toolbar (visible when `selectedSourceIds.size > 0`)
-- Show count: "Delete 3 Selected"
-- Confirm via `AlertDialog`: "This will permanently delete X source(s) and all their fetch runs, staged items, and draft jobs. This cannot be undone."
-- On confirm: `supabase.from('firecrawl_sources').delete().in('id', [...selectedSourceIds])` — cascading FKs handle child data automatically
-- Clear selection and refresh after delete
-- Toast: "X sources permanently deleted"
-
-### 2. Government Draft Jobs — Select & Delete (`DraftJobsSection.tsx`)
-
-**Selection state:**
-- Add `selectedDraftIds: Set<string>` state
-- Add a checkbox column (first column) in the table with Select All in header
-- "Select All" toggles all currently visible (filtered) drafts
-
-**Delete action:**
-- Add a "Delete Selected" destructive button in the toolbar (visible when `selectedDraftIds.size > 0`)
-- Confirm via `AlertDialog`: "This will permanently delete X draft job(s). This cannot be undone."
-- On confirm: `supabase.from('firecrawl_draft_jobs').delete().in('id', [...selectedDraftIds])` — cascading FKs handle child data
-- Clear selection and refresh after delete
-- Toast: "X draft jobs permanently deleted"
-
-### 3. Add Checkbox UI component
-Use the existing `Checkbox` from `@/components/ui/checkbox` (standard shadcn component — verify it exists, create if missing).
-
-## Files Changed
-| File | What |
-|------|------|
-| `src/components/admin/firecrawl/GovtSourcesManager.tsx` | Add selection state, checkbox column, bulk delete button + confirmation dialog |
-| `src/components/admin/firecrawl/DraftJobsSection.tsx` | Add selection state, checkbox column, bulk delete button + confirmation dialog |
-| `src/components/ui/checkbox.tsx` | Create if missing (standard shadcn checkbox) |
-
-## Database
-No migration needed. Existing `ON DELETE CASCADE` constraints on `firecrawl_fetch_runs`, `firecrawl_staged_items`, and `firecrawl_draft_jobs` ensure all child data is automatically removed when a source is deleted.
+Then redeploy and test with a curl call to verify the TrueJobs endpoint responds successfully.
 

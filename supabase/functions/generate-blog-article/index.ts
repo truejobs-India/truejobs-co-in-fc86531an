@@ -609,9 +609,8 @@ async function callAI(model: string, prompt: string, wordLimit = 1500): Promise<
       return callAzureOpenAI(prompt, { maxTokens: mt, temperature: 0.5 });
     }
     case 'azure-gpt41-mini': {
-      const { callAzureOpenAI } = await import('../_shared/azure-openai.ts');
-      // gpt-4.1-mini deployment on truejobs endpoint is gone (404); fall back to default gpt-4o-mini
-      return callAzureOpenAI(prompt, { maxTokens: mt, temperature: 0.5 });
+      const { callAzureGPT41Mini } = await import('../_shared/azure-openai.ts');
+      return callAzureGPT41Mini(prompt, { maxTokens: mt, temperature: 0.5 });
     }
     case 'sarvam-30b': case 'sarvam-105b': {
       return callSarvamChat(model, prompt, mt);

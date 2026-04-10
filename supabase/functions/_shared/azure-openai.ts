@@ -31,6 +31,8 @@ export interface AzureOpenAIOptions {
   deploymentName?: string;
   /** Override Azure endpoint URL (default: AZURE_OPENAI_ENDPOINT env var) */
   endpoint?: string;
+  /** Override API key (default: AZURE_OPENAI_API_KEY env var) */
+  apiKey?: string;
 }
 
 /**
@@ -45,7 +47,7 @@ export async function callAzureOpenAI(
   const endpointOverride = options.endpoint;
 
   const endpoint = endpointOverride || Deno.env.get('AZURE_OPENAI_ENDPOINT');
-  const apiKey = Deno.env.get('AZURE_OPENAI_API_KEY');
+  const apiKey = options.apiKey || Deno.env.get('AZURE_OPENAI_API_KEY');
 
   if (!endpoint) throw new Error('AZURE_OPENAI_ENDPOINT not configured');
   if (!apiKey) throw new Error('AZURE_OPENAI_API_KEY not configured');
@@ -118,11 +120,14 @@ export async function callAzureOpenAI(
  */
 export async function callAzureGPT41Mini(
   prompt: string,
-  options: Omit<AzureOpenAIOptions, 'deploymentName' | 'endpoint'> = {},
+  options: Omit<AzureOpenAIOptions, 'deploymentName' | 'endpoint' | 'apiKey'> = {},
 ): Promise<string> {
+  const gpt41ApiKey = Deno.env.get('AZURE_GPT41_MINI_API_KEY');
+  if (!gpt41ApiKey) throw new Error('AZURE_GPT41_MINI_API_KEY not configured');
   return callAzureOpenAI(prompt, {
     ...options,
     deploymentName: GPT41_MINI_DEPLOYMENT,
     endpoint: GPT41_MINI_ENDPOINT,
+    apiKey: gpt41ApiKey,
   });
 }

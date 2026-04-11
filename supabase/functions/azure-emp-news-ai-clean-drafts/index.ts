@@ -25,6 +25,7 @@ const ALL_ALLOWED_MODELS = new Set([
   ...BEDROCK_MODELS,
   ...SARVAM_MODELS,
   ...AZURE_OPENAI_MODELS,
+  ...AZURE_DEEPSEEK_MODELS,
 ]);
 
 // ── Schema for structured extraction ──

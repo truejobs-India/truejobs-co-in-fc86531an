@@ -1,35 +1,76 @@
 
 
-# Fix: Show All Selected Articles in Scan Results + Mark Clean Articles as AI Fixed
+# Integrate DeepSeek-V3.1 (Azure AI Foundry) into All AI Selectors
 
-## Problem
-When you select 20 articles and scan, clean articles (those passing all compliance checks) are silently dropped from the results table at line 298-301 of `useBulkAutoFix.ts`. The summary grid shows "Clean: 19" but the table only lists the 1 fixable article. Additionally, clean articles never get the "AI Fixed" badge because they never go through the fix phase.
+## What This Does
+Adds DeepSeek-V3.1 as a new AI model option across all admin workflows (blog generation, SEO fix, enrichment, etc.). The model is deployed on Azure AI Foundry and uses the OpenAI-compatible API format.
+
+## Deployment Details (from screenshot)
+- **Endpoint**: `https://truejobsdeepseek-resource.services.ai.azure.com`
+- **Deployment name**: `DeepSeek-V3.1`
+- **API path**: `/openai/v1/` (OpenAI SDK compatible, NOT the standard Azure OpenAI `/openai/deployments/` path)
+- **Authentication**: API Key header
+- **Rate limits**: 250 RPM, 250,000 TPM
 
 ## Changes
 
-### 1. Include clean articles in scan items (`src/hooks/useBulkAutoFix.ts`)
+### 1. Store the API key as a secret
+Use `add_secret` to request `AZURE_DEEPSEEK_API_KEY` from the user.
 
-At lines 298-302, instead of incrementing `cleanCount` and `continue`-ing, push a `ScanItem` with `classification: 'clean'` into `items[]`. Add a new `allItems` field to the `ScanReport` type containing every scanned article (clean + fixable + skipped).
+### 2. Create shared caller: `supabase/functions/_shared/azure-deepseek.ts`
+A convenience wrapper similar to `azure-openai.ts` but targeting the DeepSeek endpoint. Uses the OpenAI-compatible chat completions path: `{endpoint}/openai/v1/chat/completions` with `api-key` header auth and `model: "DeepSeek-V3.1"` in the body.
 
-### 2. Show all articles in the scan results table (`src/components/admin/BlogPostEditor.tsx`)
+### 3. Register model in `src/lib/aiModels.ts`
+Add new entry with value `azure-deepseek-v3` to the `AI_MODELS` array:
+- Label: "DeepSeek V3.1 (Azure) (From API)"
+- Provider: "Azure AI Foundry"
+- Capabilities: `['text', 'text-premium']`
+- Source: `external-api`
+- recommendedMaxWords: 2500, warnAboveWords: 2000
+- Add to `SEO_FIX_MODEL_VALUES` array
 
-At lines 2494-2511, change the table to render `scanReport.allItems` instead of `scanReport.fixableItems`. Add a "Status" column with color-coded badges:
-- **Green "Clean"** — passes all checks
-- **Blue "Fixable"** — has auto-fixable issues (shows fail/warn counts)
-- **Gray "Skipped"** — too short or manual-only issues
+### 4. Add routing in all 12 edge functions
+Each edge function that routes `azure-gpt41-mini` needs a matching `azure-deepseek-v3` case that imports and calls `callAzureDeepSeek` from the shared module:
 
-### 3. Stamp clean articles as "AI Fixed" during execution (`src/hooks/useBulkAutoFix.ts`)
+| File | Change |
+|------|--------|
+| `_shared/seo-fix-runtime.ts` | Add model policy entry |
+| `_shared/word-count-enforcement.ts` | Add to token calc + supported set |
+| `azure-emp-news-ai-clean-drafts/index.ts` | Add to AZURE set + routing |
+| `enrich-authority-pages/index.ts` | Add model mapping + call route |
+| `generate-blog-article/index.ts` | Add model mapping + call route |
+| `generate-blog-faq/index.ts` | Add model mapping + call route |
+| `generate-custom-page/index.ts` | Add call route |
+| `generate-resource-content/index.ts` | Add call route |
+| `improve-blog-content/index.ts` | Add to SUPPORTED_MODELS + call route |
+| `intake-ai-classify/index.ts` | Add to AZURE set + routing |
+| `rss-ai-process/index.ts` | Add model mapping + call route |
+| `seo-audit-fix/index.ts` | Add route mapping + call route |
 
-In `executeAutoFix` (around lines 354-426), after processing all fixable items, loop through `scanReport.allItems` where `classification === 'clean'` and:
-- Call `stampBulkFixStatus(postId, 'fixed', 0)` to mark them as processed
-- Update `ai_fixed_at` timestamp in the database so they get the green "AI Fixed" badge
-- Add them to the results array with `status: 'fixed'` and reason "Already compliant — no fixes needed"
+### 5. Test via edge function curl
+After deployment, call `improve-blog-content` or `generate-blog-article` with `aiModel: "azure-deepseek-v3"` to verify the integration works end-to-end.
 
-### 4. Update ScanReport type
+## Technical Details
 
-Add `allItems: ScanItem[]` to the `ScanReport` interface (line 115-124). Keep `fixableItems` for execution logic.
+**Shared caller pattern:**
+```typescript
+// supabase/functions/_shared/azure-deepseek.ts
+const DEEPSEEK_ENDPOINT = 'https://truejobsdeepseek-resource.services.ai.azure.com';
+const DEEPSEEK_MODEL = 'DeepSeek-V3.1';
 
-## Files to Modify
-1. `src/hooks/useBulkAutoFix.ts` — Add clean articles to items, new `allItems` field, stamp clean articles during execution
-2. `src/components/admin/BlogPostEditor.tsx` — Show full article table with status badges
+export async function callAzureDeepSeek(prompt, options) {
+  const apiKey = Deno.env.get('AZURE_DEEPSEEK_API_KEY');
+  // POST to {endpoint}/openai/v1/chat/completions
+  // Headers: api-key, Content-Type
+  // Body: { model: "DeepSeek-V3.1", messages, max_tokens, temperature }
+}
+```
+
+**Routing pattern (same as azure-gpt41-mini):**
+```typescript
+case 'azure-deepseek-v3': {
+  const { callAzureDeepSeek } = await import('../_shared/azure-deepseek.ts');
+  return callAzureDeepSeek(prompt, { maxTokens, temperature: 0.5 });
+}
+```
 

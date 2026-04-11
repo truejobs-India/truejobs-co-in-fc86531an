@@ -84,8 +84,10 @@ export async function callAzureOpenAI(
       },
       body: JSON.stringify({
         messages,
-        max_tokens: maxTokens,
-        temperature,
+        // GPT-5 series uses max_completion_tokens and only supports default temperature
+        ...(deploymentName.startsWith('gpt-5')
+          ? { max_completion_tokens: maxTokens }
+          : { max_tokens: maxTokens, temperature }),
       }),
       signal: controller.signal,
     });
@@ -129,5 +131,27 @@ export async function callAzureGPT41Mini(
     deploymentName: GPT41_MINI_DEPLOYMENT,
     endpoint: GPT41_MINI_ENDPOINT,
     apiKey: gpt41ApiKey,
+  });
+}
+
+// GPT-5 Mini deployment on TrueJobs DeepSeek Azure resource
+const GPT5_MINI_DEPLOYMENT = 'gpt-5-mini';
+const GPT5_MINI_ENDPOINT = 'https://truejobsdeepseek-resource.cognitiveservices.azure.com';
+
+/**
+ * Convenience wrapper for GPT-5 Mini on TrueJobs DeepSeek Azure resource.
+ * Uses AZURE_DEEPSEEK_API_KEY but standard Azure OpenAI chat completions format.
+ */
+export async function callAzureGPT5Mini(
+  prompt: string,
+  options: Omit<AzureOpenAIOptions, 'deploymentName' | 'endpoint' | 'apiKey'> = {},
+): Promise<string> {
+  const gpt5ApiKey = Deno.env.get('AZURE_DEEPSEEK_API_KEY');
+  if (!gpt5ApiKey) throw new Error('AZURE_DEEPSEEK_API_KEY not configured');
+  return callAzureOpenAI(prompt, {
+    ...options,
+    deploymentName: GPT5_MINI_DEPLOYMENT,
+    endpoint: GPT5_MINI_ENDPOINT,
+    apiKey: gpt5ApiKey,
   });
 }

@@ -10,9 +10,10 @@
 
 const DEEPSEEK_ENDPOINT = 'https://truejobsdeepseek-resource.services.ai.azure.com';
 const DEEPSEEK_API_VERSION = '2024-05-01-preview';
-const DEEPSEEK_MODEL = 'DeepSeek-V3.1';
+const DEEPSEEK_DEFAULT_MODEL = 'DeepSeek-V3.1';
 
 export interface AzureDeepSeekOptions {
+  model?: 'DeepSeek-V3.1' | 'DeepSeek-R1';
   maxTokens?: number;
   temperature?: number;
   timeoutMs?: number;
@@ -31,6 +32,7 @@ export async function callAzureDeepSeek(
   if (!apiKey) throw new Error('AZURE_DEEPSEEK_API_KEY not configured');
 
   const {
+    model = DEEPSEEK_DEFAULT_MODEL,
     maxTokens = 4096,
     temperature = 0.5,
     timeoutMs = 90_000,
@@ -49,7 +51,7 @@ export async function callAzureDeepSeek(
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    console.log(`[azure-deepseek] Calling ${DEEPSEEK_MODEL}, maxTokens=${maxTokens}, temp=${temperature}`);
+    console.log(`[azure-deepseek] Calling ${model}, maxTokens=${maxTokens}, temp=${temperature}`);
 
     const resp = await fetch(url, {
       method: 'POST',
@@ -58,7 +60,7 @@ export async function callAzureDeepSeek(
         'api-key': apiKey,
       },
       body: JSON.stringify({
-        model: DEEPSEEK_MODEL,
+        model,
         messages,
         max_tokens: maxTokens,
         temperature,
@@ -68,21 +70,21 @@ export async function callAzureDeepSeek(
 
     if (!resp.ok) {
       const errText = await resp.text().catch(() => 'unknown');
-      throw new Error(`Azure DeepSeek ${DEEPSEEK_MODEL} error ${resp.status}: ${errText.substring(0, 500)}`);
+      throw new Error(`Azure DeepSeek ${model} error ${resp.status}: ${errText.substring(0, 500)}`);
     }
 
     const data = await resp.json();
     const text = data?.choices?.[0]?.message?.content || '';
 
     if (!text.trim()) {
-      throw new Error(`Azure DeepSeek ${DEEPSEEK_MODEL} returned empty response`);
+      throw new Error(`Azure DeepSeek ${model} returned empty response`);
     }
 
-    console.log(`[azure-deepseek] ${DEEPSEEK_MODEL} success, output length=${text.length}`);
+    console.log(`[azure-deepseek] ${model} success, output length=${text.length}`);
     return text;
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') {
-      throw new Error(`Azure DeepSeek ${DEEPSEEK_MODEL} timeout after ${timeoutMs / 1000}s`);
+      throw new Error(`Azure DeepSeek ${model} timeout after ${timeoutMs / 1000}s`);
     }
     throw err;
   } finally {

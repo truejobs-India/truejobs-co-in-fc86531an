@@ -1370,7 +1370,14 @@ async function generateViaAzureFlux2(
   const requestedRatio = body.aspectRatio || '16:9';
   const dims = flux2DimensionsFromAspectRatio(requestedRatio);
 
-  const fluxPrompt = applyFluxRealismLayer(imagePrompt, body.prompt);
+  // ── FLUX.2-pro uses its own dedicated prompt policy ──
+  // This bypasses the shared prompt pipeline (buildBlogCoverPrompt / applyFluxRealismLayer)
+  // because FLUX.2-pro needs stricter anti-text control and TrueJobs-specific scene construction.
+  // Other models (FLUX.1-Kontext, Gemini, Imagen, MAI-Image-2, etc.) are NOT affected.
+  const { buildFlux2CoverPrompt, buildFlux2InlinePrompt } = await import('../_shared/flux2-prompt-policy.ts');
+  const fluxPrompt = purpose === 'inline'
+    ? buildFlux2InlinePrompt(body)
+    : buildFlux2CoverPrompt(body);
 
   console.log(`[azure-flux2] slug=${slug} purpose=${purpose} ${dims.width}x${dims.height}`);
 
@@ -1409,7 +1416,7 @@ async function generateViaAzureFlux2(
           width: dims.width,
           height: dims.height,
         }],
-        promptUsed: imagePrompt,
+        promptUsed: fluxPrompt,
       },
       model: 'flux-2-pro',
       action: 'generate-image',

@@ -351,6 +351,7 @@ export function useBulkAutoFix(
       totalFixable: items.filter(i => i.classification === 'fixable').length,
       totalSkipped: skippedCount,
       fixableItems: items.filter(i => i.classification === 'fixable'),
+      allItems: items,
       issueBreakdown,
       stateBreakdown,
       scope,

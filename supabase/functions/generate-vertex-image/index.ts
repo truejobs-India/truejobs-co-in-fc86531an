@@ -10,6 +10,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { awsSigV4Fetch } from '../_shared/bedrock-nova.ts';
 import { callAzureFlux, fluxSizeFromAspectRatio } from '../_shared/azure-flux.ts';
+import { callAzureFlux2, flux2DimensionsFromAspectRatio } from '../_shared/azure-flux2.ts';
 import { callAzureMaiImage, maiSizeFromAspectRatio } from '../_shared/azure-mai-image.ts';
 
 const corsHeaders = {
@@ -43,6 +44,7 @@ const KNOWN_IMAGE_MODEL_KEYS = new Set([
   'vertex-flash-image', // Gemini 2.5 Flash Image via direct Vertex AI
   'nova-canvas', // Amazon Nova Canvas via Bedrock InvokeModel
   'azure-flux-kontext', // Azure FLUX.1 Kontext Pro via Azure AI Foundry
+  'azure-flux2-pro', // Azure FLUX.2 Pro via Azure AI Foundry
   'azure-mai-image-2', // Azure MAI-Image-2 via Azure AI Foundry
 ]);
 

@@ -1,79 +1,42 @@
 
 
-# Integrate DeepSeek-R1 (Azure AI Foundry) into All AI Selectors
+# Add All Text AI Models to Employment News Selectors
 
-## What This Does
-Adds DeepSeek-R1 as a new AI model option alongside the existing DeepSeek-V3.1. Both share the same Azure AI Foundry resource and API key (`AZURE_DEEPSEEK_API_KEY`), but R1 is a reasoning-focused model (slower, stronger on complex tasks).
+## Problem
+The Employment News section has two AI model selectors that are missing many models:
+1. **Enrichment selector** (EmploymentNewsManager.tsx line 1013) — hardcoded `<Select>` with only 6 models (Gemini Flash, Lovable Gemini, Mistral, Claude, Vertex Flash, Vertex Pro). Missing ~15 text models.
+2. **Azure Draft Jobs selector** (DraftJobsTab.tsx line 20) — `AZURE_EMP_NEWS_AI_MODELS` array missing Azure OpenAI models (GPT-4o Mini, GPT-4.1 Mini), DeepSeek V3.1/R1, and Nemotron 120B.
 
-## Deployment Details (from screenshot)
-- **Endpoint**: Same resource — `https://truejobsdeepseek-resource.services.ai.azure.com/models/chat/completions?api-version=2024-05-01-preview`
-- **Model name**: `DeepSeek-R1`
-- **API key**: Same `AZURE_DEEPSEEK_API_KEY` (already configured)
-- **Rate limits**: 250 RPM, 250,000 TPM
+Additionally, the backend edge functions lack routing for these newer models.
 
 ## Changes
 
-### 1. Update shared caller (`supabase/functions/_shared/azure-deepseek.ts`)
-Add a `model` option to `AzureDeepSeekOptions` so the caller can select between `DeepSeek-V3.1` and `DeepSeek-R1`. Defaults to V3.1 for backward compatibility.
+### 1. Replace hardcoded enrichment selector with AiModelSelector
+**File:** `src/components/admin/EmploymentNewsManager.tsx`
+- Replace the manual `<Select>` (lines 1013-1025) with the shared `<AiModelSelector>` component (already imported)
+- Update the `enrichAiModel` state initialization to use `getLastUsedModel('text', 'gemini-flash')` instead of localStorage fallback to `'gemini'`
 
-### 2. Register model in `src/lib/aiModels.ts`
-Add `azure-deepseek-r1` entry:
-- Label: "DeepSeek R1 (Azure) (From API)"
-- Capabilities: `['text', 'text-premium']`
-- Source: `external-api`, Provider: "Azure AI Foundry"
-- recommendedMaxWords: 2500, warnAboveWords: 2000
-- Speed: ~35s (reasoning model, slower than V3.1)
-- Add to `SEO_FIX_MODEL_VALUES`
+### 2. Add missing models to DraftJobsTab allowlist
+**File:** `src/components/admin/emp-news/azure-based-extraction/DraftJobsTab.tsx`
+- Add to `AZURE_EMP_NEWS_AI_MODELS`: `azure-gpt4o-mini`, `azure-gpt41-mini`, `azure-deepseek-v3`, `azure-deepseek-r1`, `nemotron-120b`, `groq`, `claude-sonnet`, `gpt5`, `gpt5-mini`, `gemini-flash`, `gemini-pro`, `lovable-gemini`
 
-### 3. Add routing in all 12 edge functions
-Each function that handles `azure-deepseek-v3` gets a matching `azure-deepseek-r1` case that calls `callAzureDeepSeek` with `model: 'DeepSeek-R1'`:
+### 3. Add routing cases to enrich-employment-news
+**File:** `supabase/functions/enrich-employment-news/index.ts`
+- Add to `resolveProviderInfo()`: azure-gpt4o-mini, azure-gpt41-mini, azure-deepseek-v3, azure-deepseek-r1, nemotron-120b, sarvam-30b, sarvam-105b
+- Add to the `callAiProvider()` switch: routing cases for all 7 new models using their shared callers
 
-| File | Change |
-|------|--------|
-| `_shared/seo-fix-runtime.ts` | Add model policy entry |
-| `_shared/word-count-enforcement.ts` | Add to token calc + supported set |
-| `azure-emp-news-ai-clean-drafts/index.ts` | Add routing |
-| `enrich-authority-pages/index.ts` | Add routing |
-| `generate-blog-article/index.ts` | Add routing |
-| `generate-blog-faq/index.ts` | Add routing |
-| `generate-custom-page/index.ts` | Add routing |
-| `generate-resource-content/index.ts` | Add routing |
-| `improve-blog-content/index.ts` | Add routing |
-| `intake-ai-classify/index.ts` | Add routing |
-| `rss-ai-process/index.ts` | Add routing |
-| `seo-audit-fix/index.ts` | Add routing |
+### 4. Add routing cases to extract-employment-news
+**File:** `supabase/functions/extract-employment-news/index.ts`
+- Add to `resolveModel()`: azure-gpt4o-mini, azure-gpt41-mini, azure-deepseek-v3, azure-deepseek-r1, nemotron-120b, sarvam-30b, sarvam-105b
+- Add provider-specific call logic for these models
 
-### 4. Update client-side runtime config (`src/lib/seoFixRuntimeConfig.ts`)
-Add `azure-deepseek-r1` entry with slightly higher throttle (reasoning model is slower).
-
-### 5. Deploy and test
-No new secret needed — reuses existing `AZURE_DEEPSEEK_API_KEY`. Test via `improve-blog-content` with `aiModel: "azure-deepseek-r1"`.
-
-## Technical Details
-
-**Shared caller update:**
-```typescript
-export interface AzureDeepSeekOptions {
-  model?: 'DeepSeek-V3.1' | 'DeepSeek-R1';  // NEW
-  maxTokens?: number;
-  temperature?: number;
-  timeoutMs?: number;
-  systemPrompt?: string;
-}
-// Default model stays DeepSeek-V3.1 for backward compat
-```
-
-**Routing pattern:**
-```typescript
-case 'azure-deepseek-r1': {
-  const { callAzureDeepSeek } = await import('../_shared/azure-deepseek.ts');
-  return callAzureDeepSeek(prompt, { model: 'DeepSeek-R1', maxTokens, temperature: 0.5 });
-}
-```
+### 5. Deploy and verify
+- Deploy both edge functions
+- Test `enrich-employment-news` and `extract-employment-news` with one of the newly added models (e.g., `azure-deepseek-v3`) to confirm routing works
 
 ## Files
-- **Modified:** `supabase/functions/_shared/azure-deepseek.ts` (add model param)
-- **Modified:** `src/lib/aiModels.ts` (register + SEO fix list)
-- **Modified:** `src/lib/seoFixRuntimeConfig.ts` (runtime config)
-- **Modified:** 12 edge function files (add routing case)
+- **Modified:** `src/components/admin/EmploymentNewsManager.tsx`
+- **Modified:** `src/components/admin/emp-news/azure-based-extraction/DraftJobsTab.tsx`
+- **Modified:** `supabase/functions/enrich-employment-news/index.ts`
+- **Modified:** `supabase/functions/extract-employment-news/index.ts`
 

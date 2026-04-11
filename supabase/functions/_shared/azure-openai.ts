@@ -84,7 +84,10 @@ export async function callAzureOpenAI(
       },
       body: JSON.stringify({
         messages,
-        max_tokens: maxTokens,
+        // GPT-5 series uses max_completion_tokens instead of max_tokens
+        ...(deploymentName.startsWith('gpt-5')
+          ? { max_completion_tokens: maxTokens }
+          : { max_tokens: maxTokens }),
         temperature,
       }),
       signal: controller.signal,

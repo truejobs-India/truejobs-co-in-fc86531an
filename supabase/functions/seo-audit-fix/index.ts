@@ -355,6 +355,17 @@ async function callAzureOpenAIForSeo(system: string, user: string, maxTokens: nu
   return { text, attemptsMade: 1, retryEvents: [] };
 }
 
+async function callAzureDeepSeekForSeo(system: string, user: string, maxTokens: number): Promise<AiCallResult> {
+  const { callAzureDeepSeek } = await import('../_shared/azure-deepseek.ts');
+  const text = await callAzureDeepSeek(user, {
+    maxTokens,
+    temperature: 0.3,
+    timeoutMs: 120_000,
+    systemPrompt: system,
+  });
+  return { text, attemptsMade: 1, retryEvents: [] };
+}
+
 async function callBedrockMistralForSeo(system: string, user: string, maxTokens: number): Promise<AiCallResult> {
   const { awsSigV4Fetch } = await import('../_shared/bedrock-nova.ts');
   const modelId = 'mistral.mistral-large-2407-v1:0';

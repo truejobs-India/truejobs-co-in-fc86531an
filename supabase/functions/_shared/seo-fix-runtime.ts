@@ -97,6 +97,12 @@ const MODEL_POLICIES: Partial<Record<string, SeoFixModelPolicy>> = {
     throttleMs: 1000,
     maxOutputTokens: 4096,
   },
+  'azure-deepseek-r1': {
+    retryCount: 3,
+    baseRetryDelayMs: 3000,
+    throttleMs: 2000,
+    maxOutputTokens: 4096,
+  },
 };
 
 export function getSeoFixModelPolicy(aiModel: string): SeoFixModelPolicy {

@@ -79,6 +79,12 @@ const MODEL_CONFIGS: Partial<Record<string, SeoFixRuntimeConfig>> = {
     baseRetryDelayMs: 2000,
     throttleMs: 2000,
   },
+  'azure-deepseek-r1': {
+    maxConcurrency: 1,
+    retryCount: 2,
+    baseRetryDelayMs: 3000,
+    throttleMs: 4000,
+  },
 };
 
 export function getSeoFixRuntimeConfig(aiModel: string): SeoFixRuntimeConfig {

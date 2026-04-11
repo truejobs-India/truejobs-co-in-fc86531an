@@ -125,6 +125,12 @@ async function callAI(
       rawText = await callAzureOpenAI(fullPrompt, { maxTokens: 4096, temperature: 0.3, timeoutMs: 120_000 });
     }
   }
+  // ── Route: Azure DeepSeek ──
+  else if (AZURE_DEEPSEEK_MODELS.has(aiModel)) {
+    console.log(`[ai-clean-drafts] routing to Azure DeepSeek: ${aiModel}`);
+    const { callAzureDeepSeek } = await import('../_shared/azure-deepseek.ts');
+    rawText = await callAzureDeepSeek(fullPrompt, { maxTokens: 4096, temperature: 0.3, timeoutMs: 120_000 });
+  }
   // ── Route: Sarvam AI ──
   else if (SARVAM_MODELS.has(aiModel)) {
     console.log(`[ai-clean-drafts] routing to Sarvam: ${aiModel}`);

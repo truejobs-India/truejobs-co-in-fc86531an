@@ -246,6 +246,16 @@ async function callAI(
     throw new Error('Azure OpenAI did not return valid JSON');
   }
 
+  if (AZURE_DEEPSEEK_MODELS.has(modelKey)) {
+    const fullPrompt = `${systemPrompt}\n\n${userPrompt}\n\nReturn valid JSON matching this schema:\n${JSON.stringify(toolDef.parameters, null, 2)}`;
+    console.log(`[intake-ai-classify] routing to Azure DeepSeek: ${modelKey}`);
+    const { callAzureDeepSeek } = await import('../_shared/azure-deepseek.ts');
+    const text = await callAzureDeepSeek(fullPrompt, { maxTokens: 8192, temperature: 0.3 });
+    const m3 = text.match(/\{[\s\S]*\}/);
+    if (m3) return JSON.parse(m3[0]);
+    throw new Error('Azure DeepSeek did not return valid JSON');
+  }
+
   const gatewayModelId = GATEWAY_MODEL_MAP[modelKey] || DEFAULT_MODEL;
   console.log(`[intake-ai-classify] routing to AI Gateway: ${gatewayModelId}`);
 

@@ -130,7 +130,8 @@ async function callAI(
   else if (AZURE_DEEPSEEK_MODELS.has(aiModel)) {
     console.log(`[ai-clean-drafts] routing to Azure DeepSeek: ${aiModel}`);
     const { callAzureDeepSeek } = await import('../_shared/azure-deepseek.ts');
-    rawText = await callAzureDeepSeek(fullPrompt, { maxTokens: 4096, temperature: 0.3, timeoutMs: 120_000 });
+    const dsModel = aiModel === 'azure-deepseek-r1' ? 'DeepSeek-R1' as const : 'DeepSeek-V3.1' as const;
+    rawText = await callAzureDeepSeek(fullPrompt, { model: dsModel, maxTokens: 4096, temperature: 0.3, timeoutMs: 120_000 });
   }
   // ── Route: Sarvam AI ──
   else if (SARVAM_MODELS.has(aiModel)) {

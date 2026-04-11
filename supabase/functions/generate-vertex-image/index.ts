@@ -1416,7 +1416,7 @@ async function generateViaAzureFlux2(
           width: dims.width,
           height: dims.height,
         }],
-        promptUsed: imagePrompt,
+        promptUsed: fluxPrompt,
       },
       model: 'flux-2-pro',
       action: 'generate-image',

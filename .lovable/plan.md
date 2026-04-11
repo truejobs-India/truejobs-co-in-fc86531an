@@ -1,76 +1,52 @@
 
 
-# Integrate DeepSeek-V3.1 (Azure AI Foundry) into All AI Selectors
+# Integrate DeepSeek-V3.1 (Azure AI Foundry) — Updated Endpoint
 
-## What This Does
-Adds DeepSeek-V3.1 as a new AI model option across all admin workflows (blog generation, SEO fix, enrichment, etc.). The model is deployed on Azure AI Foundry and uses the OpenAI-compatible API format.
+## Endpoint Correction
+The user provided the correct target URI:
+```
+https://truejobsdeepseek-resource.services.ai.azure.com/models/chat/completions?api-version=2024-05-01-preview
+```
 
-## Deployment Details (from screenshot)
-- **Endpoint**: `https://truejobsdeepseek-resource.services.ai.azure.com`
-- **Deployment name**: `DeepSeek-V3.1`
-- **API path**: `/openai/v1/` (OpenAI SDK compatible, NOT the standard Azure OpenAI `/openai/deployments/` path)
-- **Authentication**: API Key header
-- **Rate limits**: 250 RPM, 250,000 TPM
+This uses the **Azure AI Foundry Models API** path (`/models/chat/completions`), NOT the standard Azure OpenAI deployments path (`/openai/deployments/{name}/chat/completions`). This is the same pattern as GPT-4.1 Mini but with a different URL structure.
 
 ## Changes
 
-### 1. Store the API key as a secret
-Use `add_secret` to request `AZURE_DEEPSEEK_API_KEY` from the user.
+### 1. Request the `AZURE_DEEPSEEK_API_KEY` secret
+Prompt for the API key from the Azure AI Foundry deployment.
 
-### 2. Create shared caller: `supabase/functions/_shared/azure-deepseek.ts`
-A convenience wrapper similar to `azure-openai.ts` but targeting the DeepSeek endpoint. Uses the OpenAI-compatible chat completions path: `{endpoint}/openai/v1/chat/completions` with `api-key` header auth and `model: "DeepSeek-V3.1"` in the body.
+### 2. Create `supabase/functions/_shared/azure-deepseek.ts`
+A dedicated caller using the correct Models API path:
+```typescript
+const ENDPOINT = 'https://truejobsdeepseek-resource.services.ai.azure.com';
+const API_VERSION = '2024-05-01-preview';
+// URL: {ENDPOINT}/models/chat/completions?api-version={API_VERSION}
+// Auth header: api-key
+// Body: { model: "DeepSeek-V3.1", messages, max_tokens, temperature }
+```
 
-### 3. Register model in `src/lib/aiModels.ts`
-Add new entry with value `azure-deepseek-v3` to the `AI_MODELS` array:
-- Label: "DeepSeek V3.1 (Azure) (From API)"
-- Provider: "Azure AI Foundry"
-- Capabilities: `['text', 'text-premium']`
-- Source: `external-api`
-- recommendedMaxWords: 2500, warnAboveWords: 2000
-- Add to `SEO_FIX_MODEL_VALUES` array
+### 3. Register in `src/lib/aiModels.ts`
+Add `azure-deepseek-v3` to `AI_MODELS` array and `SEO_FIX_MODEL_VALUES`.
 
 ### 4. Add routing in all 12 edge functions
-Each edge function that routes `azure-gpt41-mini` needs a matching `azure-deepseek-v3` case that imports and calls `callAzureDeepSeek` from the shared module:
+Each function that handles `azure-gpt41-mini` gets a matching `azure-deepseek-v3` case:
+- `_shared/seo-fix-runtime.ts` — model policy
+- `_shared/word-count-enforcement.ts` — token calc
+- `azure-emp-news-ai-clean-drafts/index.ts`
+- `enrich-authority-pages/index.ts`
+- `generate-blog-article/index.ts`
+- `generate-blog-faq/index.ts`
+- `generate-custom-page/index.ts`
+- `generate-resource-content/index.ts`
+- `improve-blog-content/index.ts`
+- `intake-ai-classify/index.ts`
+- `rss-ai-process/index.ts`
+- `seo-audit-fix/index.ts`
 
-| File | Change |
-|------|--------|
-| `_shared/seo-fix-runtime.ts` | Add model policy entry |
-| `_shared/word-count-enforcement.ts` | Add to token calc + supported set |
-| `azure-emp-news-ai-clean-drafts/index.ts` | Add to AZURE set + routing |
-| `enrich-authority-pages/index.ts` | Add model mapping + call route |
-| `generate-blog-article/index.ts` | Add model mapping + call route |
-| `generate-blog-faq/index.ts` | Add model mapping + call route |
-| `generate-custom-page/index.ts` | Add call route |
-| `generate-resource-content/index.ts` | Add call route |
-| `improve-blog-content/index.ts` | Add to SUPPORTED_MODELS + call route |
-| `intake-ai-classify/index.ts` | Add to AZURE set + routing |
-| `rss-ai-process/index.ts` | Add model mapping + call route |
-| `seo-audit-fix/index.ts` | Add route mapping + call route |
+### 5. Deploy and test
+Deploy all affected edge functions, then curl-test one to verify the integration works.
 
-### 5. Test via edge function curl
-After deployment, call `improve-blog-content` or `generate-blog-article` with `aiModel: "azure-deepseek-v3"` to verify the integration works end-to-end.
-
-## Technical Details
-
-**Shared caller pattern:**
-```typescript
-// supabase/functions/_shared/azure-deepseek.ts
-const DEEPSEEK_ENDPOINT = 'https://truejobsdeepseek-resource.services.ai.azure.com';
-const DEEPSEEK_MODEL = 'DeepSeek-V3.1';
-
-export async function callAzureDeepSeek(prompt, options) {
-  const apiKey = Deno.env.get('AZURE_DEEPSEEK_API_KEY');
-  // POST to {endpoint}/openai/v1/chat/completions
-  // Headers: api-key, Content-Type
-  // Body: { model: "DeepSeek-V3.1", messages, max_tokens, temperature }
-}
-```
-
-**Routing pattern (same as azure-gpt41-mini):**
-```typescript
-case 'azure-deepseek-v3': {
-  const { callAzureDeepSeek } = await import('../_shared/azure-deepseek.ts');
-  return callAzureDeepSeek(prompt, { maxTokens, temperature: 0.5 });
-}
-```
+## Files
+- **New:** `supabase/functions/_shared/azure-deepseek.ts`
+- **Modified:** `src/lib/aiModels.ts` + 12 edge function files
 

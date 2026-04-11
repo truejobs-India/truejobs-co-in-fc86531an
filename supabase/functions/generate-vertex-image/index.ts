@@ -1605,6 +1605,9 @@ serve(async (req) => {
       if (selectedInlineModel === 'azure-flux-kontext') {
         return await generateViaAzureFlux({ ...body, purpose: 'inline' }, slug, imagePrompt, adminClient, startMs, strict);
       }
+      if (selectedInlineModel === 'azure-flux2-pro') {
+        return await generateViaAzureFlux2({ ...body, purpose: 'inline' }, slug, imagePrompt, adminClient, startMs, strict);
+      }
       if (selectedInlineModel === 'azure-mai-image-2') {
         return await generateViaAzureMaiImage({ ...body, purpose: 'inline' }, slug, imagePrompt, adminClient, startMs, strict);
       }

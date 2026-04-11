@@ -533,6 +533,13 @@ function resolveProviderInfo(model: string): { provider: string; apiModel: strin
     case 'gpt5-mini': return { provider: 'lovable-gateway', apiModel: 'openai/gpt-5-mini' };
     case 'nova-pro': return { provider: 'bedrock', apiModel: 'us.amazon.nova-pro-v1:0' };
     case 'nova-premier': return { provider: 'bedrock', apiModel: 'us.amazon.nova-premier-v1:0' };
+    case 'azure-gpt4o-mini': return { provider: 'azure-openai', apiModel: 'gpt-4o-mini' };
+    case 'azure-gpt41-mini': return { provider: 'azure-gpt41-mini', apiModel: 'gpt-4.1-mini' };
+    case 'azure-deepseek-v3': return { provider: 'azure-deepseek', apiModel: 'DeepSeek-V3.1' };
+    case 'azure-deepseek-r1': return { provider: 'azure-deepseek', apiModel: 'DeepSeek-R1' };
+    case 'nemotron-120b': return { provider: 'lovable-gateway', apiModel: 'nvidia/llama-3.3-nemotron-super-49b-v1' };
+    case 'sarvam-30b': return { provider: 'sarvam', apiModel: 'sarvam-m' };
+    case 'sarvam-105b': return { provider: 'sarvam', apiModel: 'sarvam-m' };
     default: return { provider: model, apiModel: model };
   }
 }
@@ -583,6 +590,40 @@ async function callAI(model: string, prompt: string, maxTokensParam?: number): P
     case 'nova-premier': {
       const { callBedrockNova } = await import('../_shared/bedrock-nova.ts');
       rawText = await callBedrockNova(model, prompt, { maxTokens: maxTokensParam || 16384, temperature: 0.5 });
+      break;
+    }
+    case 'azure-gpt4o-mini': {
+      const { callAzureOpenAI } = await import('../_shared/azure-openai.ts');
+      rawText = await callAzureOpenAI(prompt, { maxTokens: maxTokensParam || 8192, temperature: 0.5 });
+      break;
+    }
+    case 'azure-gpt41-mini': {
+      const { callAzureGpt41Mini } = await import('../_shared/azure-gpt41-mini.ts');
+      rawText = await callAzureGpt41Mini(prompt, { maxTokens: maxTokensParam || 8192, temperature: 0.5 });
+      break;
+    }
+    case 'azure-deepseek-v3':
+    case 'azure-deepseek-r1': {
+      const { callAzureDeepSeek } = await import('../_shared/azure-deepseek.ts');
+      rawText = await callAzureDeepSeek(prompt, { model: model === 'azure-deepseek-r1' ? 'DeepSeek-R1' : 'DeepSeek-V3.1', maxTokens: maxTokensParam || 4096, temperature: 0.5 });
+      break;
+    }
+    case 'nemotron-120b': {
+      const lovKey = Deno.env.get('LOVABLE_API_KEY');
+      if (!lovKey) throw new Error('LOVABLE_API_KEY not configured');
+      const nemResp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${lovKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: 'nvidia/llama-3.3-nemotron-super-49b-v1', messages: [{ role: 'user', content: prompt }], max_tokens: maxTokensParam || 8192, temperature: 0.5 }),
+      });
+      if (!nemResp.ok) throw new Error(`Nemotron error: ${nemResp.status}`);
+      rawText = (await nemResp.json())?.choices?.[0]?.message?.content || '';
+      break;
+    }
+    case 'sarvam-30b':
+    case 'sarvam-105b': {
+      const { callSarvamChat } = await import('../_shared/sarvam.ts');
+      rawText = await callSarvamChat(prompt, { model: model === 'sarvam-105b' ? 'sarvam-m' : 'sarvam-m', maxTokens: maxTokensParam || 4096 });
       break;
     }
     case 'groq': {

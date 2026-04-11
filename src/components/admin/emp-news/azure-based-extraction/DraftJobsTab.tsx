@@ -16,11 +16,17 @@ import { Sparkles, Eye, Loader2, Send, Pencil, CheckCircle2, Link2 } from 'lucid
 import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSelector';
 import type { AzureEmpNewsIssue, AzureEmpNewsDraftJob } from '@/types/azureEmpNews';
 
-// Direct-API-only models — NO Lovable Gateway models
+// All available text AI models for Azure Emp News workflows
 const AZURE_EMP_NEWS_AI_MODELS = [
   'vertex-flash', 'vertex-pro', 'vertex-3.1-pro', 'vertex-3-flash', 'vertex-3.1-flash-lite',
   'nova-pro', 'nova-premier', 'mistral',
   'sarvam-30b', 'sarvam-105b',
+  'azure-gpt4o-mini', 'azure-gpt41-mini',
+  'azure-deepseek-v3', 'azure-deepseek-r1',
+  'nemotron-120b',
+  'groq', 'claude-sonnet',
+  'gemini-flash', 'gemini-pro', 'lovable-gemini',
+  'gpt5', 'gpt5-mini',
 ] as const;
 
 const EDITABLE_FIELDS = [

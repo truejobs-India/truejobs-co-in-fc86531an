@@ -174,18 +174,14 @@ export function EmploymentNewsManager() {
   const [deletingBatchId, setDeletingBatchId] = useState<string | null>(null);
   const [isDeletingEdition, setIsDeletingEdition] = useState(false);
   // AI Model selection for enrichment (persisted in localStorage)
-  const [enrichAiModel, setEnrichAiModel] = useState<string>(() => {
-    try { return localStorage.getItem('empnews_enrich_ai_model') || 'gemini'; } catch { return 'gemini'; }
-  });
+   const [enrichAiModel, setEnrichAiModel] = useState<string>(() => getLastUsedModel('text', 'gemini-flash'));
   // Track keywords as comma-separated string during editing
   const [editKeywordsStr, setEditKeywordsStr] = useState('');
   // Track schema_markup as pretty-printed string during editing
   const [editSchemaStr, setEditSchemaStr] = useState('');
 
-  // Persist AI model selection
   const handleEnrichModelChange = useCallback((model: string) => {
     setEnrichAiModel(model);
-    try { localStorage.setItem('empnews_enrich_ai_model', model); } catch {}
   }, []);
 
   // Load data
@@ -1010,19 +1006,13 @@ export function EmploymentNewsManager() {
             <div className="flex items-center gap-1.5 bg-muted/50 rounded-md px-2 py-1 border">
               <Sparkles className="h-3.5 w-3.5 text-primary" />
               <span className="text-xs font-medium text-muted-foreground">AI Model:</span>
-              <Select value={enrichAiModel} onValueChange={handleEnrichModelChange}>
-                <SelectTrigger className="w-[200px] h-7 text-xs border-0 bg-transparent p-0 pl-1">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="gemini">Gemini 2.5 Flash</SelectItem>
-                  <SelectItem value="lovable-gemini">Lovable Gemini</SelectItem>
-                  <SelectItem value="mistral">Mistral 7B (Bedrock)</SelectItem>
-                  <SelectItem value="claude-sonnet">Claude Sonnet 4.6 (API)</SelectItem>
-                  <SelectItem value="vertex-flash">Gemini 2.5 Flash (From API)</SelectItem>
-                  <SelectItem value="vertex-pro">Gemini 2.5 Pro (From API)</SelectItem>
-                </SelectContent>
-              </Select>
+              <AiModelSelector
+                value={enrichAiModel}
+                onValueChange={handleEnrichModelChange}
+                capability="text"
+                triggerClassName="w-[220px] h-7 text-xs border-0 bg-transparent p-0 pl-1"
+                size="sm"
+              />
             </div>
             <div className="border-l h-6 mx-1" />
             <span className="text-sm text-muted-foreground">{selectedIds.size} selected</span>

@@ -24,7 +24,7 @@ function sanitizeText(raw: string): string {
 
 // ── Model resolution ──
 interface ResolvedModel {
-  provider: 'vertex-ai' | 'lovable-gateway' | 'groq' | 'anthropic' | 'bedrock';
+  provider: 'vertex-ai' | 'lovable-gateway' | 'groq' | 'anthropic' | 'bedrock' | 'azure-openai' | 'azure-gpt41-mini' | 'azure-deepseek' | 'sarvam';
   modelId: string;
   timeout: number;
 }
@@ -51,6 +51,8 @@ function resolveModel(aiModel: string | undefined): ResolvedModel {
       return { provider: 'lovable-gateway', modelId: 'openai/gpt-5', timeout: 120_000 };
     case 'gpt5-mini':
       return { provider: 'lovable-gateway', modelId: 'openai/gpt-5-mini', timeout: 90_000 };
+    case 'nemotron-120b':
+      return { provider: 'lovable-gateway', modelId: 'nvidia/llama-3.3-nemotron-super-49b-v1', timeout: 90_000 };
     case 'groq':
       return { provider: 'groq', modelId: 'llama-3.3-70b-versatile', timeout: 60_000 };
     case 'claude-sonnet':
@@ -61,6 +63,17 @@ function resolveModel(aiModel: string | undefined): ResolvedModel {
       return { provider: 'bedrock', modelId: 'us.amazon.nova-premier-v1:0', timeout: 120_000 };
     case 'mistral':
       return { provider: 'bedrock', modelId: 'eu.mistral.mistral-large-2411-v1:0', timeout: 90_000 };
+    case 'azure-gpt4o-mini':
+      return { provider: 'azure-openai', modelId: 'gpt-4o-mini', timeout: 90_000 };
+    case 'azure-gpt41-mini':
+      return { provider: 'azure-gpt41-mini', modelId: 'gpt-4.1-mini', timeout: 90_000 };
+    case 'azure-deepseek-v3':
+      return { provider: 'azure-deepseek', modelId: 'DeepSeek-V3.1', timeout: 90_000 };
+    case 'azure-deepseek-r1':
+      return { provider: 'azure-deepseek', modelId: 'DeepSeek-R1', timeout: 120_000 };
+    case 'sarvam-30b':
+    case 'sarvam-105b':
+      return { provider: 'sarvam', modelId: 'sarvam-m', timeout: 90_000 };
     default:
       return { provider: 'vertex-ai', modelId: 'gemini-2.5-flash', timeout: 90_000 };
   }

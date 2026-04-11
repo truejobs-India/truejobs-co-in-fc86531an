@@ -118,6 +118,7 @@ export interface ScanReport {
   totalFixable: number;
   totalSkipped: number;
   fixableItems: ScanItem[];
+  allItems: ScanItem[];
   issueBreakdown: Record<string, number>;
   stateBreakdown: ScanStateBreakdown;
   scope: BulkScanScope;
@@ -298,6 +299,15 @@ export function useBulkAutoFix(
       if (failedChecks.length === 0) {
         cleanCount++;
         stateBreakdown.alreadyClean++;
+        items.push({
+          postId: post.id,
+          slug: post.slug,
+          title: post.title,
+          classification: 'clean',
+          failCount: 0,
+          warnCount: 0,
+          issuesByType: {},
+        });
         continue;
       }
 

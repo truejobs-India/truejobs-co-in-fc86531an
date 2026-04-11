@@ -156,6 +156,11 @@ async function callAI(model: string, prompt: string): Promise<string> {
       return callAzureGPT41Mini(prompt, { maxTokens: 4096, temperature: 0.5 });
     }
 
+    case 'azure-gpt5-mini': {
+      const { callAzureGPT5Mini } = await import('../_shared/azure-openai.ts');
+      return callAzureGPT5Mini(prompt, { maxTokens: 4096, temperature: 0.5 });
+    }
+
     case 'azure-deepseek-v3': {
       const { callAzureDeepSeek } = await import('../_shared/azure-deepseek.ts');
       return callAzureDeepSeek(prompt, { maxTokens: 4096, temperature: 0.5 });

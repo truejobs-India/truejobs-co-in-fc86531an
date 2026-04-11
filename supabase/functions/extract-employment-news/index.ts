@@ -504,6 +504,30 @@ async function callAI(
     return { rawText: rawText ?? '', finishReason: finishReason ?? null };
   }
 
+  if (resolved.provider === 'azure-openai') {
+    const { callAzureOpenAI } = await import('../_shared/azure-openai.ts');
+    const rawText = await callAzureOpenAI(fullPrompt, { maxTokens, temperature: 0.1 });
+    return { rawText, finishReason: null };
+  }
+
+  if (resolved.provider === 'azure-gpt41-mini') {
+    const { callAzureGpt41Mini } = await import('../_shared/azure-gpt41-mini.ts');
+    const rawText = await callAzureGpt41Mini(fullPrompt, { maxTokens, temperature: 0.1 });
+    return { rawText, finishReason: null };
+  }
+
+  if (resolved.provider === 'azure-deepseek') {
+    const { callAzureDeepSeek } = await import('../_shared/azure-deepseek.ts');
+    const rawText = await callAzureDeepSeek(fullPrompt, { model: resolved.modelId as any, maxTokens, temperature: 0.1 });
+    return { rawText, finishReason: null };
+  }
+
+  if (resolved.provider === 'sarvam') {
+    const { callSarvamChat } = await import('../_shared/sarvam.ts');
+    const rawText = await callSarvamChat(fullPrompt, { model: resolved.modelId, maxTokens });
+    return { rawText, finishReason: null };
+  }
+
   throw new Error(`Unsupported provider: ${resolved.provider}`);
 }
 

@@ -1,77 +1,35 @@
 
 
-# Fix Firecrawl Pipeline Visibility: Show Full Funnel Status
+# Fix: Show All Selected Articles in Scan Results + Mark Clean Articles as AI Fixed
 
 ## Problem
-After scraping government sources, there is zero visibility into what happened. You can't see:
-- How many items were staged (discovered)
-- How many are still pending extraction (74 right now)
-- How many were extracted vs skipped vs failed
-- That 25 draft jobs actually exist (they do, but may not be obvious)
+When you select 20 articles and scan, clean articles (those passing all compliance checks) are silently dropped from the results table at line 298-301 of `useBulkAutoFix.ts`. The summary grid shows "Clean: 19" but the table only lists the 1 fixable article. Additionally, clean articles never get the "AI Fixed" badge because they never go through the fix phase.
 
-The GovtSourcesManager only shows `total_items_found` and the DraftJobsSection loads drafts silently with no pipeline summary.
+## Changes
 
-## Current Data State
-| Stage | Count |
-|-------|-------|
-| Staged items (total) | 108 |
-| Pending extraction | 74 |
-| Extracted → drafts created | 25 |
-| Skipped (no job data) | 9 |
+### 1. Include clean articles in scan items (`src/hooks/useBulkAutoFix.ts`)
 
-## Plan
+At lines 298-302, instead of incrementing `cleanCount` and `continue`-ing, push a `ScanItem` with `classification: 'clean'` into `items[]`. Add a new `allItems` field to the `ScanReport` type containing every scanned article (clean + fixable + skipped).
 
-### 1. Add pipeline status summary to GovtSourcesManager
-Show per-source counts inline in the sources table: **Staged / Pending / Extracted / Drafts**
+### 2. Show all articles in the scan results table (`src/components/admin/BlogPostEditor.tsx`)
 
-**File:** `src/components/admin/firecrawl/GovtSourcesManager.tsx`
-- After loading sources, run a summary query grouping `firecrawl_staged_items` by `firecrawl_source_id` and `extraction_status`
-- Add columns to the sources table: "Staged", "Pending", "Extracted"
-- Highlight pending count in orange badge when > 0 (signals "you need to run S&E again")
+At lines 2494-2511, change the table to render `scanReport.allItems` instead of `scanReport.fixableItems`. Add a "Status" column with color-coded badges:
+- **Green "Clean"** — passes all checks
+- **Blue "Fixable"** — has auto-fixable issues (shows fail/warn counts)
+- **Gray "Skipped"** — too short or manual-only issues
 
-### 2. Add a pipeline funnel summary card above the DraftJobsSection
-Show a compact summary card at the top of DraftJobsSection with counts: total staged → pending → extracted → skipped → drafts created
+### 3. Stamp clean articles as "AI Fixed" during execution (`src/hooks/useBulkAutoFix.ts`)
 
-**File:** `src/components/admin/firecrawl/DraftJobsSection.tsx`
-- Add a `fetchPipelineSummary()` call alongside `fetchDrafts()` that queries `firecrawl_staged_items` grouped by `extraction_status` where the source's `source_type = 'government'`
-- Render a small horizontal funnel/stats bar showing the counts
-- Show a warning badge when pending > 0: "74 items awaiting extraction — run Scrape & Extract on sources"
+In `executeAutoFix` (around lines 354-426), after processing all fixable items, loop through `scanReport.allItems` where `classification === 'clean'` and:
+- Call `stampBulkFixStatus(postId, 'fixed', 0)` to mark them as processed
+- Update `ai_fixed_at` timestamp in the database so they get the green "AI Fixed" badge
+- Add them to the results array with `status: 'fixed'` and reason "Already compliant — no fixes needed"
 
-### 3. Add a "Process Remaining" button in GovtSourcesManager
-When a source has pending staged items, show a prominent button/badge to re-run Scrape & Extract specifically for that source.
+### 4. Update ScanReport type
 
-**File:** `src/components/admin/firecrawl/GovtSourcesManager.tsx`
-- In the per-source action buttons, if `pendingCount > 0`, show badge on the S&E button with pending count
+Add `allItems: ScanItem[]` to the `ScanReport` interface (line 115-124). Keep `fixableItems` for execution logic.
 
-### 4. Reduce inter-scrape delay for faster processing
-**File:** `supabase/functions/firecrawl-ingest/index.ts`
-- Reduce the sleep between scrapes from 2000ms to 1000ms to process more items before timeout
-
-## Technical Details
-
-### New query for pipeline stats (runs in both components):
-```sql
-SELECT 
-  extraction_status, 
-  COUNT(*) 
-FROM firecrawl_staged_items si
-JOIN firecrawl_sources s ON si.firecrawl_source_id = s.id
-WHERE s.source_type = 'government'
-GROUP BY extraction_status
-```
-
-### Per-source stats query:
-```sql
-SELECT 
-  firecrawl_source_id,
-  extraction_status,
-  COUNT(*)
-FROM firecrawl_staged_items
-GROUP BY firecrawl_source_id, extraction_status
-```
-
-### UI Changes Summary
-- **GovtSourcesManager table**: New "Pending" column with orange badge when > 0
-- **DraftJobsSection header**: Pipeline funnel bar showing staged→pending→extracted→drafts
-- **S&E button**: Shows pending count badge when items remain
+## Files to Modify
+1. `src/hooks/useBulkAutoFix.ts` — Add clean articles to items, new `allItems` field, stamp clean articles during execution
+2. `src/components/admin/BlogPostEditor.tsx` — Show full article table with status badges
 

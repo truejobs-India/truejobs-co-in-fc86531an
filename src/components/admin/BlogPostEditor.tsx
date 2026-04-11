@@ -2495,15 +2495,21 @@ export function BlogPostEditor() {
               <Table>
                 <TableHeader><TableRow>
                   <TableHead className="text-xs">Article</TableHead>
+                  <TableHead className="text-xs w-20">Status</TableHead>
                   <TableHead className="text-xs w-16">Fails</TableHead>
                   <TableHead className="text-xs w-16">Warns</TableHead>
                 </TableRow></TableHeader>
                 <TableBody>
-                  {bulkAutoFix.scanReport.fixableItems.map(item => (
+                  {bulkAutoFix.scanReport.allItems.map(item => (
                     <TableRow key={item.postId}>
-                      <TableCell className="text-xs truncate max-w-[300px]">{item.title}</TableCell>
-                      <TableCell><Badge variant="destructive" className="text-[10px]">{item.failCount}</Badge></TableCell>
-                      <TableCell><Badge variant="secondary" className="text-[10px]">{item.warnCount}</Badge></TableCell>
+                      <TableCell className="text-xs truncate max-w-[260px]">{item.title}</TableCell>
+                      <TableCell>
+                        {item.classification === 'clean' && <Badge className="text-[10px] bg-green-600 hover:bg-green-700 text-white">Clean</Badge>}
+                        {item.classification === 'fixable' && <Badge className="text-[10px] bg-primary hover:bg-primary/90 text-primary-foreground">Fixable</Badge>}
+                        {item.classification === 'skipped' && <Badge variant="secondary" className="text-[10px]">Skipped</Badge>}
+                      </TableCell>
+                      <TableCell>{item.failCount > 0 ? <Badge variant="destructive" className="text-[10px]">{item.failCount}</Badge> : <span className="text-muted-foreground text-[10px]">—</span>}</TableCell>
+                      <TableCell>{item.warnCount > 0 ? <Badge variant="secondary" className="text-[10px]">{item.warnCount}</Badge> : <span className="text-muted-foreground text-[10px]">—</span>}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

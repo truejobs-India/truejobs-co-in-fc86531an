@@ -118,6 +118,7 @@ export interface ScanReport {
   totalFixable: number;
   totalSkipped: number;
   fixableItems: ScanItem[];
+  allItems: ScanItem[];
   issueBreakdown: Record<string, number>;
   stateBreakdown: ScanStateBreakdown;
   scope: BulkScanScope;
@@ -298,6 +299,15 @@ export function useBulkAutoFix(
       if (failedChecks.length === 0) {
         cleanCount++;
         stateBreakdown.alreadyClean++;
+        items.push({
+          postId: post.id,
+          slug: post.slug,
+          title: post.title,
+          classification: 'clean',
+          failCount: 0,
+          warnCount: 0,
+          issuesByType: {},
+        });
         continue;
       }
 
@@ -341,6 +351,7 @@ export function useBulkAutoFix(
       totalFixable: items.filter(i => i.classification === 'fixable').length,
       totalSkipped: skippedCount,
       fixableItems: items.filter(i => i.classification === 'fixable'),
+      allItems: items,
       issueBreakdown,
       stateBreakdown,
       scope,
@@ -352,16 +363,23 @@ export function useBulkAutoFix(
 
   // ── Phase 2: Execute Auto-Fix ──
   const executeAutoFix = useCallback(async () => {
-    if (!scanReport || scanReport.fixableItems.length === 0) return;
+    if (!scanReport) return;
+    
+    const cleanItems = scanReport.allItems.filter(i => i.classification === 'clean');
+    const fixableItems = scanReport.fixableItems;
+    
+    // Allow execution even if only clean items exist (to stamp them)
+    if (fixableItems.length === 0 && cleanItems.length === 0) return;
 
     stopRef.current = false;
     setPhase('fixing');
     setResults([]);
-    const fixableItems = scanReport.fixableItems;
-    setProgress({ done: 0, total: fixableItems.length, current: '' });
+    const totalToProcess = fixableItems.length + cleanItems.length;
+    setProgress({ done: 0, total: totalToProcess, current: '' });
 
     const allResults: ArticleResult[] = [];
 
+    // Process fixable items first
     for (let i = 0; i < fixableItems.length; i++) {
       if (stopRef.current) {
         for (let j = i; j < fixableItems.length; j++) {
@@ -391,13 +409,12 @@ export function useBulkAutoFix(
           status: 'failed', issuesFound: 0, fixesApplied: [], fixesSkipped: [],
           error: 'Post not found in current data',
         });
-        // Stamp failed
         await stampBulkFixStatus(item.postId, 'failed', null);
         setResults([...allResults]);
         continue;
       }
 
-      setProgress({ done: i, total: fixableItems.length, current: item.title });
+      setProgress({ done: i, total: totalToProcess, current: item.title });
 
       try {
         const result = await processOneArticle(post, item, blogTextModel);
@@ -409,7 +426,6 @@ export function useBulkAutoFix(
           fixesApplied: [], fixesSkipped: [],
           error: err.message || 'Unknown error',
         });
-        // Stamp technical failure
         await stampBulkFixStatus(item.postId, 'failed', null);
       }
 
@@ -420,7 +436,31 @@ export function useBulkAutoFix(
       }
     }
 
-    setProgress({ done: fixableItems.length, total: fixableItems.length, current: '' });
+    // Stamp clean articles as "AI Fixed" — they already pass all checks
+    for (let i = 0; i < cleanItems.length; i++) {
+      if (stopRef.current) break;
+      const item = cleanItems[i];
+      setProgress({ done: fixableItems.length + i, total: totalToProcess, current: `✅ ${item.title}` });
+      
+      try {
+        await stampBulkFixStatus(item.postId, 'fixed', 0);
+        // Also update ai_fixed_at
+        await supabase.from('blog_posts').update({ ai_fixed_at: new Date().toISOString() }).eq('id', item.postId);
+        allResults.push({
+          postId: item.postId, slug: item.slug, title: item.title,
+          status: 'fixed', issuesFound: 0, fixesApplied: [], fixesSkipped: [],
+        });
+      } catch {
+        allResults.push({
+          postId: item.postId, slug: item.slug, title: item.title,
+          status: 'skipped', issuesFound: 0, fixesApplied: [], fixesSkipped: [],
+          error: 'Failed to stamp clean article',
+        });
+      }
+      setResults([...allResults]);
+    }
+
+    setProgress({ done: totalToProcess, total: totalToProcess, current: '' });
     setPhase('done');
     await fetchPosts();
   }, [scanReport, allPosts, blogTextModel, fetchPosts]);

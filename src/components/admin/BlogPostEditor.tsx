@@ -2451,7 +2451,7 @@ export function BlogPostEditor() {
           </div>
         )}
 
-        {bulkAutoFix.phase === 'scanned' && bulkAutoFix.scanReport && bulkAutoFix.scanReport.totalFixable > 0 && (
+        {bulkAutoFix.phase === 'scanned' && bulkAutoFix.scanReport && bulkAutoFix.scanReport.allItems.length > 0 && (
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <div className="text-xs font-medium text-muted-foreground">
@@ -2495,15 +2495,21 @@ export function BlogPostEditor() {
               <Table>
                 <TableHeader><TableRow>
                   <TableHead className="text-xs">Article</TableHead>
+                  <TableHead className="text-xs w-20">Status</TableHead>
                   <TableHead className="text-xs w-16">Fails</TableHead>
                   <TableHead className="text-xs w-16">Warns</TableHead>
                 </TableRow></TableHeader>
                 <TableBody>
-                  {bulkAutoFix.scanReport.fixableItems.map(item => (
+                  {bulkAutoFix.scanReport.allItems.map(item => (
                     <TableRow key={item.postId}>
-                      <TableCell className="text-xs truncate max-w-[300px]">{item.title}</TableCell>
-                      <TableCell><Badge variant="destructive" className="text-[10px]">{item.failCount}</Badge></TableCell>
-                      <TableCell><Badge variant="secondary" className="text-[10px]">{item.warnCount}</Badge></TableCell>
+                      <TableCell className="text-xs truncate max-w-[260px]">{item.title}</TableCell>
+                      <TableCell>
+                        {item.classification === 'clean' && <Badge className="text-[10px] bg-green-600 hover:bg-green-700 text-white">Clean</Badge>}
+                        {item.classification === 'fixable' && <Badge className="text-[10px] bg-primary hover:bg-primary/90 text-primary-foreground">Fixable</Badge>}
+                        {item.classification === 'skipped' && <Badge variant="secondary" className="text-[10px]">Skipped</Badge>}
+                      </TableCell>
+                      <TableCell>{item.failCount > 0 ? <Badge variant="destructive" className="text-[10px]">{item.failCount}</Badge> : <span className="text-muted-foreground text-[10px]">—</span>}</TableCell>
+                      <TableCell>{item.warnCount > 0 ? <Badge variant="secondary" className="text-[10px]">{item.warnCount}</Badge> : <span className="text-muted-foreground text-[10px]">—</span>}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -2511,17 +2517,17 @@ export function BlogPostEditor() {
             </ScrollArea>
             <div className="flex gap-2">
               <Button onClick={() => bulkAutoFix.executeAutoFix()} className="gap-1">
-                <Sparkles className="h-4 w-4" /> Auto-Fix {bulkAutoFix.scanReport.totalFixable} Article(s)
+                <Sparkles className="h-4 w-4" /> Auto-Fix {bulkAutoFix.scanReport.allItems.length} Article(s)
               </Button>
               <Button variant="outline" onClick={() => bulkAutoFix.resetDialog()}>Cancel</Button>
             </div>
           </div>
         )}
 
-        {bulkAutoFix.phase === 'scanned' && bulkAutoFix.scanReport && bulkAutoFix.scanReport.totalFixable === 0 && (
+        {bulkAutoFix.phase === 'scanned' && bulkAutoFix.scanReport && bulkAutoFix.scanReport.allItems.length === 0 && (
           <div className="text-center py-6 space-y-3">
             <div className="text-sm text-muted-foreground">
-              ✅ All {bulkAutoFix.scanReport.scope === 'smart' ? 'eligible' : ''} articles pass auto-fixable checks — no fixes needed.
+              ✅ No articles matched the scan criteria.
             </div>
             {bulkAutoFix.scanReport.scope === 'smart' && bulkAutoFix.scanReport.stateBreakdown.skippedUnchanged > 0 && (
               <div className="text-xs text-muted-foreground">

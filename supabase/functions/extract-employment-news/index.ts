@@ -511,8 +511,8 @@ async function callAI(
   }
 
   if (resolved.provider === 'azure-gpt41-mini') {
-    const { callAzureGpt41Mini } = await import('../_shared/azure-gpt41-mini.ts');
-    const rawText = await callAzureGpt41Mini(fullPrompt, { maxTokens, temperature: 0.1 });
+    const { callAzureGPT41Mini } = await import('../_shared/azure-openai.ts');
+    const rawText = await callAzureGPT41Mini(fullPrompt, { maxTokens, temperature: 0.1 });
     return { rawText, finishReason: null };
   }
 

@@ -598,8 +598,8 @@ async function callAI(model: string, prompt: string, maxTokensParam?: number): P
       break;
     }
     case 'azure-gpt41-mini': {
-      const { callAzureGpt41Mini } = await import('../_shared/azure-gpt41-mini.ts');
-      rawText = await callAzureGpt41Mini(prompt, { maxTokens: maxTokensParam || 8192, temperature: 0.5 });
+      const { callAzureGPT41Mini } = await import('../_shared/azure-openai.ts');
+      rawText = await callAzureGPT41Mini(prompt, { maxTokens: maxTokensParam || 8192, temperature: 0.5 });
       break;
     }
     case 'azure-deepseek-v3':

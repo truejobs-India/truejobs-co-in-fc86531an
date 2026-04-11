@@ -1,54 +1,68 @@
 
 
-# Update FLUX.2-pro Prompt Policy — Anti-Adornment & Age Tightening
+# Add Azure GPT-5 Mini to All AI Selectors
 
-## What Changes
-Only one file is modified: `supabase/functions/_shared/flux2-prompt-policy.ts`. No other image model is touched.
+## Deployment Details (from screenshot)
+- **Model/Deployment:** `gpt-5-mini`
+- **Endpoint:** `https://truejobsdeepseek-resource.cognitiveservices.azure.com/`
+- **API key:** `AZURE_DEEPSEEK_API_KEY` (same resource)
+- **API format:** Standard Azure OpenAI chat completions (`/openai/deployments/gpt-5-mini/chat/completions?api-version=2024-12-01-preview`)
+- **Rate limits:** 250,000 TPM / 250 RPM
 
-## Exact Edits
+## Technical Approach
 
-### 1. New block: `ANTI_ADORNMENT_BLOCK` (insert after `ANTI_TEXT_BLOCK`, ~line 37)
-A dedicated suppression block for facial adornments:
+GPT-5-mini uses the Azure OpenAI API format (same as GPT-4o-mini and GPT-4.1-mini) but lives on the DeepSeek resource. We add a convenience wrapper `callAzureGPT5Mini` to `azure-openai.ts` and route `azure-gpt5-mini` through it across all edge functions.
+
+## Changes
+
+### 1. Shared caller: `supabase/functions/_shared/azure-openai.ts`
+Add `callAzureGPT5Mini` convenience wrapper:
+- Endpoint: `https://truejobsdeepseek-resource.cognitiveservices.azure.com`
+- Deployment: `gpt-5-mini`
+- API key: `AZURE_DEEPSEEK_API_KEY`
+
+### 2. Model registry: `src/lib/aiModels.ts`
+- Add `azure-gpt5-mini` entry after `azure-gpt41-mini` (text + text-premium, ~15s, good reliability, 2000 max words)
+- Add to `SEO_FIX_MODEL_VALUES` array
+
+### 3. SEO runtime config: `src/lib/seoFixRuntimeConfig.ts`
+- Add `azure-gpt5-mini` config (same as azure-gpt41-mini: concurrency 2, throttle 2000ms)
+
+### 4. Backend routing — 12 edge functions
+Add `azure-gpt5-mini` case alongside existing `azure-gpt41-mini` in each:
+
+| Edge Function | Pattern |
+|---|---|
+| `seo-audit-fix` | Add route case + provider branch |
+| `generate-blog-article` | Add resolveModel case + callAI case |
+| `generate-blog-faq` | Add case |
+| `improve-blog-content` | Add to SUPPORTED_MODELS + callAI switch |
+| `enrich-authority-pages` | Add resolveModel case + callAI case |
+| `enrich-blog-content` | Add routing case |
+| `generate-resource-content` | Add case |
+| `rss-ai-process` | Add resolveModel + call block |
+| `intake-ai-classify` | Add to AZURE_OPENAI_MODELS set + routing |
+| `azure-emp-news-ai-clean-drafts` | Add to AZURE_OPENAI_MODELS set + routing |
+| `enrich-employment-news` | Add resolveModel case + call case |
+| `extract-employment-news` | Add resolveModel case + call case |
+
+Each routes through:
+```typescript
+case 'azure-gpt5-mini': {
+  const { callAzureGPT5Mini } = await import('../_shared/azure-openai.ts');
+  return callAzureGPT5Mini(prompt, { maxTokens, temperature: 0.5 });
+}
 ```
-No bindi. No tilak. No teeka. No sindoor. No forehead marks of any kind.
-No nose pin. No nose stud. No nose ring.
-No visible facial adornment unless the article explicitly requires it.
-No culturally stylized forehead decoration. No devotional-poster styling.
-No ethnic bridal styling. No festive or ceremonial appearance.
-No ornate facial accessories. Clean, unadorned faces only.
-```
 
-### 2. Update `AESTHETIC_BLOCK` (lines 40-52)
-Replace people/subject guidance:
-- Change age from "20–24" → **"18–21"**
-- Add: "fair young Indian women and men"
-- Add: "clean natural face with no facial adornments — no bindi, no tilak, no teeka, no sindoor, no forehead marks, no nose pin, no nose stud, no nose ring"
-- Add: "simple grooming, not glamorized, not ceremonial, not festive, not bridal, not devotional-poster style"
-- Keep all existing photorealism, clothing, and background rules
+### 5. Verification
+After deployment, test via `curl_edge_functions` to confirm the model routes correctly and returns a valid response.
 
-### 3. Update `NEGATIVE_BLOCK` (lines 55-65)
-Add to the "Strictly avoid" list:
-```
-bindi, tilak, teeka, sindoor, forehead marks, nose pin, nose stud, nose ring,
-facial adornments, bridal styling, ceremonial appearance, festive styling,
-devotional-poster style, ornate facial accessories,
-```
+## Files Modified
+- `supabase/functions/_shared/azure-openai.ts`
+- `src/lib/aiModels.ts`
+- `src/lib/seoFixRuntimeConfig.ts`
+- 12 edge function `index.ts` files (routing cases only)
 
-### 4. Wire `ANTI_ADORNMENT_BLOCK` into prompt assembly
-In both `buildFlux2CoverPrompt` and `buildFlux2InlinePrompt`, insert `ANTI_ADORNMENT_BLOCK` between `ANTI_TEXT_BLOCK` and `NEGATIVE_BLOCK`.
-
-### 5. Update scene descriptions
-Update all 16 scene mappings + fallback to specify "aged 18–21" and "clean unadorned face" where people are described.
-
-## What Is NOT Changed
-- `blog-image-prompt-policy.ts` (FLUX.1-Kontext) — untouched
-- `azure-flux2.ts` (API caller) — untouched
-- `generate-vertex-image/index.ts` — untouched
-- All other model routes (MAI-Image-2, gpt-image, Stable Image, Gemini, etc.) — untouched
-
-## Verification
-After deployment, test the edge function with 6 scenarios (UPSC, SSC admit card, Railway, college admission, exam result, govt job application). For each, confirm the generated prompt contains the anti-adornment directives, age 18–21, and all existing anti-text rules.
-
-## File
-- **Modified:** `supabase/functions/_shared/flux2-prompt-policy.ts`
+## No API Key Required
+GPT-5-mini reuses `AZURE_DEEPSEEK_API_KEY` which is already configured.
 

@@ -445,6 +445,19 @@ export const AI_MODELS: readonly AiModelDef[] = [
     supportsContinuationPass: true,
   },
   {
+    value: 'azure-gpt5-mini',
+    label: 'Azure GPT-5 Mini (From API)',
+    desc: 'Your API · Strong reasoning · ~15s/page',
+    speed: 15,
+    source: 'external-api',
+    provider: 'Azure OpenAI',
+    capabilities: ['text', 'text-premium'],
+    recommendedMaxWords: 2000,
+    warnAboveWords: 1500,
+    longFormReliability: 'good',
+    supportsContinuationPass: true,
+  },
+  {
     value: 'azure-deepseek-v3',
     label: 'DeepSeek V3.1 (Azure) (From API)',
     desc: 'Your API · Strong reasoning · ~20s/page',
@@ -535,6 +548,7 @@ export const SEO_FIX_MODEL_VALUES = [
   'nemotron-120b',
   'azure-gpt4o-mini',
   'azure-gpt41-mini',
+  'azure-gpt5-mini',
   'azure-deepseek-v3',
   'azure-deepseek-r1',
 ] as const;

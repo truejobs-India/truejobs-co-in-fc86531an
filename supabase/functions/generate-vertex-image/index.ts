@@ -1348,6 +1348,91 @@ async function generateViaAzureFlux(
 }
 
 // ═══════════════════════════════════════════════════════════════
+// AZURE FLUX.2-pro — via Azure AI Foundry Black Forest Labs API
+// ═══════════════════════════════════════════════════════════════
+
+async function generateViaAzureFlux2(
+  body: any,
+  slug: string,
+  imagePrompt: string,
+  adminClient: any,
+  startMs: number,
+  strict: boolean,
+): Promise<Response> {
+  const meta: StrictMeta = {
+    selectedModelKey: 'azure-flux2-pro',
+    resolvedProvider: 'azure-ai-foundry',
+    resolvedRuntimeModelId: 'flux-2-pro',
+  };
+
+  const purpose = body.purpose || 'cover';
+  const slotNumber = body.slotNumber;
+  const requestedRatio = body.aspectRatio || '16:9';
+  const dims = flux2DimensionsFromAspectRatio(requestedRatio);
+
+  const fluxPrompt = applyFluxRealismLayer(imagePrompt, body.prompt);
+
+  console.log(`[azure-flux2] slug=${slug} purpose=${purpose} ${dims.width}x${dims.height}`);
+
+  try {
+    const result = await callAzureFlux2(fluxPrompt, {
+      width: dims.width,
+      height: dims.height,
+      n: 1,
+    });
+
+    const isInline = purpose === 'inline';
+    const pathPrefix = isInline ? 'inline' : 'covers';
+    const slotSuffix = isInline && slotNumber ? `-slot${slotNumber}` : '';
+    const filePath = `${pathPrefix}/${slug}-flux2-pro${slotSuffix}.png`;
+
+    const uploadResult = await uploadGeneratedImage({
+      adminClient,
+      imageBase64: result.imageBase64,
+      mimeType: result.mimeType,
+      filePath,
+    });
+
+    if (uploadResult instanceof Response) return uploadResult;
+
+    const elapsed = Date.now() - startMs;
+    console.log(`[azure-flux2] completed in ${elapsed}ms, uploaded to ${filePath}`);
+
+    const successBody = addStrictMetadata({
+      success: true,
+      data: {
+        images: [{
+          url: uploadResult.publicUrl,
+          path: filePath,
+          altText: body.title || body.topic || `Blog image for ${slug}`,
+          mimeType: result.mimeType,
+          width: dims.width,
+          height: dims.height,
+        }],
+        promptUsed: imagePrompt,
+      },
+      model: 'flux-2-pro',
+      action: 'generate-image',
+      purpose,
+      slotNumber,
+      elapsedMs: elapsed,
+    }, { strict: true, ...meta });
+
+    return new Response(JSON.stringify(successBody), {
+      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  } catch (err: any) {
+    console.error(`[azure-flux2] error: ${err.message}`);
+    return buildStrictErrorResponse(
+      err.message?.includes('timeout') ? 504 : 502,
+      `Azure FLUX.2-pro error: ${err.message}. No fallback was used.`,
+      meta,
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // AZURE MAI-IMAGE-2 — via Azure AI Foundry MAI Image API
 // ═══════════════════════════════════════════════════════════════
 

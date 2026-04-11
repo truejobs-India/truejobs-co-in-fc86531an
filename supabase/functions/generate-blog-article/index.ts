@@ -508,6 +508,7 @@ function resolveProviderInfo(model: string): { provider: string; apiModel: strin
     case 'nemotron-120b': return { provider: 'bedrock', apiModel: 'nvidia.nemotron-super-3-120b' };
     case 'azure-gpt4o-mini': return { provider: 'azure-openai', apiModel: 'gpt-4o-mini' };
     case 'azure-gpt41-mini': return { provider: 'azure-openai', apiModel: 'gpt-4.1-mini' };
+    case 'azure-gpt5-mini': return { provider: 'azure-openai', apiModel: 'gpt-5-mini' };
     case 'azure-deepseek-v3': return { provider: 'azure-deepseek', apiModel: 'DeepSeek-V3.1' };
     case 'azure-deepseek-r1': return { provider: 'azure-deepseek', apiModel: 'DeepSeek-R1' };
     case 'sarvam-30b': return { provider: 'sarvam', apiModel: 'sarvam-30b' };
@@ -613,6 +614,10 @@ async function callAI(model: string, prompt: string, wordLimit = 1500): Promise<
     case 'azure-gpt41-mini': {
       const { callAzureGPT41Mini } = await import('../_shared/azure-openai.ts');
       return callAzureGPT41Mini(prompt, { maxTokens: mt, temperature: 0.5 });
+    }
+    case 'azure-gpt5-mini': {
+      const { callAzureGPT5Mini } = await import('../_shared/azure-openai.ts');
+      return callAzureGPT5Mini(prompt, { maxTokens: mt, temperature: 0.5 });
     }
     case 'azure-deepseek-v3': {
       const { callAzureDeepSeek } = await import('../_shared/azure-deepseek.ts');

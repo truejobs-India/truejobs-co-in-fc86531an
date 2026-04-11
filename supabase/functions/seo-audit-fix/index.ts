@@ -59,6 +59,8 @@ function resolveProvider(uiModelKey: string): ProviderRoute {
       return { provider: 'azure-openai' };
     case 'azure-gpt41-mini':
       return { provider: 'azure-openai', azureModel: 'azure-gpt41-mini' };
+    case 'azure-gpt5-mini':
+      return { provider: 'azure-openai', azureModel: 'azure-gpt5-mini' };
     case 'azure-deepseek-v3':
       return { provider: 'azure-deepseek' };
     case 'azure-deepseek-r1':
@@ -234,7 +236,8 @@ async function callAI(route: ProviderRoute, system: string, user: string, rawMod
     return callBedrockNovaForSeo(route.modelKey, system, user, modelPolicy.maxOutputTokens);
   } else if (route.provider === 'azure-openai') {
     const useGPT41 = (route as any).azureModel === 'azure-gpt41-mini';
-    return callAzureOpenAIForSeo(system, user, modelPolicy.maxOutputTokens, useGPT41);
+    const useGPT5Mini = (route as any).azureModel === 'azure-gpt5-mini';
+    return callAzureOpenAIForSeo(system, user, modelPolicy.maxOutputTokens, useGPT41, useGPT5Mini);
   } else if (route.provider === 'azure-deepseek') {
     const deepseekModel = (route as any).deepseekModel || 'DeepSeek-V3.1';
     return callAzureDeepSeekForSeo(system, user, modelPolicy.maxOutputTokens, deepseekModel);
@@ -337,7 +340,17 @@ async function callBedrockNovaForSeo(modelKey: string, system: string, user: str
   return { text, attemptsMade: 1, retryEvents: [] };
 }
 
-async function callAzureOpenAIForSeo(system: string, user: string, maxTokens: number, useGPT41Mini = false): Promise<AiCallResult> {
+async function callAzureOpenAIForSeo(system: string, user: string, maxTokens: number, useGPT41Mini = false, useGPT5Mini = false): Promise<AiCallResult> {
+  if (useGPT5Mini) {
+    const { callAzureGPT5Mini } = await import('../_shared/azure-openai.ts');
+    const text = await callAzureGPT5Mini(user, {
+      maxTokens,
+      temperature: 0.3,
+      timeoutMs: 120_000,
+      systemPrompt: system,
+    });
+    return { text, attemptsMade: 1, retryEvents: [] };
+  }
   if (useGPT41Mini) {
     const { callAzureGPT41Mini } = await import('../_shared/azure-openai.ts');
     const text = await callAzureGPT41Mini(user, {

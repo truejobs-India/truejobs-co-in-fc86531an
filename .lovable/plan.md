@@ -1,52 +1,54 @@
 
 
-# Dedicated FLUX.2-pro Prompt Policy
+# Update FLUX.2-pro Prompt Policy — Anti-Adornment & Age Tightening
 
-## Problem
-FLUX.2-pro currently uses the same prompt pipeline as FLUX.1-Kontext (`buildBlogCoverPrompt` → `applyFluxRealismLayer`). This shared policy doesn't enforce strict anti-text rules, causing FLUX.2-pro to render unwanted text in images.
+## What Changes
+Only one file is modified: `supabase/functions/_shared/flux2-prompt-policy.ts`. No other image model is touched.
 
-## Solution
-Create a dedicated FLUX.2-pro prompt builder that replaces the entire prompt construction chain for this model only. No other model's prompt logic is touched.
+## Exact Edits
 
-## Changes
+### 1. New block: `ANTI_ADORNMENT_BLOCK` (insert after `ANTI_TEXT_BLOCK`, ~line 37)
+A dedicated suppression block for facial adornments:
+```
+No bindi. No tilak. No teeka. No sindoor. No forehead marks of any kind.
+No nose pin. No nose stud. No nose ring.
+No visible facial adornment unless the article explicitly requires it.
+No culturally stylized forehead decoration. No devotional-poster styling.
+No ethnic bridal styling. No festive or ceremonial appearance.
+No ornate facial accessories. Clean, unadorned faces only.
+```
 
-### 1. New file: `supabase/functions/_shared/flux2-prompt-policy.ts`
-A standalone FLUX.2-pro prompt module with:
+### 2. Update `AESTHETIC_BLOCK` (lines 40-52)
+Replace people/subject guidance:
+- Change age from "20–24" → **"18–21"**
+- Add: "fair young Indian women and men"
+- Add: "clean natural face with no facial adornments — no bindi, no tilak, no teeka, no sindoor, no forehead marks, no nose pin, no nose stud, no nose ring"
+- Add: "simple grooming, not glamorized, not ceremonial, not festive, not bridal, not devotional-poster style"
+- Keep all existing photorealism, clothing, and background rules
 
-- **`buildFlux2CoverPrompt(body)`** — converts article metadata (title, category, tags, excerpt) into a concrete photorealistic scene description, appends the strict anti-text block and negative constraints
-- **`buildFlux2InlinePrompt(body)`** — same but tailored for inline/section images with nearby-content awareness
-- **Anti-text block** — 30+ explicit suppression rules (no words, no letters, no Hindi, no English text, no typography, no captions, no labels, no watermarks, no logos, no signage, no poster text, no newspaper text, no book-cover text, no UI text, no handwritten text, no printed text, no exam paper text, no banner text, no badge text, no stamp text, no visible alphanumeric characters)
-- **Negative block** — explicit suppression of text overlays, title cards, infographic style, meme composition, thumbnail-with-text, ad creative, document-like visuals
-- **Scene construction logic** — converts generic article intent into concrete visual scenes (e.g., "SSC admit card" → students checking hall tickets in a corridor; "Railway recruitment" → candidates at a station with preparation materials)
-- **Aesthetic rules** — photorealistic, Indian context, ordinary students/aspirants aged 20-24, simple clothing, no glamour, no fantasy, clean backgrounds
-- **Fallback** — if article context is weak, generates a clean study/education scene relevant to government jobs, never generic corporate stock
+### 3. Update `NEGATIVE_BLOCK` (lines 55-65)
+Add to the "Strictly avoid" list:
+```
+bindi, tilak, teeka, sindoor, forehead marks, nose pin, nose stud, nose ring,
+facial adornments, bridal styling, ceremonial appearance, festive styling,
+devotional-poster style, ornate facial accessories,
+```
 
-### 2. Modified: `supabase/functions/generate-vertex-image/index.ts`
-In the `generateViaAzureFlux2` function only (around line 1354):
-- Import `buildFlux2CoverPrompt` and `buildFlux2InlinePrompt` from the new policy file
-- Replace line 1373 (`const fluxPrompt = applyFluxRealismLayer(imagePrompt, body.prompt)`) with:
-  ```typescript
-  const fluxPrompt = purpose === 'inline'
-    ? buildFlux2InlinePrompt(body)
-    : buildFlux2CoverPrompt(body);
-  ```
-- This means FLUX.2-pro no longer uses `imagePrompt` (from the shared builder) at all — it builds its own prompt from scratch using `body` directly
-- The `imagePrompt` parameter is kept in the function signature for interface consistency but ignored
+### 4. Wire `ANTI_ADORNMENT_BLOCK` into prompt assembly
+In both `buildFlux2CoverPrompt` and `buildFlux2InlinePrompt`, insert `ANTI_ADORNMENT_BLOCK` between `ANTI_TEXT_BLOCK` and `NEGATIVE_BLOCK`.
 
-**No other model path is changed.** FLUX.1-Kontext still uses `applyFluxRealismLayer`. Gemini, Imagen, Nova Canvas, MAI-Image-2 all keep their existing prompt builders untouched.
+### 5. Update scene descriptions
+Update all 16 scene mappings + fallback to specify "aged 18–21" and "clean unadorned face" where people are described.
 
-### 3. Verification
-After deployment, test the edge function with 6 real article scenarios:
-1. UPSC preparation article
-2. SSC admit card article
-3. Railway recruitment article
-4. Exam result article
-5. College admission guidance article
-6. Government job application mistake article
+## What Is NOT Changed
+- `blog-image-prompt-policy.ts` (FLUX.1-Kontext) — untouched
+- `azure-flux2.ts` (API caller) — untouched
+- `generate-vertex-image/index.ts` — untouched
+- All other model routes (MAI-Image-2, gpt-image, Stable Image, Gemini, etc.) — untouched
 
-Each test will verify the prompt output contains strong anti-text directives and scene-relevant content.
+## Verification
+After deployment, test the edge function with 6 scenarios (UPSC, SSC admit card, Railway, college admission, exam result, govt job application). For each, confirm the generated prompt contains the anti-adornment directives, age 18–21, and all existing anti-text rules.
 
-## Files
-- **New:** `supabase/functions/_shared/flux2-prompt-policy.ts`
-- **Modified:** `supabase/functions/generate-vertex-image/index.ts` (only the `generateViaAzureFlux2` function, ~3 lines changed)
+## File
+- **Modified:** `supabase/functions/_shared/flux2-prompt-policy.ts`
 

@@ -357,6 +357,21 @@ export const AI_MODELS: readonly AiModelDef[] = [
     supportsContinuationPass: false,
   },
 
+  // ── Azure FLUX.2-pro ──
+  {
+    value: 'azure-flux2-pro',
+    label: 'FLUX.2 Pro (Azure) (From API)',
+    desc: 'Your API · High-quality image generation · ~30s',
+    speed: 30,
+    source: 'external-api',
+    provider: 'Azure AI Foundry',
+    capabilities: ['image'],
+    recommendedMaxWords: 0,
+    warnAboveWords: 0,
+    longFormReliability: 'poor',
+    supportsContinuationPass: false,
+  },
+
   // ── Azure MAI-Image-2 ──
   {
     value: 'azure-mai-image-2',

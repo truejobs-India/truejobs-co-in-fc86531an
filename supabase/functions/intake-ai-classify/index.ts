@@ -33,6 +33,7 @@ const VERTEX_MODEL_MAP: Record<string, { vertexModel: string; timeoutMs: number 
 
 const BEDROCK_MODELS = new Set(['nova-pro', 'nova-premier', 'nemotron-120b', 'mistral']);
 const AZURE_OPENAI_MODELS = new Set(['azure-gpt4o-mini', 'azure-gpt41-mini']);
+const AZURE_DEEPSEEK_MODELS = new Set(['azure-deepseek-v3']);
 
 function json(data: any, status = 200) {
   return new Response(JSON.stringify(data), {

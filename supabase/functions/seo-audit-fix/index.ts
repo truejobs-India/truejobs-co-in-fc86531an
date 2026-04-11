@@ -59,6 +59,8 @@ function resolveProvider(uiModelKey: string): ProviderRoute {
       return { provider: 'azure-openai' };
     case 'azure-gpt41-mini':
       return { provider: 'azure-openai', azureModel: 'azure-gpt41-mini' };
+    case 'azure-deepseek-v3':
+      return { provider: 'azure-deepseek' };
     case 'mistral':
       return { provider: 'bedrock-mistral' };
     case 'gemini-pro':
@@ -231,6 +233,8 @@ async function callAI(route: ProviderRoute, system: string, user: string, rawMod
   } else if (route.provider === 'azure-openai') {
     const useGPT41 = (route as any).azureModel === 'azure-gpt41-mini';
     return callAzureOpenAIForSeo(system, user, modelPolicy.maxOutputTokens, useGPT41);
+  } else if (route.provider === 'azure-deepseek') {
+    return callAzureDeepSeekForSeo(system, user, modelPolicy.maxOutputTokens);
   } else {
     return callBedrockMistralForSeo(system, user, modelPolicy.maxOutputTokens);
   }

@@ -429,6 +429,19 @@ export const AI_MODELS: readonly AiModelDef[] = [
     longFormReliability: 'good',
     supportsContinuationPass: true,
   },
+  {
+    value: 'azure-deepseek-v3',
+    label: 'DeepSeek V3.1 (Azure) (From API)',
+    desc: 'Your API · Strong reasoning · ~20s/page',
+    speed: 20,
+    source: 'external-api',
+    provider: 'Azure AI Foundry',
+    capabilities: ['text', 'text-premium'],
+    recommendedMaxWords: 2500,
+    warnAboveWords: 2000,
+    longFormReliability: 'good',
+    supportsContinuationPass: true,
+  },
 
   // ── Sarvam AI models (Indian languages specialist) ──
   {
@@ -494,6 +507,7 @@ export const SEO_FIX_MODEL_VALUES = [
   'nemotron-120b',
   'azure-gpt4o-mini',
   'azure-gpt41-mini',
+  'azure-deepseek-v3',
 ] as const;
 
 const LEGACY_MODEL_ALIASES: Record<string, string> = {

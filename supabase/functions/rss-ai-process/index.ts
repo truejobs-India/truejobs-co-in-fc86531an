@@ -124,6 +124,11 @@ async function callTextAI(model: string, prompt: string, maxTokens?: number): Pr
     return callAzureGPT41Mini(prompt, { maxTokens: maxTokens || 4096, temperature: 0.5 });
   }
 
+  if (model === 'azure-deepseek-v3') {
+    const { callAzureDeepSeek } = await import('../_shared/azure-deepseek.ts');
+    return callAzureDeepSeek(prompt, { maxTokens: maxTokens || 4096, temperature: 0.5 });
+  }
+
   // Known Lovable Gateway models
   if (model === 'lovable-gemini' || model === 'gpt5' || model === 'gpt5-mini') {
     const apiKey = Deno.env.get('LOVABLE_API_KEY');

@@ -61,6 +61,8 @@ function resolveProvider(uiModelKey: string): ProviderRoute {
       return { provider: 'azure-openai', azureModel: 'azure-gpt41-mini' };
     case 'azure-deepseek-v3':
       return { provider: 'azure-deepseek' };
+    case 'azure-deepseek-r1':
+      return { provider: 'azure-deepseek', deepseekModel: 'DeepSeek-R1' };
     case 'mistral':
       return { provider: 'bedrock-mistral' };
     case 'gemini-pro':
@@ -234,7 +236,8 @@ async function callAI(route: ProviderRoute, system: string, user: string, rawMod
     const useGPT41 = (route as any).azureModel === 'azure-gpt41-mini';
     return callAzureOpenAIForSeo(system, user, modelPolicy.maxOutputTokens, useGPT41);
   } else if (route.provider === 'azure-deepseek') {
-    return callAzureDeepSeekForSeo(system, user, modelPolicy.maxOutputTokens);
+    const deepseekModel = (route as any).deepseekModel || 'DeepSeek-V3.1';
+    return callAzureDeepSeekForSeo(system, user, modelPolicy.maxOutputTokens, deepseekModel);
   } else {
     return callBedrockMistralForSeo(system, user, modelPolicy.maxOutputTokens);
   }
@@ -355,9 +358,10 @@ async function callAzureOpenAIForSeo(system: string, user: string, maxTokens: nu
   return { text, attemptsMade: 1, retryEvents: [] };
 }
 
-async function callAzureDeepSeekForSeo(system: string, user: string, maxTokens: number): Promise<AiCallResult> {
+async function callAzureDeepSeekForSeo(system: string, user: string, maxTokens: number, model: 'DeepSeek-V3.1' | 'DeepSeek-R1' = 'DeepSeek-V3.1'): Promise<AiCallResult> {
   const { callAzureDeepSeek } = await import('../_shared/azure-deepseek.ts');
   const text = await callAzureDeepSeek(user, {
+    model,
     maxTokens,
     temperature: 0.3,
     timeoutMs: 120_000,

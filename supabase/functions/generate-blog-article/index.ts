@@ -509,6 +509,7 @@ function resolveProviderInfo(model: string): { provider: string; apiModel: strin
     case 'azure-gpt4o-mini': return { provider: 'azure-openai', apiModel: 'gpt-4o-mini' };
     case 'azure-gpt41-mini': return { provider: 'azure-openai', apiModel: 'gpt-4.1-mini' };
     case 'azure-deepseek-v3': return { provider: 'azure-deepseek', apiModel: 'DeepSeek-V3.1' };
+    case 'azure-deepseek-r1': return { provider: 'azure-deepseek', apiModel: 'DeepSeek-R1' };
     case 'sarvam-30b': return { provider: 'sarvam', apiModel: 'sarvam-30b' };
     case 'sarvam-105b': return { provider: 'sarvam', apiModel: 'sarvam-105b' };
     default: return { provider: model, apiModel: model };
@@ -616,6 +617,10 @@ async function callAI(model: string, prompt: string, wordLimit = 1500): Promise<
     case 'azure-deepseek-v3': {
       const { callAzureDeepSeek } = await import('../_shared/azure-deepseek.ts');
       return callAzureDeepSeek(prompt, { maxTokens: mt, temperature: 0.5 });
+    }
+    case 'azure-deepseek-r1': {
+      const { callAzureDeepSeek } = await import('../_shared/azure-deepseek.ts');
+      return callAzureDeepSeek(prompt, { model: 'DeepSeek-R1', maxTokens: mt, temperature: 0.5 });
     }
     case 'sarvam-30b': case 'sarvam-105b': {
       return callSarvamChat(model, prompt, mt);

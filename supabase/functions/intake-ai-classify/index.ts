@@ -33,7 +33,7 @@ const VERTEX_MODEL_MAP: Record<string, { vertexModel: string; timeoutMs: number 
 
 const BEDROCK_MODELS = new Set(['nova-pro', 'nova-premier', 'nemotron-120b', 'mistral']);
 const AZURE_OPENAI_MODELS = new Set(['azure-gpt4o-mini', 'azure-gpt41-mini']);
-const AZURE_DEEPSEEK_MODELS = new Set(['azure-deepseek-v3']);
+const AZURE_DEEPSEEK_MODELS = new Set(['azure-deepseek-v3', 'azure-deepseek-r1']);
 
 function json(data: any, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -250,7 +250,8 @@ async function callAI(
     const fullPrompt = `${systemPrompt}\n\n${userPrompt}\n\nReturn valid JSON matching this schema:\n${JSON.stringify(toolDef.parameters, null, 2)}`;
     console.log(`[intake-ai-classify] routing to Azure DeepSeek: ${modelKey}`);
     const { callAzureDeepSeek } = await import('../_shared/azure-deepseek.ts');
-    const text = await callAzureDeepSeek(fullPrompt, { maxTokens: 8192, temperature: 0.3 });
+    const dsModel = modelKey === 'azure-deepseek-r1' ? 'DeepSeek-R1' as const : 'DeepSeek-V3.1' as const;
+    const text = await callAzureDeepSeek(fullPrompt, { model: dsModel, maxTokens: 8192, temperature: 0.3 });
     const m3 = text.match(/\{[\s\S]*\}/);
     if (m3) return JSON.parse(m3[0]);
     throw new Error('Azure DeepSeek did not return valid JSON');

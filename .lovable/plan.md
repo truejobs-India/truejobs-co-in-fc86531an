@@ -1,42 +1,52 @@
 
 
-# Add All Text AI Models to Employment News Selectors
+# Dedicated FLUX.2-pro Prompt Policy
 
 ## Problem
-The Employment News section has two AI model selectors that are missing many models:
-1. **Enrichment selector** (EmploymentNewsManager.tsx line 1013) — hardcoded `<Select>` with only 6 models (Gemini Flash, Lovable Gemini, Mistral, Claude, Vertex Flash, Vertex Pro). Missing ~15 text models.
-2. **Azure Draft Jobs selector** (DraftJobsTab.tsx line 20) — `AZURE_EMP_NEWS_AI_MODELS` array missing Azure OpenAI models (GPT-4o Mini, GPT-4.1 Mini), DeepSeek V3.1/R1, and Nemotron 120B.
+FLUX.2-pro currently uses the same prompt pipeline as FLUX.1-Kontext (`buildBlogCoverPrompt` → `applyFluxRealismLayer`). This shared policy doesn't enforce strict anti-text rules, causing FLUX.2-pro to render unwanted text in images.
 
-Additionally, the backend edge functions lack routing for these newer models.
+## Solution
+Create a dedicated FLUX.2-pro prompt builder that replaces the entire prompt construction chain for this model only. No other model's prompt logic is touched.
 
 ## Changes
 
-### 1. Replace hardcoded enrichment selector with AiModelSelector
-**File:** `src/components/admin/EmploymentNewsManager.tsx`
-- Replace the manual `<Select>` (lines 1013-1025) with the shared `<AiModelSelector>` component (already imported)
-- Update the `enrichAiModel` state initialization to use `getLastUsedModel('text', 'gemini-flash')` instead of localStorage fallback to `'gemini'`
+### 1. New file: `supabase/functions/_shared/flux2-prompt-policy.ts`
+A standalone FLUX.2-pro prompt module with:
 
-### 2. Add missing models to DraftJobsTab allowlist
-**File:** `src/components/admin/emp-news/azure-based-extraction/DraftJobsTab.tsx`
-- Add to `AZURE_EMP_NEWS_AI_MODELS`: `azure-gpt4o-mini`, `azure-gpt41-mini`, `azure-deepseek-v3`, `azure-deepseek-r1`, `nemotron-120b`, `groq`, `claude-sonnet`, `gpt5`, `gpt5-mini`, `gemini-flash`, `gemini-pro`, `lovable-gemini`
+- **`buildFlux2CoverPrompt(body)`** — converts article metadata (title, category, tags, excerpt) into a concrete photorealistic scene description, appends the strict anti-text block and negative constraints
+- **`buildFlux2InlinePrompt(body)`** — same but tailored for inline/section images with nearby-content awareness
+- **Anti-text block** — 30+ explicit suppression rules (no words, no letters, no Hindi, no English text, no typography, no captions, no labels, no watermarks, no logos, no signage, no poster text, no newspaper text, no book-cover text, no UI text, no handwritten text, no printed text, no exam paper text, no banner text, no badge text, no stamp text, no visible alphanumeric characters)
+- **Negative block** — explicit suppression of text overlays, title cards, infographic style, meme composition, thumbnail-with-text, ad creative, document-like visuals
+- **Scene construction logic** — converts generic article intent into concrete visual scenes (e.g., "SSC admit card" → students checking hall tickets in a corridor; "Railway recruitment" → candidates at a station with preparation materials)
+- **Aesthetic rules** — photorealistic, Indian context, ordinary students/aspirants aged 20-24, simple clothing, no glamour, no fantasy, clean backgrounds
+- **Fallback** — if article context is weak, generates a clean study/education scene relevant to government jobs, never generic corporate stock
 
-### 3. Add routing cases to enrich-employment-news
-**File:** `supabase/functions/enrich-employment-news/index.ts`
-- Add to `resolveProviderInfo()`: azure-gpt4o-mini, azure-gpt41-mini, azure-deepseek-v3, azure-deepseek-r1, nemotron-120b, sarvam-30b, sarvam-105b
-- Add to the `callAiProvider()` switch: routing cases for all 7 new models using their shared callers
+### 2. Modified: `supabase/functions/generate-vertex-image/index.ts`
+In the `generateViaAzureFlux2` function only (around line 1354):
+- Import `buildFlux2CoverPrompt` and `buildFlux2InlinePrompt` from the new policy file
+- Replace line 1373 (`const fluxPrompt = applyFluxRealismLayer(imagePrompt, body.prompt)`) with:
+  ```typescript
+  const fluxPrompt = purpose === 'inline'
+    ? buildFlux2InlinePrompt(body)
+    : buildFlux2CoverPrompt(body);
+  ```
+- This means FLUX.2-pro no longer uses `imagePrompt` (from the shared builder) at all — it builds its own prompt from scratch using `body` directly
+- The `imagePrompt` parameter is kept in the function signature for interface consistency but ignored
 
-### 4. Add routing cases to extract-employment-news
-**File:** `supabase/functions/extract-employment-news/index.ts`
-- Add to `resolveModel()`: azure-gpt4o-mini, azure-gpt41-mini, azure-deepseek-v3, azure-deepseek-r1, nemotron-120b, sarvam-30b, sarvam-105b
-- Add provider-specific call logic for these models
+**No other model path is changed.** FLUX.1-Kontext still uses `applyFluxRealismLayer`. Gemini, Imagen, Nova Canvas, MAI-Image-2 all keep their existing prompt builders untouched.
 
-### 5. Deploy and verify
-- Deploy both edge functions
-- Test `enrich-employment-news` and `extract-employment-news` with one of the newly added models (e.g., `azure-deepseek-v3`) to confirm routing works
+### 3. Verification
+After deployment, test the edge function with 6 real article scenarios:
+1. UPSC preparation article
+2. SSC admit card article
+3. Railway recruitment article
+4. Exam result article
+5. College admission guidance article
+6. Government job application mistake article
+
+Each test will verify the prompt output contains strong anti-text directives and scene-relevant content.
 
 ## Files
-- **Modified:** `src/components/admin/EmploymentNewsManager.tsx`
-- **Modified:** `src/components/admin/emp-news/azure-based-extraction/DraftJobsTab.tsx`
-- **Modified:** `supabase/functions/enrich-employment-news/index.ts`
-- **Modified:** `supabase/functions/extract-employment-news/index.ts`
+- **New:** `supabase/functions/_shared/flux2-prompt-policy.ts`
+- **Modified:** `supabase/functions/generate-vertex-image/index.ts` (only the `generateViaAzureFlux2` function, ~3 lines changed)
 

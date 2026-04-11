@@ -1568,6 +1568,9 @@ serve(async (req) => {
       if (selectedCoverModel === 'azure-flux-kontext') {
         return await generateViaAzureFlux(body, slug, imagePrompt, adminClient, startMs, strict);
       }
+      if (selectedCoverModel === 'azure-flux2-pro') {
+        return await generateViaAzureFlux2(body, slug, imagePrompt, adminClient, startMs, strict);
+      }
       if (selectedCoverModel === 'azure-mai-image-2') {
         return await generateViaAzureMaiImage(body, slug, imagePrompt, adminClient, startMs, strict);
       }

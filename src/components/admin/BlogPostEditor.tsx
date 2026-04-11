@@ -2451,7 +2451,7 @@ export function BlogPostEditor() {
           </div>
         )}
 
-        {bulkAutoFix.phase === 'scanned' && bulkAutoFix.scanReport && bulkAutoFix.scanReport.totalFixable > 0 && (
+        {bulkAutoFix.phase === 'scanned' && bulkAutoFix.scanReport && bulkAutoFix.scanReport.allItems.length > 0 && (
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <div className="text-xs font-medium text-muted-foreground">

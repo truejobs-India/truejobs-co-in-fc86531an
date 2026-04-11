@@ -24,7 +24,7 @@ function sanitizeText(raw: string): string {
 
 // ── Model resolution ──
 interface ResolvedModel {
-  provider: 'vertex-ai' | 'lovable-gateway' | 'groq' | 'anthropic' | 'bedrock' | 'azure-openai' | 'azure-gpt41-mini' | 'azure-deepseek' | 'sarvam';
+  provider: 'vertex-ai' | 'lovable-gateway' | 'groq' | 'anthropic' | 'bedrock' | 'azure-openai' | 'azure-gpt41-mini' | 'azure-gpt5-mini' | 'azure-deepseek' | 'sarvam';
   modelId: string;
   timeout: number;
 }
@@ -67,6 +67,8 @@ function resolveModel(aiModel: string | undefined): ResolvedModel {
       return { provider: 'azure-openai', modelId: 'gpt-4o-mini', timeout: 90_000 };
     case 'azure-gpt41-mini':
       return { provider: 'azure-gpt41-mini', modelId: 'gpt-4.1-mini', timeout: 90_000 };
+    case 'azure-gpt5-mini':
+      return { provider: 'azure-gpt5-mini', modelId: 'gpt-5-mini', timeout: 90_000 };
     case 'azure-deepseek-v3':
       return { provider: 'azure-deepseek', modelId: 'DeepSeek-V3.1', timeout: 90_000 };
     case 'azure-deepseek-r1':
@@ -513,6 +515,12 @@ async function callAI(
   if (resolved.provider === 'azure-gpt41-mini') {
     const { callAzureGPT41Mini } = await import('../_shared/azure-openai.ts');
     const rawText = await callAzureGPT41Mini(fullPrompt, { maxTokens, temperature: 0.1 });
+    return { rawText, finishReason: null };
+  }
+
+  if (resolved.provider === 'azure-gpt5-mini') {
+    const { callAzureGPT5Mini } = await import('../_shared/azure-openai.ts');
+    const rawText = await callAzureGPT5Mini(fullPrompt, { maxTokens, temperature: 0.1 });
     return { rawText, finishReason: null };
   }
 

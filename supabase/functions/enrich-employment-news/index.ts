@@ -535,6 +535,7 @@ function resolveProviderInfo(model: string): { provider: string; apiModel: strin
     case 'nova-premier': return { provider: 'bedrock', apiModel: 'us.amazon.nova-premier-v1:0' };
     case 'azure-gpt4o-mini': return { provider: 'azure-openai', apiModel: 'gpt-4o-mini' };
     case 'azure-gpt41-mini': return { provider: 'azure-gpt41-mini', apiModel: 'gpt-4.1-mini' };
+    case 'azure-gpt5-mini': return { provider: 'azure-gpt5-mini', apiModel: 'gpt-5-mini' };
     case 'azure-deepseek-v3': return { provider: 'azure-deepseek', apiModel: 'DeepSeek-V3.1' };
     case 'azure-deepseek-r1': return { provider: 'azure-deepseek', apiModel: 'DeepSeek-R1' };
     case 'nemotron-120b': return { provider: 'lovable-gateway', apiModel: 'nvidia/llama-3.3-nemotron-super-49b-v1' };
@@ -600,6 +601,11 @@ async function callAI(model: string, prompt: string, maxTokensParam?: number): P
     case 'azure-gpt41-mini': {
       const { callAzureGPT41Mini } = await import('../_shared/azure-openai.ts');
       rawText = await callAzureGPT41Mini(prompt, { maxTokens: maxTokensParam || 8192, temperature: 0.5 });
+      break;
+    }
+    case 'azure-gpt5-mini': {
+      const { callAzureGPT5Mini } = await import('../_shared/azure-openai.ts');
+      rawText = await callAzureGPT5Mini(prompt, { maxTokens: maxTokensParam || 8192, temperature: 0.5 });
       break;
     }
     case 'azure-deepseek-v3':

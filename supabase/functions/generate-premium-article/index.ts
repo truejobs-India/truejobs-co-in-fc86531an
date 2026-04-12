@@ -1,9 +1,10 @@
 /**
- * generate-premium-article — Gemini 2.5 Pro via Google Vertex AI
+ * generate-premium-article — Gemini 2.5 Pro via Google Gemini API (Direct)
  * Premium long-form article generation, rewriting, and polishing.
  */
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { callGeminiDirect } from '../_shared/gemini-direct.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -14,8 +15,8 @@ const corsHeaders = {
 // CONFIG
 // ═══════════════════════════════════════════════════════════════
 
-const VERTEX_MODEL = Deno.env.get('VERTEX_PRO_MODEL') || 'gemini-2.5-pro';
-const VERTEX_TIMEOUT_MS = 120_000;
+const GEMINI_MODEL = 'gemini-2.5-pro';
+const GEMINI_TIMEOUT_MS = 120_000;
 
 const VALID_ACTIONS = new Set([
   'generate-full-article', 'rewrite-article', 'polish-article',
@@ -23,112 +24,8 @@ const VALID_ACTIONS = new Set([
 ]);
 
 // ═══════════════════════════════════════════════════════════════
-// GOOGLE AUTH (same as seo-helper)
+// HELPERS
 // ═══════════════════════════════════════════════════════════════
-
-function base64url(data: Uint8Array): string {
-  let binary = '';
-  for (let i = 0; i < data.length; i++) binary += String.fromCharCode(data[i]);
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
-
-async function getVertexAccessToken(): Promise<string> {
-  const clientEmail = Deno.env.get('GCP_CLIENT_EMAIL');
-  const privateKeyPem = Deno.env.get('GCP_PRIVATE_KEY');
-  if (!clientEmail || !privateKeyPem) throw new Error('GCP_CLIENT_EMAIL and GCP_PRIVATE_KEY secrets are required');
-
-  const now = Math.floor(Date.now() / 1000);
-  const header = { alg: 'RS256', typ: 'JWT' };
-  const payload = {
-    iss: clientEmail,
-    sub: clientEmail,
-    aud: 'https://oauth2.googleapis.com/token',
-    iat: now,
-    exp: now + 3600,
-    scope: 'https://www.googleapis.com/auth/cloud-platform',
-  };
-
-  const enc = new TextEncoder();
-  const headerB64 = base64url(enc.encode(JSON.stringify(header)));
-  const payloadB64 = base64url(enc.encode(JSON.stringify(payload)));
-  const unsignedToken = `${headerB64}.${payloadB64}`;
-
-  const keyPem = privateKeyPem.replace(/\\n/g, '\n');
-  const pemBody = keyPem
-    .replace(/-----BEGIN (RSA )?PRIVATE KEY-----/, '')
-    .replace(/-----END (RSA )?PRIVATE KEY-----/, '')
-    .replace(/\s/g, '');
-  const keyBytes = Uint8Array.from(atob(pemBody), c => c.charCodeAt(0));
-
-  const cryptoKey = await crypto.subtle.importKey(
-    'pkcs8', keyBytes,
-    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
-    false, ['sign'],
-  );
-
-  const signature = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', cryptoKey, enc.encode(unsignedToken));
-  const jwt = `${unsignedToken}.${base64url(new Uint8Array(signature))}`;
-
-  const tokenResp = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwt}`,
-  });
-
-  if (!tokenResp.ok) {
-    const errText = await tokenResp.text();
-    throw new Error(`Google OAuth failed (${tokenResp.status}): ${errText.substring(0, 300)}`);
-  }
-
-  const tokenData = await tokenResp.json();
-  return tokenData.access_token;
-}
-
-// ═══════════════════════════════════════════════════════════════
-// VERTEX AI REQUEST
-// ═══════════════════════════════════════════════════════════════
-
-async function callVertexGemini(prompt: string, systemPrompt: string, accessToken: string): Promise<string> {
-  const projectId = Deno.env.get('GCP_PROJECT_ID');
-  const location = Deno.env.get('GCP_LOCATION') || 'us-central1';
-  if (!projectId) throw new Error('GCP_PROJECT_ID secret is required');
-
-  const url = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${VERTEX_MODEL}:generateContent`;
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), VERTEX_TIMEOUT_MS);
-
-  try {
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      signal: controller.signal,
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: systemPrompt }] },
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: 0.6,
-          topP: 0.85,
-          maxOutputTokens: 32768,
-          responseMimeType: 'application/json',
-        },
-      }),
-    });
-
-    if (!resp.ok) {
-      const errText = await resp.text();
-      throw new Error(`Vertex AI error (${resp.status}): ${errText.substring(0, 500)}`);
-    }
-
-    const data = await resp.json();
-    return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-  } finally {
-    clearTimeout(timer);
-  }
-}
 
 function tryParseJSON(raw: string): Record<string, unknown> {
   try { return JSON.parse(raw); } catch { /* continue */ }
@@ -382,11 +279,15 @@ serve(async (req) => {
     console.log(`[premium-article] action=${action} topic="${body.topic || body.title || 'N/A'}" desiredWords=${body.desiredWordCount || 2000}`);
 
     const prompt = buildPrompt(body);
-    const accessToken = await getVertexAccessToken();
-    const rawResponse = await callVertexGemini(prompt, SYSTEM_PROMPT, accessToken);
+    const fullPrompt = `${SYSTEM_PROMPT}\n\n${prompt}`;
+    const rawResponse = await callGeminiDirect(GEMINI_MODEL, fullPrompt, GEMINI_TIMEOUT_MS, {
+      temperature: 0.6,
+      topP: 0.85,
+      maxOutputTokens: 32768,
+      responseMimeType: 'application/json',
+    });
     const data = tryParseJSON(rawResponse);
 
-    // Compute word count if content returned
     if (data.content_html && typeof data.content_html === 'string') {
       const textOnly = (data.content_html as string).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
       data.word_count = textOnly.split(/\s+/).length;
@@ -398,7 +299,7 @@ serve(async (req) => {
     return new Response(JSON.stringify({
       success: true,
       data,
-      model: VERTEX_MODEL,
+      model: GEMINI_MODEL,
       action,
       elapsedMs: elapsed,
     }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
@@ -410,7 +311,7 @@ serve(async (req) => {
     return new Response(JSON.stringify({
       success: false,
       error: message,
-      model: VERTEX_MODEL,
+      model: GEMINI_MODEL,
       elapsedMs: elapsed,
     }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }

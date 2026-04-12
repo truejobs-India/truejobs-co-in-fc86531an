@@ -161,17 +161,17 @@ async function callAI(
   const modelKey = aiModel || '';
 
   // ── Route: Vertex AI (GCP Service Account) ──
-  const vertexDef = VERTEX_MODEL_MAP[modelKey];
-  if (vertexDef) {
-    console.log(`[firecrawl-ai-enrich] routing to Vertex AI: ${vertexDef.vertexModel}`);
+  const geminiDef = GEMINI_DIRECT_MODEL_MAP[modelKey];
+  if (geminiDef) {
+    console.log(`[firecrawl-ai-enrich] routing to Gemini Direct API: ${geminiDef.geminiModel}`);
     const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
     const fullPrompt = `${systemPrompt}\n\n${userPrompt}${toolDef ? `\n\nReturn valid JSON matching this schema:\n${JSON.stringify(toolDef.parameters, null, 2)}` : ''}`;
-    const text = await callGeminiDirect(vertexDef.vertexModel, fullPrompt, vertexDef.timeoutMs);
+    const text = await callGeminiDirect(geminiDef.geminiModel, fullPrompt, geminiDef.timeoutMs);
     if (toolDef) {
       // Parse JSON from Vertex text response
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (jsonMatch) return JSON.parse(jsonMatch[0]);
-      throw new Error('Vertex AI did not return valid JSON');
+      throw new Error('Gemini API did not return valid JSON');
     }
     return text;
   }

@@ -179,8 +179,8 @@ Respond ONLY with valid JSON. Be specific and actionable with interview tips.`;
 
     const fullPrompt = `You are a career research assistant that provides comprehensive company research in JSON format.\n\n${prompt}`;
 
-    const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-    const content = await callVertexGemini('gemini-2.5-flash', fullPrompt, 60_000, {
+    const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
+    const content = await callGeminiDirect('gemini-2.5-flash', fullPrompt, 60_000, {
       maxOutputTokens: 3000,
       temperature: 0.3,
     });

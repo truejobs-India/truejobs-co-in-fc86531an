@@ -165,9 +165,9 @@ async function callAI(
   const vertexDef = VERTEX_MODEL_MAP[modelKey];
   if (vertexDef) {
     console.log(`[firecrawl-ai-enrich] routing to Vertex AI: ${vertexDef.vertexModel}`);
-    const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+    const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
     const fullPrompt = `${systemPrompt}\n\n${userPrompt}${toolDef ? `\n\nReturn valid JSON matching this schema:\n${JSON.stringify(toolDef.parameters, null, 2)}` : ''}`;
-    const text = await callVertexGemini(vertexDef.vertexModel, fullPrompt, vertexDef.timeoutMs);
+    const text = await callGeminiDirect(vertexDef.vertexModel, fullPrompt, vertexDef.timeoutMs);
     if (toolDef) {
       // Parse JSON from Vertex text response
       const jsonMatch = text.match(/\{[\s\S]*\}/);
@@ -856,8 +856,8 @@ async function handleAiCoverImage(draftId: string, client: any, apiKey: string, 
 
   if (route.provider === 'vertex-ai') {
     // ── Vertex AI direct path with retry for 429 ──
-    const { getVertexAccessToken } = await import('../_shared/vertex-ai.ts');
-    const accessToken = await getVertexAccessToken();
+    const { getGeminiDirectToken_REMOVED } = await import('../_shared/gemini-direct.ts');
+    const accessToken = await getGeminiDirectToken_REMOVED();
     const projectId = Deno.env.get('GCP_PROJECT_ID');
     const location = Deno.env.get('GCP_LOCATION') || 'us-central1';
     const maxImageRetries = 4;

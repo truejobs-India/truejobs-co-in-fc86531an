@@ -67,24 +67,24 @@ Deno.serve(async (req) => {
           return callAzureDeepSeek(prompt, { model: 'DeepSeek-R1', maxTokens: 500, temperature: 0.3 });
         }
         case 'vertex-flash': case 'gemini-flash': case 'gemini': {
-          const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-          return callVertexGemini('gemini-2.5-flash', prompt, 60_000, { maxOutputTokens: 500, temperature: 0.3 });
+          const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
+          return callGeminiDirect('gemini-2.5-flash', prompt, 60_000, { maxOutputTokens: 500, temperature: 0.3 });
         }
         case 'vertex-pro': case 'gemini-pro': {
-          const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-          return callVertexGemini('gemini-2.5-pro', prompt, 120_000, { maxOutputTokens: 500, temperature: 0.3 });
+          const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
+          return callGeminiDirect('gemini-2.5-pro', prompt, 120_000, { maxOutputTokens: 500, temperature: 0.3 });
         }
         case 'vertex-3.1-pro': {
-          const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-          return callVertexGemini('gemini-3.1-pro-preview', prompt, 120_000, { maxOutputTokens: 500, temperature: 0.3 });
+          const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
+          return callGeminiDirect('gemini-3.1-pro-preview', prompt, 120_000, { maxOutputTokens: 500, temperature: 0.3 });
         }
         case 'vertex-3-flash': {
-          const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-          return callVertexGemini('gemini-3-flash-preview', prompt, 90_000, { maxOutputTokens: 500, temperature: 0.3 });
+          const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
+          return callGeminiDirect('gemini-3-flash-preview', prompt, 90_000, { maxOutputTokens: 500, temperature: 0.3 });
         }
         case 'vertex-3.1-flash-lite': {
-          const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-          return callVertexGemini('gemini-3.1-flash-lite-preview', prompt, 60_000, { maxOutputTokens: 500, temperature: 0.3 });
+          const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
+          return callGeminiDirect('gemini-3.1-flash-lite-preview', prompt, 60_000, { maxOutputTokens: 500, temperature: 0.3 });
         }
         case 'lovable-gemini': {
           const apiKey = Deno.env.get('LOVABLE_API_KEY');

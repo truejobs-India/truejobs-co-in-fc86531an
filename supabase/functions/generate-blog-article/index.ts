@@ -239,7 +239,7 @@ async function verifyAdmin(req: Request): Promise<{ userId: string } | Response>
 
 // ── 1. Gemini (Vertex AI) ──
 // Removed: local callGemini using GEMINI_API_KEY + generativelanguage.googleapis.com
-// Now handled inline in callAI dispatcher via callVertexGemini
+// Now handled inline in callAI dispatcher via callGeminiDirect
 
 // ── 2. Lovable Gemini (gateway) ──
 async function callLovableGemini(prompt: string, maxTokens = 16000): Promise<string> {
@@ -570,12 +570,12 @@ async function callAI(model: string, prompt: string, wordLimit = 1500): Promise<
   console.log(`[generate-blog-article] model_requested=${model} wordLimit=${wordLimit} maxTokens=${mt}`);
   switch (model) {
     case 'gemini': case 'gemini-flash': {
-      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-      return callVertexGemini('gemini-2.5-flash', GEMINI_SYSTEM_PROMPT + '\n\n' + prompt, 60_000, { maxOutputTokens: mt, temperature: 0.65 });
+      const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
+      return callGeminiDirect('gemini-2.5-flash', GEMINI_SYSTEM_PROMPT + '\n\n' + prompt, 60_000, { maxOutputTokens: mt, temperature: 0.65 });
     }
     case 'gemini-pro': {
-      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-      return callVertexGemini('gemini-2.5-pro', GEMINI_SYSTEM_PROMPT + '\n\n' + prompt, 120_000, { maxOutputTokens: mt, temperature: 0.5 });
+      const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
+      return callGeminiDirect('gemini-2.5-pro', GEMINI_SYSTEM_PROMPT + '\n\n' + prompt, 120_000, { maxOutputTokens: mt, temperature: 0.5 });
     }
     case 'lovable-gemini': return callLovableGemini(prompt, mt);
     case 'openai': case 'gpt5': case 'gpt5-mini': return callOpenAI(prompt, mt);
@@ -584,24 +584,24 @@ async function callAI(model: string, prompt: string, wordLimit = 1500): Promise<
     case 'claude': return callClaude(prompt, wordLimit);
     case 'mistral': return callMistral(prompt, MISTRAL_SYSTEM_PROMPT, mt);
     case 'vertex-flash': {
-      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-      return callVertexGemini('gemini-2.5-flash', prompt, 60_000, { maxOutputTokens: mt });
+      const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
+      return callGeminiDirect('gemini-2.5-flash', prompt, 60_000, { maxOutputTokens: mt });
     }
     case 'vertex-pro': {
-      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-      return callVertexGemini('gemini-2.5-pro', prompt, 120_000, { maxOutputTokens: mt });
+      const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
+      return callGeminiDirect('gemini-2.5-pro', prompt, 120_000, { maxOutputTokens: mt });
     }
     case 'vertex-3.1-pro': {
-      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-      return callVertexGemini('gemini-3.1-pro-preview', GEMINI_SYSTEM_PROMPT + '\n\n' + prompt, 120_000, { maxOutputTokens: mt, temperature: 0.5 });
+      const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
+      return callGeminiDirect('gemini-3.1-pro-preview', GEMINI_SYSTEM_PROMPT + '\n\n' + prompt, 120_000, { maxOutputTokens: mt, temperature: 0.5 });
     }
     case 'vertex-3-flash': {
-      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-      return callVertexGemini('gemini-3-flash-preview', GEMINI_SYSTEM_PROMPT + '\n\n' + prompt, 90_000, { maxOutputTokens: mt, temperature: 0.65 });
+      const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
+      return callGeminiDirect('gemini-3-flash-preview', GEMINI_SYSTEM_PROMPT + '\n\n' + prompt, 90_000, { maxOutputTokens: mt, temperature: 0.65 });
     }
     case 'vertex-3.1-flash-lite': {
-      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-      return callVertexGemini('gemini-3.1-flash-lite-preview', GEMINI_SYSTEM_PROMPT + '\n\n' + prompt, 60_000, { maxOutputTokens: mt, temperature: 0.65 });
+      const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
+      return callGeminiDirect('gemini-3.1-flash-lite-preview', GEMINI_SYSTEM_PROMPT + '\n\n' + prompt, 60_000, { maxOutputTokens: mt, temperature: 0.65 });
     }
     case 'nova-pro': case 'nova-premier': case 'nemotron-120b': {
       const { callBedrockNova } = await import('../_shared/bedrock-nova.ts');

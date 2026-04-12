@@ -151,11 +151,11 @@ serve(async (req) => {
     const limitedMarkdown = markdown.substring(0, 15000);
 
     // Use Vertex AI Gemini to parse the LinkedIn data into structured format
-    const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+    const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
 
     const parsePrompt = `You are an expert at parsing LinkedIn profile data. Extract structured information from the provided markdown content of a LinkedIn profile. Return ONLY valid JSON, no markdown code blocks.\n\nParse this LinkedIn profile markdown and extract the following information. Return ONLY valid JSON:\n\n${limitedMarkdown.substring(0, 8000)}\n\nReturn this exact JSON structure (use null for missing fields):\n{\n  "full_name": "Person's full name",\n  "headline": "Their professional headline/title",\n  "location": "Their location",\n  "bio": "About/summary section text",\n  "skills": ["skill1", "skill2", "skill3"],\n  "experience": [\n    {\n      "job_title": "Title",\n      "company_name": "Company",\n      "location": "Location or null",\n      "start_date": "YYYY-MM or null",\n      "end_date": "YYYY-MM or null",\n      "is_current": false,\n      "description": "Description or null"\n    }\n  ],\n  "education": [\n    {\n      "institution": "School name",\n      "degree": "Degree type",\n      "field_of_study": "Field or null",\n      "start_date": "YYYY-MM or null",\n      "end_date": "YYYY-MM or null"\n    }\n  ],\n  "linkedin_url": "${formattedUrl}"\n}`;
 
-    const aiResponse = await callVertexGemini('gemini-2.5-flash', parsePrompt, 60_000, {
+    const aiResponse = await callGeminiDirect('gemini-2.5-flash', parsePrompt, 60_000, {
       maxOutputTokens: 2048,
       temperature: 0.3,
     });

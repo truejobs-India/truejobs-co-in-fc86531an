@@ -109,7 +109,7 @@ async function awsSigV4Fetch(host: string, rawPath: string, body: string, region
 
 // ── Gemini (Vertex AI) — NO silent fallback ──
 // Removed: local callGemini using GEMINI_API_KEY + generativelanguage.googleapis.com
-// Now handled inline in callAI dispatcher via callVertexGemini
+// Now handled inline in callAI dispatcher via callGeminiDirect
 
 // ── Mistral Large (AWS Bedrock — us-west-2) ──
 async function callMistral(prompt: string, maxTokens: number, systemPrompt?: string): Promise<string> {
@@ -267,14 +267,14 @@ async function callAI(aiModel: string, prompt: string, maxTokens: number, option
 
   switch (model) {
     case 'gemini': case 'gemini-flash': {
-      const { callVertexGeminiWithMeta } = await import('../_shared/vertex-ai.ts');
-      const result = await callVertexGeminiWithMeta('gemini-2.5-flash', prompt, 90_000, { maxOutputTokens: maxTokens });
+      const { callGeminiDirectWithMeta } = await import('../_shared/gemini-direct.ts');
+      const result = await callGeminiDirectWithMeta('gemini-2.5-flash', prompt, 90_000, { maxOutputTokens: maxTokens });
       resultJson = JSON.stringify({ __raw: result.text, __finishReason: result.finishReason });
       actualProvider = 'vertex-ai'; actualModelId = 'gemini-2.5-flash'; break;
     }
     case 'gemini-pro': {
-      const { callVertexGeminiWithMeta } = await import('../_shared/vertex-ai.ts');
-      const result = await callVertexGeminiWithMeta('gemini-2.5-pro', prompt, 120_000, { maxOutputTokens: maxTokens });
+      const { callGeminiDirectWithMeta } = await import('../_shared/gemini-direct.ts');
+      const result = await callGeminiDirectWithMeta('gemini-2.5-pro', prompt, 120_000, { maxOutputTokens: maxTokens });
       resultJson = JSON.stringify({ __raw: result.text, __finishReason: result.finishReason });
       actualProvider = 'vertex-ai'; actualModelId = 'gemini-2.5-pro'; break;
     }
@@ -296,36 +296,36 @@ async function callAI(aiModel: string, prompt: string, maxTokens: number, option
       resultJson = await callLovableGemini(prompt, maxTokens);
       actualProvider = 'lovable-gateway'; actualModelId = 'google/gemini-2.5-flash'; break;
     case 'vertex-flash': {
-      const { callVertexGeminiWithMeta } = await import('../_shared/vertex-ai.ts');
-      const result = await callVertexGeminiWithMeta('gemini-2.5-flash', prompt, 90_000, { maxOutputTokens: maxTokens });
+      const { callGeminiDirectWithMeta } = await import('../_shared/gemini-direct.ts');
+      const result = await callGeminiDirectWithMeta('gemini-2.5-flash', prompt, 90_000, { maxOutputTokens: maxTokens });
       resultJson = JSON.stringify({ __raw: result.text, __finishReason: result.finishReason });
       actualProvider = 'vertex-ai'; actualModelId = 'gemini-2.5-flash';
       break;
     }
     case 'vertex-pro': {
-      const { callVertexGeminiWithMeta } = await import('../_shared/vertex-ai.ts');
-      const result = await callVertexGeminiWithMeta('gemini-2.5-pro', prompt, 120_000, { maxOutputTokens: maxTokens });
+      const { callGeminiDirectWithMeta } = await import('../_shared/gemini-direct.ts');
+      const result = await callGeminiDirectWithMeta('gemini-2.5-pro', prompt, 120_000, { maxOutputTokens: maxTokens });
       resultJson = JSON.stringify({ __raw: result.text, __finishReason: result.finishReason });
       actualProvider = 'vertex-ai'; actualModelId = 'gemini-2.5-pro';
       break;
     }
     case 'vertex-3.1-pro': {
-      const { callVertexGeminiWithMeta } = await import('../_shared/vertex-ai.ts');
-      const result = await callVertexGeminiWithMeta('gemini-3.1-pro-preview', prompt, 120_000, { maxOutputTokens: maxTokens });
+      const { callGeminiDirectWithMeta } = await import('../_shared/gemini-direct.ts');
+      const result = await callGeminiDirectWithMeta('gemini-3.1-pro-preview', prompt, 120_000, { maxOutputTokens: maxTokens });
       resultJson = JSON.stringify({ __raw: result.text, __finishReason: result.finishReason });
       actualProvider = 'vertex-ai'; actualModelId = 'gemini-3.1-pro-preview';
       break;
     }
     case 'vertex-3-flash': {
-      const { callVertexGeminiWithMeta } = await import('../_shared/vertex-ai.ts');
-      const result = await callVertexGeminiWithMeta('gemini-3-flash-preview', prompt, 90_000, { maxOutputTokens: maxTokens });
+      const { callGeminiDirectWithMeta } = await import('../_shared/gemini-direct.ts');
+      const result = await callGeminiDirectWithMeta('gemini-3-flash-preview', prompt, 90_000, { maxOutputTokens: maxTokens });
       resultJson = JSON.stringify({ __raw: result.text, __finishReason: result.finishReason });
       actualProvider = 'vertex-ai'; actualModelId = 'gemini-3-flash-preview';
       break;
     }
     case 'vertex-3.1-flash-lite': {
-      const { callVertexGeminiWithMeta } = await import('../_shared/vertex-ai.ts');
-      const result = await callVertexGeminiWithMeta('gemini-3.1-flash-lite-preview', prompt, 60_000, { maxOutputTokens: maxTokens });
+      const { callGeminiDirectWithMeta } = await import('../_shared/gemini-direct.ts');
+      const result = await callGeminiDirectWithMeta('gemini-3.1-flash-lite-preview', prompt, 60_000, { maxOutputTokens: maxTokens });
       resultJson = JSON.stringify({ __raw: result.text, __finishReason: result.finishReason });
       actualProvider = 'vertex-ai'; actualModelId = 'gemini-3.1-flash-lite-preview';
       break;

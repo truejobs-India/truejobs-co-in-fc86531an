@@ -404,8 +404,8 @@ function validateInternalLinks(links: { anchor: string; href: string }[]): { val
 // ═══════════════════════════════════════════════════════════════════════════════
 
 async function callGeminiVertex(prompt: string): Promise<string> {
-  const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-  return callVertexGemini('gemini-2.5-flash', prompt, 90_000, {
+  const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
+  return callGeminiDirect('gemini-2.5-flash', prompt, 90_000, {
     maxOutputTokens: 8192,
     temperature: 0.7,
   });

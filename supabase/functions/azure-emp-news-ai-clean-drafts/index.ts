@@ -79,8 +79,8 @@ async function callAI(
   const vertexDef = VERTEX_MODEL_MAP[aiModel];
   if (vertexDef) {
     console.log(`[ai-clean-drafts] routing to Vertex AI: ${vertexDef.vertexModel}`);
-    const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-    rawText = await callVertexGemini(vertexDef.vertexModel, fullPrompt, vertexDef.timeoutMs, {
+    const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
+    rawText = await callGeminiDirect(vertexDef.vertexModel, fullPrompt, vertexDef.timeoutMs, {
       temperature: 0.3,
       maxOutputTokens: 4096,
     });

@@ -30,7 +30,7 @@ async function verifyAdmin(req: Request): Promise<{ userId: string } | Response>
 // ═══════════════════════════════════════════════════════════════
 
 // Removed: local callGemini using GEMINI_API_KEY + generativelanguage.googleapis.com
-// Now handled inline in callAI dispatcher via callVertexGemini
+// Now handled inline in callAI dispatcher via callGeminiDirect
 
 async function callLovableGemini(prompt: string): Promise<string> {
   const apiKey = Deno.env.get('LOVABLE_API_KEY');
@@ -165,8 +165,8 @@ async function callAI(model: string, prompt: string): Promise<string> {
   console.log(`[generate-blog-faq] model_requested=${model}`);
   switch (model) {
     case 'gemini': case 'gemini-flash': {
-      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-      return callVertexGemini('gemini-2.5-flash', prompt, 60_000, { maxOutputTokens: 4000, temperature: 0.4 });
+      const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
+      return callGeminiDirect('gemini-2.5-flash', prompt, 60_000, { maxOutputTokens: 4000, temperature: 0.4 });
     }
     case 'lovable-gemini': return callLovableGemini(prompt);
     case 'openai': case 'gpt5': case 'gpt5-mini': return callOpenAI(prompt);
@@ -174,15 +174,15 @@ async function callAI(model: string, prompt: string): Promise<string> {
     case 'claude-sonnet': case 'claude': return callClaude(prompt);
     case 'mistral': return callMistral(prompt);
     case 'vertex-flash':
-      return import('../_shared/vertex-ai.ts').then(m => m.callVertexGemini('gemini-2.5-flash', prompt, 60_000));
+      return import('../_shared/gemini-direct.ts').then(m => m.callGeminiDirect('gemini-2.5-flash', prompt, 60_000));
     case 'vertex-pro':
-      return import('../_shared/vertex-ai.ts').then(m => m.callVertexGemini('gemini-2.5-pro', prompt, 120_000));
+      return import('../_shared/gemini-direct.ts').then(m => m.callGeminiDirect('gemini-2.5-pro', prompt, 120_000));
     case 'vertex-3.1-pro':
-      return import('../_shared/vertex-ai.ts').then(m => m.callVertexGemini('gemini-3.1-pro-preview', prompt, 120_000));
+      return import('../_shared/gemini-direct.ts').then(m => m.callGeminiDirect('gemini-3.1-pro-preview', prompt, 120_000));
     case 'vertex-3-flash':
-      return import('../_shared/vertex-ai.ts').then(m => m.callVertexGemini('gemini-3-flash-preview', prompt, 90_000));
+      return import('../_shared/gemini-direct.ts').then(m => m.callGeminiDirect('gemini-3-flash-preview', prompt, 90_000));
     case 'vertex-3.1-flash-lite':
-      return import('../_shared/vertex-ai.ts').then(m => m.callVertexGemini('gemini-3.1-flash-lite-preview', prompt, 60_000));
+      return import('../_shared/gemini-direct.ts').then(m => m.callGeminiDirect('gemini-3.1-flash-lite-preview', prompt, 60_000));
     case 'nova-pro': case 'nova-premier': case 'nemotron-120b':
       return import('../_shared/bedrock-nova.ts').then(m => m.callBedrockNova(model, prompt, { maxTokens: 8192, temperature: 0.4 }));
     case 'azure-gpt4o-mini':

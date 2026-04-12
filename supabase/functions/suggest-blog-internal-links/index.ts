@@ -153,7 +153,7 @@ No markdown, no code blocks.`;
       switch (aiModel) {
         case 'sarvam-30b': case 'sarvam-105b': {
           const { callSarvamChat } = await import('../_shared/sarvam.ts');
-          return callSarvamChat(p, { model: 'sarvam-m', maxTokens: 2000, temperature: 0.3 });
+          return callSarvamChat(p, { model: aiModel === 'sarvam-105b' ? 'sarvam-105b' : 'sarvam-30b', maxTokens: 2000, temperature: 0.3 });
         }
         case 'azure-gpt5-mini': {
           const { callAzureGPT5Mini } = await import('../_shared/azure-openai.ts');

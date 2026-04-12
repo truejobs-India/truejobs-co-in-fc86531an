@@ -197,11 +197,11 @@ async function callAI(model: string, prompt: string): Promise<string> {
       return import('../_shared/azure-deepseek.ts').then(m => m.callAzureDeepSeek(prompt, { model: 'DeepSeek-R1', maxTokens: 4096, temperature: 0.4 }));
     case 'sarvam-30b': {
       const { callSarvamChat } = await import('../_shared/sarvam.ts');
-      return callSarvamChat(prompt, { model: 'sarvam-m', maxTokens: 4000, temperature: 0.4 });
+      return callSarvamChat(prompt, { model: 'sarvam-30b', maxTokens: 4000, temperature: 0.4 });
     }
     case 'sarvam-105b': {
       const { callSarvamChat } = await import('../_shared/sarvam.ts');
-      return callSarvamChat(prompt, { model: 'sarvam-m', maxTokens: 4000, temperature: 0.4 });
+      return callSarvamChat(prompt, { model: 'sarvam-105b', maxTokens: 4000, temperature: 0.4 });
     }
     default:
       throw new Error(`Unsupported AI model: "${model}". No fallback allowed.`);

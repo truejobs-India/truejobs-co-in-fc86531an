@@ -257,7 +257,8 @@ async function callAI(route: ProviderRoute, system: string, user: string, rawMod
     return callBedrockMistralForSeo(system, user, modelPolicy.maxOutputTokens);
   } else if (route.provider === 'sarvam') {
     const { callSarvamChat } = await import('../_shared/sarvam.ts');
-    const text = await callSarvamChat(`${system}\n\n${user}`, { model: 'sarvam-m', maxTokens: modelPolicy.maxOutputTokens, temperature: 0.3 });
+    const sarvamModelName = rawModel === 'sarvam-105b' ? 'sarvam-105b' : 'sarvam-30b';
+    const text = await callSarvamChat(`${system}\n\n${user}`, { model: sarvamModelName, maxTokens: modelPolicy.maxOutputTokens, temperature: 0.3 });
     return { text, attemptsMade: 1, retryEvents: [] };
   } else if (route.provider === 'groq') {
     const apiKey = Deno.env.get('GROQ_API_KEY');

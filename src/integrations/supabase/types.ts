@@ -4216,6 +4216,14 @@ export type Database = {
           current_status: string
           detection_reason: string | null
           display_group: string
+          firecrawl_content_markdown: string | null
+          firecrawl_content_meta: Json | null
+          firecrawl_error: string | null
+          firecrawl_last_run_at: string | null
+          firecrawl_pdf_mode: string | null
+          firecrawl_reason: string | null
+          firecrawl_source_url: string | null
+          firecrawl_status: string
           first_pdf_url: string | null
           first_seen_at: string
           id: string
@@ -4243,6 +4251,14 @@ export type Database = {
           current_status?: string
           detection_reason?: string | null
           display_group?: string
+          firecrawl_content_markdown?: string | null
+          firecrawl_content_meta?: Json | null
+          firecrawl_error?: string | null
+          firecrawl_last_run_at?: string | null
+          firecrawl_pdf_mode?: string | null
+          firecrawl_reason?: string | null
+          firecrawl_source_url?: string | null
+          firecrawl_status?: string
           first_pdf_url?: string | null
           first_seen_at?: string
           id?: string
@@ -4270,6 +4286,14 @@ export type Database = {
           current_status?: string
           detection_reason?: string | null
           display_group?: string
+          firecrawl_content_markdown?: string | null
+          firecrawl_content_meta?: Json | null
+          firecrawl_error?: string | null
+          firecrawl_last_run_at?: string | null
+          firecrawl_pdf_mode?: string | null
+          firecrawl_reason?: string | null
+          firecrawl_source_url?: string | null
+          firecrawl_status?: string
           first_pdf_url?: string | null
           first_seen_at?: string
           id?: string

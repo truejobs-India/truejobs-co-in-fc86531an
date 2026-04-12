@@ -1056,7 +1056,7 @@ export function useBulkBlogWorkflow() {
     }
 
     // ── PASS 2 REMOVED: No forced model escalation. User's selected model is the only model used. ──
-    }
+
 
     const finalStatus = (await supabase
       .from('blog_bulk_workflow_sessions')

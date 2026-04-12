@@ -205,8 +205,11 @@ RULES:
 Return ONLY a JSON array: [{...}]
 No markdown code blocks.`;
 
-    // ── AI model dispatcher — respects user's model selection ──
-    const selectedModel = aiModel || 'gemini-2.5-pro';
+    // ── AI model dispatcher — respects user's model selection, NO fallback ──
+    const selectedModel = aiModel;
+    if (!selectedModel) {
+      return new Response(JSON.stringify({ error: 'aiModel parameter is required. No fallback allowed.' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
     console.log(`[COMPLIANCE] Using model: ${selectedModel} for "${title}"`);
 
     let raw: string;
@@ -234,6 +237,26 @@ No markdown code blocks.`;
           const { callAzureDeepSeek } = await import('../_shared/azure-deepseek.ts');
           return callAzureDeepSeek(p, { model: 'DeepSeek-R1', maxTokens: 8192, temperature: 0.3 });
         }
+        case 'sarvam-30b': {
+          const { callSarvamChat } = await import('../_shared/sarvam.ts');
+          return callSarvamChat(p, { model: 'sarvam-m', maxTokens: 8192, temperature: 0.3 });
+        }
+        case 'sarvam-105b': {
+          const { callSarvamChat } = await import('../_shared/sarvam.ts');
+          return callSarvamChat(p, { model: 'sarvam-m', maxTokens: 8192, temperature: 0.3 });
+        }
+        case 'groq': {
+          const groqKey = Deno.env.get('GROQ_API_KEY');
+          if (!groqKey) throw new Error('GROQ_API_KEY not configured');
+          const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${groqKey}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: p }], max_tokens: 8192, temperature: 0.3 }),
+          });
+          if (!resp.ok) throw new Error(`Groq API error ${resp.status}`);
+          const data = await resp.json();
+          return data?.choices?.[0]?.message?.content || '';
+        }
         case 'vertex-3.1-pro': {
           const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
           return callVertexGemini('gemini-3.1-pro-preview', p, 120_000, { maxOutputTokens: 8192, temperature: 0.3 });
@@ -246,18 +269,61 @@ No markdown code blocks.`;
           const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
           return callVertexGemini('gemini-3.1-flash-lite-preview', p, 60_000, { maxOutputTokens: 8192, temperature: 0.3 });
         }
-        case 'gemini-flash': case 'gemini': {
+        case 'gemini-flash': case 'gemini': case 'vertex-flash': {
           const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
           return callVertexGemini('gemini-2.5-flash', p, 90_000, { maxOutputTokens: 8192, temperature: 0.3 });
+        }
+        case 'gemini-pro': case 'vertex-pro': {
+          const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+          return callVertexGemini('gemini-2.5-pro', p, 90_000, { maxOutputTokens: 8192, temperature: 0.3 });
         }
         case 'nova-pro': case 'nova-premier': case 'nemotron-120b': {
           const { callBedrockNova } = await import('../_shared/bedrock-nova.ts');
           return callBedrockNova(selectedModel, p, { maxTokens: 8192, temperature: 0.3 });
         }
-        case 'gemini-pro': default: {
-          const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-          return callVertexGemini('gemini-2.5-pro', p, 90_000, { maxOutputTokens: 8192, temperature: 0.3 });
+        case 'mistral': {
+          const { callBedrockNova } = await import('../_shared/bedrock-nova.ts');
+          return callBedrockNova('mistral', p, { maxTokens: 8192, temperature: 0.3 });
         }
+        case 'claude-sonnet': case 'claude': {
+          const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
+          if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured');
+          const resp = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+            body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 8192, messages: [{ role: 'user', content: p }] }),
+          });
+          if (!resp.ok) throw new Error(`Anthropic API error ${resp.status}`);
+          const data = await resp.json();
+          return data?.content?.[0]?.text || '';
+        }
+        case 'lovable-gemini': {
+          const apiKey = Deno.env.get('LOVABLE_API_KEY');
+          if (!apiKey) throw new Error('LOVABLE_API_KEY not configured');
+          const resp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: 'google/gemini-2.5-flash', messages: [{ role: 'user', content: p }], max_tokens: 8192, temperature: 0.3 }),
+          });
+          if (!resp.ok) throw new Error(`Lovable AI error ${resp.status}`);
+          const data = await resp.json();
+          return data?.choices?.[0]?.message?.content || '';
+        }
+        case 'gpt5': case 'gpt5-mini': case 'openai': {
+          const apiKey = Deno.env.get('LOVABLE_API_KEY');
+          if (!apiKey) throw new Error('LOVABLE_API_KEY not configured');
+          const gwModel = selectedModel === 'gpt5-mini' ? 'openai/gpt-5-mini' : 'openai/gpt-5';
+          const resp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: gwModel, messages: [{ role: 'user', content: p }], max_tokens: 8192, temperature: 0.3 }),
+          });
+          if (!resp.ok) throw new Error(`Lovable AI error ${resp.status}`);
+          const data = await resp.json();
+          return data?.choices?.[0]?.message?.content || '';
+        }
+        default:
+          throw new Error(`Unsupported AI model: "${selectedModel}". No fallback allowed. Select a supported model from the dropdown.`);
       }
     }
 

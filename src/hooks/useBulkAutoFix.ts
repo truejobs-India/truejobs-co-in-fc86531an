@@ -714,7 +714,15 @@ async function processOneArticle(
           updatePayload.faq_schema = validSchema;
           updatePayload.has_faq_schema = true;
           updatePayload.faq_count = validSchema.length;
+      }
+
+      // Fallback: count FAQ items from appended HTML when faqSchema wasn't provided
+      if (!updatePayload.faq_count) {
+        const faqQuestions = (sanitized.match(/<h[3-4][^>]*>[^<]*\?/gi) || []).length;
+        if (faqQuestions > 0) {
+          updatePayload.faq_count = faqQuestions;
         }
+      }
       }
 
       fixesApplied.push({ field: 'content (FAQ)', fixType, beforeValue: '(no FAQ section)', afterValue: `Added FAQ (${stripHtmlLength(sanitized)} chars)` });

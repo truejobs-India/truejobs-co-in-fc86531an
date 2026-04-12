@@ -493,12 +493,12 @@ async function processSource(
       last_modified: fetchResult.lastModified || source.last_modified,
     }).eq('id', source.id);
 
-    // Fire-and-forget Firecrawl enrichment for qualifying new items
+    // Band computation + Fire-and-forget Firecrawl enrichment for qualifying new items
     if (itemsNew > 0) {
       try {
-        await dispatchFirecrawlEnrichment(newItemIds, supabaseUrl, serviceRoleKey);
+        await assignBandsAndDispatch(newItemIds, adminClient, supabaseUrl, serviceRoleKey);
       } catch (fcErr) {
-        console.warn('[rss-ingest] Firecrawl dispatch failed (non-blocking):', fcErr);
+        console.warn('[rss-ingest] Band/Firecrawl dispatch failed (non-blocking):', fcErr);
       }
     }
 
@@ -721,26 +721,69 @@ function jsonResponse(data: unknown, status = 200) {
   });
 }
 
-// ============ Firecrawl Enrichment Dispatch ============
+// ============ Band Computation + Firecrawl Enrichment Dispatch ============
 
 const MAX_AUTO_ENRICH_PER_RUN = 5;
 
-async function dispatchFirecrawlEnrichment(
+async function assignBandsAndDispatch(
   newItemIds: string[],
+  adminClient: ReturnType<typeof createClient>,
   supabaseUrl: string,
   serviceRoleKey: string
 ) {
   if (newItemIds.length === 0) return;
 
-  // Only send up to MAX_AUTO_ENRICH_PER_RUN items
-  const idsToEnrich = newItemIds.slice(0, MAX_AUTO_ENRICH_PER_RUN);
+  // Load items for banding
+  const { data: items } = await adminClient
+    .from('rss_items')
+    .select('id, relevance_level, item_summary, item_title, first_pdf_url, linked_pdf_urls')
+    .in('id', newItemIds);
+
+  if (!items || items.length === 0) return;
+
+  const band1LowIds: string[] = [];
+  const enrichCandidateIds: string[] = [];
+
+  for (const item of items) {
+    const relevance = item.relevance_level as string;
+    const summary = (item.item_summary as string) || '';
+    const hasPdf = !!item.first_pdf_url;
+    const linkedPdfs = (item.linked_pdf_urls as string[]) || [];
+
+    // Band 1 Low: skip
+    if (relevance === 'Low' && !hasPdf && linkedPdfs.length === 0 && summary.length >= 80) {
+      band1LowIds.push(item.id);
+    } else {
+      // Band 1 High or Band 2: include for enrichment
+      const band = (relevance === 'High' && summary.length >= 150 && !hasPdf && linkedPdfs.length === 0)
+        ? 'band_1_high' : 'band_2';
+      await adminClient.from('rss_items').update({
+        ai_decision_band: band,
+        ai_decision_status: band === 'band_2' ? 'not_needed' : 'skipped',
+      }).eq('id', item.id);
+      enrichCandidateIds.push(item.id);
+    }
+  }
+
+  // Mark band 1 low items
+  if (band1LowIds.length > 0) {
+    await adminClient.from('rss_items').update({
+      ai_decision_band: 'band_1_low',
+      ai_decision_status: 'skipped',
+    }).in('id', band1LowIds);
+    console.log(`[rss-ingest] Band 1 Low: ${band1LowIds.length} items skipped`);
+  }
+
+  // Only send up to MAX_AUTO_ENRICH_PER_RUN items for enrichment
+  const idsToEnrich = enrichCandidateIds.slice(0, MAX_AUTO_ENRICH_PER_RUN);
+  if (idsToEnrich.length === 0) return;
 
   const functionUrl = `${supabaseUrl}/functions/v1/rss-firecrawl-enrich`;
   const cronSecret = Deno.env.get('RSS_CRON_SECRET') || '';
 
-  console.log(`[rss-ingest] Dispatching Firecrawl enrichment for ${idsToEnrich.length} items`);
+  console.log(`[rss-ingest] Dispatching Firecrawl enrichment for ${idsToEnrich.length} items (${enrichCandidateIds.length} candidates, ${band1LowIds.length} band_1_low skipped)`);
 
-  // Fire-and-forget — don't await the full processing
+  // Fire-and-forget
   fetch(functionUrl, {
     method: 'POST',
     headers: {

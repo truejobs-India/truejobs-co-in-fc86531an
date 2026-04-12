@@ -59,6 +59,7 @@ interface BlogAIToolsProps {
   currentMetadata?: ArticleMetadata | null;
   currentQuality?: QualityReport | null;
   currentSEO?: SEOReport | null;
+  blogTextModel?: string;
 }
 
 interface ToolState {
@@ -176,7 +177,7 @@ function deriveComplianceStatus(tool: ToolState, compliance: PublishComplianceRe
   return 'needs-review';
 }
 
-export function BlogAITools({ formData, onApplyField, editorInstance, currentCompliance, existingFaqCount, currentMetadata, currentQuality, currentSEO }: BlogAIToolsProps) {
+export function BlogAITools({ formData, onApplyField, editorInstance, currentCompliance, existingFaqCount, currentMetadata, currentQuality, currentSEO, blogTextModel }: BlogAIToolsProps) {
   const { toast } = useToast();
   const [tools, setTools] = useState<Record<ToolKey, ToolState>>({
     seo: { isLoading: false, result: null, error: null },

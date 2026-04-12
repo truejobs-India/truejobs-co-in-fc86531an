@@ -207,6 +207,24 @@ export function RssFetchedItemsTab() {
     fetchItems();
   };
 
+  const handleFirecrawlEnrich = async (ids: string[], force = false) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const { data, error } = await supabase.functions.invoke('rss-firecrawl-enrich', {
+        body: { action: 'enrich-items', item_ids: ids, force },
+        headers: { Authorization: `Bearer ${session?.access_token}` },
+      });
+      if (error) throw error;
+      const successCount = (data?.results || []).filter((r: any) => r.status === 'success' || r.status === 'partial').length;
+      const skipCount = (data?.results || []).filter((r: any) => r.status === 'skipped').length;
+      const failCount = (data?.results || []).filter((r: any) => r.status === 'failed').length;
+      toast({ title: 'Firecrawl Enrichment', description: `${successCount} enriched, ${skipCount} skipped, ${failCount} failed` });
+      fetchItems();
+    } catch (e: any) {
+      toast({ title: 'Error', description: e.message || 'Firecrawl enrichment failed', variant: 'destructive' });
+    }
+  };
+
   const confirmDeleteSingle = (id: string) => {
     setDeleteMode('single');
     setDeleteSingleId(id);
@@ -310,6 +328,9 @@ export function RssFetchedItemsTab() {
             </Button>
             <Button size="sm" variant="outline" onClick={() => openAiAction('seo-check', selectedArray)}>
               <ShieldCheck className="h-3.5 w-3.5 mr-1" /> SEO
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => handleFirecrawlEnrich(selectedArray)}>
+              <Globe className="h-3.5 w-3.5 mr-1" /> Firecrawl
             </Button>
             <Button size="sm" variant="outline" className="text-destructive border-destructive/50 hover:bg-destructive/10" onClick={confirmDeleteBulk}>
               <Trash2 className="h-3.5 w-3.5 mr-1" /> Delete

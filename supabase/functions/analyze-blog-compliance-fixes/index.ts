@@ -33,7 +33,7 @@ const VALID_FIX_TYPES = new Set([
   'canonical_url', 'slug', 'meta_description', 'image_alt',
   'faq', 'intro', 'conclusion', 'trust_signal',
   'affiliate_links', 'internal_links', 'content_rewrite',
-  'h1', 'heading_structure', 'excerpt',
+  'h1', 'heading_structure', 'excerpt', 'readability',
 ]);
 
 const VALID_APPLY_MODES = new Set([

@@ -199,7 +199,7 @@ ${issueList}
 Each fix object fields:
 issueKey (machine key), issueLabel (human name), priority (high/medium/low), fixType, field, suggestedValue, explanation (≤15 words), applyMode, confidence (high/medium/low), targetSnippet (optional for rewrites).
 
-fixType: metadata | content-block | rewrite | advisory | canonical_url | slug | meta_description | image_alt | faq | intro | conclusion | trust_signal | affiliate_links | internal_links | content_rewrite | h1 | heading_structure | excerpt
+fixType: metadata | content-block | rewrite | advisory | canonical_url | slug | meta_description | image_alt | faq | intro | conclusion | trust_signal | affiliate_links | internal_links | content_rewrite | h1 | heading_structure | excerpt | readability
 applyMode: apply_field | append_content | prepend_content | insert_before_first_heading | replace_section | review_replacement | advisory
 field (for metadata): meta_title | meta_description | excerpt | featured_image_alt | author_name | canonical_url | slug
 
@@ -209,9 +209,11 @@ RULES:
 - canonical_url: must be exactly https://truejobs.co.in/blog/${slug || '{slug}'}. applyMode=apply_field, field=canonical_url
 - slug: lowercase, hyphens only, no trailing hyphens. applyMode=apply_field, field=slug
 - H1 missing: fixType=intro, applyMode=insert_before_first_heading. Include <h1> tag + intro paragraph.
-- intro missing: fixType=intro, applyMode=insert_before_first_heading
-- conclusion missing: fixType=conclusion, applyMode=append_content
-- FAQ: fixType=faq, applyMode=append_content. Include faqSchemaEligible (boolean). If true, include faqSchema as [{question,answer},...]. If not eligible, explain why. Article eligible if >300 words, informational/how-to, has user questions.
+- missing-intro: fixType=intro, applyMode=insert_before_first_heading. Write 2-3 context-setting sentences as <p> tags. No heading tag.
+- missing-conclusion: fixType=conclusion, applyMode=append_content. Write <h2>Conclusion</h2> + 2-3 sentence wrap-up as <p> tags.
+- missing-lists (readability): fixType=readability, applyMode=append_content. Convert one key topic into a <ul> or <ol> with 4-6 items. Include a short <h3> context heading. Must contain <ul>, <ol>, <table>, or <dl> tags.
+- low-heading-count: fixType=heading_structure, applyMode=append_content. Add 1-2 new <h2> sections with 2-3 paragraphs each, relevant to article topic.
+- FAQ: fixType=faq, applyMode=append_content. Include faqSchemaEligible (boolean). If true, include faqSchema as [{question,answer},...]. ALWAYS include faqSchemaEligible=true and faqSchema array when generating FAQ content. If not eligible, explain why. Article eligible if >300 words, informational/how-to, has user questions.
 - internal_links: fixType=internal_links, applyMode=append_content. Return <h3>Related Resources</h3><ul><li><a href="/path">text</a> — desc</li></ul>. Never use replace_section.
 - trust_signal: applyMode=review_replacement
 - affiliate_links: applyMode=advisory

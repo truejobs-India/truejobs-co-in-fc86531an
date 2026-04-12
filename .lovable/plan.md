@@ -1,37 +1,44 @@
 
 
-# Implementation Safety Confirmation
+# Fix: Auto-scope to "selected" at execution time without mutating dropdown
 
-## Point 1: `updatePayload` is always an object — CONFIRMED SAFE
+## Root Cause (confirmed)
+`handleBulkFixScan` uses `bulkScanScope` (default `'smart'`). When articles are checked but the dropdown is still on `'smart'`, selected articles are ignored and filtered out by smart-eligibility rules → "0 scanned".
 
-Line 628 declares:
+## Fix — Single change in `handleBulkFixScan` (line 1209)
+
+**File: `src/components/admin/BlogPostEditor.tsx`**
+
+Replace line 1209:
 ```typescript
-const updatePayload: Record<string, any> = {};
+const scope = scopeOverride || bulkScanScope;
 ```
 
-It is a `const` initialized as an empty object literal. It is never reassigned between line 628 and line 822 where `updatePayload.ai_fixed_at = ...` executes. Property assignment on an object `const` is always safe in JavaScript. No risk.
+With:
+```typescript
+const scope = scopeOverride || (selectedPostIds.size > 0 ? 'selected' : bulkScanScope);
+```
 
-## Point 2: Split write in Change 1 — SAFE, but can be improved
+This auto-routes to `'selected'` at execution time when rows are checked, without touching the dropdown state. The dropdown remains on whatever the user set — no `useEffect`, no silent mutation.
 
-At lines 561-564 (the execution-time clean path), two sequential writes occur:
-1. `supabase.from('blog_posts').update({ ai_fixed_at: ... }).eq('id', post.id)` — direct column update
-2. `stampBulkFixStatus(post.id, 'fixed', 0)` — RPC that updates `last_bulk_scanned_at`, `last_bulk_fix_status`, `remaining_auto_fixable_count`, `last_bulk_fixed_at`
+### Button text hint for visual feedback
 
-These two writes touch **completely disjoint column sets**:
-- Write 1: `ai_fixed_at`
-- Write 2: `last_bulk_scanned_at`, `last_bulk_fix_status`, `remaining_auto_fixable_count`, `last_bulk_fixed_at`
+Replace the button label on line 2079 from:
+```
+Scan & Fix
+```
+To:
+```
+{selectedPostIds.size > 0 && bulkScanScope !== 'selected' ? `Scan Selected (${selectedPostIds.size})` : 'Scan & Fix'}
+```
 
-There is no overlap, so no conflict. If write 1 succeeds and write 2 fails (or vice versa), the worst case is a partial state — but the same pattern already exists in the main path (line 822-849) where the `update()` call and `stampBulkFixStatus()` are also two separate writes. This is a pre-existing pattern throughout the file (also at lines 446-448).
+This gives the user a passive visual cue that selected articles will be used, without changing the dropdown value.
 
-**However**, for cleanliness, we could fold `ai_fixed_at` into the RPC. But that would require a database migration to add a parameter to `stamp_bulk_fix_status`. The cost of that change outweighs the benefit given:
-- The two writes are non-overlapping
-- The pattern is already established in 3+ places in this file
-- Both writes are awaited sequentially, so ordering is guaranteed
-- If either fails, the outer try/catch marks the article as `'failed'`
+## What this does NOT do
+- No `useEffect` to force-set dropdown
+- No silent dropdown mutation
+- No override when `scopeOverride` is explicitly passed
 
-**Verdict**: The split write is safe. No change needed.
-
-## Summary
-
-Both safety points are confirmed. The plan from the previous message can be applied as-is with no modifications needed.
+## Files modified
+- `src/components/admin/BlogPostEditor.tsx` — 2 small inline changes
 

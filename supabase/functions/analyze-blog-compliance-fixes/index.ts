@@ -220,7 +220,10 @@ RULES:
 - trust_signal: applyMode=review_replacement
 - affiliate_links: applyMode=advisory
 - Provide COMPLETE ready-to-use values. No placeholders.
-
+${Array.isArray(availableSlugs) && availableSlugs.length > 0 ? `
+Available blog slugs for internal linking (pick relevant ones ONLY from this list):
+${availableSlugs.map((s: string) => `/blog/${s}`).join('\n')}
+` : ''}
 Return ONLY a JSON array: [{...}]
 No markdown code blocks.`;
 

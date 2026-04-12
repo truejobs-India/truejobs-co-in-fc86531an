@@ -1165,12 +1165,11 @@ serve(async (req) => {
       if (selectedCoverModel === 'azure-mai-image-2') {
         return await generateViaAzureMaiImage(body, slug, imagePrompt, adminClient, startMs, strict);
       }
-      if (selectedCoverModel === 'vertex-imagen' || isImagenAliasModel(selectedCoverModel)) {
-        const aspectRatio = ASPECT_RATIOS[body.aspectRatio || '16:9'] || '16:9';
-        return await generateViaImagen(body, slug, imagePrompt, 1, aspectRatio, adminClient, startMs, strict);
+      if (selectedCoverModel === 'vertex-imagen') {
+        return buildStrictErrorResponse(400, 'vertex-imagen (Imagen) has been removed. It was Vertex-only and is not available via the direct Gemini API. Please select a different image model.', { selectedModelKey: 'vertex-imagen' });
       }
-      if (isVertexDirectImageModel(selectedCoverModel)) {
-        return await generateViaVertexDirectImage(body, slug, imagePrompt, adminClient, startMs, resolveVertexDirectRuntimeModel(selectedCoverModel));
+      if (isGeminiDirectImageModel(selectedCoverModel)) {
+        return await generateViaGeminiDirectImage(body, slug, imagePrompt, adminClient, startMs, resolveGeminiDirectRuntimeModel(selectedCoverModel));
       }
       if (isGatewayModel(selectedCoverModel) && selectedCoverModel !== 'gemini-flash-image') {
         return await generateViaGatewayModel(selectedCoverModel, body, imagePrompt);
@@ -1186,7 +1185,7 @@ serve(async (req) => {
     }
 
     if (purpose === 'inline') {
-      const selectedInlineModel = body.model || 'vertex-imagen';
+      const selectedInlineModel = body.model || 'gemini-flash-image';
       const imagePrompt = buildInlineImagePrompt(body);
       const aspectRatio = '4:3';
       console.log(`[generate-vertex-image] ENFORCED: purpose=inline → ${selectedInlineModel}, slot=${body.slotNumber}`);
@@ -1202,11 +1201,11 @@ serve(async (req) => {
       if (selectedInlineModel === 'azure-mai-image-2') {
         return await generateViaAzureMaiImage({ ...body, purpose: 'inline' }, slug, imagePrompt, adminClient, startMs, strict);
       }
-      if (selectedInlineModel === 'vertex-imagen' || isImagenAliasModel(selectedInlineModel)) {
-        return await generateViaImagen(body, slug, imagePrompt, 1, aspectRatio, adminClient, startMs, strict);
+      if (selectedInlineModel === 'vertex-imagen') {
+        return buildStrictErrorResponse(400, 'vertex-imagen (Imagen) has been removed. Please select a different image model.', { selectedModelKey: 'vertex-imagen' });
       }
-      if (isVertexDirectImageModel(selectedInlineModel)) {
-        return await generateViaVertexDirectImage({ ...body, purpose: 'inline' }, slug, imagePrompt, adminClient, startMs, resolveVertexDirectRuntimeModel(selectedInlineModel));
+      if (isGeminiDirectImageModel(selectedInlineModel)) {
+        return await generateViaGeminiDirectImage({ ...body, purpose: 'inline' }, slug, imagePrompt, adminClient, startMs, resolveGeminiDirectRuntimeModel(selectedInlineModel));
       }
       if (isGatewayModel(selectedInlineModel) && selectedInlineModel !== 'gemini-flash-image') {
         return await generateViaGatewayModel(selectedInlineModel, { ...body, purpose: 'inline' }, imagePrompt);
@@ -1218,11 +1217,11 @@ serve(async (req) => {
       if (strict) {
         return buildStrictErrorResponse(400, `Cannot resolve inline model "${selectedInlineModel}" to a known route. No fallback was used.`, { selectedModelKey: selectedInlineModel });
       }
-      return await generateViaImagen(body, slug, imagePrompt, 1, aspectRatio, adminClient, startMs);
+      return await generateViaGeminiFlashImage({ ...body, purpose: 'inline' }, slug, imagePrompt, adminClient, startMs);
     }
 
     // ── Backward-compatible model-based routing (no purpose specified) ──
-    const selectedModel = body.model || 'vertex-imagen';
+    const selectedModel = body.model || 'gemini-flash-image';
     const imageCount = Math.min(Math.max(body.imageCount || 1, 1), 4);
     const aspectRatio = ASPECT_RATIOS[body.aspectRatio || '16:9'] || '16:9';
     const imagePrompt = buildCoverImagePrompt(body);
@@ -1239,11 +1238,11 @@ serve(async (req) => {
     if (selectedModel === 'azure-mai-image-2') {
       return await generateViaAzureMaiImage(body, slug, imagePrompt, adminClient, startMs, strict);
     }
-    if (selectedModel === 'vertex-imagen' || isImagenAliasModel(selectedModel)) {
-      return await generateViaImagen(body, slug, imagePrompt, imageCount, aspectRatio, adminClient, startMs, strict);
+    if (selectedModel === 'vertex-imagen') {
+      return buildStrictErrorResponse(400, 'vertex-imagen (Imagen) has been removed. Please select a different image model.', { selectedModelKey: 'vertex-imagen' });
     }
-    if (isVertexDirectImageModel(selectedModel)) {
-      return await generateViaVertexDirectImage(body, slug, imagePrompt, adminClient, startMs, resolveVertexDirectRuntimeModel(selectedModel));
+    if (isGeminiDirectImageModel(selectedModel)) {
+      return await generateViaGeminiDirectImage(body, slug, imagePrompt, adminClient, startMs, resolveGeminiDirectRuntimeModel(selectedModel));
     }
     if (isGatewayModel(selectedModel) && selectedModel !== 'gemini-flash-image') {
       return await generateViaGatewayModel(selectedModel, body, imagePrompt);
@@ -1255,7 +1254,7 @@ serve(async (req) => {
     if (strict) {
       return buildStrictErrorResponse(400, `Cannot resolve model "${selectedModel}" to a known route. No fallback was used.`, { selectedModelKey: selectedModel });
     }
-    return await generateViaImagen(body, slug, imagePrompt, imageCount, aspectRatio, adminClient, startMs);
+    return await generateViaGeminiFlashImage(body, slug, imagePrompt, adminClient, startMs);
 
   } catch (err) {
     const elapsed = Date.now() - startMs;

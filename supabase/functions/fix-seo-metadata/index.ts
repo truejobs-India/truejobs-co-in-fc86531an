@@ -65,8 +65,16 @@ Deno.serve(async (req) => {
   if (authResult instanceof Response) return authResult;
 
   try {
-    const { articles, mode, apply } = await req.json() as {
+    const { articles, mode, apply, aiModel } = await req.json() as {
       articles: ArticleInput[];
+      mode: 'scan' | 'fix';
+      apply?: boolean;
+      aiModel?: string;
+    };
+
+    if (!aiModel) {
+      return new Response(JSON.stringify({ error: 'aiModel parameter is required. No fallback allowed.' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
       mode: 'scan' | 'fix';
       apply?: boolean; // if true, write to DB
     };
@@ -79,7 +87,104 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Max 10 articles per batch' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+    // AI dispatcher — strict routing based on aiModel, no Vertex fallback
+    async function callFixAI(prompt: string): Promise<string> {
+      switch (aiModel) {
+        case 'sarvam-30b': case 'sarvam-105b': {
+          const { callSarvamChat } = await import('../_shared/sarvam.ts');
+          return callSarvamChat(prompt, { model: 'sarvam-m', maxTokens: 8192, temperature: 0.2 });
+        }
+        case 'azure-gpt5-mini': {
+          const { callAzureGPT5Mini } = await import('../_shared/azure-openai.ts');
+          return callAzureGPT5Mini(prompt, { maxTokens: 8192, temperature: 0.2 });
+        }
+        case 'azure-gpt41-mini': {
+          const { callAzureGPT41Mini } = await import('../_shared/azure-openai.ts');
+          return callAzureGPT41Mini(prompt, { maxTokens: 8192, temperature: 0.2 });
+        }
+        case 'azure-gpt4o-mini': {
+          const { callAzureOpenAI } = await import('../_shared/azure-openai.ts');
+          return callAzureOpenAI(prompt, { maxTokens: 8192, temperature: 0.2 });
+        }
+        case 'azure-deepseek-v3': {
+          const { callAzureDeepSeek } = await import('../_shared/azure-deepseek.ts');
+          return callAzureDeepSeek(prompt, { maxTokens: 8192, temperature: 0.2 });
+        }
+        case 'azure-deepseek-r1': {
+          const { callAzureDeepSeek } = await import('../_shared/azure-deepseek.ts');
+          return callAzureDeepSeek(prompt, { model: 'DeepSeek-R1', maxTokens: 8192, temperature: 0.2 });
+        }
+        case 'vertex-flash': case 'gemini-flash': case 'gemini': {
+          const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+          return callVertexGemini('gemini-2.5-flash', prompt, 60_000, { maxOutputTokens: 8192, temperature: 0.2, responseMimeType: 'application/json' });
+        }
+        case 'vertex-pro': case 'gemini-pro': {
+          const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+          return callVertexGemini('gemini-2.5-pro', prompt, 60_000, { maxOutputTokens: 8192, temperature: 0.2, responseMimeType: 'application/json' });
+        }
+        case 'vertex-3.1-pro': {
+          const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+          return callVertexGemini('gemini-3.1-pro-preview', prompt, 120_000, { maxOutputTokens: 8192, temperature: 0.2, responseMimeType: 'application/json' });
+        }
+        case 'vertex-3-flash': {
+          const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+          return callVertexGemini('gemini-3-flash-preview', prompt, 90_000, { maxOutputTokens: 8192, temperature: 0.2, responseMimeType: 'application/json' });
+        }
+        case 'vertex-3.1-flash-lite': {
+          const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+          return callVertexGemini('gemini-3.1-flash-lite-preview', prompt, 60_000, { maxOutputTokens: 8192, temperature: 0.2, responseMimeType: 'application/json' });
+        }
+        case 'lovable-gemini': {
+          const apiKey = Deno.env.get('LOVABLE_API_KEY');
+          if (!apiKey) throw new Error('LOVABLE_API_KEY not configured');
+          const resp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+            method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: 'google/gemini-2.5-flash', messages: [{ role: 'user', content: prompt }], max_tokens: 8192, temperature: 0.2 }),
+          });
+          if (!resp.ok) throw new Error(`Lovable AI error ${resp.status}`);
+          return (await resp.json())?.choices?.[0]?.message?.content || '';
+        }
+        case 'gpt5': case 'gpt5-mini': case 'openai': {
+          const apiKey = Deno.env.get('LOVABLE_API_KEY');
+          if (!apiKey) throw new Error('LOVABLE_API_KEY not configured');
+          const gwModel = aiModel === 'gpt5-mini' ? 'openai/gpt-5-mini' : 'openai/gpt-5';
+          const resp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+            method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: gwModel, messages: [{ role: 'user', content: prompt }], max_tokens: 8192, temperature: 0.2 }),
+          });
+          if (!resp.ok) throw new Error(`Lovable AI error ${resp.status}`);
+          return (await resp.json())?.choices?.[0]?.message?.content || '';
+        }
+        case 'groq': {
+          const apiKey = Deno.env.get('GROQ_API_KEY');
+          if (!apiKey) throw new Error('GROQ_API_KEY not configured');
+          const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+            method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], max_tokens: 8192, temperature: 0.2 }),
+          });
+          if (!resp.ok) throw new Error(`Groq API error ${resp.status}`);
+          return (await resp.json())?.choices?.[0]?.message?.content || '';
+        }
+        case 'claude-sonnet': case 'claude': {
+          const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
+          if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured');
+          const resp = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+            body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 8192, messages: [{ role: 'user', content: prompt }] }),
+          });
+          if (!resp.ok) throw new Error(`Anthropic API error ${resp.status}`);
+          return (await resp.json())?.content?.[0]?.text || '';
+        }
+        case 'nova-pro': case 'nova-premier': case 'nemotron-120b': case 'mistral': {
+          const { callBedrockNova } = await import('../_shared/bedrock-nova.ts');
+          return callBedrockNova(aiModel === 'mistral' ? 'mistral' : aiModel, prompt, { maxTokens: 8192, temperature: 0.2 });
+        }
+        default:
+          throw new Error(`Unsupported AI model: "${aiModel}". No fallback allowed.`);
+      }
+    }
+
+    const { callVertexGemini: _unused } = { callVertexGemini: null }; // removed hardcoded import
 
     const results: SeoFixResult[] = [];
 
@@ -126,23 +231,19 @@ Return ONLY this compact JSON (keep each "reason" under 15 words):
         let rawText = '';
         let finishReason = '';
         try {
-          rawText = await callVertexGemini('gemini-2.5-pro', prompt, 60_000, {
-            maxOutputTokens: 8192,
-            temperature: 0.2,
-            responseMimeType: 'application/json',
-          });
-        } catch (vertexErr: any) {
-          if (vertexErr.message?.includes('429')) {
+          rawText = await callFixAI(prompt);
+        } catch (fixErr: any) {
+          if (fixErr.message?.includes('429')) {
             results.push({
               id: article.id, slug: article.slug, status: 'failed',
-              reason: 'Vertex AI rate limit exceeded', changes: {}, ai_summary: '',
+              reason: 'AI rate limit exceeded', changes: {}, ai_summary: '',
             });
             continue;
           }
-          console.error(`Vertex error for ${article.slug}:`, vertexErr.message);
+          console.error(`AI error for ${article.slug}:`, fixErr.message);
           results.push({
             id: article.id, slug: article.slug, status: 'failed',
-            reason: `Vertex AI error: ${vertexErr.message?.substring(0, 200)}`,
+            reason: `AI error: ${fixErr.message?.substring(0, 200)}`,
             changes: {}, ai_summary: '',
           });
           continue;
@@ -170,12 +271,11 @@ Return ONLY this compact JSON (keep each "reason" under 15 words):
 
         // Retry once without responseMimeType if parse failed or empty
         if (!parsed) {
-          console.warn(`Parse failed for ${article.slug}, retrying without responseMimeType via Vertex AI...`);
+          console.warn(`Parse failed for ${article.slug}, retrying...`);
           await new Promise(r => setTimeout(r, 2000));
           try {
-            const retryText = await callVertexGemini('gemini-2.5-pro',
-              prompt + '\n\nIMPORTANT: Return ONLY the JSON object, no markdown fences, no extra text.',
-              60_000, { maxOutputTokens: 1500, temperature: 0.2 });
+            const retryText = await callFixAI(
+              prompt + '\n\nIMPORTANT: Return ONLY the JSON object, no markdown fences, no extra text.');
             if (retryText) {
               try {
                 const cleaned = retryText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();

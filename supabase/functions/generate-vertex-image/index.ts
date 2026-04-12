@@ -37,7 +37,6 @@ const KNOWN_IMAGE_MODEL_KEYS = new Set([
   ...Object.keys(GATEWAY_IMAGE_MODELS),
   'vertex-3-pro-image',
   'vertex-3.1-flash-image',
-  'vertex-flash-image', // Gemini 2.5 Flash Image via direct Google Gemini API
   'nova-canvas', // Amazon Nova Canvas via Bedrock InvokeModel
   'azure-flux-kontext', // Azure FLUX.1 Kontext Pro via Azure AI Foundry
   'azure-flux2-pro', // Azure FLUX.2 Pro via Azure AI Foundry
@@ -194,7 +193,7 @@ async function generateViaGeminiFlashImage(
   try {
     const result = await callGeminiDirectImage(GEMINI_IMAGE_MODEL, imagePrompt, IMAGEN_TIMEOUT_MS);
 
-    if (!result.imageBase64) {
+  if (!result.base64) {
       // Text-only STOP — retry once with explicit image instruction
       if (result.finishReason === 'STOP' && !body.__geminiImageRetry) {
         console.warn(`[gemini-flash-image] Retrying text-only STOP with explicit image instruction for slug=${slug}`);
@@ -224,7 +223,7 @@ async function generateViaGeminiFlashImage(
     const slotSuffix = isInlineFallback && body.slotNumber ? `-slot${body.slotNumber}` : '';
     const filePath = `${pathPrefix}/${slug}-gemini-flash${slotSuffix}.${ext}`;
 
-    const uploadResult = await uploadGeneratedImage({ adminClient, imageBase64: result.imageBase64, mimeType: result.mimeType, filePath });
+    const uploadResult = await uploadGeneratedImage({ adminClient, imageBase64: result.base64, mimeType: result.mimeType, filePath });
     if (uploadResult instanceof Response) return uploadResult;
 
     const elapsed = Date.now() - startMs;
@@ -248,14 +247,14 @@ async function generateViaGeminiFlashImage(
       action: 'generate-image',
       purpose,
       elapsedMs: elapsed,
-    }, { strict, selectedModelKey: 'vertex-flash-image', resolvedProvider: 'gemini-direct-api', resolvedRuntimeModelId: GEMINI_IMAGE_MODEL });
+    }, { strict, selectedModelKey: 'gemini-flash-image', resolvedProvider: 'gemini-direct-api', resolvedRuntimeModelId: GEMINI_IMAGE_MODEL });
 
     return new Response(JSON.stringify(successBody), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   } catch (err: any) {
     console.error(`[gemini-flash-image] error: ${err.message}`);
     const isTimeout = err.message?.includes('GEMINI_TIMEOUT');
     if (strict) {
-      return buildStrictErrorResponse(isTimeout ? 504 : 502, `Gemini Direct API ${isTimeout ? 'timeout' : 'error'}: ${err.message}. No fallback was used.`, { selectedModelKey: 'vertex-flash-image', resolvedProvider: 'gemini-direct-api', resolvedRuntimeModelId: GEMINI_IMAGE_MODEL });
+      return buildStrictErrorResponse(isTimeout ? 504 : 502, `Gemini Direct API ${isTimeout ? 'timeout' : 'error'}: ${err.message}. No fallback was used.`, { selectedModelKey: 'gemini-flash-image', resolvedProvider: 'gemini-direct-api', resolvedRuntimeModelId: GEMINI_IMAGE_MODEL });
     }
     return await generateViaLovableGatewayImage(body, slug, imagePrompt, adminClient, startMs, isTimeout ? 'gemini-timeout' : 'gemini-error');
   }
@@ -278,7 +277,7 @@ async function generateViaGeminiDirectImage(
   try {
     const result = await callGeminiDirectImage(geminiModelId, imagePrompt, IMAGEN_TIMEOUT_MS);
 
-    if (!result.imageBase64) {
+    if (!result.base64) {
       return new Response(JSON.stringify({ success: false, error: 'No image data returned. Prompt may have been filtered.', model: geminiModelId }),
         { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
@@ -290,7 +289,7 @@ async function generateViaGeminiDirectImage(
     const modelTag = geminiModelId.replace(/[^a-z0-9]/gi, '-').substring(0, 20);
     const filePath = `${pathPrefix}/${slug}-${modelTag}${slotSuffix}.${ext}`;
 
-    const uploadResult = await uploadGeneratedImage({ adminClient, imageBase64: result.imageBase64, mimeType: result.mimeType, filePath });
+    const uploadResult = await uploadGeneratedImage({ adminClient, imageBase64: result.base64, mimeType: result.mimeType, filePath });
     if (uploadResult instanceof Response) return uploadResult;
 
     const elapsed = Date.now() - startMs;
@@ -1174,7 +1173,7 @@ serve(async (req) => {
       if (isGatewayModel(selectedCoverModel) && selectedCoverModel !== 'gemini-flash-image') {
         return await generateViaGatewayModel(selectedCoverModel, body, imagePrompt);
       }
-      if (selectedCoverModel === 'gemini-flash-image' || selectedCoverModel === 'vertex-flash-image') {
+      if (selectedCoverModel === 'gemini-flash-image') {
         return await generateViaGeminiFlashImage(body, slug, imagePrompt, adminClient, startMs, strict);
       }
       // Strict mode: reject unresolved routing
@@ -1210,7 +1209,7 @@ serve(async (req) => {
       if (isGatewayModel(selectedInlineModel) && selectedInlineModel !== 'gemini-flash-image') {
         return await generateViaGatewayModel(selectedInlineModel, { ...body, purpose: 'inline' }, imagePrompt);
       }
-      if (selectedInlineModel === 'gemini-flash-image' || selectedInlineModel === 'vertex-flash-image') {
+      if (selectedInlineModel === 'gemini-flash-image') {
         return await generateViaGeminiFlashImage({ ...body, purpose: 'inline' }, slug, imagePrompt, adminClient, startMs, strict);
       }
       // Strict mode: reject catch-all default
@@ -1247,7 +1246,7 @@ serve(async (req) => {
     if (isGatewayModel(selectedModel) && selectedModel !== 'gemini-flash-image') {
       return await generateViaGatewayModel(selectedModel, body, imagePrompt);
     }
-    if (selectedModel === 'gemini-flash-image' || selectedModel === 'vertex-flash-image') {
+    if (selectedModel === 'gemini-flash-image') {
       return await generateViaGeminiFlashImage(body, slug, imagePrompt, adminClient, startMs, strict);
     }
     // Strict mode: reject unresolved catch-all

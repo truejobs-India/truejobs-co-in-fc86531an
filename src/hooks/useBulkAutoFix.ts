@@ -222,21 +222,9 @@ export function useBulkAutoFix(
     setResults([]);
     stopRef.current = false;
 
-    // Always fetch fresh data from DB including tracking columns
-    let allFetchedPosts: BlogPost[];
-    
-    const { data: freshPosts, error: fetchErr } = await supabase
-      .from('blog_posts')
-      .select('id, title, slug, content, excerpt, cover_image_url, featured_image_alt, is_published, meta_title, meta_description, canonical_url, author_name, faq_count, has_faq_schema, faq_schema, internal_links, word_count, updated_at, last_bulk_scanned_at, last_bulk_fixed_at, last_bulk_fix_status, remaining_auto_fixable_count');
-    
-    if (fetchErr || !freshPosts) {
-      console.error('[BULK_AUTO_FIX] Failed to fetch fresh posts:', fetchErr);
-      allFetchedPosts = allPosts as BlogPost[];
-    } else {
-      allFetchedPosts = freshPosts as BlogPost[];
-    }
+    const SELECT_COLS = 'id, title, slug, content, excerpt, cover_image_url, featured_image_alt, is_published, meta_title, meta_description, canonical_url, author_name, faq_count, has_faq_schema, faq_schema, internal_links, word_count, updated_at, last_bulk_scanned_at, last_bulk_fixed_at, last_bulk_fix_status, remaining_auto_fixable_count';
 
-    // Determine which posts to scan based on scope
+    let allFetchedPosts: BlogPost[];
     let postsToScan: BlogPost[];
     const stateBreakdown: ScanStateBreakdown = {
       neverBulkFixed: 0,
@@ -249,28 +237,64 @@ export function useBulkAutoFix(
     };
 
     if (scope === 'selected' && targetPosts && targetPosts.length > 0) {
-      // For selected scope, use the target post IDs to find fresh data
-      const targetIds = new Set(targetPosts.map(p => p.id));
-      postsToScan = allFetchedPosts.filter(p => targetIds.has(p.id));
-    } else if (scope === 'all') {
+      // Direct by-ID fetch — no 1000-row limit risk
+      const targetIds = targetPosts.map(p => p.id);
+      console.log(`[BULK_AUTO_FIX] Selected scope: fetching ${targetIds.length} posts by ID`);
+      const { data, error } = await supabase
+        .from('blog_posts')
+        .select(SELECT_COLS)
+        .in('id', targetIds);
+      if (error || !data) {
+        console.error('[BULK_AUTO_FIX] Failed to fetch selected posts:', error);
+        allFetchedPosts = [];
+      } else {
+        allFetchedPosts = data as BlogPost[];
+      }
       postsToScan = allFetchedPosts;
-    } else if (scope === 'failed_partial') {
-      postsToScan = allFetchedPosts.filter(p => isEligibleForFailedPartialScope(p));
+      if (postsToScan.length === 0 && targetIds.length > 0) {
+        console.error(`[BULK_AUTO_FIX] Selected ${targetIds.length} posts but 0 matched in DB fetch — IDs may be stale`);
+      }
+      console.log(`[BULK_AUTO_FIX] Selected scope: ${postsToScan.length}/${targetIds.length} fetched`);
     } else {
-      // Smart scope — filter by eligibility
-      postsToScan = [];
-      for (const post of allFetchedPosts) {
-        const { eligible, reason } = isEligibleForSmartScope(post);
-        if (eligible) {
-          postsToScan.push(post);
-          if (reason === 'neverBulkFixed') stateBreakdown.neverBulkFixed++;
-          else if (reason === 'changed') stateBreakdown.changed++;
-          else if (reason === 'failed') stateBreakdown.failed++;
-          else if (reason === 'partial') stateBreakdown.partial++;
-        } else {
-          stateBreakdown.skippedUnchanged++;
+      // Paginated fetch for all/smart/failed_partial — deterministic order
+      allFetchedPosts = [];
+      let from = 0;
+      const BATCH = 1000;
+      while (true) {
+        const { data: batch, error } = await supabase
+          .from('blog_posts')
+          .select(SELECT_COLS)
+          .order('id', { ascending: true })
+          .range(from, from + BATCH - 1);
+        if (error || !batch || batch.length === 0) break;
+        allFetchedPosts.push(...(batch as BlogPost[]));
+        if (batch.length < BATCH) break;
+        from += BATCH;
+      }
+      console.log(`[BULK_AUTO_FIX] Paginated fetch: ${allFetchedPosts.length} total posts`);
+
+      // Apply scope filtering
+      if (scope === 'all') {
+        postsToScan = allFetchedPosts;
+      } else if (scope === 'failed_partial') {
+        postsToScan = allFetchedPosts.filter(p => isEligibleForFailedPartialScope(p));
+      } else {
+        // Smart scope — filter by eligibility
+        postsToScan = [];
+        for (const post of allFetchedPosts) {
+          const { eligible, reason } = isEligibleForSmartScope(post);
+          if (eligible) {
+            postsToScan.push(post);
+            if (reason === 'neverBulkFixed') stateBreakdown.neverBulkFixed++;
+            else if (reason === 'changed') stateBreakdown.changed++;
+            else if (reason === 'failed') stateBreakdown.failed++;
+            else if (reason === 'partial') stateBreakdown.partial++;
+          } else {
+            stateBreakdown.skippedUnchanged++;
+          }
         }
       }
+      console.log(`[BULK_AUTO_FIX] Scope "${scope}": ${postsToScan.length} candidates after filtering`);
     }
 
     // Now scan eligible posts for compliance issues

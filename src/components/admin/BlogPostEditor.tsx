@@ -1207,8 +1207,10 @@ export function BlogPostEditor() {
   const [bulkScanScope, setBulkScanScope] = useState<'smart' | 'all' | 'failed_partial' | 'selected'>('smart');
   const handleBulkFixScan = (scopeOverride?: 'smart' | 'all' | 'failed_partial' | 'selected') => {
     const scope = scopeOverride || (selectedPostIds.size > 0 ? 'selected' : bulkScanScope);
+    console.log(`[BULK_FIX_UI] handleBulkFixScan scope=${scope}, selectedPostIds=${selectedPostIds.size}`);
     if (scope === 'selected') {
       const selectedPosts = posts.filter(p => selectedPostIds.has(p.id));
+      console.log(`[BULK_FIX_UI] Selected posts resolved: ${selectedPosts.length}, IDs:`, selectedPosts.map(p => p.id));
       if (selectedPosts.length === 0) {
         toast({ title: 'No articles selected', description: 'Select articles from the table first.', variant: 'destructive' });
         return;
@@ -2528,7 +2530,9 @@ export function BlogPostEditor() {
         {bulkAutoFix.phase === 'scanned' && bulkAutoFix.scanReport && bulkAutoFix.scanReport.allItems.length === 0 && (
           <div className="text-center py-6 space-y-3">
             <div className="text-sm text-muted-foreground">
-              ✅ No articles matched the scan criteria.
+              {bulkAutoFix.scanReport.scope === 'selected'
+                ? '⚠️ Selected articles could not be loaded for scanning. They may have been deleted or the selection was stale.'
+                : '✅ No articles matched the scan criteria.'}
             </div>
             {bulkAutoFix.scanReport.scope === 'smart' && bulkAutoFix.scanReport.stateBreakdown.skippedUnchanged > 0 && (
               <div className="text-xs text-muted-foreground">

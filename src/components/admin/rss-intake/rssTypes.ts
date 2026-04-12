@@ -66,7 +66,18 @@ export interface RssItem {
   current_status: string;
   created_at: string;
   updated_at: string;
+  // Firecrawl enrichment fields
+  firecrawl_status: string;
+  firecrawl_reason: string | null;
+  firecrawl_last_run_at: string | null;
+  firecrawl_source_url: string | null;
+  firecrawl_content_markdown: string | null;
+  firecrawl_content_meta: Record<string, unknown> | null;
+  firecrawl_pdf_mode: string | null;
+  firecrawl_error: string | null;
 }
+
+export const FIRECRAWL_STATUSES = ['not_needed', 'queued', 'running', 'success', 'failed', 'skipped', 'partial'] as const;
 
 export interface ReviewQueueEntry {
   id: string;

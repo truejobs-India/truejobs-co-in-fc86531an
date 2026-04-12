@@ -90,12 +90,14 @@ function normalizeFix(raw: any): {
     else if (issueKey === 'seo-internal-links') { fixType = 'internal_links'; applyMode = 'append_content'; }
     else if (issueKey === 'missing-lists') { fixType = 'readability'; applyMode = 'append_content'; }
     else if (issueKey === 'low-heading-count') { fixType = 'heading_structure'; applyMode = 'append_content'; }
+    else if (issueKey === 'h1-present') { fixType = 'h1'; applyMode = 'insert_before_first_heading'; }
   }
 
   // Rescue: correct applyMode for known fixTypes
   if (fixType === 'intro' && applyMode !== 'insert_before_first_heading') applyMode = 'insert_before_first_heading';
   if (fixType === 'conclusion' && applyMode !== 'append_content') applyMode = 'append_content';
   if (fixType === 'readability' && applyMode !== 'append_content') applyMode = 'append_content';
+  if (fixType === 'h1' && applyMode !== 'insert_before_first_heading') applyMode = 'insert_before_first_heading';
 
   // Safety net: internal_links must NEVER use destructive modes
   if (fixType === 'internal_links' && (applyMode === 'replace_section' || applyMode === 'review_replacement')) {

@@ -187,9 +187,11 @@ function isEligibleForSmartScope(post: BlogPost): { eligible: boolean; reason: s
     return { eligible: true, reason: 'partial' };
   }
 
-  // no_action_taken — only re-eligible if content changed (already covered by changed check above)
-  // If we reach here, content hasn't changed, so don't retry
-  
+  // no_action_taken with remaining fixable issues — retry (pipeline may now handle them)
+  if (post.last_bulk_fix_status === 'no_action_taken' && (post.remaining_auto_fixable_count ?? 0) > 0) {
+    return { eligible: true, reason: 'partial' };
+  }
+
   return { eligible: false, reason: 'skippedUnchanged' };
 }
 
@@ -564,6 +566,20 @@ async function processOneArticle(
     }
   }
 
+  // Pre-fix: deterministic H1 insertion (in-memory only, persisted via main update)
+  let h1WasInserted = false;
+  if (post.content && !/<h1[^>]*>/i.test(post.content)) {
+    const escapedTitle = post.title
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+    const h1Tag = `<h1>${escapedTitle}</h1>`;
+    post.content = insertBeforeFirstHeadingRaw(post.content, h1Tag);
+    h1WasInserted = true;
+    console.log(`[BULK_AUTO_FIX] Deterministic H1 fix for "${post.slug}"`);
+  }
+
   const meta = blogPostToMetadata(post);
   const compliance = analyzePublishCompliance(meta);
   const allFailedChecks = compliance.checks.filter(c => c.status === 'fail' || c.status === 'warn');
@@ -724,6 +740,7 @@ async function processOneArticle(
           updatePayload.faq_schema = validSchema;
           updatePayload.has_faq_schema = true;
           updatePayload.faq_count = validSchema.length;
+        }
       }
 
       // Fallback: count FAQ items from appended HTML when faqSchema wasn't provided
@@ -732,7 +749,6 @@ async function processOneArticle(
         if (faqQuestions > 0) {
           updatePayload.faq_count = faqQuestions;
         }
-      }
       }
 
       fixesApplied.push({ field: 'content (FAQ)', fixType, beforeValue: '(no FAQ section)', afterValue: `Added FAQ (${stripHtmlLength(sanitized)} chars)` });
@@ -790,8 +806,24 @@ async function processOneArticle(
       continue;
     }
 
-    // ── INSERT_BEFORE_FIRST_HEADING: Intro/H1 ──
-    if (applyMode === 'insert_before_first_heading' && (fixType === 'intro' || fixType === 'h1' || fixType === 'heading_structure')) {
+    // ── INSERT_BEFORE_FIRST_HEADING: H1 only ──
+    if (applyMode === 'insert_before_first_heading' && fixType === 'h1') {
+      if (/<h1[^>]*>/i.test(modifiedContent)) {
+        fixesSkipped.push({ field: 'h1', fixType, reason: 'H1 already exists' }); continue;
+      }
+      if (!suggestedValue || stripHtmlLength(suggestedValue) < 5) {
+        fixesSkipped.push({ field: 'h1', fixType, reason: 'H1 content too short' }); continue;
+      }
+      const sanitized = sanitizeLinkBlockHtml(suggestedValue);
+      modifiedContent = insertBeforeFirstHeadingRaw(modifiedContent, sanitized);
+      contentChanged = true;
+      fixesApplied.push({ field: 'content (H1)', fixType, beforeValue: '(no H1)', afterValue: `Added H1 (${stripHtmlLength(sanitized)} chars)` });
+      logBlogAiAudit({ tool_name: 'bulk_auto_fix', before_value: '(no H1)', after_value: sanitized.substring(0, 200), apply_mode: applyMode, target_field: 'h1', slug: post.slug });
+      continue;
+    }
+
+    // ── INSERT_BEFORE_FIRST_HEADING: Intro ──
+    if (applyMode === 'insert_before_first_heading' && (fixType === 'intro' || fixType === 'heading_structure')) {
       if (hasExistingIntro(modifiedContent)) { fixesSkipped.push({ field: 'intro', fixType, reason: 'Intro already exists' }); continue; }
       if (!suggestedValue || stripHtmlLength(suggestedValue) < 20) { fixesSkipped.push({ field: 'intro', fixType, reason: 'Intro content too short or empty' }); continue; }
       if (contentBlockAlreadyExists(modifiedContent, suggestedValue)) { fixesSkipped.push({ field: 'intro', fixType, reason: 'Intro content already exists' }); continue; }
@@ -861,6 +893,12 @@ async function processOneArticle(
 
     // ── Catch-all ──
     fixesSkipped.push({ field: field || fixType || 'unknown', fixType, reason: `Unhandled fix type/mode combination: ${fixType}/${applyMode}` });
+  }
+
+  // ── Ensure deterministic H1 fix is persisted even when no AI fixes triggered contentChanged ──
+  if (h1WasInserted && !contentChanged) {
+    modifiedContent = post.content;
+    contentChanged = true;
   }
 
   // ── Build final DB update ──

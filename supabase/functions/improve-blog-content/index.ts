@@ -370,7 +370,7 @@ async function callAI(aiModel: string, prompt: string, maxTokens: number, option
     }
     case 'sarvam-30b': case 'sarvam-105b': {
       const { callSarvamChat } = await import('../_shared/sarvam.ts');
-      const sarvamText = await callSarvamChat(prompt, { model: 'sarvam-m', maxTokens, temperature: 0.5 });
+      const sarvamText = await callSarvamChat(prompt, { model: model === 'sarvam-105b' ? 'sarvam-105b' : 'sarvam-30b', maxTokens, temperature: 0.5 });
       resultJson = JSON.stringify({ __raw: sarvamText, __finishReason: 'stop' });
       actualProvider = 'sarvam'; actualModelId = model; break;
     }

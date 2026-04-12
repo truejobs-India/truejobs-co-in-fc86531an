@@ -239,11 +239,11 @@ No markdown code blocks.`;
         }
         case 'sarvam-30b': {
           const { callSarvamChat } = await import('../_shared/sarvam.ts');
-          return callSarvamChat(p, { model: 'sarvam-m', maxTokens: 8192, temperature: 0.3 });
+          return callSarvamChat(p, { model: 'sarvam-30b', maxTokens: 8192, temperature: 0.3 });
         }
         case 'sarvam-105b': {
           const { callSarvamChat } = await import('../_shared/sarvam.ts');
-          return callSarvamChat(p, { model: 'sarvam-m', maxTokens: 8192, temperature: 0.3 });
+          return callSarvamChat(p, { model: 'sarvam-105b', maxTokens: 8192, temperature: 0.3 });
         }
         case 'groq': {
           const groqKey = Deno.env.get('GROQ_API_KEY');

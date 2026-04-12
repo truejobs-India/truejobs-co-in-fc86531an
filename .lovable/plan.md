@@ -1,155 +1,193 @@
 
 
-# Plan: Selective Firecrawl Enrichment Layer for RSS System
+# Corrected Plan: AWS Mistral AI Decision Layer for RSS + Firecrawl System
 
-## Summary
-Add Firecrawl as an optional second-stage enrichment on top of the working RSS pipeline. RSS ingestion remains untouched. Firecrawl runs only for qualifying items (High/Medium relevance, weak summary, PDF links, or manual trigger). A new edge function handles the scraping, and minimal DB columns are added to `rss_items`. Small UI additions let admins trigger, retry, and inspect enrichment.
+## Corrections Applied
+
+### 1. Column count: 14 columns (not 13)
+The migration, validation trigger, TypeScript types, UI, and all documentation will consistently reference **14 columns**.
+
+### 2. Band 3 removed
+Only two bands exist:
+- **Band 1** — deterministic skip/proceed (no AI call)
+- **Band 2** — AI-assisted (Mistral called for uncertain items)
+- On AI failure: fall back to deterministic rules (not a separate band)
+
+### 3. Strict JSON validation
+After every Mistral call, validate the parsed output for:
+- Valid JSON parse
+- All required fields present (`should_use_firecrawl`, `crawl_target`, `queue_priority`, `confidence`, etc.)
+- Enum values match allowed sets (e.g., `crawl_target` in `['none','page','pdf']`)
+- `confidence` is a number between 0.0 and 1.0
+- On any validation failure: log raw output + specific error to `ai_error`, set `ai_decision_status = 'failed'`, fall back to deterministic rules
+
+### 4. Stage Two threshold: meaningful content only
+Stage Two runs only when Firecrawl markdown is >= 200 characters AND contains at least one non-whitespace word beyond boilerplate. A `hasSubstantiveContent()` check will strip common boilerplate patterns (nav bars, cookie notices) and verify remaining text exceeds the threshold. Trivial, blank-like, or stub output does not trigger Stage Two.
+
+### 5. Stage Two payload trimmed
+Stage Two sends to Mistral only:
+- `title` (item_title)
+- `source_url` (firecrawl_source_url)
+- `content_type` (item_type)
+- `relevance_level`
+- `excerpt` — first 500 characters of markdown, trimmed
+- `markdown_length` — total character count (number, not full text)
+- `pdf_mode` if applicable
+
+Full raw markdown is never sent to Mistral.
 
 ---
 
-## A. Database Changes
-
-**Add 8 columns to `rss_items`** (no new table — keeps queries simple):
+## A. Database Changes — 14 columns added to `rss_items`
 
 ```sql
 ALTER TABLE public.rss_items
-  ADD COLUMN firecrawl_status text NOT NULL DEFAULT 'not_needed',
-  ADD COLUMN firecrawl_reason text,
-  ADD COLUMN firecrawl_last_run_at timestamptz,
-  ADD COLUMN firecrawl_source_url text,
-  ADD COLUMN firecrawl_content_markdown text,
-  ADD COLUMN firecrawl_content_meta jsonb,
-  ADD COLUMN firecrawl_pdf_mode text,
-  ADD COLUMN firecrawl_error text;
+  ADD COLUMN ai_decision_status text NOT NULL DEFAULT 'not_needed',
+  ADD COLUMN ai_decision_band text,
+  ADD COLUMN ai_stage_one_json jsonb,
+  ADD COLUMN ai_stage_one_confidence real,
+  ADD COLUMN ai_stage_one_reason text,
+  ADD COLUMN ai_stage_one_decided_at timestamptz,
+  ADD COLUMN ai_firecrawl_decision text,
+  ADD COLUMN ai_queue_priority text,
+  ADD COLUMN ai_stage_two_json jsonb,
+  ADD COLUMN ai_stage_two_confidence real,
+  ADD COLUMN ai_stage_two_reason text,
+  ADD COLUMN ai_stage_two_decided_at timestamptz,
+  ADD COLUMN ai_model_used text,
+  ADD COLUMN ai_error text;
 ```
 
-Update the existing validation trigger `validate_rss_items_fields` to also validate `firecrawl_status`:
-
+Validation trigger addition:
 ```sql
--- Add to trigger body:
-IF NEW.firecrawl_status NOT IN ('not_needed','queued','running','success','failed','skipped','partial') THEN
-  RAISE EXCEPTION 'Invalid rss_items.firecrawl_status: %', NEW.firecrawl_status;
+IF NEW.ai_decision_status NOT IN ('not_needed','pending','stage_one_done','stage_two_done','failed','skipped') THEN
+  RAISE EXCEPTION 'Invalid rss_items.ai_decision_status: %', NEW.ai_decision_status;
 END IF;
 ```
 
-No new tables. No new indexes beyond what Postgres already has.
-
 ---
 
-## B. New Edge Function: `rss-firecrawl-enrich`
+## B. New shared helper: `_shared/rss/ai-decision.ts`
 
-Single new file: `supabase/functions/rss-firecrawl-enrich/index.ts`
+**Banding logic (deterministic, no AI):**
+- Band 1 Skip: `relevance_level = 'Low'` AND no PDFs AND summary >= 80 chars
+- Band 1 Proceed: `relevance_level = 'High'` AND summary >= 150 chars AND no PDFs
+- Band 2: everything else (Medium relevance, High with weak summary, PDFs with unclear importance, short titles < 30 chars, manual trigger)
 
-**Actions:**
-- `enrich-items`: Accept an array of `rss_item_id`s (max 10 per call). For each:
-  1. Load the item from DB
-  2. Run `shouldEnrich()` decision logic (skip if `firecrawl_status === 'success'` and not forced)
-  3. Determine URL to scrape: `first_pdf_url` > `item_link`
-  4. Call existing `scrapePage()` from `_shared/firecrawl/client.ts`
-  5. Save markdown + metadata to the new columns
-  6. Update `firecrawl_status` to `success` or `failed`
+**On AI failure:** log error to `ai_error`, set `ai_decision_status = 'failed'`, proceed with deterministic `shouldEnrich()` result. No Band 3.
 
-**Decision helper — `shouldEnrich(item, manual)`:**
-```
-if manual → return { should: true, reason: 'manual' }
-if relevance_level in ('High','Medium') → { true, 'high_relevance' }
-if item_summary is null/empty or length < 80 → { true, 'weak_summary' }
-if first_pdf_url is not null → { true, 'direct_pdf' }
-if linked_pdf_urls length > 0 → { true, 'linked_pdf' }
-else → { false, 'low_value' }
-```
+**Strict JSON validation function** (`validateStageOneOutput`, `validateStageTwoOutput`):
+- Parse JSON safely
+- Check every required field exists and has correct type
+- Validate enums against allowed value sets
+- Validate `confidence` is number in [0.0, 1.0]
+- Return `{ valid: true, data }` or `{ valid: false, error: string }`
 
-**PDF handling policy:**
-- For `.pdf` URLs: call Firecrawl scrape with `formats: ['markdown']` (Firecrawl handles PDF natively)
-- Store `firecrawl_pdf_mode = 'pdf_scrape'`
-- No OCR by default — Firecrawl's built-in PDF parser handles text-based PDFs
-- If scrape returns empty/very short markdown (<50 chars), mark `firecrawl_status = 'partial'` with note
+**Mistral call details:**
+- Model: `mistral.mistral-large-2407-v1:0` via `awsSigV4Fetch` from `_shared/bedrock-nova.ts`
+- Region: `us-west-2`
+- Max tokens: 1024, Temperature: 0.1
+- Timeout: 30s
+- System prompt: strict JSON routing engine instructions
 
-**Safety caps (hardcoded constants):**
-- `MAX_ITEMS_PER_CALL = 10`
-- `MAX_AUTO_PER_SOURCE_RUN = 5` — during automatic enrichment after ingestion
-- Skip if `firecrawl_status === 'success'` and `firecrawl_last_run_at` is within last 24 hours (unless manual)
-
-**Auth:** Same pattern as `rss-ingest` — JWT admin check or `x-cron-secret` header.
-
-**Reuses:** `_shared/firecrawl/client.ts` (already has retries, timeouts, error handling).
-
----
-
-## C. Automatic Enrichment Hook in `rss-ingest`
-
-After a successful `processSource` run (line ~498 in `rss-ingest/index.ts`), add a lightweight post-processing step:
-
-1. Collect IDs of newly inserted items (`itemsNew > 0`) that pass `shouldEnrich()`
-2. Cap at `MAX_AUTO_PER_SOURCE_RUN = 5`
-3. Fire-and-forget call to `rss-firecrawl-enrich` via `fetch()` to the function URL (non-blocking)
-4. If the call fails, log a warning — do NOT fail the RSS run
-
-This keeps RSS ingestion fast and decoupled. The enrichment runs asynchronously.
-
-To support this, `processSource` will collect new item IDs as it processes, then after `finalizeRun`, conditionally dispatch the enrichment call.
-
----
-
-## D. UI Changes
-
-### In `RssFetchedItemsTab.tsx`:
-
-**1. Add Firecrawl status column to table** — a small icon/badge after the existing AI column:
-- `not_needed` → gray dash
-- `queued` → clock icon
-- `running` → spinner
-- `success` → green check
-- `failed` → red X
-- `partial` → orange warning
-- `skipped` → gray skip
-
-**2. Add "Enrich with Firecrawl" to the per-item dropdown menu** (alongside existing Analyse/Enrich/Image/SEO):
-```tsx
-<DropdownMenuItem onClick={() => handleFirecrawlEnrich([item.id])}>
-  <Globe className="h-4 w-4 mr-2" /> Firecrawl Enrich
-</DropdownMenuItem>
+**Stage One output schema:**
+```json
+{
+  "should_use_firecrawl": boolean,
+  "crawl_target": "none" | "page" | "pdf",
+  "queue_priority": "urgent" | "normal" | "low" | "ignore",
+  "should_queue_for_review": boolean,
+  "should_skip_as_low_value": boolean,
+  "reason_code": string,
+  "reason_text": string,
+  "confidence": number
+}
 ```
 
-**3. Add "Firecrawl Enrich" to bulk action toolbar** (when items selected).
+**Stage Two output schema:**
+```json
+{
+  "is_useful_after_enrichment": boolean,
+  "likely_content_type": "vacancy" | "result" | "admit_card" | "answer_key" | "exam" | "counselling" | "document_update" | "other",
+  "queue_priority": "urgent" | "normal" | "low" | "ignore",
+  "should_queue_for_review": boolean,
+  "should_retry_firecrawl": boolean,
+  "reason_code": string,
+  "reason_text": string,
+  "confidence": number
+}
+```
 
-**4. In expanded item detail**, show:
-- Firecrawl status + reason
-- Error message if failed
-- PDF mode if applicable
-- Markdown preview (first 500 chars) if success
-- Last run timestamp
-- "Retry" button if failed
+**Stage Two payload (trimmed):**
+Only these fields sent to Mistral — no raw markdown:
+- `title`, `source_url`, `content_type`, `relevance_level`
+- `excerpt` (first 500 chars of markdown)
+- `markdown_length` (number)
+- `pdf_mode` (if applicable)
 
-### In `rssTypes.ts`:
-
-Update `RssItem` interface with the 8 new fields.
-Add `FIRECRAWL_STATUSES` constant.
+**Stage Two gate:** `hasSubstantiveContent(markdown)` — returns true only if markdown >= 200 chars after stripping whitespace and common boilerplate patterns.
 
 ---
 
-## E. Files Changed
+## C. Integration into `rss-firecrawl-enrich`
+
+- New action: `ai-decide` — runs Stage One only for given item IDs
+- Enrichment flow modified: after deterministic check, if Band 2, call Stage One AI
+- After successful Firecrawl with substantive content (>= 200 chars post-cleanup), call Stage Two with trimmed payload
+- AI cannot bypass hard caps (MAX_ITEMS_PER_CALL=10, FRESHNESS_HOURS=24, MAX_AUTO=5)
+
+---
+
+## D. Integration into `rss-ingest`
+
+- Before Firecrawl dispatch: compute bands for new items
+- Band 1 low-value: mark `ai_decision_status='skipped'`, `ai_decision_band='band_1_low'`, exclude from dispatch
+- Band 1 high-value: mark `ai_decision_band='band_1_high'`, include in dispatch
+- Band 2: include in dispatch, AI runs inside `rss-firecrawl-enrich`
+- No AI calls in `rss-ingest` itself
+
+---
+
+## E. UI changes in `RssFetchedItemsTab.tsx`
+
+- "AI" status column with icons (not_needed/stage_one_done/stage_two_done/failed/skipped)
+- AI Decision panel in expanded detail: band, confidence, reason, queue priority, error
+- "View JSON" toggle for raw AI output
+- "AI Decide" in per-item dropdown and bulk toolbar
+- "Retry AI" button when status is `failed`
+
+---
+
+## F. Type updates in `rssTypes.ts`
+
+Add 14 AI fields to `RssItem`. Add `AI_DECISION_STATUSES` constant.
+
+---
+
+## G. Files changed
 
 | # | File | Change |
 |---|------|--------|
-| 1 | `supabase/migrations/new.sql` | Add 8 columns to `rss_items`, update validation trigger |
-| 2 | `supabase/functions/rss-firecrawl-enrich/index.ts` | **New** — enrichment edge function |
-| 3 | `supabase/functions/rss-ingest/index.ts` | Add fire-and-forget enrichment dispatch after successful runs |
-| 4 | `src/components/admin/rss-intake/rssTypes.ts` | Add firecrawl fields to `RssItem`, add constants |
-| 5 | `src/components/admin/rss-intake/RssFetchedItemsTab.tsx` | Add FC status column, enrich button, retry, detail view |
+| 1 | Migration SQL | Add 14 columns to `rss_items`, update validation trigger |
+| 2 | `supabase/functions/_shared/rss/ai-decision.ts` | **New** — Mistral decision helper with strict JSON validation |
+| 3 | `supabase/functions/rss-firecrawl-enrich/index.ts` | Add `ai-decide` action, integrate AI with substantive content gate |
+| 4 | `supabase/functions/rss-ingest/index.ts` | Band computation before Firecrawl dispatch |
+| 5 | `src/components/admin/rss-intake/rssTypes.ts` | Add 14 AI fields to RssItem |
+| 6 | `src/components/admin/rss-intake/RssFetchedItemsTab.tsx` | AI status column, detail panel, actions |
 
 ---
 
-## F. What Is Intentionally Left Out
+## H. Intentionally left out
 
-- No full-site crawling or map discovery
-- No automatic OCR — Firecrawl's native PDF parse only
-- No new cron job for enrichment — relies on post-ingestion dispatch + manual triggers
-- No separate enrichment queue table
-- No enrichment_version column (status + timestamp is sufficient for v1)
-- No changes to `monitoring_review_queue` routing
-- No changes to existing AI processing pipeline
-- No publishing pipeline from enriched items
-- No `firecrawl_content_json` column (markdown + meta JSONB covers structured output)
-- No `firecrawl_job_id` (Firecrawl scrape is synchronous, no async job to track)
+- No Band 3 (removed per correction)
+- No full raw markdown in Stage Two payload
+- No Stage Two for items with trivial Firecrawl output (< 200 chars)
+- No AI for every item (Band 1 skips AI)
+- No publishing pipeline
+- No OCR expansion
+- No full-site crawling
+- No new cron jobs
+- No separate AI queue table
+- No AI model selection UI
+- No changes to monitoring_review_queue routing or dedup logic
 

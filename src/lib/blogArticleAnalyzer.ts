@@ -190,7 +190,7 @@ export function analyzeQuality(metadata: ArticleMetadata): QualityReport {
   });
 
   // 9. Readability (0-5)
-  const hasLists = /<[uo]l/i.test(metadata.content);
+  const hasLists = /<[uo]l|<table|<dl/i.test(metadata.content);
   const readScore = hasLists ? 5 : 2;
   factors.push({
     name: 'Readability',

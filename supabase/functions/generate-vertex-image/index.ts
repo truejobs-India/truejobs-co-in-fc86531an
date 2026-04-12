@@ -247,14 +247,14 @@ async function generateViaGeminiFlashImage(
       action: 'generate-image',
       purpose,
       elapsedMs: elapsed,
-    }, { strict, selectedModelKey: 'vertex-flash-image', resolvedProvider: 'gemini-direct-api', resolvedRuntimeModelId: GEMINI_IMAGE_MODEL });
+    }, { strict, selectedModelKey: 'gemini-flash-image', resolvedProvider: 'gemini-direct-api', resolvedRuntimeModelId: GEMINI_IMAGE_MODEL });
 
     return new Response(JSON.stringify(successBody), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   } catch (err: any) {
     console.error(`[gemini-flash-image] error: ${err.message}`);
     const isTimeout = err.message?.includes('GEMINI_TIMEOUT');
     if (strict) {
-      return buildStrictErrorResponse(isTimeout ? 504 : 502, `Gemini Direct API ${isTimeout ? 'timeout' : 'error'}: ${err.message}. No fallback was used.`, { selectedModelKey: 'vertex-flash-image', resolvedProvider: 'gemini-direct-api', resolvedRuntimeModelId: GEMINI_IMAGE_MODEL });
+      return buildStrictErrorResponse(isTimeout ? 504 : 502, `Gemini Direct API ${isTimeout ? 'timeout' : 'error'}: ${err.message}. No fallback was used.`, { selectedModelKey: 'gemini-flash-image', resolvedProvider: 'gemini-direct-api', resolvedRuntimeModelId: GEMINI_IMAGE_MODEL });
     }
     return await generateViaLovableGatewayImage(body, slug, imagePrompt, adminClient, startMs, isTimeout ? 'gemini-timeout' : 'gemini-error');
   }

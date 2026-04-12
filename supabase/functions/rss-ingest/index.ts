@@ -441,6 +441,7 @@ async function processSource(
 
         if (upsertResult.action === 'inserted') {
           itemsNew++;
+          if (upsertResult.itemId) newItemIds.push(upsertResult.itemId);
           // Queue if relevant
           if (shouldQueue(classification.relevanceLevel)) {
             await upsertReviewEntry(supabaseUrl, serviceRoleKey, {

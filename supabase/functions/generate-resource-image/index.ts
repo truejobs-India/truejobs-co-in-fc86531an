@@ -5,7 +5,7 @@
  * Every response follows the structured contract with requestId.
  */
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { getVertexAccessToken } from '../_shared/vertex-ai.ts';
+import { callGeminiDirectImage } from '../_shared/gemini-direct.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -16,19 +16,17 @@ const corsHeaders = {
 // Model registry — exhaustive, no catch-all
 // ═══════════════════════════════════════════════════════════════
 interface ModelRoute {
-  provider: 'vertex-ai' | 'lovable-gateway';
+  provider: 'gemini-direct' | 'lovable-gateway';
   apiModel: string;
   label: string;
-  vertexEndpoint?: 'gemini' | 'imagen';
 }
 
 const MODEL_REGISTRY: Record<string, ModelRoute> = {
-  'vertex-pro':           { provider: 'vertex-ai',       apiModel: 'gemini-2.5-flash-image', label: 'Vertex Gemini Flash Image', vertexEndpoint: 'gemini' },
-  'vertex-imagen':        { provider: 'vertex-ai',       apiModel: 'imagen-3.0-generate-002', label: 'Vertex Imagen 3', vertexEndpoint: 'imagen' },
-  'gemini-flash-image':   { provider: 'lovable-gateway', apiModel: 'google/gemini-2.5-flash-image', label: 'Gemini Flash Image (Gateway)' },
-  'gemini-pro-image':     { provider: 'lovable-gateway', apiModel: 'google/gemini-3-pro-image-preview', label: 'Gemini Pro Image (Gateway)' },
-  'gemini-flash-image-2': { provider: 'lovable-gateway', apiModel: 'google/gemini-3.1-flash-image-preview', label: 'Gemini Flash Image 2 (Gateway)' },
-  'vertex-flash-image':   { provider: 'vertex-ai',       apiModel: 'gemini-2.5-flash-image', label: 'Vertex Gemini Flash Image', vertexEndpoint: 'gemini' },
+  'vertex-pro':           { provider: 'gemini-direct',    apiModel: 'gemini-2.5-flash-preview-image-generation', label: 'Gemini Flash Image (Direct API)' },
+  'vertex-flash-image':   { provider: 'gemini-direct',    apiModel: 'gemini-2.5-flash-preview-image-generation', label: 'Gemini Flash Image (Direct API)' },
+  'gemini-flash-image':   { provider: 'lovable-gateway',  apiModel: 'google/gemini-2.5-flash-image', label: 'Gemini Flash Image (Gateway)' },
+  'gemini-pro-image':     { provider: 'lovable-gateway',  apiModel: 'google/gemini-3-pro-image-preview', label: 'Gemini Pro Image (Gateway)' },
+  'gemini-flash-image-2': { provider: 'lovable-gateway',  apiModel: 'google/gemini-3.1-flash-image-preview', label: 'Gemini Flash Image 2 (Gateway)' },
 };
 
 function generateRequestId(): string {

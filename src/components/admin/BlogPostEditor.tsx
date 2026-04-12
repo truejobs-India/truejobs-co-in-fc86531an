@@ -1206,7 +1206,7 @@ export function BlogPostEditor() {
   // ── Bulk Fix All by AI: now handled by useBulkAutoFix hook ──
   const [bulkScanScope, setBulkScanScope] = useState<'smart' | 'all' | 'failed_partial' | 'selected'>('smart');
   const handleBulkFixScan = (scopeOverride?: 'smart' | 'all' | 'failed_partial' | 'selected') => {
-    const scope = scopeOverride || bulkScanScope;
+    const scope = scopeOverride || (selectedPostIds.size > 0 ? 'selected' : bulkScanScope);
     if (scope === 'selected') {
       const selectedPosts = posts.filter(p => selectedPostIds.has(p.id));
       if (selectedPosts.length === 0) {
@@ -2076,7 +2076,7 @@ export function BlogPostEditor() {
                 </Select>
                 <Button size="sm" className="text-xs gap-1" disabled={bulkAutoFix.phase === 'scanning' || bulkAutoFix.phase === 'fixing' || (bulkScanScope === 'selected' && selectedPostIds.size === 0)} onClick={() => handleBulkFixScan()}>
                   {bulkAutoFix.phase === 'scanning' ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-                  Scan & Fix
+                  {selectedPostIds.size > 0 && bulkScanScope !== 'selected' ? `Scan Selected (${selectedPostIds.size})` : 'Scan & Fix'}
                 </Button>
               </div>
               <AlertDialog>

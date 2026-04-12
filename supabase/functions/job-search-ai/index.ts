@@ -102,8 +102,8 @@ When recommending jobs, use this format:
     // Build a single prompt from messages for Gemini's generateContent API
     const fullPrompt = messages.map(m => `${m.role === 'system' ? '[System]' : m.role === 'user' ? '[User]' : '[Assistant]'}: ${m.content}`).join('\n\n');
 
-    const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-    const aiResponse = await callVertexGemini('gemini-2.5-flash', fullPrompt, 60_000, {
+    const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
+    const aiResponse = await callGeminiDirect('gemini-2.5-flash', fullPrompt, 60_000, {
       maxOutputTokens: 1024,
       temperature: 0.7,
     });

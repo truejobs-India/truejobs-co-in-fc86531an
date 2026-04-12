@@ -411,7 +411,7 @@ async function callClaudeWithRetry(
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // Removed: fetchGemini using GEMINI_API_KEY + generativelanguage.googleapis.com
-// Now handled inline in callAI dispatcher via callVertexGemini
+// Now handled inline in callAI dispatcher via callGeminiDirect
 
 // ── Groq (Llama 3.3 70B) ──
 async function callGroqRaw(prompt: string, timeoutMs = 30_000, maxTokens = 16384): Promise<string> {
@@ -681,9 +681,9 @@ async function callAI(
   switch (model) {
     case 'gemini-flash':
     case 'gemini': {
-      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
       console.log(`[enrich-vertex] slug=${slug} model=gemini-flash timeout=${timeout}ms`);
-      rawText = await callVertexGemini('gemini-2.5-flash', prompt, timeout, {
+      rawText = await callGeminiDirect('gemini-2.5-flash', prompt, timeout, {
         maxOutputTokens: maxTokens || 16384,
         responseMimeType: 'application/json',
         temperature: 0.5,
@@ -692,9 +692,9 @@ async function callAI(
       return { data: tryParseJSON(rawText) };
     }
     case 'gemini-pro': {
-      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
       console.log(`[enrich-vertex] slug=${slug} model=gemini-pro timeout=${timeout}ms`);
-      rawText = await callVertexGemini('gemini-2.5-pro', prompt, timeout, {
+      rawText = await callGeminiDirect('gemini-2.5-pro', prompt, timeout, {
         maxOutputTokens: maxTokens || 16384,
         responseMimeType: 'application/json',
         temperature: 0.5,
@@ -704,9 +704,9 @@ async function callAI(
     }
 
     case 'vertex-flash': {
-      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
       console.log(`[enrich-vertex] slug=${slug} model=vertex-flash timeout=${timeout}ms`);
-      rawText = await callVertexGemini('gemini-2.5-flash', prompt, timeout, {
+      rawText = await callGeminiDirect('gemini-2.5-flash', prompt, timeout, {
         maxOutputTokens: maxTokens || 16384,
         responseMimeType: 'application/json',
         temperature: 0.5,
@@ -715,9 +715,9 @@ async function callAI(
       return { data: tryParseJSON(rawText) };
     }
     case 'vertex-pro': {
-      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
       console.log(`[enrich-vertex] slug=${slug} model=vertex-pro timeout=${timeout}ms`);
-      rawText = await callVertexGemini('gemini-2.5-pro', prompt, timeout, {
+      rawText = await callGeminiDirect('gemini-2.5-pro', prompt, timeout, {
         maxOutputTokens: maxTokens || 16384,
         responseMimeType: 'application/json',
         temperature: 0.5,
@@ -726,9 +726,9 @@ async function callAI(
       return { data: tryParseJSON(rawText) };
     }
     case 'vertex-3.1-pro': {
-      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
       console.log(`[enrich-vertex] slug=${slug} model=vertex-3.1-pro timeout=${timeout}ms`);
-      rawText = await callVertexGemini('gemini-3.1-pro-preview', prompt, timeout, {
+      rawText = await callGeminiDirect('gemini-3.1-pro-preview', prompt, timeout, {
         maxOutputTokens: maxTokens || 16384,
         responseMimeType: 'application/json',
         temperature: 0.5,
@@ -737,9 +737,9 @@ async function callAI(
       return { data: tryParseJSON(rawText) };
     }
     case 'vertex-3-flash': {
-      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
       console.log(`[enrich-vertex] slug=${slug} model=vertex-3-flash timeout=${timeout}ms`);
-      rawText = await callVertexGemini('gemini-3-flash-preview', prompt, timeout, {
+      rawText = await callGeminiDirect('gemini-3-flash-preview', prompt, timeout, {
         maxOutputTokens: maxTokens || 16384,
         responseMimeType: 'application/json',
         temperature: 0.5,
@@ -748,9 +748,9 @@ async function callAI(
       return { data: tryParseJSON(rawText) };
     }
     case 'vertex-3.1-flash-lite': {
-      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
       console.log(`[enrich-vertex] slug=${slug} model=vertex-3.1-flash-lite timeout=${timeout}ms`);
-      rawText = await callVertexGemini('gemini-3.1-flash-lite-preview', prompt, timeout, {
+      rawText = await callGeminiDirect('gemini-3.1-flash-lite-preview', prompt, timeout, {
         maxOutputTokens: maxTokens || 16384,
         responseMimeType: 'application/json',
         temperature: 0.5,

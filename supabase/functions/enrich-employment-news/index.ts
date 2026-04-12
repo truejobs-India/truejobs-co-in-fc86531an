@@ -379,7 +379,7 @@ function autoFillMissingFields(enriched: any, job: any): string[] {
 const AI_TIMEOUT_MS = 60000; // 60 seconds timeout for all AI calls
 
 // Removed: fetchGemini using GEMINI_API_KEY + generativelanguage.googleapis.com
-// Now handled inline in callAI dispatcher via callVertexGemini
+// Now handled inline in callAI dispatcher via callGeminiDirect
 
 // ── AWS Sig V4 helpers (for Bedrock models) ──
 async function hmacSha256B(key: ArrayBuffer | Uint8Array, data: string): Promise<ArrayBuffer> {
@@ -563,28 +563,28 @@ async function callAI(model: string, prompt: string, maxTokensParam?: number): P
       break;
     }
     case 'vertex-flash': {
-      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-      rawText = await callVertexGemini('gemini-2.5-flash', prompt, 60_000, { maxOutputTokens: maxTokensParam || 16384 });
+      const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
+      rawText = await callGeminiDirect('gemini-2.5-flash', prompt, 60_000, { maxOutputTokens: maxTokensParam || 16384 });
       break;
     }
     case 'vertex-pro': {
-      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-      rawText = await callVertexGemini('gemini-2.5-pro', prompt, 120_000, { maxOutputTokens: maxTokensParam || 16384 });
+      const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
+      rawText = await callGeminiDirect('gemini-2.5-pro', prompt, 120_000, { maxOutputTokens: maxTokensParam || 16384 });
       break;
     }
     case 'vertex-3.1-pro': {
-      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-      rawText = await callVertexGemini('gemini-3.1-pro-preview', prompt, 120_000, { maxOutputTokens: maxTokensParam || 16384 });
+      const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
+      rawText = await callGeminiDirect('gemini-3.1-pro-preview', prompt, 120_000, { maxOutputTokens: maxTokensParam || 16384 });
       break;
     }
     case 'vertex-3-flash': {
-      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-      rawText = await callVertexGemini('gemini-3-flash-preview', prompt, 90_000, { maxOutputTokens: maxTokensParam || 16384 });
+      const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
+      rawText = await callGeminiDirect('gemini-3-flash-preview', prompt, 90_000, { maxOutputTokens: maxTokensParam || 16384 });
       break;
     }
     case 'vertex-3.1-flash-lite': {
-      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-      rawText = await callVertexGemini('gemini-3.1-flash-lite-preview', prompt, 60_000, { maxOutputTokens: maxTokensParam || 16384 });
+      const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
+      rawText = await callGeminiDirect('gemini-3.1-flash-lite-preview', prompt, 60_000, { maxOutputTokens: maxTokensParam || 16384 });
       break;
     }
     case 'nova-pro':
@@ -664,16 +664,16 @@ async function callAI(model: string, prompt: string, maxTokensParam?: number): P
     case 'gemini-flash':
     case 'gemini-pro':
     case 'gemini': {
-      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+      const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
       const vertexModel = model === 'gemini-pro' ? 'gemini-2.5-pro' : 'gemini-2.5-flash';
       const geminiOpts = { responseMimeType: 'application/json', temperature: 0.5, maxOutputTokens: maxTokensParam || 16384 };
-      const text = await callVertexGemini(vertexModel, prompt, 90_000, geminiOpts);
+      const text = await callGeminiDirect(vertexModel, prompt, 90_000, geminiOpts);
       try {
         return tryParseJSON(text);
       } catch (e1) {
         console.warn("Vertex Gemini JSON parse failed, retrying...", (e1 as Error).message);
         await delay(2000);
-        const text2 = await callVertexGemini(vertexModel, prompt, 90_000, geminiOpts);
+        const text2 = await callGeminiDirect(vertexModel, prompt, 90_000, geminiOpts);
         return tryParseJSON(text2);
       }
     }
@@ -703,11 +703,11 @@ async function callAI(model: string, prompt: string, maxTokensParam?: number): P
       if (!r.ok) throw new Error(`Groq retry error: ${r.status}`);
       retryText = (await r.json())?.choices?.[0]?.message?.content || '';
     } else if (model === 'vertex-flash') {
-      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-      retryText = await callVertexGemini('gemini-2.5-flash', prompt, 60_000);
+      const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
+      retryText = await callGeminiDirect('gemini-2.5-flash', prompt, 60_000);
     } else if (model === 'vertex-pro') {
-      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-      retryText = await callVertexGemini('gemini-2.5-pro', prompt, 120_000);
+      const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
+      retryText = await callGeminiDirect('gemini-2.5-pro', prompt, 120_000);
     }
     else throw new Error(`JSON parse retry not supported for model: ${model}. Re-select and try again.`);
     retryText = retryText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();

@@ -390,9 +390,9 @@ async function callAI(
   console.log(`[${requestId}] AI call | provider=${resolved.provider} | model=${resolved.modelId} | prompt_len=${fullPrompt.length} | maxTokens=${maxTokens}`);
 
   if (resolved.provider === 'vertex-ai') {
-    const { callVertexGeminiWithMeta } = await import('../_shared/vertex-ai.ts');
+    const { callGeminiDirectWithMeta } = await import('../_shared/gemini-direct.ts');
     try {
-      const { text: rawText, finishReason } = await callVertexGeminiWithMeta(resolved.modelId, fullPrompt, resolved.timeout, {
+      const { text: rawText, finishReason } = await callGeminiDirectWithMeta(resolved.modelId, fullPrompt, resolved.timeout, {
         responseMimeType: 'application/json',
         temperature: 0.1,
         maxOutputTokens: maxTokens,
@@ -497,9 +497,9 @@ async function callAI(
   }
 
   if (resolved.provider === 'bedrock') {
-    const { callVertexGeminiWithMeta } = await import('../_shared/vertex-ai.ts');
+    const { callGeminiDirectWithMeta } = await import('../_shared/gemini-direct.ts');
     console.warn(`[${requestId}] Bedrock not directly supported, falling back to vertex-flash`);
-    const { text: rawText, finishReason } = await callVertexGeminiWithMeta('gemini-2.5-flash', fullPrompt, 90_000, {
+    const { text: rawText, finishReason } = await callGeminiDirectWithMeta('gemini-2.5-flash', fullPrompt, 90_000, {
       responseMimeType: 'application/json',
       temperature: 0.1,
       maxOutputTokens: maxTokens,

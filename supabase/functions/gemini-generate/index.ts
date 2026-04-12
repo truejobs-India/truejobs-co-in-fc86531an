@@ -35,9 +35,9 @@ serve(async (req) => {
     const systemPrefix = systemPrefixes[useCase] || "";
     const fullPrompt = systemPrefix ? `${systemPrefix}\n\n${prompt}` : prompt;
 
-    const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+    const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
     const model = 'gemini-2.5-flash';
-    const text = await callVertexGemini(model, fullPrompt, 60_000);
+    const text = await callGeminiDirect(model, fullPrompt, 60_000);
 
     return new Response(
       JSON.stringify({ text, model }),

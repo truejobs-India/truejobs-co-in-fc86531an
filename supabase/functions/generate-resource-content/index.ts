@@ -14,7 +14,7 @@ const corsHeaders = {
 // ═══════════════════════════════════════════════════════════════
 
 // Removed: local callGemini using GEMINI_API_KEY + generativelanguage.googleapis.com
-// Now handled inline in callAI dispatcher via callVertexGemini
+// Now handled inline in callAI dispatcher via callGeminiDirect
 
 async function callGroq(prompt: string): Promise<string> {
   const apiKey = Deno.env.get('GROQ_API_KEY');
@@ -94,8 +94,8 @@ async function callAI(model: string, prompt: string): Promise<string> {
     // ── Direct API models (user's own API keys) ──
     case 'gemini-flash':
     case 'gemini': {
-      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-      return callVertexGemini('gemini-2.5-flash', prompt, 60_000, { maxOutputTokens: 8192, temperature: 0.65 });
+      const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
+      return callGeminiDirect('gemini-2.5-flash', prompt, 60_000, { maxOutputTokens: 8192, temperature: 0.65 });
     }
 
     case 'groq':
@@ -109,28 +109,28 @@ async function callAI(model: string, prompt: string): Promise<string> {
       return callOpenAI(prompt);
 
     case 'vertex-flash': {
-      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-      return callVertexGemini('gemini-2.5-flash', prompt, 60_000, { maxOutputTokens: 8192, temperature: 0.65 });
+      const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
+      return callGeminiDirect('gemini-2.5-flash', prompt, 60_000, { maxOutputTokens: 8192, temperature: 0.65 });
     }
 
     case 'vertex-pro': {
-      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-      return callVertexGemini('gemini-2.5-pro', prompt, 90_000, { maxOutputTokens: 16384, temperature: 0.65 });
+      const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
+      return callGeminiDirect('gemini-2.5-pro', prompt, 90_000, { maxOutputTokens: 16384, temperature: 0.65 });
     }
 
     case 'vertex-3.1-pro': {
-      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-      return callVertexGemini('gemini-3.1-pro-preview', prompt, 120_000, { maxOutputTokens: 16384, temperature: 0.65 });
+      const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
+      return callGeminiDirect('gemini-3.1-pro-preview', prompt, 120_000, { maxOutputTokens: 16384, temperature: 0.65 });
     }
 
     case 'vertex-3-flash': {
-      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-      return callVertexGemini('gemini-3-flash-preview', prompt, 90_000, { maxOutputTokens: 8192, temperature: 0.65 });
+      const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
+      return callGeminiDirect('gemini-3-flash-preview', prompt, 90_000, { maxOutputTokens: 8192, temperature: 0.65 });
     }
 
     case 'vertex-3.1-flash-lite': {
-      const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-      return callVertexGemini('gemini-3.1-flash-lite-preview', prompt, 60_000, { maxOutputTokens: 4096, temperature: 0.65 });
+      const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
+      return callGeminiDirect('gemini-3.1-flash-lite-preview', prompt, 60_000, { maxOutputTokens: 4096, temperature: 0.65 });
     }
 
     // ── AWS Bedrock models (user's AWS keys) ──

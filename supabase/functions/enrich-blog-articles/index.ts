@@ -101,24 +101,24 @@ ${article.content}`;
               return callAzureDeepSeek(p, { model: 'DeepSeek-R1', maxTokens: 8192, temperature: 0.5 });
             }
             case 'vertex-flash': case 'gemini-flash': case 'gemini': {
-              const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-              return callVertexGemini('gemini-2.5-flash', p, 90_000);
+              const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
+              return callGeminiDirect('gemini-2.5-flash', p, 90_000);
             }
             case 'vertex-pro': case 'gemini-pro': {
-              const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-              return callVertexGemini('gemini-2.5-pro', p, 120_000);
+              const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
+              return callGeminiDirect('gemini-2.5-pro', p, 120_000);
             }
             case 'vertex-3.1-pro': {
-              const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-              return callVertexGemini('gemini-3.1-pro-preview', p, 120_000);
+              const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
+              return callGeminiDirect('gemini-3.1-pro-preview', p, 120_000);
             }
             case 'vertex-3-flash': {
-              const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-              return callVertexGemini('gemini-3-flash-preview', p, 90_000);
+              const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
+              return callGeminiDirect('gemini-3-flash-preview', p, 90_000);
             }
             case 'vertex-3.1-flash-lite': {
-              const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-              return callVertexGemini('gemini-3.1-flash-lite-preview', p, 60_000);
+              const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
+              return callGeminiDirect('gemini-3.1-flash-lite-preview', p, 60_000);
             }
             case 'lovable-gemini': {
               const apiKey = Deno.env.get('LOVABLE_API_KEY');

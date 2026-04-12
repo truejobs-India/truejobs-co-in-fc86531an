@@ -169,9 +169,9 @@ async function callGeminiAI(
   systemPrompt: string,
   userPrompt: string
 ): Promise<string> {
-  const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+  const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
   const fullPrompt = `${systemPrompt}\n\n${userPrompt}`;
-  return callVertexGemini('gemini-2.5-flash', fullPrompt, 60_000, {
+  return callGeminiDirect('gemini-2.5-flash', fullPrompt, 60_000, {
     maxOutputTokens: MAX_TOKENS,
     temperature: 0.3,
   });

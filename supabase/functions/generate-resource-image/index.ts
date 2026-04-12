@@ -5,7 +5,7 @@
  * Every response follows the structured contract with requestId.
  */
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { getVertexAccessToken } from '../_shared/vertex-ai.ts';
+import { callGeminiDirectImage } from '../_shared/gemini-direct.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -16,19 +16,17 @@ const corsHeaders = {
 // Model registry — exhaustive, no catch-all
 // ═══════════════════════════════════════════════════════════════
 interface ModelRoute {
-  provider: 'vertex-ai' | 'lovable-gateway';
+  provider: 'gemini-direct' | 'lovable-gateway';
   apiModel: string;
   label: string;
-  vertexEndpoint?: 'gemini' | 'imagen';
 }
 
 const MODEL_REGISTRY: Record<string, ModelRoute> = {
-  'vertex-pro':           { provider: 'vertex-ai',       apiModel: 'gemini-2.5-flash-image', label: 'Vertex Gemini Flash Image', vertexEndpoint: 'gemini' },
-  'vertex-imagen':        { provider: 'vertex-ai',       apiModel: 'imagen-3.0-generate-002', label: 'Vertex Imagen 3', vertexEndpoint: 'imagen' },
-  'gemini-flash-image':   { provider: 'lovable-gateway', apiModel: 'google/gemini-2.5-flash-image', label: 'Gemini Flash Image (Gateway)' },
-  'gemini-pro-image':     { provider: 'lovable-gateway', apiModel: 'google/gemini-3-pro-image-preview', label: 'Gemini Pro Image (Gateway)' },
-  'gemini-flash-image-2': { provider: 'lovable-gateway', apiModel: 'google/gemini-3.1-flash-image-preview', label: 'Gemini Flash Image 2 (Gateway)' },
-  'vertex-flash-image':   { provider: 'vertex-ai',       apiModel: 'gemini-2.5-flash-image', label: 'Vertex Gemini Flash Image', vertexEndpoint: 'gemini' },
+  'vertex-pro':           { provider: 'gemini-direct',    apiModel: 'gemini-2.5-flash-preview-image-generation', label: 'Gemini Flash Image (Direct API)' },
+  'vertex-flash-image':   { provider: 'gemini-direct',    apiModel: 'gemini-2.5-flash-preview-image-generation', label: 'Gemini Flash Image (Direct API)' },
+  'gemini-flash-image':   { provider: 'lovable-gateway',  apiModel: 'google/gemini-2.5-flash-image', label: 'Gemini Flash Image (Gateway)' },
+  'gemini-pro-image':     { provider: 'lovable-gateway',  apiModel: 'google/gemini-3-pro-image-preview', label: 'Gemini Pro Image (Gateway)' },
+  'gemini-flash-image-2': { provider: 'lovable-gateway',  apiModel: 'google/gemini-3.1-flash-image-preview', label: 'Gemini Flash Image 2 (Gateway)' },
 };
 
 function generateRequestId(): string {
@@ -87,207 +85,19 @@ function makeErrorResponse(
 }
 
 // ═══════════════════════════════════════════════════════════════
-// Image generation via Vertex AI (Gemini multimodal)
+// Image generation via Gemini Direct API
 // ═══════════════════════════════════════════════════════════════
-async function generateImageVertexGemini(
-  prompt: string, vertexModel: string, requestId: string,
+async function generateImageGeminiDirect(
+  prompt: string, geminiModel: string, requestId: string,
 ): Promise<{ base64: string; mimeType: string }> {
-  const projectId = Deno.env.get('GCP_PROJECT_ID');
-  const location = Deno.env.get('GCP_LOCATION') || 'us-central1';
-  if (!projectId) throw new Error('ENV_MISSING:GCP_PROJECT_ID');
-
-  let accessToken: string;
-  try {
-    accessToken = await getVertexAccessToken();
-  } catch (e) {
-    throw new Error(`VERTEX_AUTH_FAILED:${e instanceof Error ? e.message : 'unknown'}`);
-  }
-
-  const url = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${vertexModel}:generateContent`;
-  const maxRetries = 3;
-
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 150_000);
-
-    try {
-      console.log(`[${requestId}] Vertex Gemini attempt ${attempt + 1}/${maxRetries + 1}`);
-      const resp = await fetch(url, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.8, maxOutputTokens: 8192, responseModalities: ['IMAGE', 'TEXT'] },
-        }),
-        signal: controller.signal,
-      });
-
-      if (resp.status === 429) {
-        const retryAfterMs = getRetryAfterMs(resp);
-        await resp.text(); // consume body
-        if (attempt < maxRetries) {
-          const waitMs = retryAfterMs ?? Math.min(5000 * Math.pow(2, attempt), 45_000);
-          console.warn(`[${requestId}] Vertex rate limited, retry ${attempt + 1}/${maxRetries} after ${Math.round(waitMs)}ms`);
-          await sleep(waitMs);
-          continue;
-        }
-        throw new Error('VERTEX_RATE_LIMITED');
-      }
-
-      if (!resp.ok) {
-        const errText = await resp.text();
-        if (resp.status === 403) throw new Error(`VERTEX_ACCESS_DENIED:${errText.substring(0, 200)}`);
-        if (resp.status >= 500 && attempt < maxRetries) {
-          const waitMs = Math.min(4000 * Math.pow(2, attempt), 30_000);
-          console.warn(`[${requestId}] Vertex ${resp.status}, retry ${attempt + 1}/${maxRetries} after ${Math.round(waitMs)}ms`);
-          await sleep(waitMs);
-          continue;
-        }
-        throw new Error(`VERTEX_API_ERROR:${resp.status}:${errText.substring(0, 200)}`);
-      }
-
-      let data: any;
-      try {
-        data = await resp.json();
-      } catch {
-        throw new Error('VERTEX_INVALID_JSON');
-      }
-
-      // Defensive Gemini response parsing
-      const candidates = data?.candidates;
-      if (!candidates || !Array.isArray(candidates) || candidates.length === 0) {
-        const blockReason = data?.promptFeedback?.blockReason;
-        if (blockReason) throw new Error(`GEMINI_BLOCKED:${blockReason}`);
-        throw new Error('GEMINI_NO_CANDIDATES');
-      }
-
-      const parts = candidates[0]?.content?.parts;
-      if (!parts || !Array.isArray(parts) || parts.length === 0) {
-        const finishReason = candidates[0]?.finishReason;
-        throw new Error(`GEMINI_NO_PARTS:finishReason=${finishReason || 'unknown'}`);
-      }
-
-      for (const part of parts) {
-        if (part?.inlineData && typeof part.inlineData === 'object' && part.inlineData.data) {
-          const mime = part.inlineData.mimeType;
-          if (!mime || typeof mime !== 'string') {
-            console.warn(`[${requestId}] inlineData missing mimeType, defaulting to image/png`);
-          }
-          return { base64: part.inlineData.data, mimeType: mime || 'image/png' };
-        }
-      }
-
-      // Model returned text but no image
-      throw new Error('MODEL_RETURNED_NO_IMAGE');
-    } catch (err) {
-      if (isAbortError(err)) {
-        if (attempt < maxRetries) {
-          const waitMs = Math.min(6000 * (attempt + 1), 20_000);
-          console.warn(`[${requestId}] Vertex timed out, retry ${attempt + 1}/${maxRetries} after ${Math.round(waitMs)}ms`);
-          await sleep(waitMs);
-          continue;
-        }
-        throw new Error('VERTEX_TIMEOUT');
-      }
-      throw err;
-    } finally {
-      clearTimeout(timer);
-    }
-  }
-
-  throw new Error('VERTEX_EXHAUSTED_RETRIES');
+  console.log(`[${requestId}] Gemini Direct API call, model=${geminiModel}`);
+  return await callGeminiDirectImage(geminiModel, prompt, 150_000);
 }
 
 // ═══════════════════════════════════════════════════════════════
 // Image generation via Vertex AI Imagen
 // ═══════════════════════════════════════════════════════════════
-async function generateImageVertexImagen(
-  prompt: string, requestId: string,
-): Promise<{ base64: string; mimeType: string }> {
-  const projectId = Deno.env.get('GCP_PROJECT_ID');
-  const location = Deno.env.get('GCP_LOCATION') || 'us-central1';
-  if (!projectId) throw new Error('ENV_MISSING:GCP_PROJECT_ID');
-
-  let accessToken: string;
-  try {
-    accessToken = await getVertexAccessToken();
-  } catch (e) {
-    throw new Error(`VERTEX_AUTH_FAILED:${e instanceof Error ? e.message : 'unknown'}`);
-  }
-
-  const url = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/imagen-3.0-generate-002:predict`;
-  const maxRetries = 2;
-
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 120_000);
-
-    try {
-      console.log(`[${requestId}] Vertex Imagen attempt ${attempt + 1}/${maxRetries + 1}`);
-      const resp = await fetch(url, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          instances: [{ prompt }],
-          parameters: { sampleCount: 1, aspectRatio: '16:9', personGeneration: 'allow_adult' },
-        }),
-        signal: controller.signal,
-      });
-
-      if (resp.status === 429) {
-        await resp.text();
-        if (attempt < maxRetries) {
-          const retryAfterMs = getRetryAfterMs(resp);
-          const waitMs = retryAfterMs ?? Math.min(6000 * Math.pow(2, attempt), 45_000);
-          console.warn(`[${requestId}] Imagen rate limited, retry ${attempt + 1}/${maxRetries} after ${Math.round(waitMs)}ms`);
-          await sleep(waitMs);
-          continue;
-        }
-        throw new Error('VERTEX_RATE_LIMITED');
-      }
-
-      if (!resp.ok) {
-        const errText = await resp.text();
-        if (resp.status >= 500 && attempt < maxRetries) {
-          const waitMs = Math.min(5000 * Math.pow(2, attempt), 30_000);
-          console.warn(`[${requestId}] Imagen ${resp.status}, retry ${attempt + 1}/${maxRetries} after ${Math.round(waitMs)}ms`);
-          await sleep(waitMs);
-          continue;
-        }
-        throw new Error(`IMAGEN_API_ERROR:${resp.status}:${errText.substring(0, 200)}`);
-      }
-
-      let data: any;
-      try {
-        data = await resp.json();
-      } catch {
-        throw new Error('IMAGEN_INVALID_JSON');
-      }
-
-      const predictions = data?.predictions;
-      if (!predictions || !Array.isArray(predictions) || predictions.length === 0 || !predictions[0]?.bytesBase64Encoded) {
-        throw new Error('MODEL_RETURNED_NO_IMAGE');
-      }
-
-      return { base64: predictions[0].bytesBase64Encoded, mimeType: predictions[0].mimeType || 'image/png' };
-    } catch (err) {
-      if (isAbortError(err)) {
-        if (attempt < maxRetries) {
-          const waitMs = Math.min(7000 * (attempt + 1), 20_000);
-          console.warn(`[${requestId}] Imagen timed out, retry ${attempt + 1}/${maxRetries} after ${Math.round(waitMs)}ms`);
-          await sleep(waitMs);
-          continue;
-        }
-        throw new Error('VERTEX_TIMEOUT');
-      }
-      throw err;
-    } finally {
-      clearTimeout(timer);
-    }
-  }
-
-  throw new Error('VERTEX_EXHAUSTED_RETRIES');
-}
+// (Imagen removed — Vertex-only, not available via direct Gemini API)
 
 // ═══════════════════════════════════════════════════════════════
 // Image generation via Lovable AI Gateway
@@ -371,10 +181,8 @@ async function generateImageLovableGateway(
 // Validate env vars for a specific provider
 // ═══════════════════════════════════════════════════════════════
 function validateProviderEnv(provider: string): string | null {
-  if (provider === 'vertex-ai') {
-    if (!Deno.env.get('GCP_PROJECT_ID')) return 'GCP_PROJECT_ID not configured';
-    if (!Deno.env.get('GCP_CLIENT_EMAIL')) return 'GCP_CLIENT_EMAIL not configured';
-    if (!Deno.env.get('GCP_PRIVATE_KEY')) return 'GCP_PRIVATE_KEY not configured';
+  if (provider === 'gemini-direct') {
+    if (!Deno.env.get('GEMINI_API_KEY')) return 'GEMINI_API_KEY not configured';
     return null;
   }
   if (provider === 'lovable-gateway') {
@@ -479,13 +287,13 @@ Deno.serve(async (req) => {
     const warnings: string[] = [];
 
     try {
-      if (route.provider === 'vertex-ai') {
-        if (route.vertexEndpoint === 'imagen') {
-          const result = await generateImageVertexImagen(imagePrompt, requestId);
+      if (route.provider === 'gemini-direct') {
+        if (false) {
+          const result = await (() => { throw new Error('Imagen removed') })();
           imageBase64 = result.base64;
           mimeType = result.mimeType;
         } else {
-          const result = await generateImageVertexGemini(imagePrompt, route.apiModel, requestId);
+          const result = await generateImageGeminiDirect(imagePrompt, route.apiModel, requestId);
           imageBase64 = result.base64;
           mimeType = result.mimeType;
         }

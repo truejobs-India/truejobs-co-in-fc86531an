@@ -286,8 +286,8 @@ async function callAI(route: ProviderRoute, system: string, user: string, rawMod
 }
 
 async function callVertexForSeo(model: string, system: string, user: string, maxOutputTokens: number): Promise<AiCallResult> {
-  const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-  const text = await callVertexGemini(
+  const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
+  const text = await callGeminiDirect(
     model,
     `${system}\n\n${user}`,
     120_000,

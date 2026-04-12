@@ -5,7 +5,7 @@
  *   SARVAM_API_KEY
  */
 
-const SARVAM_CHAT_ENDPOINT = 'https://api.sarvam.ai/v2/chat/completions';
+const SARVAM_CHAT_ENDPOINT = 'https://api.sarvam.ai/v1/chat/completions';
 
 export interface SarvamChatOptions {
   model?: string;

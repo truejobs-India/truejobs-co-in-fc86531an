@@ -720,3 +720,38 @@ function jsonResponse(data: unknown, status = 200) {
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
 }
+
+// ============ Firecrawl Enrichment Dispatch ============
+
+const MAX_AUTO_ENRICH_PER_RUN = 5;
+
+async function dispatchFirecrawlEnrichment(
+  newItemIds: string[],
+  supabaseUrl: string,
+  serviceRoleKey: string
+) {
+  if (newItemIds.length === 0) return;
+
+  // Only send up to MAX_AUTO_ENRICH_PER_RUN items
+  const idsToEnrich = newItemIds.slice(0, MAX_AUTO_ENRICH_PER_RUN);
+
+  const functionUrl = `${supabaseUrl}/functions/v1/rss-firecrawl-enrich`;
+  const cronSecret = Deno.env.get('RSS_CRON_SECRET') || '';
+
+  console.log(`[rss-ingest] Dispatching Firecrawl enrichment for ${idsToEnrich.length} items`);
+
+  // Fire-and-forget — don't await the full processing
+  fetch(functionUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-cron-secret': cronSecret,
+    },
+    body: JSON.stringify({
+      action: 'enrich-items',
+      item_ids: idsToEnrich,
+    }),
+  }).catch((err) => {
+    console.warn('[rss-ingest] Firecrawl enrichment dispatch fetch failed:', err);
+  });
+}

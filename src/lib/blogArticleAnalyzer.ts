@@ -347,7 +347,7 @@ export function getReadinessStatus(
   metadata: ArticleMetadata
 ): ReadinessStatus {
   if (metadata.isPublished) return 'Published';
-  if (!metadata.title || !metadata.slug || !metadata.content) return 'Not Ready';
+  if (!metadata.title || !metadata.slug || metadata.wordCount === 0) return 'Not Ready';
 
   const qualityOk = quality.totalScore >= BLOG_THRESHOLDS.READINESS_DRAFT_QUALITY;
   const seoOk = seo.totalScore >= BLOG_THRESHOLDS.READINESS_DRAFT_SEO;

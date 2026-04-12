@@ -22,7 +22,7 @@ export async function callSarvamChat(
   if (!apiKey) throw new Error('SARVAM_API_KEY not configured');
 
   const {
-    model = 'sarvam-m',
+    model = 'sarvam-30b',
     maxTokens = 4096,
     temperature = 0.5,
     timeoutMs = 120_000,

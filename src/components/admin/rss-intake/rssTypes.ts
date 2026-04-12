@@ -75,9 +75,47 @@ export interface RssItem {
   firecrawl_content_meta: Record<string, unknown> | null;
   firecrawl_pdf_mode: string | null;
   firecrawl_error: string | null;
+  // AI Decision fields (14 columns)
+  ai_decision_status: string;
+  ai_decision_band: string | null;
+  ai_stage_one_json: StageOneDecision | null;
+  ai_stage_one_confidence: number | null;
+  ai_stage_one_reason: string | null;
+  ai_stage_one_decided_at: string | null;
+  ai_firecrawl_decision: string | null;
+  ai_queue_priority: string | null;
+  ai_stage_two_json: StageTwoDecision | null;
+  ai_stage_two_confidence: number | null;
+  ai_stage_two_reason: string | null;
+  ai_stage_two_decided_at: string | null;
+  ai_model_used: string | null;
+  ai_error: string | null;
+}
+
+export interface StageOneDecision {
+  should_use_firecrawl: boolean;
+  crawl_target: 'none' | 'page' | 'pdf';
+  queue_priority: 'urgent' | 'normal' | 'low' | 'ignore';
+  should_queue_for_review: boolean;
+  should_skip_as_low_value: boolean;
+  reason_code: string;
+  reason_text: string;
+  confidence: number;
+}
+
+export interface StageTwoDecision {
+  is_useful_after_enrichment: boolean;
+  likely_content_type: string;
+  queue_priority: 'urgent' | 'normal' | 'low' | 'ignore';
+  should_queue_for_review: boolean;
+  should_retry_firecrawl: boolean;
+  reason_code: string;
+  reason_text: string;
+  confidence: number;
 }
 
 export const FIRECRAWL_STATUSES = ['not_needed', 'queued', 'running', 'success', 'failed', 'skipped', 'partial'] as const;
+export const AI_DECISION_STATUSES = ['not_needed', 'pending', 'stage_one_done', 'stage_two_done', 'failed', 'skipped'] as const;
 
 export interface ReviewQueueEntry {
   id: string;

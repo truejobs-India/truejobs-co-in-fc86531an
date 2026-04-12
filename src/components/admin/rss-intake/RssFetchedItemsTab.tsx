@@ -59,6 +59,15 @@ const AI_STATUS_ICON: Record<string, React.ReactNode> = {
   skipped: <Clock className="h-3 w-3 text-muted-foreground" />,
 };
 
+const AI_DECISION_ICON: Record<string, React.ReactNode> = {
+  not_needed: <Minus className="h-3 w-3 text-muted-foreground" />,
+  pending: <Clock className="h-3 w-3 text-amber-500" />,
+  stage_one_done: <Brain className="h-3 w-3 text-blue-600" />,
+  stage_two_done: <CheckCircle2 className="h-3 w-3 text-green-600" />,
+  failed: <XCircle className="h-3 w-3 text-destructive" />,
+  skipped: <Minus className="h-3 w-3 text-muted-foreground/50" />,
+};
+
 const FC_STATUS_ICON: Record<string, React.ReactNode> = {
   not_needed: <Minus className="h-3 w-3 text-muted-foreground" />,
   queued: <Clock className="h-3 w-3 text-muted-foreground" />,
@@ -225,6 +234,24 @@ export function RssFetchedItemsTab() {
     }
   };
 
+  const handleAiDecide = async (ids: string[], force = false) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const { data, error } = await supabase.functions.invoke('rss-firecrawl-enrich', {
+        body: { action: 'ai-decide', item_ids: ids, force },
+        headers: { Authorization: `Bearer ${session?.access_token}` },
+      });
+      if (error) throw error;
+      const doneCount = (data?.results || []).filter((r: any) => r.status === 'stage_one_done').length;
+      const skipCount = (data?.results || []).filter((r: any) => r.status === 'skipped').length;
+      const failCount = (data?.results || []).filter((r: any) => r.status === 'failed').length;
+      toast({ title: 'AI Decision', description: `${doneCount} decided, ${skipCount} skipped, ${failCount} failed` });
+      fetchItems();
+    } catch (e: any) {
+      toast({ title: 'Error', description: e.message || 'AI decision failed', variant: 'destructive' });
+    }
+  };
+
   const confirmDeleteSingle = (id: string) => {
     setDeleteMode('single');
     setDeleteSingleId(id);
@@ -329,6 +356,9 @@ export function RssFetchedItemsTab() {
             <Button size="sm" variant="outline" onClick={() => openAiAction('seo-check', selectedArray)}>
               <ShieldCheck className="h-3.5 w-3.5 mr-1" /> SEO
             </Button>
+            <Button size="sm" variant="outline" onClick={() => handleAiDecide(selectedArray)}>
+              <Brain className="h-3.5 w-3.5 mr-1" /> AI Decide
+            </Button>
             <Button size="sm" variant="outline" onClick={() => handleFirecrawlEnrich(selectedArray)}>
               <Globe className="h-3.5 w-3.5 mr-1" /> Firecrawl
             </Button>
@@ -357,8 +387,9 @@ export function RssFetchedItemsTab() {
                   <TableHead>Domain</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Date</TableHead>
-                  <TableHead className="text-center" title="AI Pipeline Status">AI</TableHead>
-                  <TableHead className="text-center" title="Firecrawl Status">FC</TableHead>
+                   <TableHead className="text-center" title="AI Pipeline Status">AI</TableHead>
+                   <TableHead className="text-center" title="AI Decision">Dec</TableHead>
+                   <TableHead className="text-center" title="Firecrawl Status">FC</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -385,11 +416,16 @@ export function RssFetchedItemsTab() {
                           {getAiStatusIcon(item.id, 'seo_check_status')}
                         </div>
                       </TableCell>
-                      <TableCell>
-                        <div className="flex items-center justify-center" title={`FC: ${item.firecrawl_status}${item.firecrawl_reason ? ` (${item.firecrawl_reason})` : ''}`}>
-                          {FC_STATUS_ICON[item.firecrawl_status] || FC_STATUS_ICON['not_needed']}
-                        </div>
-                      </TableCell>
+                       <TableCell>
+                         <div className="flex items-center justify-center" title={`AI Decision: ${item.ai_decision_status}${item.ai_decision_band ? ` (${item.ai_decision_band})` : ''}`}>
+                           {AI_DECISION_ICON[item.ai_decision_status] || AI_DECISION_ICON['not_needed']}
+                         </div>
+                       </TableCell>
+                       <TableCell>
+                         <div className="flex items-center justify-center" title={`FC: ${item.firecrawl_status}${item.firecrawl_reason ? ` (${item.firecrawl_reason})` : ''}`}>
+                           {FC_STATUS_ICON[item.firecrawl_status] || FC_STATUS_ICON['not_needed']}
+                         </div>
+                       </TableCell>
                       <TableCell>
                         <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
                           <DropdownMenu>
@@ -409,14 +445,22 @@ export function RssFetchedItemsTab() {
                               <DropdownMenuItem onClick={() => openAiAction('seo-check', [item.id])}>
                                 <ShieldCheck className="h-4 w-4 mr-2" /> SEO Check
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleFirecrawlEnrich([item.id])}>
-                                <Globe className="h-4 w-4 mr-2" /> Firecrawl Enrich
-                              </DropdownMenuItem>
-                              {item.firecrawl_status === 'failed' && (
-                                <DropdownMenuItem onClick={() => handleFirecrawlEnrich([item.id], true)}>
-                                  <RefreshCw className="h-4 w-4 mr-2" /> Retry Firecrawl
-                                </DropdownMenuItem>
-                              )}
+                               <DropdownMenuItem onClick={() => handleAiDecide([item.id])}>
+                                 <Brain className="h-4 w-4 mr-2" /> AI Decide
+                               </DropdownMenuItem>
+                               {item.ai_decision_status === 'failed' && (
+                                 <DropdownMenuItem onClick={() => handleAiDecide([item.id], true)}>
+                                   <RefreshCw className="h-4 w-4 mr-2" /> Retry AI
+                                 </DropdownMenuItem>
+                               )}
+                               <DropdownMenuItem onClick={() => handleFirecrawlEnrich([item.id])}>
+                                 <Globe className="h-4 w-4 mr-2" /> Firecrawl Enrich
+                               </DropdownMenuItem>
+                               {item.firecrawl_status === 'failed' && (
+                                 <DropdownMenuItem onClick={() => handleFirecrawlEnrich([item.id], true)}>
+                                   <RefreshCw className="h-4 w-4 mr-2" /> Retry Firecrawl
+                                 </DropdownMenuItem>
+                               )}
                             </DropdownMenuContent>
                           </DropdownMenu>
                           <Button size="sm" variant="ghost" onClick={() => handleQueue(item)} title="Queue for Review" disabled={item.current_status === 'queued'}>
@@ -438,7 +482,7 @@ export function RssFetchedItemsTab() {
                     </TableRow>
                     {expandedId === item.id && (
                       <TableRow key={`${item.id}-detail`}>
-                        <TableCell colSpan={10}>
+                        <TableCell colSpan={11}>
                           <div className="p-3 bg-muted/30 rounded space-y-3 text-sm">
                             {/* Source data */}
                             <p><strong>Full Title:</strong> {item.item_title}</p>
@@ -518,34 +562,69 @@ export function RssFetchedItemsTab() {
                               </div>
                             )}
 
-                            {/* Firecrawl Enrichment */}
-                            <div className="mt-2 p-2 bg-background rounded border space-y-1">
-                              <p className="font-medium text-xs uppercase tracking-wider text-muted-foreground">Firecrawl Enrichment</p>
-                              <div className="flex items-center gap-2 text-xs">
-                                <span className="flex items-center gap-1">{FC_STATUS_ICON[item.firecrawl_status] || FC_STATUS_ICON['not_needed']} {item.firecrawl_status}</span>
-                                {item.firecrawl_reason && <span className="text-muted-foreground">({item.firecrawl_reason})</span>}
-                                {item.firecrawl_pdf_mode && <Badge variant="outline" className="text-[10px] px-1 py-0">{item.firecrawl_pdf_mode}</Badge>}
-                                {item.firecrawl_last_run_at && <span className="text-muted-foreground">Last: {new Date(item.firecrawl_last_run_at).toLocaleString()}</span>}
-                              </div>
-                              {item.firecrawl_error && <p className="text-xs text-destructive">Error: {item.firecrawl_error}</p>}
-                              {item.firecrawl_source_url && <p className="text-xs"><strong>Scraped URL:</strong> <a href={item.firecrawl_source_url} target="_blank" className="text-primary hover:underline">{item.firecrawl_source_url.substring(0, 80)}</a></p>}
-                              {item.firecrawl_content_markdown && (
-                                <details className="text-xs">
-                                  <summary className="cursor-pointer text-primary">Preview enriched content ({item.firecrawl_content_markdown.length} chars)</summary>
-                                  <pre className="mt-1 p-2 bg-muted/40 rounded text-[11px] max-h-40 overflow-auto whitespace-pre-wrap">{item.firecrawl_content_markdown.substring(0, 2000)}</pre>
-                                </details>
-                              )}
-                              <div className="flex gap-1 mt-1">
-                                <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => handleFirecrawlEnrich([item.id])}>
-                                  <Globe className="h-3 w-3 mr-1" /> Enrich
-                                </Button>
-                                {(item.firecrawl_status === 'failed' || item.firecrawl_status === 'partial') && (
-                                  <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => handleFirecrawlEnrich([item.id], true)}>
-                                    <RefreshCw className="h-3 w-3 mr-1" /> Retry
-                                  </Button>
-                                )}
-                              </div>
-                            </div>
+                             {/* AI Decision */}
+                             {(item.ai_decision_status !== 'not_needed') && (
+                               <div className="mt-2 p-2 bg-background rounded border space-y-1">
+                                 <p className="font-medium text-xs uppercase tracking-wider text-muted-foreground">AI Decision</p>
+                                 <div className="flex items-center gap-2 text-xs flex-wrap">
+                                   <span className="flex items-center gap-1">{AI_DECISION_ICON[item.ai_decision_status]} {item.ai_decision_status}</span>
+                                   {item.ai_decision_band && <Badge variant="outline" className="text-[10px] px-1 py-0">{item.ai_decision_band}</Badge>}
+                                   {item.ai_queue_priority && <Badge variant="secondary" className="text-[10px] px-1 py-0">Priority: {item.ai_queue_priority}</Badge>}
+                                   {item.ai_firecrawl_decision && <span className="text-muted-foreground">FC: {item.ai_firecrawl_decision}</span>}
+                                   {item.ai_stage_one_confidence != null && <span className="text-muted-foreground">Conf: {(item.ai_stage_one_confidence * 100).toFixed(0)}%</span>}
+                                 </div>
+                                 {item.ai_stage_one_reason && <p className="text-xs text-muted-foreground">Stage 1: {item.ai_stage_one_reason}</p>}
+                                 {item.ai_stage_two_reason && <p className="text-xs text-muted-foreground">Stage 2: {item.ai_stage_two_reason} (Conf: {((item.ai_stage_two_confidence || 0) * 100).toFixed(0)}%)</p>}
+                                 {item.ai_error && <p className="text-xs text-destructive">Error: {item.ai_error}</p>}
+                                 {item.ai_model_used && <p className="text-[10px] text-muted-foreground/60">Model: {item.ai_model_used}</p>}
+                                 {(item.ai_stage_one_json || item.ai_stage_two_json) && (
+                                   <details className="text-xs">
+                                     <summary className="cursor-pointer text-primary">View AI JSON</summary>
+                                     {item.ai_stage_one_json && <pre className="mt-1 p-2 bg-muted/40 rounded text-[11px] max-h-32 overflow-auto">{JSON.stringify(item.ai_stage_one_json, null, 2)}</pre>}
+                                     {item.ai_stage_two_json && <pre className="mt-1 p-2 bg-muted/40 rounded text-[11px] max-h-32 overflow-auto">{JSON.stringify(item.ai_stage_two_json, null, 2)}</pre>}
+                                   </details>
+                                 )}
+                                 <div className="flex gap-1 mt-1">
+                                   <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => handleAiDecide([item.id])}>
+                                     <Brain className="h-3 w-3 mr-1" /> AI Decide
+                                   </Button>
+                                   {item.ai_decision_status === 'failed' && (
+                                     <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => handleAiDecide([item.id], true)}>
+                                       <RefreshCw className="h-3 w-3 mr-1" /> Retry AI
+                                     </Button>
+                                   )}
+                                 </div>
+                               </div>
+                             )}
+
+                             {/* Firecrawl Enrichment */}
+                             <div className="mt-2 p-2 bg-background rounded border space-y-1">
+                               <p className="font-medium text-xs uppercase tracking-wider text-muted-foreground">Firecrawl Enrichment</p>
+                               <div className="flex items-center gap-2 text-xs">
+                                 <span className="flex items-center gap-1">{FC_STATUS_ICON[item.firecrawl_status] || FC_STATUS_ICON['not_needed']} {item.firecrawl_status}</span>
+                                 {item.firecrawl_reason && <span className="text-muted-foreground">({item.firecrawl_reason})</span>}
+                                 {item.firecrawl_pdf_mode && <Badge variant="outline" className="text-[10px] px-1 py-0">{item.firecrawl_pdf_mode}</Badge>}
+                                 {item.firecrawl_last_run_at && <span className="text-muted-foreground">Last: {new Date(item.firecrawl_last_run_at).toLocaleString()}</span>}
+                               </div>
+                               {item.firecrawl_error && <p className="text-xs text-destructive">Error: {item.firecrawl_error}</p>}
+                               {item.firecrawl_source_url && <p className="text-xs"><strong>Scraped URL:</strong> <a href={item.firecrawl_source_url} target="_blank" className="text-primary hover:underline">{item.firecrawl_source_url.substring(0, 80)}</a></p>}
+                               {item.firecrawl_content_markdown && (
+                                 <details className="text-xs">
+                                   <summary className="cursor-pointer text-primary">Preview enriched content ({item.firecrawl_content_markdown.length} chars)</summary>
+                                   <pre className="mt-1 p-2 bg-muted/40 rounded text-[11px] max-h-40 overflow-auto whitespace-pre-wrap">{item.firecrawl_content_markdown.substring(0, 2000)}</pre>
+                                 </details>
+                               )}
+                               <div className="flex gap-1 mt-1">
+                                 <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => handleFirecrawlEnrich([item.id])}>
+                                   <Globe className="h-3 w-3 mr-1" /> Enrich
+                                 </Button>
+                                 {(item.firecrawl_status === 'failed' || item.firecrawl_status === 'partial') && (
+                                   <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => handleFirecrawlEnrich([item.id], true)}>
+                                     <RefreshCw className="h-3 w-3 mr-1" /> Retry
+                                   </Button>
+                                 )}
+                               </div>
+                             </div>
 
                             <p className="text-xs text-muted-foreground">First seen: {new Date(item.first_seen_at).toLocaleString()} | Last seen: {new Date(item.last_seen_at).toLocaleString()}</p>
                           </div>

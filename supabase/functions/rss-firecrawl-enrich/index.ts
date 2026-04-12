@@ -1,14 +1,23 @@
 /**
- * rss-firecrawl-enrich — Selective Firecrawl enrichment for RSS items
+ * rss-firecrawl-enrich — Selective Firecrawl enrichment + AI decision layer
  * 
  * Actions:
  *   enrich-items: Accept array of rss_item_ids (max 10), scrape each qualifying item
+ *   ai-decide:    Run Stage One AI decision only (no Firecrawl), for manual triggers
  * 
- * Auth: JWT admin or x-cron-secret (same as rss-ingest)
+ * Auth: JWT admin or x-cron-secret
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { scrapePage } from '../_shared/firecrawl/client.ts';
+import {
+  computeBand,
+  runStageOne,
+  runStageTwo,
+  hasSubstantiveContent,
+  type StageOneOutput,
+  type StageTwoOutput,
+} from '../_shared/rss/ai-decision.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -19,7 +28,7 @@ const MAX_ITEMS_PER_CALL = 10;
 const FRESHNESS_HOURS = 24;
 const MIN_MARKDOWN_LENGTH = 50;
 
-// ── Decision helper ──
+// ── Decision helper (deterministic baseline) ──
 
 interface EnrichDecision {
   should: boolean;
@@ -80,30 +89,44 @@ Deno.serve(async (req) => {
       return jsonRes({ error: 'Missing action parameter' }, 400);
     }
 
-    // Auth check — same pattern as rss-ingest
     const authOk = await checkAuth(req, supabaseUrl, serviceRoleKey, cronSecret);
     if (!authOk) {
       return jsonRes({ error: 'Unauthorized' }, 401);
     }
 
-    if (action !== 'enrich-items') {
-      return jsonRes({ error: `Unknown action: ${action}` }, 400);
-    }
-
-    const itemIds = body.item_ids as string[];
-    const force = body.force === true;
-
-    if (!Array.isArray(itemIds) || itemIds.length === 0) {
-      return jsonRes({ error: 'item_ids array required' }, 400);
-    }
-    if (itemIds.length > MAX_ITEMS_PER_CALL) {
-      return jsonRes({ error: `Max ${MAX_ITEMS_PER_CALL} items per call` }, 400);
-    }
-
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
-    const results = await enrichItems(adminClient, itemIds, force);
 
-    return jsonRes({ success: true, results });
+    if (action === 'enrich-items') {
+      const itemIds = body.item_ids as string[];
+      const force = body.force === true;
+
+      if (!Array.isArray(itemIds) || itemIds.length === 0) {
+        return jsonRes({ error: 'item_ids array required' }, 400);
+      }
+      if (itemIds.length > MAX_ITEMS_PER_CALL) {
+        return jsonRes({ error: `Max ${MAX_ITEMS_PER_CALL} items per call` }, 400);
+      }
+
+      const results = await enrichItems(adminClient, itemIds, force);
+      return jsonRes({ success: true, results });
+    }
+
+    if (action === 'ai-decide') {
+      const itemIds = body.item_ids as string[];
+      const force = body.force === true;
+
+      if (!Array.isArray(itemIds) || itemIds.length === 0) {
+        return jsonRes({ error: 'item_ids array required' }, 400);
+      }
+      if (itemIds.length > MAX_ITEMS_PER_CALL) {
+        return jsonRes({ error: `Max ${MAX_ITEMS_PER_CALL} items per call` }, 400);
+      }
+
+      const results = await aiDecideOnly(adminClient, itemIds, force);
+      return jsonRes({ success: true, results });
+    }
+
+    return jsonRes({ error: `Unknown action: ${action}` }, 400);
   } catch (e) {
     console.error('rss-firecrawl-enrich error:', e);
     return jsonRes({ error: e instanceof Error ? e.message : 'Internal error' }, 500);
@@ -118,11 +141,9 @@ async function checkAuth(
   serviceRoleKey: string,
   cronSecret: string
 ): Promise<boolean> {
-  // Cron secret
   const headerSecret = req.headers.get('x-cron-secret');
   if (headerSecret && cronSecret && headerSecret === cronSecret) return true;
 
-  // JWT admin check
   const authHeader = req.headers.get('Authorization');
   if (!authHeader) return false;
 
@@ -141,12 +162,106 @@ async function checkAuth(
   return !!roleData;
 }
 
+// ── AI Decide Only (Stage One) ──
+
+interface AiDecideResult {
+  itemId: string;
+  status: string;
+  band?: string;
+  decision?: StageOneOutput;
+  error?: string;
+}
+
+async function aiDecideOnly(
+  client: ReturnType<typeof createClient>,
+  itemIds: string[],
+  force: boolean
+): Promise<AiDecideResult[]> {
+  const results: AiDecideResult[] = [];
+
+  const { data: items, error } = await client
+    .from('rss_items')
+    .select('*')
+    .in('id', itemIds);
+
+  if (error || !items) {
+    return itemIds.map(id => ({ itemId: id, status: 'failed', error: error?.message || 'Items not found' }));
+  }
+
+  const itemMap = new Map(items.map((i: any) => [i.id, i]));
+
+  for (const itemId of itemIds) {
+    const item = itemMap.get(itemId);
+    if (!item) {
+      results.push({ itemId, status: 'failed', error: 'Item not found' });
+      continue;
+    }
+
+    try {
+      const bandResult = computeBand(item, force);
+
+      if (bandResult.band !== 'band_2') {
+        // Deterministic band — just record it
+        await client.from('rss_items').update({
+          ai_decision_status: 'skipped',
+          ai_decision_band: bandResult.band,
+        }).eq('id', itemId);
+        results.push({ itemId, status: 'skipped', band: bandResult.band });
+        continue;
+      }
+
+      // Band 2: call Mistral Stage One
+      await client.from('rss_items').update({
+        ai_decision_status: 'pending',
+        ai_decision_band: 'band_2',
+        ai_error: null,
+      }).eq('id', itemId);
+
+      const aiResult = await runStageOne(item);
+      const now = new Date().toISOString();
+
+      if (aiResult.success && aiResult.data) {
+        await client.from('rss_items').update({
+          ai_decision_status: 'stage_one_done',
+          ai_stage_one_json: aiResult.data as any,
+          ai_stage_one_confidence: aiResult.data.confidence,
+          ai_stage_one_reason: aiResult.data.reason_text,
+          ai_stage_one_decided_at: now,
+          ai_firecrawl_decision: aiResult.data.crawl_target,
+          ai_queue_priority: aiResult.data.queue_priority,
+          ai_model_used: aiResult.model,
+          ai_error: null,
+        }).eq('id', itemId);
+        results.push({ itemId, status: 'stage_one_done', band: 'band_2', decision: aiResult.data });
+      } else {
+        await client.from('rss_items').update({
+          ai_decision_status: 'failed',
+          ai_error: aiResult.error?.substring(0, 1000),
+          ai_model_used: aiResult.model,
+        }).eq('id', itemId);
+        results.push({ itemId, status: 'failed', band: 'band_2', error: aiResult.error });
+      }
+    } catch (e) {
+      const errMsg = e instanceof Error ? e.message : String(e);
+      await client.from('rss_items').update({
+        ai_decision_status: 'failed',
+        ai_error: errMsg.substring(0, 1000),
+      }).eq('id', itemId);
+      results.push({ itemId, status: 'failed', error: errMsg });
+    }
+  }
+
+  return results;
+}
+
 // ── Core enrichment ──
 
 interface EnrichResult {
   itemId: string;
   status: string;
   reason: string;
+  aiStageOne?: string;
+  aiStageTwo?: string;
   error?: string;
 }
 
@@ -157,7 +272,6 @@ async function enrichItems(
 ): Promise<EnrichResult[]> {
   const results: EnrichResult[] = [];
 
-  // Load all items
   const { data: items, error } = await client
     .from('rss_items')
     .select('*')
@@ -201,36 +315,119 @@ async function enrichSingleItem(
 ): Promise<EnrichResult> {
   const itemId = item.id as string;
 
-  // Decision check
+  // ── Band computation ──
+  const bandResult = computeBand(item, force);
+  let aiStageOneStatus = '';
+
+  // Band 1 low: skip enrichment entirely
+  if (bandResult.band === 'band_1_low' && !force) {
+    await client.from('rss_items').update({
+      firecrawl_status: 'skipped',
+      firecrawl_reason: 'band_1_low',
+      ai_decision_status: 'skipped',
+      ai_decision_band: 'band_1_low',
+    }).eq('id', itemId);
+    return { itemId, status: 'skipped', reason: 'band_1_low' };
+  }
+
+  // Band 2: run AI Stage One if not already done
+  if (bandResult.band === 'band_2') {
+    const existingAiStatus = item.ai_decision_status as string;
+    if (existingAiStatus !== 'stage_one_done' && existingAiStatus !== 'stage_two_done') {
+      console.log(`[rss-firecrawl-enrich] Running AI Stage One for item=${itemId}`);
+      const aiResult = await runStageOne(item);
+      const now = new Date().toISOString();
+
+      if (aiResult.success && aiResult.data) {
+        await client.from('rss_items').update({
+          ai_decision_status: 'stage_one_done',
+          ai_decision_band: 'band_2',
+          ai_stage_one_json: aiResult.data as any,
+          ai_stage_one_confidence: aiResult.data.confidence,
+          ai_stage_one_reason: aiResult.data.reason_text,
+          ai_stage_one_decided_at: now,
+          ai_firecrawl_decision: aiResult.data.crawl_target,
+          ai_queue_priority: aiResult.data.queue_priority,
+          ai_model_used: aiResult.model,
+          ai_error: null,
+        }).eq('id', itemId);
+        aiStageOneStatus = 'done';
+
+        // If AI says skip enrichment and it's not forced, skip
+        if (!aiResult.data.should_use_firecrawl && !force) {
+          await client.from('rss_items').update({
+            firecrawl_status: 'skipped',
+            firecrawl_reason: `ai_skip:${aiResult.data.reason_code}`,
+          }).eq('id', itemId);
+          return { itemId, status: 'skipped', reason: `ai_skip:${aiResult.data.reason_code}`, aiStageOne: 'done' };
+        }
+      } else {
+        // AI failed — fall back to deterministic rules
+        await client.from('rss_items').update({
+          ai_decision_status: 'failed',
+          ai_decision_band: 'band_2',
+          ai_error: aiResult.error?.substring(0, 1000),
+          ai_model_used: aiResult.model,
+        }).eq('id', itemId);
+        aiStageOneStatus = 'failed';
+        console.warn(`[rss-firecrawl-enrich] AI Stage One failed for item=${itemId}, falling back to deterministic rules`);
+      }
+    } else {
+      aiStageOneStatus = 'pre-existing';
+      // Check pre-existing AI decision
+      if (existingAiStatus === 'stage_one_done') {
+        const existingJson = item.ai_stage_one_json as StageOneOutput | null;
+        if (existingJson && !existingJson.should_use_firecrawl && !force) {
+          return { itemId, status: 'skipped', reason: 'ai_pre_existing_skip', aiStageOne: 'pre-existing' };
+        }
+      }
+    }
+  } else {
+    // Band 1 high: record band, proceed with deterministic rules
+    await client.from('rss_items').update({
+      ai_decision_status: 'skipped',
+      ai_decision_band: bandResult.band,
+    }).eq('id', itemId);
+  }
+
+  // ── Deterministic enrichment decision (baseline) ──
   const decision = shouldEnrich(item, force);
   if (!decision.should) {
     await client.from('rss_items').update({
       firecrawl_status: 'skipped',
       firecrawl_reason: decision.reason,
     }).eq('id', itemId);
-    return { itemId, status: 'skipped', reason: decision.reason };
+    return { itemId, status: 'skipped', reason: decision.reason, aiStageOne: aiStageOneStatus || undefined };
   }
 
-  // Freshness check: skip if already success and recent (unless forced)
+  // Freshness check
   if (!force && item.firecrawl_status === 'success' && item.firecrawl_last_run_at) {
     const lastRun = new Date(item.firecrawl_last_run_at as string);
     const hoursAgo = (Date.now() - lastRun.getTime()) / (1000 * 60 * 60);
     if (hoursAgo < FRESHNESS_HOURS) {
-      return { itemId, status: 'skipped', reason: 'already_fresh' };
+      return { itemId, status: 'skipped', reason: 'already_fresh', aiStageOne: aiStageOneStatus || undefined };
     }
   }
 
-  // Mark as running
+  // ── Firecrawl execution ──
   await client.from('rss_items').update({
     firecrawl_status: 'running',
     firecrawl_reason: decision.reason,
     firecrawl_error: null,
   }).eq('id', itemId);
 
-  // Determine URL to scrape: prefer PDF URL, fall back to item link
-  const pdfUrl = item.first_pdf_url as string | null;
-  const itemLink = item.item_link as string | null;
-  const scrapeUrl = pdfUrl || itemLink;
+  // Determine URL — AI may override crawl target
+  const aiDecision = item.ai_stage_one_json as StageOneOutput | null;
+  let scrapeUrl: string | null = null;
+
+  if (aiDecision?.crawl_target === 'pdf' && item.first_pdf_url) {
+    scrapeUrl = item.first_pdf_url as string;
+  } else if (aiDecision?.crawl_target === 'page' && item.item_link) {
+    scrapeUrl = item.item_link as string;
+  } else {
+    // Default: prefer PDF, fall back to link
+    scrapeUrl = (item.first_pdf_url as string | null) || (item.item_link as string | null);
+  }
 
   if (!scrapeUrl) {
     await client.from('rss_items').update({
@@ -238,7 +435,7 @@ async function enrichSingleItem(
       firecrawl_error: 'No URL available to scrape',
       firecrawl_last_run_at: new Date().toISOString(),
     }).eq('id', itemId);
-    return { itemId, status: 'failed', reason: 'no_url', error: 'No URL available' };
+    return { itemId, status: 'failed', reason: 'no_url', error: 'No URL available', aiStageOne: aiStageOneStatus || undefined };
   }
 
   const isPdf = isPdfUrl(scrapeUrl);
@@ -246,10 +443,9 @@ async function enrichSingleItem(
 
   console.log(`[rss-firecrawl-enrich] Scraping item=${itemId} url=${scrapeUrl} pdf=${isPdf} reason=${decision.reason}`);
 
-  // Call Firecrawl
   const scrapeResult = await scrapePage(scrapeUrl, {
     formats: ['markdown', 'links'],
-    onlyMainContent: !isPdf, // for PDFs, get full content
+    onlyMainContent: !isPdf,
   });
 
   const now = new Date().toISOString();
@@ -263,7 +459,7 @@ async function enrichSingleItem(
       firecrawl_error: scrapeResult.error || 'Scrape failed',
       firecrawl_last_run_at: now,
     }).eq('id', itemId);
-    return { itemId, status: 'failed', reason: decision.reason, error: scrapeResult.error };
+    return { itemId, status: 'failed', reason: decision.reason, error: scrapeResult.error, aiStageOne: aiStageOneStatus || undefined };
   }
 
   const markdown = scrapeResult.markdown || '';
@@ -274,7 +470,7 @@ async function enrichSingleItem(
     firecrawl_status: finalStatus,
     firecrawl_reason: decision.reason,
     firecrawl_source_url: scrapeUrl,
-    firecrawl_content_markdown: markdown.substring(0, 100000), // cap at 100k chars
+    firecrawl_content_markdown: markdown.substring(0, 100000),
     firecrawl_content_meta: scrapeResult.metadata || null,
     firecrawl_pdf_mode: pdfMode,
     firecrawl_error: isPartial ? 'Content too short (partial)' : null,
@@ -282,7 +478,47 @@ async function enrichSingleItem(
   }).eq('id', itemId);
 
   console.log(`[rss-firecrawl-enrich] Item ${itemId}: ${finalStatus}, ${markdown.length} chars`);
-  return { itemId, status: finalStatus, reason: decision.reason };
+
+  // ── AI Stage Two: only if substantive content ──
+  let aiStageTwoStatus = '';
+  if (finalStatus === 'success' && hasSubstantiveContent(markdown) && bandResult.band === 'band_2') {
+    console.log(`[rss-firecrawl-enrich] Running AI Stage Two for item=${itemId}`);
+    // Re-fetch item to get updated firecrawl fields
+    const { data: updatedItem } = await client.from('rss_items').select('*').eq('id', itemId).single();
+    if (updatedItem) {
+      const stageTwoResult = await runStageTwo(updatedItem, markdown);
+      const stageTwoNow = new Date().toISOString();
+
+      if (stageTwoResult.success && stageTwoResult.data) {
+        await client.from('rss_items').update({
+          ai_decision_status: 'stage_two_done',
+          ai_stage_two_json: stageTwoResult.data as any,
+          ai_stage_two_confidence: stageTwoResult.data.confidence,
+          ai_stage_two_reason: stageTwoResult.data.reason_text,
+          ai_stage_two_decided_at: stageTwoNow,
+          ai_queue_priority: stageTwoResult.data.queue_priority, // Stage Two overrides
+          ai_model_used: stageTwoResult.model,
+          ai_error: null,
+        }).eq('id', itemId);
+        aiStageTwoStatus = 'done';
+      } else {
+        // Stage Two failure is non-blocking
+        await client.from('rss_items').update({
+          ai_error: `Stage2: ${stageTwoResult.error?.substring(0, 500)}`,
+        }).eq('id', itemId);
+        aiStageTwoStatus = 'failed';
+        console.warn(`[rss-firecrawl-enrich] AI Stage Two failed for item=${itemId}: ${stageTwoResult.error}`);
+      }
+    }
+  }
+
+  return {
+    itemId,
+    status: finalStatus,
+    reason: decision.reason,
+    aiStageOne: aiStageOneStatus || undefined,
+    aiStageTwo: aiStageTwoStatus || undefined,
+  };
 }
 
 // ── Helpers ──

@@ -1,100 +1,75 @@
 
 
-# Fix: Internal Links Always Skipped — "No valid internal link targets found"
+# Plan: Fix RSS System — Minimum Changes to Make It Operational
 
-## Root Cause
+## Root Blocker
+The `pg_cron` job (jobid 8) has three fatal problems:
+1. It calls `fetch-rss-jobs` — a function that **does not exist**. The real function is `rss-ingest`.
+2. It sends `'{}'::jsonb` as the body — missing the required `action: 'run-due-sources'` field.
+3. It uses the anon key Bearer token for auth, but `rss-ingest` requires either admin JWT or `x-cron-secret` header. The anon key satisfies neither.
 
-Two compounding issues cause every internal link fix to be skipped:
+The edge function code, UI code, database schema, dedup logic, queue routing, and all shared utilities are **correct and complete**. No code changes are needed in any file.
 
-1. **The AI has no knowledge of real pages.** The edge function prompt tells the AI to return paths like `/path`, but provides zero actual slugs from the database. The AI hallucates URLs — either full URLs (`https://truejobs.co.in/blog/best-books-for-upsc`) or invented relative paths that may not exist.
+## What Will Be Changed
 
-2. **Full URLs are rejected by the validator.** `isValidInternalPagePath` blocks anything starting with `https:`. If the AI returns `https://truejobs.co.in/blog/some-slug`, `extractHrefsFromHtml` extracts it, then `isValidInternalPagePath` rejects it → 0 valid links → skip.
+### 1. Fix the cron job (database-only change)
+Delete the broken cron job (jobid 8) and create a correct replacement:
+- URL: `rss-ingest` (not `fetch-rss-jobs`)
+- Body: `{"action": "run-due-sources"}`
+- Auth: `x-cron-secret` header with the value of `RSS_CRON_SECRET` (already configured as a secret)
+- Schedule: keep `0 */6 * * *` (every 6 hours)
 
-Both issues must be fixed for internal links to ever succeed.
+```sql
+SELECT cron.unschedule(8);
 
-## Plan
-
-### Change 1: Supply real blog slugs to the edge function
-
-**Files:** `src/hooks/useBulkAutoFix.ts` + `supabase/functions/analyze-blog-compliance-fixes/index.ts`
-
-Before calling the edge function in `processOneArticle` (~line 885), fetch a pool of existing published blog slugs (excluding the current article) and pass them in the request body as `availableSlugs`.
-
-In `useBulkAutoFix.ts` — fetch the slug pool once at the start of `executeAutoFix` (not per-article) and pass it through:
-
-```typescript
-// At start of executeAutoFix, fetch slug pool once
-const { data: slugRows } = await supabase
-  .from('blog_posts')
-  .select('slug')
-  .eq('is_published', true)
-  .order('id', { ascending: true })
-  .limit(500);
-const availableSlugs = (slugRows || []).map(r => r.slug).filter(Boolean);
+SELECT cron.schedule(
+  'rss-ingest-due-sources',
+  '0 */6 * * *',
+  $$
+  SELECT net.http_post(
+    url := 'https://riktrtfgpnrqiwatppcq.supabase.co/functions/v1/rss-ingest',
+    headers := '{"Content-Type": "application/json", "x-cron-secret": "RSS_CRON_SECRET_VALUE"}'::jsonb,
+    body := '{"action": "run-due-sources"}'::jsonb
+  ) AS request_id;
+  $$
+);
 ```
 
-Pass `availableSlugs` into each `processOneArticle` call and include it in the edge function body.
+Since we can't embed the secret value directly in the SQL (it would be visible in cron.job), we'll use the same pattern as the seo-cache-rebuild job — reading from an `app_settings` table or embedding it as a Vault reference. However, the simplest safe approach for this project: we'll read the secret value using `fetch_secrets`, then create the cron job with it inline (this is the pattern already used by other cron jobs in this project that embed the anon key directly).
 
-In the edge function prompt (line 219), replace the generic instruction with:
+### 2. Live verification test
+After fixing the cron job, perform a live end-to-end test:
 
-```
-- internal_links: fixType=internal_links, applyMode=append_content.
-  Pick 3-6 links from the AVAILABLE SLUGS list below. Return as:
-  <h3>Related Resources</h3><ul><li><a href="/blog/{slug}">anchor text</a></li></ul>
-  ONLY use slugs from the provided list. Never invent URLs.
-```
+**Step A:** Add a test RSS source by calling `rss-ingest` with `action: 'import-sources'` using a known working government RSS feed (e.g., `https://www.upsc.gov.in/rss.xml` or similar Indian government feed).
 
-Add the slug list to the prompt context:
+**Step B:** Call `rss-ingest` with `action: 'test-source'` to verify parsing works.
 
-```
-Available blog slugs for internal linking (pick relevant ones):
-${availableSlugs.filter(s => s !== slug).slice(0, 200).map(s => `/blog/${s}`).join('\n')}
-```
+**Step C:** Call `rss-ingest` with `action: 'run-source'` to do a full ingestion run.
 
-### Change 2: Normalize full URLs to relative paths before validation
+**Step D:** Verify records exist in `rss_sources`, `rss_fetch_runs`, `rss_items`, and `monitoring_review_queue`.
 
-**File:** `src/hooks/useBulkAutoFix.ts`, lines 700-710
+**Step E:** Run `run-source` again on the same source to verify dedup (no new duplicates, `last_seen_at` updated).
 
-Before calling `isValidInternalPagePath`, strip the TrueJobs domain if the AI returned a full URL despite instructions:
+**Step F:** Call `rss-ingest` with `action: 'run-due-sources'` using the cron secret header to verify the scheduled path works.
 
-```typescript
-for (let href of hrefs) {
-  // Normalize full URLs to relative paths
-  try {
-    const parsed = new URL(href, 'https://truejobs.co.in');
-    if (parsed.hostname === 'truejobs.co.in' || parsed.hostname.endsWith('.truejobs.co.in')) {
-      href = parsed.pathname;
-    }
-  } catch {}
+### 3. No code changes
+- No edge function code changes needed
+- No UI component changes needed
+- No database schema changes needed
+- No new tables, columns, or functions needed
 
-  if (!isValidInternalPagePath(href)) continue;
-  if (linkAlreadyInContent(modifiedContent, href)) continue;
-  if (validLinks.length >= MAX_AUTO_LINKS) break;
-  // ... rest unchanged
-}
-```
+## Files Changed
+None. This is a database/cron-only fix.
 
-### Change 3: Add debug logging for internal link validation
+## Database Changes
+- Delete cron job 8 (`fetch-rss-jobs-every-6h`)
+- Create replacement cron job `rss-ingest-due-sources` with correct URL, body, and auth header
 
-**File:** `src/hooks/useBulkAutoFix.ts`, before the `validLinks.length === 0` check at line 712
-
-```typescript
-if (validLinks.length === 0) {
-  console.warn(`[BULK_AUTO_FIX] Internal links: ${hrefs.length} hrefs extracted, 0 passed validation. Raw hrefs:`, hrefs);
-  fixesSkipped.push({ ... });
-  continue;
-}
-```
-
-## Summary of changes
-
-| # | Change | File |
-|---|--------|------|
-| 1 | Fetch slug pool once in `executeAutoFix` | `src/hooks/useBulkAutoFix.ts` |
-| 2 | Pass `availableSlugs` to edge function | `src/hooks/useBulkAutoFix.ts` |
-| 3 | Add slug list to AI prompt | `supabase/functions/analyze-blog-compliance-fixes/index.ts` |
-| 4 | Normalize full URLs → relative paths | `src/hooks/useBulkAutoFix.ts` (lines 700-710) |
-| 5 | Debug log on zero valid links | `src/hooks/useBulkAutoFix.ts` (line 712) |
-
-No analyzer changes. No scoring changes. No threshold changes.
+## Remaining Known Limitations (Intentionally Untouched)
+- No PDF content extraction (URLs only)
+- No linked page crawling
+- No publishing pipeline from RSS items to blog posts
+- Custom regex XML parser (no external library)
+- No retry logic for failed sources beyond next cron cycle
+- AI processing pipeline (`rss-ai-process`) exists but is separate and not part of this fix
 

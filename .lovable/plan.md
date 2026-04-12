@@ -1,74 +1,55 @@
 
 
-# Revised Plan: Strengthen Fix All by AI Pipeline
+# Fix: Persist H1 on Early-Clean Return Path
 
-Two corrections applied to the previously approved plan. Everything else unchanged.
+## Problem
+After the deterministic H1 insertion at line 820-832, the compliance check at line 839 may find zero issues (the H1 was the only problem). The early-return at lines 840-846 stamps `ai_fixed_at` but never writes `post.content` back to the DB. The H1 fix is lost.
 
----
+## Fix
+Expand the early-clean return's DB update (line 841) to include the modified content, word count, and reading time when `h1WasInserted` is true.
 
-## Correction 1: `h1WasInserted` scope fix
+**File**: `src/hooks/useBulkAutoFix.ts`, lines 839-847
 
-Declare the flag **before** the conditional block so it is accessible later.
-
-**File**: `src/hooks/useBulkAutoFix.ts` — after faq_count sync (~line 565), before compliance check (~line 567)
-
+Replace:
 ```typescript
-// Pre-fix: deterministic H1 insertion (in-memory only, persisted via main update)
-let h1WasInserted = false;
-if (post.content && !/<h1[^>]*>/i.test(post.content)) {
-  const escapedTitle = post.title
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-  const h1Tag = `<h1>${escapedTitle}</h1>`;
-  post.content = insertBeforeFirstHeadingRaw(post.content, h1Tag);
-  h1WasInserted = true;
-  console.log(`[BULK_AUTO_FIX] Deterministic H1 fix for "${post.slug}"`);
+if (failedChecks.length === 0) {
+  await supabase.from('blog_posts').update({ ai_fixed_at: new Date().toISOString() }).eq('id', post.id);
+  await stampBulkFixStatus(post.id, 'fixed', 0);
+  return {
+    postId: post.id, slug: post.slug, title: post.title,
+    status: 'fixed', issuesFound: 0, fixesApplied: [], fixesSkipped: [],
+  };
 }
 ```
 
-Then after the fix loop, before the main DB write:
-
+With:
 ```typescript
-if (h1WasInserted && !contentChanged) {
-  modifiedContent = post.content;
-  contentChanged = true;
+if (failedChecks.length === 0) {
+  const cleanUpdate: Record<string, any> = { ai_fixed_at: new Date().toISOString() };
+  if (h1WasInserted) {
+    cleanUpdate.content = post.content;
+    const wf = wordCountFields(post.content);
+    cleanUpdate.word_count = wf.word_count;
+    cleanUpdate.reading_time = wf.reading_time;
+  }
+  await supabase.from('blog_posts').update(cleanUpdate).eq('id', post.id);
+  await stampBulkFixStatus(post.id, 'fixed', 0);
+  return {
+    postId: post.id, slug: post.slug, title: post.title,
+    status: 'fixed', issuesFound: 0,
+    fixesApplied: h1WasInserted
+      ? [{ field: 'content (H1)', fixType: 'h1', beforeValue: '(no H1)', afterValue: 'Deterministic H1 inserted' }]
+      : [],
+    fixesSkipped: [],
+  };
 }
 ```
 
----
+## What this does
+- When `h1WasInserted` is true and the article is immediately clean, the updated content (with H1) is persisted along with recalculated word count and reading time.
+- When `h1WasInserted` is false, behavior is identical to current code.
+- The fix is also reported in `fixesApplied` so the result popup accurately reflects what happened.
 
-## Correction 2: `failed` article re-eligibility — already handled
-
-The current code at line 181-183 already makes `failed` articles re-eligible in smart scope:
-
-```typescript
-if (post.last_bulk_fix_status === 'failed') {
-  return { eligible: true, reason: 'failed' };
-}
-```
-
-And `isEligibleForFailedPartialScope` at line 197 also includes them. **No code change needed for `failed` articles.** The only gap was `no_action_taken` with remaining issues, which is addressed by adding (at line 190-191):
-
-```typescript
-if (post.last_bulk_fix_status === 'no_action_taken' && (post.remaining_auto_fixable_count ?? 0) > 0) {
-  return { eligible: true, reason: 'partial' };
-}
-```
-
----
-
-## Full change list (carried forward, unchanged except corrections above)
-
-| # | Change | File |
-|---|--------|------|
-| 1 | Deterministic H1 fix — in-memory, HTML-escaped, `h1WasInserted` declared at outer scope | `src/hooks/useBulkAutoFix.ts` |
-| 2 | Separate H1 handler from intro handler (line ~794) | `src/hooks/useBulkAutoFix.ts` |
-| 3 | FAQ fallback brace scoping bug fix (lines ~721-736) | `src/hooks/useBulkAutoFix.ts` |
-| 4 | Functional second pass — extract fix loop, apply from second pass | `src/hooks/useBulkAutoFix.ts` |
-| 5 | `no_action_taken` re-eligibility in smart scope (line ~190) | `src/hooks/useBulkAutoFix.ts` |
-| 6 | `h1-present` normalization rescue + applyMode guard | `supabase/functions/analyze-blog-compliance-fixes/index.ts` |
-
-No analyzer changes. No threshold/weight/gate/scoring changes.
+## Everything else unchanged
+All other plan items (H1/intro handler separation, FAQ brace fix, functional second pass, `no_action_taken` re-eligibility, edge-function H1 rescue) remain exactly as previously approved.
 

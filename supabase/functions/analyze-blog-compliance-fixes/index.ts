@@ -142,7 +142,7 @@ Deno.serve(async (req) => {
     const authResult = await verifyAdmin(req);
     if (authResult instanceof Response) return authResult;
 
-    const { title, content, issues, slug, existingMeta } = await req.json();
+    const { title, content, issues, slug, existingMeta, aiModel } = await req.json();
     if (!title || !issues || !Array.isArray(issues)) {
       return new Response(JSON.stringify({ error: 'title and issues[] required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }

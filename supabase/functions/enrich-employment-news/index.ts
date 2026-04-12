@@ -541,7 +541,7 @@ function resolveProviderInfo(model: string): { provider: string; apiModel: strin
     case 'nemotron-120b': return { provider: 'lovable-gateway', apiModel: 'nvidia/llama-3.3-nemotron-super-49b-v1' };
     case 'sarvam-30b': return { provider: 'sarvam', apiModel: 'sarvam-m' };
     case 'sarvam-105b': return { provider: 'sarvam', apiModel: 'sarvam-m' };
-    default: return { provider: model, apiModel: model };
+    default: throw new Error(`Unsupported AI model: "${model}". No fallback allowed.`);
   }
 }
 
@@ -678,7 +678,7 @@ async function callAI(model: string, prompt: string, maxTokensParam?: number): P
       }
     }
     default:
-      throw new Error(`Unsupported AI model: "${model}". No silent fallback allowed.`);
+      throw new Error(`Unsupported AI model: "${model}". No fallback allowed.`);
   }
 
   // For non-Gemini models, strip markdown fences and parse

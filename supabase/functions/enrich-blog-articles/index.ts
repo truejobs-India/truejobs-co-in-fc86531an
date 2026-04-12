@@ -18,6 +18,14 @@ serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const batchSize = body.batch_size || 5;
     const dryRun = body.dry_run || false;
+    const aiModel = body.aiModel;
+
+    if (!aiModel) {
+      return new Response(JSON.stringify({ error: 'aiModel parameter is required. No fallback allowed.' }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const dryRun = body.dry_run || false;
 
     const { data: articles, error: fetchErr } = await supabase
       .from("blog_posts")
@@ -65,8 +73,103 @@ CATEGORY: ${article.category || "Career Advice"}
 CURRENT CONTENT:
 ${article.content}`;
 
-        const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
-        const result = await callVertexGemini('gemini-2.5-flash', prompt, 90_000);
+        // AI dispatcher — strict routing, no Vertex fallback
+        async function callEnrichAI(p: string): Promise<string> {
+          switch (aiModel) {
+            case 'sarvam-30b': case 'sarvam-105b': {
+              const { callSarvamChat } = await import('../_shared/sarvam.ts');
+              return callSarvamChat(p, { model: 'sarvam-m', maxTokens: 8192, temperature: 0.5 });
+            }
+            case 'azure-gpt5-mini': {
+              const { callAzureGPT5Mini } = await import('../_shared/azure-openai.ts');
+              return callAzureGPT5Mini(p, { maxTokens: 8192, temperature: 0.5 });
+            }
+            case 'azure-gpt41-mini': {
+              const { callAzureGPT41Mini } = await import('../_shared/azure-openai.ts');
+              return callAzureGPT41Mini(p, { maxTokens: 8192, temperature: 0.5 });
+            }
+            case 'azure-gpt4o-mini': {
+              const { callAzureOpenAI } = await import('../_shared/azure-openai.ts');
+              return callAzureOpenAI(p, { maxTokens: 8192, temperature: 0.5 });
+            }
+            case 'azure-deepseek-v3': {
+              const { callAzureDeepSeek } = await import('../_shared/azure-deepseek.ts');
+              return callAzureDeepSeek(p, { maxTokens: 8192, temperature: 0.5 });
+            }
+            case 'azure-deepseek-r1': {
+              const { callAzureDeepSeek } = await import('../_shared/azure-deepseek.ts');
+              return callAzureDeepSeek(p, { model: 'DeepSeek-R1', maxTokens: 8192, temperature: 0.5 });
+            }
+            case 'vertex-flash': case 'gemini-flash': case 'gemini': {
+              const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+              return callVertexGemini('gemini-2.5-flash', p, 90_000);
+            }
+            case 'vertex-pro': case 'gemini-pro': {
+              const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+              return callVertexGemini('gemini-2.5-pro', p, 120_000);
+            }
+            case 'vertex-3.1-pro': {
+              const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+              return callVertexGemini('gemini-3.1-pro-preview', p, 120_000);
+            }
+            case 'vertex-3-flash': {
+              const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+              return callVertexGemini('gemini-3-flash-preview', p, 90_000);
+            }
+            case 'vertex-3.1-flash-lite': {
+              const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+              return callVertexGemini('gemini-3.1-flash-lite-preview', p, 60_000);
+            }
+            case 'lovable-gemini': {
+              const apiKey = Deno.env.get('LOVABLE_API_KEY');
+              if (!apiKey) throw new Error('LOVABLE_API_KEY not configured');
+              const resp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+                method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ model: 'google/gemini-2.5-flash', messages: [{ role: 'user', content: p }], max_tokens: 8192, temperature: 0.5 }),
+              });
+              if (!resp.ok) throw new Error(`Lovable AI error ${resp.status}`);
+              return (await resp.json())?.choices?.[0]?.message?.content || '';
+            }
+            case 'gpt5': case 'gpt5-mini': case 'openai': {
+              const apiKey = Deno.env.get('LOVABLE_API_KEY');
+              if (!apiKey) throw new Error('LOVABLE_API_KEY not configured');
+              const gwModel = aiModel === 'gpt5-mini' ? 'openai/gpt-5-mini' : 'openai/gpt-5';
+              const resp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+                method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ model: gwModel, messages: [{ role: 'user', content: p }], max_tokens: 8192, temperature: 0.5 }),
+              });
+              if (!resp.ok) throw new Error(`Lovable AI error ${resp.status}`);
+              return (await resp.json())?.choices?.[0]?.message?.content || '';
+            }
+            case 'groq': {
+              const apiKey = Deno.env.get('GROQ_API_KEY');
+              if (!apiKey) throw new Error('GROQ_API_KEY not configured');
+              const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+                method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: p }], max_tokens: 8192, temperature: 0.5 }),
+              });
+              if (!resp.ok) throw new Error(`Groq API error ${resp.status}`);
+              return (await resp.json())?.choices?.[0]?.message?.content || '';
+            }
+            case 'claude-sonnet': case 'claude': {
+              const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
+              if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured');
+              const resp = await fetch('https://api.anthropic.com/v1/messages', {
+                method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+                body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 8192, messages: [{ role: 'user', content: p }] }),
+              });
+              if (!resp.ok) throw new Error(`Anthropic API error ${resp.status}`);
+              return (await resp.json())?.content?.[0]?.text || '';
+            }
+            case 'nova-pro': case 'nova-premier': case 'nemotron-120b': case 'mistral': {
+              const { callBedrockNova } = await import('../_shared/bedrock-nova.ts');
+              return callBedrockNova(aiModel === 'mistral' ? 'mistral' : aiModel, p, { maxTokens: 8192, temperature: 0.5 });
+            }
+            default:
+              throw new Error(`Unsupported AI model: "${aiModel}". No fallback allowed.`);
+          }
+        }
+        const result = await callEnrichAI(prompt);
 
         let expandedContent = result;
         let faqSchema = article.faq_schema;

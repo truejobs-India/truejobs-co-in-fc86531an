@@ -1451,7 +1451,7 @@ export function BlogPostEditor() {
               </div>
 
               {/* AI Tools */}
-              <BlogAITools
+               <BlogAITools
                 formData={formData}
                 onApplyField={(field, value) => handleFormChange({ [field]: value })}
                 editorInstance={editorInstance}
@@ -1460,6 +1460,7 @@ export function BlogPostEditor() {
                 currentMetadata={currentMetadata}
                 currentQuality={currentQuality}
                 currentSEO={currentSEO}
+                blogTextModel={blogTextModel}
               />
 
               {/* Vertex AI Tools (Flash · Pro · Imagen) */}

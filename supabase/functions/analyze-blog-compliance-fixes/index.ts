@@ -142,7 +142,7 @@ Deno.serve(async (req) => {
     const authResult = await verifyAdmin(req);
     if (authResult instanceof Response) return authResult;
 
-    const { title, content, issues, slug, existingMeta } = await req.json();
+    const { title, content, issues, slug, existingMeta, aiModel } = await req.json();
     if (!title || !issues || !Array.isArray(issues)) {
       return new Response(JSON.stringify({ error: 'title and issues[] required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
@@ -205,19 +205,68 @@ RULES:
 Return ONLY a JSON array: [{...}]
 No markdown code blocks.`;
 
-    const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+    // ── AI model dispatcher — respects user's model selection ──
+    const selectedModel = aiModel || 'gemini-2.5-pro';
+    console.log(`[COMPLIANCE] Using model: ${selectedModel} for "${title}"`);
+
     let raw: string;
     let timedOut = false;
 
+    async function callSelectedModel(p: string): Promise<string> {
+      switch (selectedModel) {
+        case 'azure-gpt5-mini': {
+          const { callAzureGPT5Mini } = await import('../_shared/azure-openai.ts');
+          return callAzureGPT5Mini(p, { maxTokens: 8192, temperature: 0.3 });
+        }
+        case 'azure-gpt41-mini': {
+          const { callAzureGPT41Mini } = await import('../_shared/azure-openai.ts');
+          return callAzureGPT41Mini(p, { maxTokens: 8192, temperature: 0.3 });
+        }
+        case 'azure-gpt4o-mini': {
+          const { callAzureOpenAI } = await import('../_shared/azure-openai.ts');
+          return callAzureOpenAI(p, { maxTokens: 8192, temperature: 0.3 });
+        }
+        case 'azure-deepseek-v3': {
+          const { callAzureDeepSeek } = await import('../_shared/azure-deepseek.ts');
+          return callAzureDeepSeek(p, { maxTokens: 8192, temperature: 0.3 });
+        }
+        case 'azure-deepseek-r1': {
+          const { callAzureDeepSeek } = await import('../_shared/azure-deepseek.ts');
+          return callAzureDeepSeek(p, { model: 'DeepSeek-R1', maxTokens: 8192, temperature: 0.3 });
+        }
+        case 'vertex-3.1-pro': {
+          const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+          return callVertexGemini('gemini-3.1-pro-preview', p, 120_000, { maxOutputTokens: 8192, temperature: 0.3 });
+        }
+        case 'vertex-3-flash': {
+          const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+          return callVertexGemini('gemini-3-flash-preview', p, 90_000, { maxOutputTokens: 8192, temperature: 0.3 });
+        }
+        case 'vertex-3.1-flash-lite': {
+          const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+          return callVertexGemini('gemini-3.1-flash-lite-preview', p, 60_000, { maxOutputTokens: 8192, temperature: 0.3 });
+        }
+        case 'gemini-flash': case 'gemini': {
+          const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+          return callVertexGemini('gemini-2.5-flash', p, 90_000, { maxOutputTokens: 8192, temperature: 0.3 });
+        }
+        case 'nova-pro': case 'nova-premier': case 'nemotron-120b': {
+          const { callBedrockNova } = await import('../_shared/bedrock-nova.ts');
+          return callBedrockNova(selectedModel, p, { maxTokens: 8192, temperature: 0.3 });
+        }
+        case 'gemini-pro': default: {
+          const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
+          return callVertexGemini('gemini-2.5-pro', p, 90_000, { maxOutputTokens: 8192, temperature: 0.3 });
+        }
+      }
+    }
+
     try {
-      raw = await callVertexGemini('gemini-2.5-pro', prompt, 90_000, {
-        maxOutputTokens: 8192,
-        temperature: 0.3,
-      });
+      raw = await callSelectedModel(prompt);
     } catch (aiErr) {
       const msg = aiErr instanceof Error ? aiErr.message : String(aiErr);
-      if (msg.startsWith('VERTEX_TIMEOUT')) {
-        console.warn(`[COMPLIANCE] Vertex AI timed out for "${title}"`);
+      if (msg.startsWith('VERTEX_TIMEOUT') || /timeout/i.test(msg)) {
+        console.warn(`[COMPLIANCE] AI timed out (${selectedModel}) for "${title}"`);
         return new Response(JSON.stringify({ fixes: [], truncated: false, parseError: false, recoveryAttempted: false, timedOut: true }), {
           status: 200,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },

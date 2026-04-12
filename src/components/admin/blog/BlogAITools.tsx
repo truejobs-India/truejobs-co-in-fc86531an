@@ -59,6 +59,7 @@ interface BlogAIToolsProps {
   currentMetadata?: ArticleMetadata | null;
   currentQuality?: QualityReport | null;
   currentSEO?: SEOReport | null;
+  blogTextModel?: string;
 }
 
 interface ToolState {
@@ -176,7 +177,7 @@ function deriveComplianceStatus(tool: ToolState, compliance: PublishComplianceRe
   return 'needs-review';
 }
 
-export function BlogAITools({ formData, onApplyField, editorInstance, currentCompliance, existingFaqCount, currentMetadata, currentQuality, currentSEO }: BlogAIToolsProps) {
+export function BlogAITools({ formData, onApplyField, editorInstance, currentCompliance, existingFaqCount, currentMetadata, currentQuality, currentSEO, blogTextModel }: BlogAIToolsProps) {
   const { toast } = useToast();
   const [tools, setTools] = useState<Record<ToolKey, ToolState>>({
     seo: { isLoading: false, result: null, error: null },
@@ -389,6 +390,7 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
         title: formData.title,
         content: formData.content,
         slug: formData.slug,
+        aiModel: blogTextModel,
         issues: failedChecks.map(c => ({ key: c.key, label: c.label, detail: c.detail, recommendation: c.recommendation })),
         existingMeta: {
           meta_title: formData.meta_title || null,
@@ -434,6 +436,7 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
       }
       const data = await invokeFunction('analyze-blog-compliance-fixes', {
         title: formData.title, content: formData.content, slug: formData.slug,
+        aiModel: blogTextModel,
         issues: failedChecks.map(c => ({ key: c.key, label: c.label, detail: c.detail, recommendation: c.recommendation })),
         existingMeta: {
           meta_title: formData.meta_title || null, meta_description: formData.meta_description || null,

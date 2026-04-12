@@ -21,7 +21,7 @@ export const VALID_FIX_TYPES = new Set([
   'canonical_url', 'slug', 'meta_description', 'image_alt',
   'faq', 'intro', 'conclusion', 'trust_signal',
   'affiliate_links', 'internal_links', 'content_rewrite',
-  'h1', 'heading_structure', 'excerpt',
+  'h1', 'heading_structure', 'excerpt', 'readability',
 ]);
 
 export const VALID_APPLY_MODES = new Set([
@@ -172,7 +172,7 @@ export function shouldAutoOverwriteField(
       if (context?.title && currentVal.trim() === context.title.trim()) return true;
       return false;
     case 'meta_description':
-      if (currentVal.length > 155 || currentVal.length < 50) return true;
+      if (currentVal.length > 155 || currentVal.length < 100) return true;
       return false;
     case 'excerpt':
       if (currentVal.length < 20 || currentVal.length > 320) return true;

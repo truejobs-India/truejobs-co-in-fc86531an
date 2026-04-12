@@ -221,6 +221,40 @@ export function analyzeGoogleArticleReadiness(metadata: ArticleMetadata): Google
     recommendation: !metadata.content ? 'Add article content' : undefined,
   });
 
+  // 18. Intro paragraph
+  checks.push({
+    key: 'missing-intro', label: 'Introduction paragraph', category: cat,
+    status: metadata.hasIntro ? 'pass' : 'fail',
+    detail: metadata.hasIntro ? 'Intro paragraph present' : 'No intro paragraph before first heading',
+    recommendation: !metadata.hasIntro ? 'Add an introductory paragraph before the first heading' : undefined,
+  });
+
+  // 19. Conclusion section
+  checks.push({
+    key: 'missing-conclusion', label: 'Conclusion section', category: cat,
+    status: metadata.hasConclusion ? 'pass' : 'warn',
+    detail: metadata.hasConclusion ? 'Conclusion detected' : 'No conclusion section found',
+    recommendation: !metadata.hasConclusion ? 'Add a conclusion or summary section' : undefined,
+  });
+
+  // 20. Readability structures
+  const hasReadabilityStructures = /<[uo]l|<table|<dl/i.test(metadata.content);
+  checks.push({
+    key: 'missing-lists', label: 'Readability structures', category: cat,
+    status: hasReadabilityStructures ? 'pass' : 'warn',
+    detail: hasReadabilityStructures ? 'Lists/tables present' : 'No lists, tables, or structured elements',
+    recommendation: !hasReadabilityStructures ? 'Add bullet points, numbered lists, or tables' : undefined,
+  });
+
+  // 21. Heading count
+  const h2Count = (metadata.headings || []).filter(h => h.level === 2).length;
+  checks.push({
+    key: 'low-heading-count', label: 'Sufficient section headings', category: cat,
+    status: h2Count >= 3 ? 'pass' : h2Count >= 1 ? 'warn' : 'fail',
+    detail: `${h2Count} H2 headings (3+ recommended)`,
+    recommendation: h2Count < 3 ? 'Add more H2 section headings for better structure' : undefined,
+  });
+
   const passCount = checks.filter(c => c.status === 'pass').length;
   const score = Math.round((passCount / checks.length) * 100);
 

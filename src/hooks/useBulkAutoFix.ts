@@ -47,6 +47,7 @@ const AUTO_FIXABLE_CHECK_KEYS = new Set([
   'h1-present', 'heading-hierarchy', 'faq-schema',
   'seo-meta-title', 'seo-meta-description', 'seo-internal-links',
   'seo-headings', 'seo-excerpt/summary',
+  'missing-intro', 'missing-conclusion', 'missing-lists', 'low-heading-count',
 ]);
 
 function splitActionableChecks<T extends { key: string; status: string }>(checks: T[]) {

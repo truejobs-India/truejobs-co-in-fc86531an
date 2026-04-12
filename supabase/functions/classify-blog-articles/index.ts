@@ -299,13 +299,13 @@ async function callClassifierAI(
       const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
       const fullPrompt = systemPrompt + '\n\n' + userPrompt;
       rawText = await callGeminiDirect('gemini-2.5-flash', fullPrompt, 90_000, { temperature: 0.1, maxOutputTokens: maxTokens, responseMimeType: 'application/json' });
-      actualProvider = 'vertex-ai'; actualModelId = 'gemini-2.5-flash'; break;
+      actualProvider = 'gemini-direct'; actualModelId = 'gemini-2.5-flash'; break;
     }
     case 'gemini-pro': {
       const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
       const fullPrompt = systemPrompt + '\n\n' + userPrompt;
       rawText = await callGeminiDirect('gemini-2.5-pro', fullPrompt, 120_000, { temperature: 0.1, maxOutputTokens: maxTokens, responseMimeType: 'application/json' });
-      actualProvider = 'vertex-ai'; actualModelId = 'gemini-2.5-pro'; break;
+      actualProvider = 'gemini-direct'; actualModelId = 'gemini-2.5-pro'; break;
     }
     case 'mistral':
       rawText = await callMistralClassifier(systemPrompt, userPrompt, maxTokens);
@@ -326,31 +326,31 @@ async function callClassifierAI(
       const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
       const fullPrompt = systemPrompt + '\n\n' + userPrompt;
       rawText = await callGeminiDirect('gemini-2.5-flash', fullPrompt, 90_000, { temperature: 0.1, maxOutputTokens: maxTokens, responseMimeType: 'application/json' });
-      actualProvider = 'vertex-ai'; actualModelId = 'gemini-2.5-flash'; break;
+      actualProvider = 'gemini-direct'; actualModelId = 'gemini-2.5-flash'; break;
     }
     case 'vertex-pro': {
       const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
       const fullPrompt = systemPrompt + '\n\n' + userPrompt;
       rawText = await callGeminiDirect('gemini-2.5-pro', fullPrompt, 120_000, { temperature: 0.1, maxOutputTokens: maxTokens, responseMimeType: 'application/json' });
-      actualProvider = 'vertex-ai'; actualModelId = 'gemini-2.5-pro'; break;
+      actualProvider = 'gemini-direct'; actualModelId = 'gemini-2.5-pro'; break;
     }
     case 'vertex-3.1-pro': {
       const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
       const fullPrompt = systemPrompt + '\n\n' + userPrompt;
       rawText = await callGeminiDirect('gemini-3.1-pro-preview', fullPrompt, 120_000, { temperature: 0.1, maxOutputTokens: maxTokens, responseMimeType: 'application/json' });
-      actualProvider = 'vertex-ai'; actualModelId = 'gemini-3.1-pro-preview'; break;
+      actualProvider = 'gemini-direct'; actualModelId = 'gemini-3.1-pro-preview'; break;
     }
     case 'vertex-3-flash': {
       const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
       const fullPrompt = systemPrompt + '\n\n' + userPrompt;
       rawText = await callGeminiDirect('gemini-3-flash-preview', fullPrompt, 90_000, { temperature: 0.1, maxOutputTokens: maxTokens, responseMimeType: 'application/json' });
-      actualProvider = 'vertex-ai'; actualModelId = 'gemini-3-flash-preview'; break;
+      actualProvider = 'gemini-direct'; actualModelId = 'gemini-3-flash-preview'; break;
     }
     case 'vertex-3.1-flash-lite': {
       const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
       const fullPrompt = systemPrompt + '\n\n' + userPrompt;
       rawText = await callGeminiDirect('gemini-3.1-flash-lite-preview', fullPrompt, 60_000, { temperature: 0.1, maxOutputTokens: maxTokens, responseMimeType: 'application/json' });
-      actualProvider = 'vertex-ai'; actualModelId = 'gemini-3.1-flash-lite-preview'; break;
+      actualProvider = 'gemini-direct'; actualModelId = 'gemini-3.1-flash-lite-preview'; break;
     }
     case 'nova-pro': case 'nova-premier': case 'nemotron-120b': {
       const { callBedrockNova } = await import('../_shared/bedrock-nova.ts');

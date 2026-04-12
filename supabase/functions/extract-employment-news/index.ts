@@ -389,7 +389,7 @@ async function callAI(
   const maxTokens = 8192;
   console.log(`[${requestId}] AI call | provider=${resolved.provider} | model=${resolved.modelId} | prompt_len=${fullPrompt.length} | maxTokens=${maxTokens}`);
 
-  if (resolved.provider === 'vertex-ai') {
+  if (resolved.provider === 'gemini-direct') {
     const { callGeminiDirectWithMeta } = await import('../_shared/gemini-direct.ts');
     try {
       const { text: rawText, finishReason } = await callGeminiDirectWithMeta(resolved.modelId, fullPrompt, resolved.timeout, {

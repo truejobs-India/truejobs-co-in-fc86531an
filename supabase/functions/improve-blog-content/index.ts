@@ -270,13 +270,13 @@ async function callAI(aiModel: string, prompt: string, maxTokens: number, option
       const { callGeminiDirectWithMeta } = await import('../_shared/gemini-direct.ts');
       const result = await callGeminiDirectWithMeta('gemini-2.5-flash', prompt, 90_000, { maxOutputTokens: maxTokens });
       resultJson = JSON.stringify({ __raw: result.text, __finishReason: result.finishReason });
-      actualProvider = 'vertex-ai'; actualModelId = 'gemini-2.5-flash'; break;
+      actualProvider = 'gemini-direct'; actualModelId = 'gemini-2.5-flash'; break;
     }
     case 'gemini-pro': {
       const { callGeminiDirectWithMeta } = await import('../_shared/gemini-direct.ts');
       const result = await callGeminiDirectWithMeta('gemini-2.5-pro', prompt, 120_000, { maxOutputTokens: maxTokens });
       resultJson = JSON.stringify({ __raw: result.text, __finishReason: result.finishReason });
-      actualProvider = 'vertex-ai'; actualModelId = 'gemini-2.5-pro'; break;
+      actualProvider = 'gemini-direct'; actualModelId = 'gemini-2.5-pro'; break;
     }
     case 'mistral':
       resultJson = await callMistral(prompt, maxTokens, options?.systemPrompt);
@@ -299,35 +299,35 @@ async function callAI(aiModel: string, prompt: string, maxTokens: number, option
       const { callGeminiDirectWithMeta } = await import('../_shared/gemini-direct.ts');
       const result = await callGeminiDirectWithMeta('gemini-2.5-flash', prompt, 90_000, { maxOutputTokens: maxTokens });
       resultJson = JSON.stringify({ __raw: result.text, __finishReason: result.finishReason });
-      actualProvider = 'vertex-ai'; actualModelId = 'gemini-2.5-flash';
+      actualProvider = 'gemini-direct'; actualModelId = 'gemini-2.5-flash';
       break;
     }
     case 'vertex-pro': {
       const { callGeminiDirectWithMeta } = await import('../_shared/gemini-direct.ts');
       const result = await callGeminiDirectWithMeta('gemini-2.5-pro', prompt, 120_000, { maxOutputTokens: maxTokens });
       resultJson = JSON.stringify({ __raw: result.text, __finishReason: result.finishReason });
-      actualProvider = 'vertex-ai'; actualModelId = 'gemini-2.5-pro';
+      actualProvider = 'gemini-direct'; actualModelId = 'gemini-2.5-pro';
       break;
     }
     case 'vertex-3.1-pro': {
       const { callGeminiDirectWithMeta } = await import('../_shared/gemini-direct.ts');
       const result = await callGeminiDirectWithMeta('gemini-3.1-pro-preview', prompt, 120_000, { maxOutputTokens: maxTokens });
       resultJson = JSON.stringify({ __raw: result.text, __finishReason: result.finishReason });
-      actualProvider = 'vertex-ai'; actualModelId = 'gemini-3.1-pro-preview';
+      actualProvider = 'gemini-direct'; actualModelId = 'gemini-3.1-pro-preview';
       break;
     }
     case 'vertex-3-flash': {
       const { callGeminiDirectWithMeta } = await import('../_shared/gemini-direct.ts');
       const result = await callGeminiDirectWithMeta('gemini-3-flash-preview', prompt, 90_000, { maxOutputTokens: maxTokens });
       resultJson = JSON.stringify({ __raw: result.text, __finishReason: result.finishReason });
-      actualProvider = 'vertex-ai'; actualModelId = 'gemini-3-flash-preview';
+      actualProvider = 'gemini-direct'; actualModelId = 'gemini-3-flash-preview';
       break;
     }
     case 'vertex-3.1-flash-lite': {
       const { callGeminiDirectWithMeta } = await import('../_shared/gemini-direct.ts');
       const result = await callGeminiDirectWithMeta('gemini-3.1-flash-lite-preview', prompt, 60_000, { maxOutputTokens: maxTokens });
       resultJson = JSON.stringify({ __raw: result.text, __finishReason: result.finishReason });
-      actualProvider = 'vertex-ai'; actualModelId = 'gemini-3.1-flash-lite-preview';
+      actualProvider = 'gemini-direct'; actualModelId = 'gemini-3.1-flash-lite-preview';
       break;
     }
     case 'nova-pro': case 'nova-premier': case 'nemotron-120b': {

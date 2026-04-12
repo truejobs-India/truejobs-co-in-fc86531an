@@ -518,13 +518,13 @@ async function callLovableGeminiRaw(prompt: string, maxTokensParam?: number): Pr
 // Unified AI call: returns parsed JSON
 function resolveProviderInfo(model: string): { provider: string; apiModel: string } {
   switch (model) {
-    case 'gemini-flash': case 'gemini': return { provider: 'vertex-ai', apiModel: 'gemini-2.5-flash' };
-    case 'gemini-pro': return { provider: 'vertex-ai', apiModel: 'gemini-2.5-pro' };
-    case 'vertex-flash': return { provider: 'vertex-ai', apiModel: 'gemini-2.5-flash' };
-    case 'vertex-pro': return { provider: 'vertex-ai', apiModel: 'gemini-2.5-pro' };
-    case 'vertex-3.1-pro': return { provider: 'vertex-ai', apiModel: 'gemini-3.1-pro-preview' };
-    case 'vertex-3-flash': return { provider: 'vertex-ai', apiModel: 'gemini-3-flash-preview' };
-    case 'vertex-3.1-flash-lite': return { provider: 'vertex-ai', apiModel: 'gemini-3.1-flash-lite-preview' };
+    case 'gemini-flash': case 'gemini': return { provider: 'gemini-direct', apiModel: 'gemini-2.5-flash' };
+    case 'gemini-pro': return { provider: 'gemini-direct', apiModel: 'gemini-2.5-pro' };
+    case 'vertex-flash': return { provider: 'gemini-direct', apiModel: 'gemini-2.5-flash' };
+    case 'vertex-pro': return { provider: 'gemini-direct', apiModel: 'gemini-2.5-pro' };
+    case 'vertex-3.1-pro': return { provider: 'gemini-direct', apiModel: 'gemini-3.1-pro-preview' };
+    case 'vertex-3-flash': return { provider: 'gemini-direct', apiModel: 'gemini-3-flash-preview' };
+    case 'vertex-3.1-flash-lite': return { provider: 'gemini-direct', apiModel: 'gemini-3.1-flash-lite-preview' };
     case 'claude-sonnet': case 'claude': return { provider: 'anthropic', apiModel: 'claude-sonnet-4-6' };
     case 'groq': return { provider: 'groq', apiModel: 'llama-3.3-70b-versatile' };
     case 'mistral': return { provider: 'bedrock', apiModel: 'mistral.mistral-large-2407-v1:0' };

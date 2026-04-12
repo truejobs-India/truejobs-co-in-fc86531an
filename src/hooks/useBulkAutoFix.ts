@@ -187,9 +187,11 @@ function isEligibleForSmartScope(post: BlogPost): { eligible: boolean; reason: s
     return { eligible: true, reason: 'partial' };
   }
 
-  // no_action_taken — only re-eligible if content changed (already covered by changed check above)
-  // If we reach here, content hasn't changed, so don't retry
-  
+  // no_action_taken with remaining fixable issues — retry (pipeline may now handle them)
+  if (post.last_bulk_fix_status === 'no_action_taken' && (post.remaining_auto_fixable_count ?? 0) > 0) {
+    return { eligible: true, reason: 'partial' };
+  }
+
   return { eligible: false, reason: 'skippedUnchanged' };
 }
 
@@ -544,6 +546,257 @@ function countAutoFixableIssues(post: BlogPost): number {
   return actionable.length;
 }
 
+// ── Shared fix-application loop (used by first and second pass) ──
+
+function applyFixLoop(
+  fixes: any[],
+  content: string,
+  post: BlogPost,
+  updatePayload: Record<string, any>,
+  fixesApplied: FixApplied[],
+  fixesSkipped: FixSkipped[],
+): { modifiedContent: string; contentChanged: boolean } {
+  let modifiedContent = content;
+  let contentChanged = false;
+
+  for (const rawFix of fixes) {
+    const applyMode = normalizeApplyMode(rawFix.applyMode);
+    const fixType = rawFix.fixType || 'advisory';
+    const field = rawFix.field || '';
+    const suggestedValue = rawFix.suggestedValue || '';
+    const confidence = rawFix.confidence || 'medium';
+
+    if (BULK_FORBIDDEN_APPLY_MODES[applyMode]) {
+      fixesSkipped.push({ field: field || fixType, fixType, reason: BULK_FORBIDDEN_APPLY_MODES[applyMode] });
+      continue;
+    }
+
+    if (!BULK_ALLOWED_APPLY_MODES.has(applyMode)) {
+      fixesSkipped.push({ field: field || fixType, fixType, reason: `Apply mode "${applyMode}" not supported in bulk mode` });
+      continue;
+    }
+
+    if (confidence === 'low') {
+      fixesSkipped.push({ field: field || fixType, fixType, reason: 'Low confidence — skipped for safety' });
+      continue;
+    }
+
+    // ── APPLY_FIELD: Metadata fixes ──
+    if (applyMode === 'apply_field' && field && EDITABLE_FIELDS.has(field)) {
+      if (!suggestedValue || suggestedValue.trim().length === 0) {
+        fixesSkipped.push({ field, fixType, reason: 'Empty suggested value' });
+        continue;
+      }
+
+      if (field === 'slug' && post.is_published) {
+        fixesSkipped.push({ field, fixType, reason: 'Published article — slug rewrite blocked (no automatic redirect support)' });
+        continue;
+      }
+
+      const currentVal = (post as any)[field] || '';
+      const overwriteContext = { title: post.title, metaDescription: post.meta_description || '' };
+
+      if (!shouldAutoOverwriteField(field, currentVal, overwriteContext)) {
+        fixesSkipped.push({ field, fixType, reason: `Current value is compliant (${currentVal.length} chars)` });
+        continue;
+      }
+
+      const validation = validateFieldValue(field, suggestedValue);
+      if (!validation.valid) {
+        fixesSkipped.push({ field, fixType, reason: `Validation failed: ${validation.reason}` });
+        continue;
+      }
+
+      if (field === 'meta_title' && suggestedValue.trim() === post.title.trim()) {
+        fixesSkipped.push({ field, fixType, reason: 'Suggested meta_title is identical to title' });
+        continue;
+      }
+
+      if (field === 'excerpt' && updatePayload.meta_description && suggestedValue.trim() === updatePayload.meta_description.trim()) {
+        fixesSkipped.push({ field, fixType, reason: 'Suggested excerpt is identical to new meta_description' });
+        continue;
+      }
+
+      updatePayload[field] = suggestedValue;
+      fixesApplied.push({ field, fixType, beforeValue: currentVal.substring(0, 100), afterValue: suggestedValue.substring(0, 100) });
+      logBlogAiAudit({ tool_name: 'bulk_auto_fix', before_value: currentVal, after_value: suggestedValue, apply_mode: applyMode, target_field: field, slug: post.slug });
+      continue;
+    }
+
+    // ── APPEND_CONTENT: FAQ ──
+    if (applyMode === 'append_content' && fixType === 'faq') {
+      if (hasFaqHeading(modifiedContent)) { fixesSkipped.push({ field: 'faq', fixType, reason: 'FAQ section already exists' }); continue; }
+      if (!suggestedValue || stripHtmlLength(suggestedValue) < 20) { fixesSkipped.push({ field: 'faq', fixType, reason: 'FAQ content too short or empty' }); continue; }
+      if (contentBlockAlreadyExists(modifiedContent, suggestedValue)) { fixesSkipped.push({ field: 'faq', fixType, reason: 'FAQ content already exists in article' }); continue; }
+
+      const sanitized = sanitizeLinkBlockHtml(suggestedValue);
+      modifiedContent = modifiedContent + sanitized;
+      contentChanged = true;
+
+      if (rawFix.faqSchemaEligible && rawFix.faqSchema) {
+        const validSchema = validateFaqSchema(rawFix.faqSchema);
+        if (validSchema) {
+          updatePayload.faq_schema = validSchema;
+          updatePayload.has_faq_schema = true;
+          updatePayload.faq_count = validSchema.length;
+        }
+      }
+
+      // Fallback: count FAQ items from appended HTML when faqSchema wasn't provided
+      if (!updatePayload.faq_count) {
+        const faqQuestions = (sanitized.match(/<h[3-4][^>]*>[^<]*\?/gi) || []).length;
+        if (faqQuestions > 0) {
+          updatePayload.faq_count = faqQuestions;
+        }
+      }
+
+      fixesApplied.push({ field: 'content (FAQ)', fixType, beforeValue: '(no FAQ section)', afterValue: `Added FAQ (${stripHtmlLength(sanitized)} chars)` });
+      logBlogAiAudit({ tool_name: 'bulk_auto_fix', before_value: '(no FAQ)', after_value: sanitized.substring(0, 200), apply_mode: applyMode, target_field: 'faq', slug: post.slug });
+      continue;
+    }
+
+    // ── APPEND_CONTENT: Conclusion ──
+    if (applyMode === 'append_content' && fixType === 'conclusion') {
+      if (hasExistingConclusion(modifiedContent)) { fixesSkipped.push({ field: 'conclusion', fixType, reason: 'Conclusion already exists' }); continue; }
+      if (!suggestedValue || stripHtmlLength(suggestedValue) < 20) { fixesSkipped.push({ field: 'conclusion', fixType, reason: 'Conclusion content too short or empty' }); continue; }
+      if (contentBlockAlreadyExists(modifiedContent, suggestedValue)) { fixesSkipped.push({ field: 'conclusion', fixType, reason: 'Conclusion content already exists' }); continue; }
+
+      const sanitized = sanitizeLinkBlockHtml(suggestedValue);
+      modifiedContent = modifiedContent + sanitized;
+      contentChanged = true;
+      fixesApplied.push({ field: 'content (Conclusion)', fixType, beforeValue: '(no conclusion)', afterValue: `Added conclusion (${stripHtmlLength(sanitized)} chars)` });
+      logBlogAiAudit({ tool_name: 'bulk_auto_fix', before_value: '(no conclusion)', after_value: sanitized.substring(0, 200), apply_mode: applyMode, target_field: 'conclusion', slug: post.slug });
+      continue;
+    }
+
+    // ── APPEND_CONTENT: Internal Links ──
+    if (applyMode === 'append_content' && fixType === 'internal_links') {
+      if (hasRelatedResourcesBlock(modifiedContent)) { fixesSkipped.push({ field: 'internal_links', fixType, reason: 'Related Resources block already exists' }); continue; }
+
+      const hrefs = extractHrefsFromHtml(suggestedValue);
+      const validLinks: { href: string; text: string }[] = [];
+
+      for (const href of hrefs) {
+        if (!isValidInternalPagePath(href)) continue;
+        if (linkAlreadyInContent(modifiedContent, href)) continue;
+        if (validLinks.length >= MAX_AUTO_LINKS) break;
+        const linkMatch = suggestedValue.match(new RegExp(`<a[^>]*href=["']${href.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["'][^>]*>([^<]*)</a>`, 'i'));
+        const text = linkMatch?.[1]?.trim() || href;
+        validLinks.push({ href, text });
+      }
+
+      if (validLinks.length === 0) { fixesSkipped.push({ field: 'internal_links', fixType, reason: 'No valid internal link targets found' }); continue; }
+
+      const cleanBlock = buildCleanLinkBlock(validLinks);
+      modifiedContent = modifiedContent + cleanBlock;
+      contentChanged = true;
+
+      // Sync structured internal_links jsonb field
+      const existingLinks: Array<{ path: string; anchorText: string }> =
+        Array.isArray(post.internal_links) ? post.internal_links as any : [];
+      const existingPaths = new Set(existingLinks.map((l) => l.path));
+      const newStructuredLinks = validLinks
+        .filter((l) => !existingPaths.has(l.href))
+        .map((l) => ({ path: l.href, anchorText: l.text }));
+      updatePayload.internal_links = [...existingLinks, ...newStructuredLinks] as any;
+
+      fixesApplied.push({ field: 'content (Internal Links)', fixType, beforeValue: '(no Related Resources)', afterValue: `Added ${validLinks.length} internal links` });
+      logBlogAiAudit({ tool_name: 'bulk_auto_fix', before_value: '(no links block)', after_value: cleanBlock.substring(0, 200), apply_mode: applyMode, target_field: 'internal_links', slug: post.slug });
+      continue;
+    }
+
+    // ── INSERT_BEFORE_FIRST_HEADING: H1 only ──
+    if (applyMode === 'insert_before_first_heading' && fixType === 'h1') {
+      if (/<h1[^>]*>/i.test(modifiedContent)) {
+        fixesSkipped.push({ field: 'h1', fixType, reason: 'H1 already exists' }); continue;
+      }
+      if (!suggestedValue || stripHtmlLength(suggestedValue) < 5) {
+        fixesSkipped.push({ field: 'h1', fixType, reason: 'H1 content too short' }); continue;
+      }
+      const sanitized = sanitizeLinkBlockHtml(suggestedValue);
+      modifiedContent = insertBeforeFirstHeadingRaw(modifiedContent, sanitized);
+      contentChanged = true;
+      fixesApplied.push({ field: 'content (H1)', fixType, beforeValue: '(no H1)', afterValue: `Added H1 (${stripHtmlLength(sanitized)} chars)` });
+      logBlogAiAudit({ tool_name: 'bulk_auto_fix', before_value: '(no H1)', after_value: sanitized.substring(0, 200), apply_mode: applyMode, target_field: 'h1', slug: post.slug });
+      continue;
+    }
+
+    // ── INSERT_BEFORE_FIRST_HEADING: Intro ──
+    if (applyMode === 'insert_before_first_heading' && (fixType === 'intro' || fixType === 'heading_structure')) {
+      if (hasExistingIntro(modifiedContent)) { fixesSkipped.push({ field: 'intro', fixType, reason: 'Intro already exists' }); continue; }
+      if (!suggestedValue || stripHtmlLength(suggestedValue) < 20) { fixesSkipped.push({ field: 'intro', fixType, reason: 'Intro content too short or empty' }); continue; }
+      if (contentBlockAlreadyExists(modifiedContent, suggestedValue)) { fixesSkipped.push({ field: 'intro', fixType, reason: 'Intro content already exists' }); continue; }
+
+      const sanitized = sanitizeLinkBlockHtml(suggestedValue);
+      modifiedContent = insertBeforeFirstHeadingRaw(modifiedContent, sanitized);
+      contentChanged = true;
+      fixesApplied.push({ field: 'content (Intro)', fixType, beforeValue: '(no intro)', afterValue: `Added intro (${stripHtmlLength(sanitized)} chars)` });
+      logBlogAiAudit({ tool_name: 'bulk_auto_fix', before_value: '(no intro)', after_value: sanitized.substring(0, 200), apply_mode: applyMode, target_field: 'intro', slug: post.slug });
+      continue;
+    }
+
+    // ── APPEND_CONTENT: Readability (lists/tables) ──
+    if (applyMode === 'append_content' && fixType === 'readability') {
+      if (!suggestedValue || stripHtmlLength(suggestedValue) < 20) {
+        fixesSkipped.push({ field: 'readability', fixType, reason: 'Content too short' }); continue;
+      }
+      if (contentBlockAlreadyExists(modifiedContent, suggestedValue)) {
+        fixesSkipped.push({ field: 'readability', fixType, reason: 'Content already exists' }); continue;
+      }
+      // Validate: must contain at least one readability structure
+      if (!/<[uo]l|<table|<dl/i.test(suggestedValue)) {
+        fixesSkipped.push({ field: 'readability', fixType, reason: 'No list/table/dl structure in suggestion' }); continue;
+      }
+      const sanitized = sanitizeLinkBlockHtml(suggestedValue);
+      // Insert before FAQ/Conclusion if found, else append
+      const rdFaqIdx = modifiedContent.search(/<h[23][^>]*>\s*(?:FAQ|Frequently Asked)/i);
+      const rdConcIdx = modifiedContent.search(/<h[23][^>]*>\s*(?:Conclusion|Summary|Final Thoughts)/i);
+      const rdInsertBefore = Math.min(rdFaqIdx >= 0 ? rdFaqIdx : Infinity, rdConcIdx >= 0 ? rdConcIdx : Infinity);
+      if (rdInsertBefore < Infinity) {
+        modifiedContent = modifiedContent.substring(0, rdInsertBefore) + sanitized + modifiedContent.substring(rdInsertBefore);
+      } else {
+        modifiedContent = modifiedContent + sanitized;
+      }
+      contentChanged = true;
+      fixesApplied.push({ field: 'content (Readability)', fixType, beforeValue: '(no lists)', afterValue: `Added structured content (${stripHtmlLength(sanitized)} chars)` });
+      logBlogAiAudit({ tool_name: 'bulk_auto_fix', before_value: '(no lists)', after_value: sanitized.substring(0, 200), apply_mode: applyMode, target_field: 'readability', slug: post.slug });
+      continue;
+    }
+
+    // ── APPEND_CONTENT: Low heading count (add H2 sections) ──
+    if (applyMode === 'append_content' && fixType === 'heading_structure') {
+      if (!suggestedValue || stripHtmlLength(suggestedValue) < 30) {
+        fixesSkipped.push({ field: 'headings', fixType, reason: 'Content too short' }); continue;
+      }
+      if (!/<h2/i.test(suggestedValue)) {
+        fixesSkipped.push({ field: 'headings', fixType, reason: 'No H2 tags in suggestion' }); continue;
+      }
+      if (contentBlockAlreadyExists(modifiedContent, suggestedValue)) {
+        fixesSkipped.push({ field: 'headings', fixType, reason: 'Content already exists' }); continue;
+      }
+      const sanitized = sanitizeLinkBlockHtml(suggestedValue);
+      // Insert before FAQ/Conclusion if found, else append
+      const hFaqIdx = modifiedContent.search(/<h[23][^>]*>\s*(?:FAQ|Frequently Asked)/i);
+      const hConcIdx = modifiedContent.search(/<h[23][^>]*>\s*(?:Conclusion|Summary|Final Thoughts)/i);
+      const hInsertBefore = Math.min(hFaqIdx >= 0 ? hFaqIdx : Infinity, hConcIdx >= 0 ? hConcIdx : Infinity);
+      if (hInsertBefore < Infinity) {
+        modifiedContent = modifiedContent.substring(0, hInsertBefore) + sanitized + modifiedContent.substring(hInsertBefore);
+      } else {
+        modifiedContent = modifiedContent + sanitized;
+      }
+      contentChanged = true;
+      fixesApplied.push({ field: 'content (Headings)', fixType, beforeValue: '(low H2 count)', afterValue: `Added H2 sections (${stripHtmlLength(sanitized)} chars)` });
+      logBlogAiAudit({ tool_name: 'bulk_auto_fix', before_value: '(low H2 count)', after_value: sanitized.substring(0, 200), apply_mode: applyMode, target_field: 'headings', slug: post.slug });
+      continue;
+    }
+
+    // ── Catch-all ──
+    fixesSkipped.push({ field: field || fixType || 'unknown', fixType, reason: `Unhandled fix type/mode combination: ${fixType}/${applyMode}` });
+  }
+
+  return { modifiedContent, contentChanged };
+}
+
 // ── Per-article processing ──
 
 async function processOneArticle(
@@ -562,6 +815,20 @@ async function processOneArticle(
       await supabase.from('blog_posts').update({ faq_count: faqQs }).eq('id', post.id);
       (post as any).faq_count = faqQs;
     }
+  }
+
+  // Pre-fix: deterministic H1 insertion (in-memory only, persisted via main update)
+  let h1WasInserted = false;
+  if (post.content && !/<h1[^>]*>/i.test(post.content)) {
+    const escapedTitle = post.title
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+    const h1Tag = `<h1>${escapedTitle}</h1>`;
+    post.content = insertBeforeFirstHeadingRaw(post.content, h1Tag);
+    h1WasInserted = true;
+    console.log(`[BULK_AUTO_FIX] Deterministic H1 fix for "${post.slug}"`);
   }
 
   const meta = blogPostToMetadata(post);
@@ -644,223 +911,14 @@ async function processOneArticle(
     console.log(`[BULK_AUTO_FIX] Article "${post.slug}" received ${fixes.length} fixes. Sample fix shape:`, JSON.stringify(fixes[0]));
   }
 
-  for (const rawFix of fixes) {
-    const applyMode = normalizeApplyMode(rawFix.applyMode);
-    const fixType = rawFix.fixType || 'advisory';
-    const field = rawFix.field || '';
-    const suggestedValue = rawFix.suggestedValue || '';
-    const confidence = rawFix.confidence || 'medium';
+  const loopResult = applyFixLoop(fixes, modifiedContent, post, updatePayload, fixesApplied, fixesSkipped);
+  modifiedContent = loopResult.modifiedContent;
+  contentChanged = loopResult.contentChanged || contentChanged;
 
-    if (BULK_FORBIDDEN_APPLY_MODES[applyMode]) {
-      fixesSkipped.push({ field: field || fixType, fixType, reason: BULK_FORBIDDEN_APPLY_MODES[applyMode] });
-      continue;
-    }
-
-    if (!BULK_ALLOWED_APPLY_MODES.has(applyMode)) {
-      fixesSkipped.push({ field: field || fixType, fixType, reason: `Apply mode "${applyMode}" not supported in bulk mode` });
-      continue;
-    }
-
-    if (confidence === 'low') {
-      fixesSkipped.push({ field: field || fixType, fixType, reason: 'Low confidence — skipped for safety' });
-      continue;
-    }
-
-    // ── APPLY_FIELD: Metadata fixes ──
-    if (applyMode === 'apply_field' && field && EDITABLE_FIELDS.has(field)) {
-      if (!suggestedValue || suggestedValue.trim().length === 0) {
-        fixesSkipped.push({ field, fixType, reason: 'Empty suggested value' });
-        continue;
-      }
-
-      if (field === 'slug' && post.is_published) {
-        fixesSkipped.push({ field, fixType, reason: 'Published article — slug rewrite blocked (no automatic redirect support)' });
-        continue;
-      }
-
-      const currentVal = (post as any)[field] || '';
-      const overwriteContext = { title: post.title, metaDescription: post.meta_description || '' };
-
-      if (!shouldAutoOverwriteField(field, currentVal, overwriteContext)) {
-        fixesSkipped.push({ field, fixType, reason: `Current value is compliant (${currentVal.length} chars)` });
-        continue;
-      }
-
-      const validation = validateFieldValue(field, suggestedValue);
-      if (!validation.valid) {
-        fixesSkipped.push({ field, fixType, reason: `Validation failed: ${validation.reason}` });
-        continue;
-      }
-
-      if (field === 'meta_title' && suggestedValue.trim() === post.title.trim()) {
-        fixesSkipped.push({ field, fixType, reason: 'Suggested meta_title is identical to title' });
-        continue;
-      }
-
-      if (field === 'excerpt' && updatePayload.meta_description && suggestedValue.trim() === updatePayload.meta_description.trim()) {
-        fixesSkipped.push({ field, fixType, reason: 'Suggested excerpt is identical to new meta_description' });
-        continue;
-      }
-
-      updatePayload[field] = suggestedValue;
-      fixesApplied.push({ field, fixType, beforeValue: currentVal.substring(0, 100), afterValue: suggestedValue.substring(0, 100) });
-      logBlogAiAudit({ tool_name: 'bulk_auto_fix', before_value: currentVal, after_value: suggestedValue, apply_mode: applyMode, target_field: field, slug: post.slug });
-      continue;
-    }
-
-    // ── APPEND_CONTENT: FAQ ──
-    if (applyMode === 'append_content' && fixType === 'faq') {
-      if (hasFaqHeading(modifiedContent)) { fixesSkipped.push({ field: 'faq', fixType, reason: 'FAQ section already exists' }); continue; }
-      if (!suggestedValue || stripHtmlLength(suggestedValue) < 20) { fixesSkipped.push({ field: 'faq', fixType, reason: 'FAQ content too short or empty' }); continue; }
-      if (contentBlockAlreadyExists(modifiedContent, suggestedValue)) { fixesSkipped.push({ field: 'faq', fixType, reason: 'FAQ content already exists in article' }); continue; }
-
-      const sanitized = sanitizeLinkBlockHtml(suggestedValue);
-      modifiedContent = modifiedContent + sanitized;
-      contentChanged = true;
-
-      if (rawFix.faqSchemaEligible && rawFix.faqSchema) {
-        const validSchema = validateFaqSchema(rawFix.faqSchema);
-        if (validSchema) {
-          updatePayload.faq_schema = validSchema;
-          updatePayload.has_faq_schema = true;
-          updatePayload.faq_count = validSchema.length;
-      }
-
-      // Fallback: count FAQ items from appended HTML when faqSchema wasn't provided
-      if (!updatePayload.faq_count) {
-        const faqQuestions = (sanitized.match(/<h[3-4][^>]*>[^<]*\?/gi) || []).length;
-        if (faqQuestions > 0) {
-          updatePayload.faq_count = faqQuestions;
-        }
-      }
-      }
-
-      fixesApplied.push({ field: 'content (FAQ)', fixType, beforeValue: '(no FAQ section)', afterValue: `Added FAQ (${stripHtmlLength(sanitized)} chars)` });
-      logBlogAiAudit({ tool_name: 'bulk_auto_fix', before_value: '(no FAQ)', after_value: sanitized.substring(0, 200), apply_mode: applyMode, target_field: 'faq', slug: post.slug });
-      continue;
-    }
-
-    // ── APPEND_CONTENT: Conclusion ──
-    if (applyMode === 'append_content' && fixType === 'conclusion') {
-      if (hasExistingConclusion(modifiedContent)) { fixesSkipped.push({ field: 'conclusion', fixType, reason: 'Conclusion already exists' }); continue; }
-      if (!suggestedValue || stripHtmlLength(suggestedValue) < 20) { fixesSkipped.push({ field: 'conclusion', fixType, reason: 'Conclusion content too short or empty' }); continue; }
-      if (contentBlockAlreadyExists(modifiedContent, suggestedValue)) { fixesSkipped.push({ field: 'conclusion', fixType, reason: 'Conclusion content already exists' }); continue; }
-
-      const sanitized = sanitizeLinkBlockHtml(suggestedValue);
-      modifiedContent = modifiedContent + sanitized;
-      contentChanged = true;
-      fixesApplied.push({ field: 'content (Conclusion)', fixType, beforeValue: '(no conclusion)', afterValue: `Added conclusion (${stripHtmlLength(sanitized)} chars)` });
-      logBlogAiAudit({ tool_name: 'bulk_auto_fix', before_value: '(no conclusion)', after_value: sanitized.substring(0, 200), apply_mode: applyMode, target_field: 'conclusion', slug: post.slug });
-      continue;
-    }
-
-    // ── APPEND_CONTENT: Internal Links ──
-    if (applyMode === 'append_content' && fixType === 'internal_links') {
-      if (hasRelatedResourcesBlock(modifiedContent)) { fixesSkipped.push({ field: 'internal_links', fixType, reason: 'Related Resources block already exists' }); continue; }
-
-      const hrefs = extractHrefsFromHtml(suggestedValue);
-      const validLinks: { href: string; text: string }[] = [];
-
-      for (const href of hrefs) {
-        if (!isValidInternalPagePath(href)) continue;
-        if (linkAlreadyInContent(modifiedContent, href)) continue;
-        if (validLinks.length >= MAX_AUTO_LINKS) break;
-        const linkMatch = suggestedValue.match(new RegExp(`<a[^>]*href=["']${href.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["'][^>]*>([^<]*)</a>`, 'i'));
-        const text = linkMatch?.[1]?.trim() || href;
-        validLinks.push({ href, text });
-      }
-
-      if (validLinks.length === 0) { fixesSkipped.push({ field: 'internal_links', fixType, reason: 'No valid internal link targets found' }); continue; }
-
-      const cleanBlock = buildCleanLinkBlock(validLinks);
-      modifiedContent = modifiedContent + cleanBlock;
-      contentChanged = true;
-
-      // Sync structured internal_links jsonb field
-      const existingLinks: Array<{ path: string; anchorText: string }> =
-        Array.isArray(post.internal_links) ? post.internal_links as any : [];
-      const existingPaths = new Set(existingLinks.map((l) => l.path));
-      const newStructuredLinks = validLinks
-        .filter((l) => !existingPaths.has(l.href))
-        .map((l) => ({ path: l.href, anchorText: l.text }));
-      updatePayload.internal_links = [...existingLinks, ...newStructuredLinks] as any;
-
-      fixesApplied.push({ field: 'content (Internal Links)', fixType, beforeValue: '(no Related Resources)', afterValue: `Added ${validLinks.length} internal links` });
-      logBlogAiAudit({ tool_name: 'bulk_auto_fix', before_value: '(no links block)', after_value: cleanBlock.substring(0, 200), apply_mode: applyMode, target_field: 'internal_links', slug: post.slug });
-      continue;
-    }
-
-    // ── INSERT_BEFORE_FIRST_HEADING: Intro/H1 ──
-    if (applyMode === 'insert_before_first_heading' && (fixType === 'intro' || fixType === 'h1' || fixType === 'heading_structure')) {
-      if (hasExistingIntro(modifiedContent)) { fixesSkipped.push({ field: 'intro', fixType, reason: 'Intro already exists' }); continue; }
-      if (!suggestedValue || stripHtmlLength(suggestedValue) < 20) { fixesSkipped.push({ field: 'intro', fixType, reason: 'Intro content too short or empty' }); continue; }
-      if (contentBlockAlreadyExists(modifiedContent, suggestedValue)) { fixesSkipped.push({ field: 'intro', fixType, reason: 'Intro content already exists' }); continue; }
-
-      const sanitized = sanitizeLinkBlockHtml(suggestedValue);
-      modifiedContent = insertBeforeFirstHeadingRaw(modifiedContent, sanitized);
-      contentChanged = true;
-      fixesApplied.push({ field: 'content (Intro)', fixType, beforeValue: '(no intro)', afterValue: `Added intro (${stripHtmlLength(sanitized)} chars)` });
-      logBlogAiAudit({ tool_name: 'bulk_auto_fix', before_value: '(no intro)', after_value: sanitized.substring(0, 200), apply_mode: applyMode, target_field: 'intro', slug: post.slug });
-      continue;
-    }
-
-    // ── APPEND_CONTENT: Readability (lists/tables) ──
-    if (applyMode === 'append_content' && fixType === 'readability') {
-      if (!suggestedValue || stripHtmlLength(suggestedValue) < 20) {
-        fixesSkipped.push({ field: 'readability', fixType, reason: 'Content too short' }); continue;
-      }
-      if (contentBlockAlreadyExists(modifiedContent, suggestedValue)) {
-        fixesSkipped.push({ field: 'readability', fixType, reason: 'Content already exists' }); continue;
-      }
-      // Validate: must contain at least one readability structure
-      if (!/<[uo]l|<table|<dl/i.test(suggestedValue)) {
-        fixesSkipped.push({ field: 'readability', fixType, reason: 'No list/table/dl structure in suggestion' }); continue;
-      }
-      const sanitized = sanitizeLinkBlockHtml(suggestedValue);
-      // Insert before FAQ/Conclusion if found, else append
-      const rdFaqIdx = modifiedContent.search(/<h[23][^>]*>\s*(?:FAQ|Frequently Asked)/i);
-      const rdConcIdx = modifiedContent.search(/<h[23][^>]*>\s*(?:Conclusion|Summary|Final Thoughts)/i);
-      const rdInsertBefore = Math.min(rdFaqIdx >= 0 ? rdFaqIdx : Infinity, rdConcIdx >= 0 ? rdConcIdx : Infinity);
-      if (rdInsertBefore < Infinity) {
-        modifiedContent = modifiedContent.substring(0, rdInsertBefore) + sanitized + modifiedContent.substring(rdInsertBefore);
-      } else {
-        modifiedContent = modifiedContent + sanitized;
-      }
-      contentChanged = true;
-      fixesApplied.push({ field: 'content (Readability)', fixType, beforeValue: '(no lists)', afterValue: `Added structured content (${stripHtmlLength(sanitized)} chars)` });
-      logBlogAiAudit({ tool_name: 'bulk_auto_fix', before_value: '(no lists)', after_value: sanitized.substring(0, 200), apply_mode: applyMode, target_field: 'readability', slug: post.slug });
-      continue;
-    }
-
-    // ── APPEND_CONTENT: Low heading count (add H2 sections) ──
-    if (applyMode === 'append_content' && fixType === 'heading_structure') {
-      if (!suggestedValue || stripHtmlLength(suggestedValue) < 30) {
-        fixesSkipped.push({ field: 'headings', fixType, reason: 'Content too short' }); continue;
-      }
-      if (!/<h2/i.test(suggestedValue)) {
-        fixesSkipped.push({ field: 'headings', fixType, reason: 'No H2 tags in suggestion' }); continue;
-      }
-      if (contentBlockAlreadyExists(modifiedContent, suggestedValue)) {
-        fixesSkipped.push({ field: 'headings', fixType, reason: 'Content already exists' }); continue;
-      }
-      const sanitized = sanitizeLinkBlockHtml(suggestedValue);
-      // Insert before FAQ/Conclusion if found, else append
-      const hFaqIdx = modifiedContent.search(/<h[23][^>]*>\s*(?:FAQ|Frequently Asked)/i);
-      const hConcIdx = modifiedContent.search(/<h[23][^>]*>\s*(?:Conclusion|Summary|Final Thoughts)/i);
-      const hInsertBefore = Math.min(hFaqIdx >= 0 ? hFaqIdx : Infinity, hConcIdx >= 0 ? hConcIdx : Infinity);
-      if (hInsertBefore < Infinity) {
-        modifiedContent = modifiedContent.substring(0, hInsertBefore) + sanitized + modifiedContent.substring(hInsertBefore);
-      } else {
-        modifiedContent = modifiedContent + sanitized;
-      }
-      contentChanged = true;
-      fixesApplied.push({ field: 'content (Headings)', fixType, beforeValue: '(low H2 count)', afterValue: `Added H2 sections (${stripHtmlLength(sanitized)} chars)` });
-      logBlogAiAudit({ tool_name: 'bulk_auto_fix', before_value: '(low H2 count)', after_value: sanitized.substring(0, 200), apply_mode: applyMode, target_field: 'headings', slug: post.slug });
-      continue;
-    }
-
-    // ── Catch-all ──
-    fixesSkipped.push({ field: field || fixType || 'unknown', fixType, reason: `Unhandled fix type/mode combination: ${fixType}/${applyMode}` });
+  // ── Ensure deterministic H1 fix is persisted even when no AI fixes triggered contentChanged ──
+  if (h1WasInserted && !contentChanged) {
+    modifiedContent = post.content;
+    contentChanged = true;
   }
 
   // ── Build final DB update ──
@@ -954,9 +1012,33 @@ async function processOneArticle(
         });
 
         if (pass2Data?.fixes?.length > 0 && !pass2Data.timedOut && !pass2Data.parseError) {
-          console.log(`[BULK_AUTO_FIX] Second pass returned ${pass2Data.fixes.length} fixes for "${post.slug}"`);
-          // Note: Full second-pass fix application requires extracting the fix loop into a shared function.
-          // For now, log the opportunity — the primary value is from the expanded first pass.
+          console.log(`[BULK_AUTO_FIX] Second pass applying ${pass2Data.fixes.length} fixes for "${post.slug}"`);
+          const pass2UpdatePayload: Record<string, any> = {};
+          const pass2Result = applyFixLoop(pass2Data.fixes, updatedPost.content, updatedPost, pass2UpdatePayload, fixesApplied, fixesSkipped);
+
+          if (pass2Result.contentChanged) {
+            const pass2FinalLength = stripHtmlLength(pass2Result.modifiedContent);
+            if (pass2FinalLength >= 100) {
+              pass2UpdatePayload.content = pass2Result.modifiedContent;
+              const { word_count, reading_time } = wordCountFields(pass2Result.modifiedContent);
+              pass2UpdatePayload.word_count = word_count;
+              pass2UpdatePayload.reading_time = reading_time;
+            }
+          }
+
+          if (Object.keys(pass2UpdatePayload).length > 0) {
+            pass2UpdatePayload.ai_fixed_at = new Date().toISOString();
+            await supabase.from('blog_posts').update(pass2UpdatePayload).eq('id', post.id);
+            Object.assign(updatedPost, pass2UpdatePayload);
+            if (pass2Result.contentChanged) updatedPost.content = pass2Result.modifiedContent;
+
+            // Re-evaluate after second pass
+            const pass2Remaining = countAutoFixableIssues(updatedPost);
+            const pass2Status: BulkFixStatus = pass2Remaining === 0 ? 'fixed' : 'partially_fixed';
+            await stampBulkFixStatus(post.id, pass2Status, pass2Remaining);
+            status = pass2Status;
+            console.log(`[BULK_AUTO_FIX] Second pass result for "${post.slug}": status=${pass2Status}, remaining=${pass2Remaining}`);
+          }
         }
       }
     } catch (e) {

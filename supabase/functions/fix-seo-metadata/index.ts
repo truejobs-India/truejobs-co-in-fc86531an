@@ -75,9 +75,6 @@ Deno.serve(async (req) => {
     if (!aiModel) {
       return new Response(JSON.stringify({ error: 'aiModel parameter is required. No fallback allowed.' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
-      mode: 'scan' | 'fix';
-      apply?: boolean; // if true, write to DB
-    };
 
     if (!articles || !Array.isArray(articles) || articles.length === 0) {
       return new Response(JSON.stringify({ error: 'No articles provided' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });

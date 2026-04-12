@@ -208,6 +208,7 @@ No markdown code blocks.`;
     const { callVertexGemini } = await import('../_shared/vertex-ai.ts');
     let raw: string;
     let timedOut = false;
+    let usedModel = 'gemini-2.5-pro';
 
     try {
       raw = await callVertexGemini('gemini-2.5-pro', prompt, 90_000, {
@@ -223,7 +224,20 @@ No markdown code blocks.`;
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
-      throw aiErr;
+      // Fallback to Azure GPT-5-mini on 429 rate limit
+      if (/429|rate.?limit|resource.?exhausted/i.test(msg)) {
+        console.warn(`[COMPLIANCE] Vertex AI 429 — falling back to azure-gpt5-mini for "${title}"`);
+        try {
+          const { callAzureGPT5Mini } = await import('../_shared/azure-openai.ts');
+          raw = await callAzureGPT5Mini(prompt, { maxTokens: 8192, temperature: 0.3 });
+          usedModel = 'azure-gpt5-mini';
+        } catch (fallbackErr) {
+          console.error(`[COMPLIANCE] Azure GPT-5-mini fallback also failed:`, fallbackErr);
+          throw aiErr; // throw original error
+        }
+      } else {
+        throw aiErr;
+      }
     }
 
     console.log(`[COMPLIANCE] Raw response length: ${raw.length} chars`);

@@ -398,6 +398,7 @@ async function processSource(
     let itemsNew = 0;
     let itemsUpdated = 0;
     let itemsSkipped = 0;
+    const newItemIds: string[] = []; // Track new items for Firecrawl enrichment
 
     for (const item of parsed.items) {
       try {
@@ -440,6 +441,7 @@ async function processSource(
 
         if (upsertResult.action === 'inserted') {
           itemsNew++;
+          if (upsertResult.itemId) newItemIds.push(upsertResult.itemId);
           // Queue if relevant
           if (shouldQueue(classification.relevanceLevel)) {
             await upsertReviewEntry(supabaseUrl, serviceRoleKey, {
@@ -490,6 +492,15 @@ async function processSource(
       etag: fetchResult.etag || source.etag,
       last_modified: fetchResult.lastModified || source.last_modified,
     }).eq('id', source.id);
+
+    // Fire-and-forget Firecrawl enrichment for qualifying new items
+    if (itemsNew > 0) {
+      try {
+        await dispatchFirecrawlEnrichment(newItemIds, supabaseUrl, serviceRoleKey);
+      } catch (fcErr) {
+        console.warn('[rss-ingest] Firecrawl dispatch failed (non-blocking):', fcErr);
+      }
+    }
 
     return {
       status: runStatus,
@@ -707,5 +718,40 @@ function jsonResponse(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
+
+// ============ Firecrawl Enrichment Dispatch ============
+
+const MAX_AUTO_ENRICH_PER_RUN = 5;
+
+async function dispatchFirecrawlEnrichment(
+  newItemIds: string[],
+  supabaseUrl: string,
+  serviceRoleKey: string
+) {
+  if (newItemIds.length === 0) return;
+
+  // Only send up to MAX_AUTO_ENRICH_PER_RUN items
+  const idsToEnrich = newItemIds.slice(0, MAX_AUTO_ENRICH_PER_RUN);
+
+  const functionUrl = `${supabaseUrl}/functions/v1/rss-firecrawl-enrich`;
+  const cronSecret = Deno.env.get('RSS_CRON_SECRET') || '';
+
+  console.log(`[rss-ingest] Dispatching Firecrawl enrichment for ${idsToEnrich.length} items`);
+
+  // Fire-and-forget — don't await the full processing
+  fetch(functionUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-cron-secret': cronSecret,
+    },
+    body: JSON.stringify({
+      action: 'enrich-items',
+      item_ids: idsToEnrich,
+    }),
+  }).catch((err) => {
+    console.warn('[rss-ingest] Firecrawl enrichment dispatch fetch failed:', err);
   });
 }

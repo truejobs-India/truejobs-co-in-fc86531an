@@ -11,8 +11,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import {
   FileText, ExternalLink, Search, RefreshCw, ClipboardList, EyeOff,
-  ChevronDown, ChevronUp, FileDown, Sparkles, Brain, Image, ShieldCheck, MoreHorizontal,
-  CheckCircle2, XCircle, Loader2, Clock, Trash2,
+  ChevronDown, ChevronUp, Sparkles, Brain, Image, ShieldCheck,
+  CheckCircle2, XCircle, Loader2, Clock, Trash2, Globe, AlertTriangle, Minus,
 } from 'lucide-react';
 import type { RssItem, RssSource } from './rssTypes';
 import { ITEM_TYPES, RELEVANCE_LEVELS, ITEM_STATUSES, PRIMARY_DOMAINS, DOMAIN_LABELS } from './rssTypes';
@@ -57,6 +57,16 @@ const AI_STATUS_ICON: Record<string, React.ReactNode> = {
   completed: <CheckCircle2 className="h-3 w-3 text-green-600" />,
   failed: <XCircle className="h-3 w-3 text-destructive" />,
   skipped: <Clock className="h-3 w-3 text-muted-foreground" />,
+};
+
+const FC_STATUS_ICON: Record<string, React.ReactNode> = {
+  not_needed: <Minus className="h-3 w-3 text-muted-foreground" />,
+  queued: <Clock className="h-3 w-3 text-muted-foreground" />,
+  running: <Loader2 className="h-3 w-3 animate-spin text-primary" />,
+  success: <CheckCircle2 className="h-3 w-3 text-green-600" />,
+  failed: <XCircle className="h-3 w-3 text-destructive" />,
+  partial: <AlertTriangle className="h-3 w-3 text-orange-500" />,
+  skipped: <Minus className="h-3 w-3 text-muted-foreground/50" />,
 };
 
 interface AiProcessing {
@@ -197,6 +207,24 @@ export function RssFetchedItemsTab() {
     fetchItems();
   };
 
+  const handleFirecrawlEnrich = async (ids: string[], force = false) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const { data, error } = await supabase.functions.invoke('rss-firecrawl-enrich', {
+        body: { action: 'enrich-items', item_ids: ids, force },
+        headers: { Authorization: `Bearer ${session?.access_token}` },
+      });
+      if (error) throw error;
+      const successCount = (data?.results || []).filter((r: any) => r.status === 'success' || r.status === 'partial').length;
+      const skipCount = (data?.results || []).filter((r: any) => r.status === 'skipped').length;
+      const failCount = (data?.results || []).filter((r: any) => r.status === 'failed').length;
+      toast({ title: 'Firecrawl Enrichment', description: `${successCount} enriched, ${skipCount} skipped, ${failCount} failed` });
+      fetchItems();
+    } catch (e: any) {
+      toast({ title: 'Error', description: e.message || 'Firecrawl enrichment failed', variant: 'destructive' });
+    }
+  };
+
   const confirmDeleteSingle = (id: string) => {
     setDeleteMode('single');
     setDeleteSingleId(id);
@@ -301,6 +329,9 @@ export function RssFetchedItemsTab() {
             <Button size="sm" variant="outline" onClick={() => openAiAction('seo-check', selectedArray)}>
               <ShieldCheck className="h-3.5 w-3.5 mr-1" /> SEO
             </Button>
+            <Button size="sm" variant="outline" onClick={() => handleFirecrawlEnrich(selectedArray)}>
+              <Globe className="h-3.5 w-3.5 mr-1" /> Firecrawl
+            </Button>
             <Button size="sm" variant="outline" className="text-destructive border-destructive/50 hover:bg-destructive/10" onClick={confirmDeleteBulk}>
               <Trash2 className="h-3.5 w-3.5 mr-1" /> Delete
             </Button>
@@ -327,6 +358,7 @@ export function RssFetchedItemsTab() {
                   <TableHead>Type</TableHead>
                   <TableHead>Date</TableHead>
                   <TableHead className="text-center" title="AI Pipeline Status">AI</TableHead>
+                  <TableHead className="text-center" title="Firecrawl Status">FC</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -354,6 +386,11 @@ export function RssFetchedItemsTab() {
                         </div>
                       </TableCell>
                       <TableCell>
+                        <div className="flex items-center justify-center" title={`FC: ${item.firecrawl_status}${item.firecrawl_reason ? ` (${item.firecrawl_reason})` : ''}`}>
+                          {FC_STATUS_ICON[item.firecrawl_status] || FC_STATUS_ICON['not_needed']}
+                        </div>
+                      </TableCell>
+                      <TableCell>
                         <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -372,6 +409,14 @@ export function RssFetchedItemsTab() {
                               <DropdownMenuItem onClick={() => openAiAction('seo-check', [item.id])}>
                                 <ShieldCheck className="h-4 w-4 mr-2" /> SEO Check
                               </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleFirecrawlEnrich([item.id])}>
+                                <Globe className="h-4 w-4 mr-2" /> Firecrawl Enrich
+                              </DropdownMenuItem>
+                              {item.firecrawl_status === 'failed' && (
+                                <DropdownMenuItem onClick={() => handleFirecrawlEnrich([item.id], true)}>
+                                  <RefreshCw className="h-4 w-4 mr-2" /> Retry Firecrawl
+                                </DropdownMenuItem>
+                              )}
                             </DropdownMenuContent>
                           </DropdownMenu>
                           <Button size="sm" variant="ghost" onClick={() => handleQueue(item)} title="Queue for Review" disabled={item.current_status === 'queued'}>
@@ -393,7 +438,7 @@ export function RssFetchedItemsTab() {
                     </TableRow>
                     {expandedId === item.id && (
                       <TableRow key={`${item.id}-detail`}>
-                        <TableCell colSpan={9}>
+                        <TableCell colSpan={10}>
                           <div className="p-3 bg-muted/30 rounded space-y-3 text-sm">
                             {/* Source data */}
                             <p><strong>Full Title:</strong> {item.item_title}</p>
@@ -472,6 +517,35 @@ export function RssFetchedItemsTab() {
                                 )}
                               </div>
                             )}
+
+                            {/* Firecrawl Enrichment */}
+                            <div className="mt-2 p-2 bg-background rounded border space-y-1">
+                              <p className="font-medium text-xs uppercase tracking-wider text-muted-foreground">Firecrawl Enrichment</p>
+                              <div className="flex items-center gap-2 text-xs">
+                                <span className="flex items-center gap-1">{FC_STATUS_ICON[item.firecrawl_status] || FC_STATUS_ICON['not_needed']} {item.firecrawl_status}</span>
+                                {item.firecrawl_reason && <span className="text-muted-foreground">({item.firecrawl_reason})</span>}
+                                {item.firecrawl_pdf_mode && <Badge variant="outline" className="text-[10px] px-1 py-0">{item.firecrawl_pdf_mode}</Badge>}
+                                {item.firecrawl_last_run_at && <span className="text-muted-foreground">Last: {new Date(item.firecrawl_last_run_at).toLocaleString()}</span>}
+                              </div>
+                              {item.firecrawl_error && <p className="text-xs text-destructive">Error: {item.firecrawl_error}</p>}
+                              {item.firecrawl_source_url && <p className="text-xs"><strong>Scraped URL:</strong> <a href={item.firecrawl_source_url} target="_blank" className="text-primary hover:underline">{item.firecrawl_source_url.substring(0, 80)}</a></p>}
+                              {item.firecrawl_content_markdown && (
+                                <details className="text-xs">
+                                  <summary className="cursor-pointer text-primary">Preview enriched content ({item.firecrawl_content_markdown.length} chars)</summary>
+                                  <pre className="mt-1 p-2 bg-muted/40 rounded text-[11px] max-h-40 overflow-auto whitespace-pre-wrap">{item.firecrawl_content_markdown.substring(0, 2000)}</pre>
+                                </details>
+                              )}
+                              <div className="flex gap-1 mt-1">
+                                <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => handleFirecrawlEnrich([item.id])}>
+                                  <Globe className="h-3 w-3 mr-1" /> Enrich
+                                </Button>
+                                {(item.firecrawl_status === 'failed' || item.firecrawl_status === 'partial') && (
+                                  <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => handleFirecrawlEnrich([item.id], true)}>
+                                    <RefreshCw className="h-3 w-3 mr-1" /> Retry
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
 
                             <p className="text-xs text-muted-foreground">First seen: {new Date(item.first_seen_at).toLocaleString()} | Last seen: {new Date(item.last_seen_at).toLocaleString()}</p>
                           </div>

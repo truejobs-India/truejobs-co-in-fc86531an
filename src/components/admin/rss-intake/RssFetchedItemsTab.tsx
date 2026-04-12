@@ -59,6 +59,16 @@ const AI_STATUS_ICON: Record<string, React.ReactNode> = {
   skipped: <Clock className="h-3 w-3 text-muted-foreground" />,
 };
 
+const FC_STATUS_ICON: Record<string, React.ReactNode> = {
+  not_needed: <Minus className="h-3 w-3 text-muted-foreground" />,
+  queued: <Clock className="h-3 w-3 text-muted-foreground" />,
+  running: <Loader2 className="h-3 w-3 animate-spin text-primary" />,
+  success: <CheckCircle2 className="h-3 w-3 text-green-600" />,
+  failed: <XCircle className="h-3 w-3 text-destructive" />,
+  partial: <AlertTriangle className="h-3 w-3 text-orange-500" />,
+  skipped: <Minus className="h-3 w-3 text-muted-foreground/50" />,
+};
+
 interface AiProcessing {
   rss_item_id: string;
   analysis_status: string;

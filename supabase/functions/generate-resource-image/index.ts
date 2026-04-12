@@ -85,115 +85,13 @@ function makeErrorResponse(
 }
 
 // ═══════════════════════════════════════════════════════════════
-// Image generation via Vertex AI (Gemini multimodal)
+// Image generation via Gemini Direct API
 // ═══════════════════════════════════════════════════════════════
-async function generateImageVertexGemini(
-  prompt: string, vertexModel: string, requestId: string,
+async function generateImageGeminiDirect(
+  prompt: string, geminiModel: string, requestId: string,
 ): Promise<{ base64: string; mimeType: string }> {
-  const projectId = Deno.env.get('GCP_PROJECT_ID');
-  const location = Deno.env.get('GCP_LOCATION') || 'us-central1';
-  if (!projectId) throw new Error('ENV_MISSING:GCP_PROJECT_ID');
-
-  let accessToken: string;
-  try {
-    accessToken = await getVertexAccessToken();
-  } catch (e) {
-    throw new Error(`VERTEX_AUTH_FAILED:${e instanceof Error ? e.message : 'unknown'}`);
-  }
-
-  const url = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${vertexModel}:generateContent`;
-  const maxRetries = 3;
-
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 150_000);
-
-    try {
-      console.log(`[${requestId}] Vertex Gemini attempt ${attempt + 1}/${maxRetries + 1}`);
-      const resp = await fetch(url, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.8, maxOutputTokens: 8192, responseModalities: ['IMAGE', 'TEXT'] },
-        }),
-        signal: controller.signal,
-      });
-
-      if (resp.status === 429) {
-        const retryAfterMs = getRetryAfterMs(resp);
-        await resp.text(); // consume body
-        if (attempt < maxRetries) {
-          const waitMs = retryAfterMs ?? Math.min(5000 * Math.pow(2, attempt), 45_000);
-          console.warn(`[${requestId}] Vertex rate limited, retry ${attempt + 1}/${maxRetries} after ${Math.round(waitMs)}ms`);
-          await sleep(waitMs);
-          continue;
-        }
-        throw new Error('VERTEX_RATE_LIMITED');
-      }
-
-      if (!resp.ok) {
-        const errText = await resp.text();
-        if (resp.status === 403) throw new Error(`VERTEX_ACCESS_DENIED:${errText.substring(0, 200)}`);
-        if (resp.status >= 500 && attempt < maxRetries) {
-          const waitMs = Math.min(4000 * Math.pow(2, attempt), 30_000);
-          console.warn(`[${requestId}] Vertex ${resp.status}, retry ${attempt + 1}/${maxRetries} after ${Math.round(waitMs)}ms`);
-          await sleep(waitMs);
-          continue;
-        }
-        throw new Error(`VERTEX_API_ERROR:${resp.status}:${errText.substring(0, 200)}`);
-      }
-
-      let data: any;
-      try {
-        data = await resp.json();
-      } catch {
-        throw new Error('VERTEX_INVALID_JSON');
-      }
-
-      // Defensive Gemini response parsing
-      const candidates = data?.candidates;
-      if (!candidates || !Array.isArray(candidates) || candidates.length === 0) {
-        const blockReason = data?.promptFeedback?.blockReason;
-        if (blockReason) throw new Error(`GEMINI_BLOCKED:${blockReason}`);
-        throw new Error('GEMINI_NO_CANDIDATES');
-      }
-
-      const parts = candidates[0]?.content?.parts;
-      if (!parts || !Array.isArray(parts) || parts.length === 0) {
-        const finishReason = candidates[0]?.finishReason;
-        throw new Error(`GEMINI_NO_PARTS:finishReason=${finishReason || 'unknown'}`);
-      }
-
-      for (const part of parts) {
-        if (part?.inlineData && typeof part.inlineData === 'object' && part.inlineData.data) {
-          const mime = part.inlineData.mimeType;
-          if (!mime || typeof mime !== 'string') {
-            console.warn(`[${requestId}] inlineData missing mimeType, defaulting to image/png`);
-          }
-          return { base64: part.inlineData.data, mimeType: mime || 'image/png' };
-        }
-      }
-
-      // Model returned text but no image
-      throw new Error('MODEL_RETURNED_NO_IMAGE');
-    } catch (err) {
-      if (isAbortError(err)) {
-        if (attempt < maxRetries) {
-          const waitMs = Math.min(6000 * (attempt + 1), 20_000);
-          console.warn(`[${requestId}] Vertex timed out, retry ${attempt + 1}/${maxRetries} after ${Math.round(waitMs)}ms`);
-          await sleep(waitMs);
-          continue;
-        }
-        throw new Error('VERTEX_TIMEOUT');
-      }
-      throw err;
-    } finally {
-      clearTimeout(timer);
-    }
-  }
-
-  throw new Error('VERTEX_EXHAUSTED_RETRIES');
+  console.log(`[${requestId}] Gemini Direct API call, model=${geminiModel}`);
+  return await callGeminiDirectImage(geminiModel, prompt, 150_000);
 }
 
 // ═══════════════════════════════════════════════════════════════

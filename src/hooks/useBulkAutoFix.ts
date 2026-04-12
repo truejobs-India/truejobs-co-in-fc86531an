@@ -838,11 +838,22 @@ async function processOneArticle(
   
   if (failedChecks.length === 0) {
     // Article is now clean — stamp as fixed (pipeline confirmed compliance)
-    await supabase.from('blog_posts').update({ ai_fixed_at: new Date().toISOString() }).eq('id', post.id);
+    const cleanUpdate: Record<string, any> = { ai_fixed_at: new Date().toISOString() };
+    if (h1WasInserted) {
+      cleanUpdate.content = post.content;
+      const wf = wordCountFields(post.content);
+      cleanUpdate.word_count = wf.word_count;
+      cleanUpdate.reading_time = wf.reading_time;
+    }
+    await supabase.from('blog_posts').update(cleanUpdate).eq('id', post.id);
     await stampBulkFixStatus(post.id, 'fixed', 0);
     return {
       postId: post.id, slug: post.slug, title: post.title,
-      status: 'fixed', issuesFound: 0, fixesApplied: [], fixesSkipped: [],
+      status: 'fixed', issuesFound: 0,
+      fixesApplied: h1WasInserted
+        ? [{ field: 'content (H1)', fixType: 'h1', beforeValue: '(no H1)', afterValue: 'Deterministic H1 inserted' }]
+        : [],
+      fixesSkipped: [],
     };
   }
 

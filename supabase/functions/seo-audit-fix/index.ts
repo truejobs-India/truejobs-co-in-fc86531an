@@ -68,6 +68,7 @@ function resolveProvider(uiModelKey: string): ProviderRoute {
     case 'mistral':
       return { provider: 'bedrock-mistral' };
     case 'gemini-pro':
+    case 'vertex-pro':
       return { provider: 'vertex-ai', vertexModel: 'gemini-2.5-pro' };
     case 'vertex-3.1-pro':
       return { provider: 'vertex-ai', vertexModel: 'gemini-3.1-pro-preview' };
@@ -79,10 +80,21 @@ function resolveProvider(uiModelKey: string): ProviderRoute {
       return { provider: 'lovable-gateway', gatewayModel: 'openai/gpt-5' };
     case 'gpt5-mini':
       return { provider: 'lovable-gateway', gatewayModel: 'openai/gpt-5-mini' };
-    case 'gemini-flash':
+    case 'sarvam-30b':
+    case 'sarvam-105b':
+      return { provider: 'sarvam', sarvamModel: uiModelKey };
+    case 'groq':
+      return { provider: 'groq' };
+    case 'claude-sonnet':
+    case 'claude':
+      return { provider: 'anthropic' };
     case 'lovable-gemini':
-    default:
+      return { provider: 'lovable-gateway', gatewayModel: 'google/gemini-2.5-flash' };
+    case 'gemini-flash':
+    case 'vertex-flash':
       return { provider: 'vertex-ai', vertexModel: 'gemini-2.5-flash' };
+    default:
+      throw new Error(`Unsupported AI model: "${uiModelKey}". No fallback allowed.`);
   }
 }
 
@@ -229,11 +241,11 @@ Rules:
 
 async function callAI(route: ProviderRoute, system: string, user: string, rawModel: string, modelPolicy: ReturnType<typeof getSeoFixModelPolicy>): Promise<AiCallResult> {
   if (route.provider === 'lovable-gateway') {
-    return callLovableGateway(route.gatewayModel, system, user, modelPolicy);
+    return callLovableGateway((route as any).gatewayModel, system, user, modelPolicy);
   } else if (route.provider === 'vertex-ai') {
-    return callVertexForSeo(route.vertexModel, system, user, modelPolicy.maxOutputTokens);
+    return callVertexForSeo((route as any).vertexModel, system, user, modelPolicy.maxOutputTokens);
   } else if (route.provider === 'bedrock-nova') {
-    return callBedrockNovaForSeo(route.modelKey, system, user, modelPolicy.maxOutputTokens);
+    return callBedrockNovaForSeo((route as any).modelKey, system, user, modelPolicy.maxOutputTokens);
   } else if (route.provider === 'azure-openai') {
     const useGPT41 = (route as any).azureModel === 'azure-gpt41-mini';
     const useGPT5Mini = (route as any).azureModel === 'azure-gpt5-mini';
@@ -241,8 +253,34 @@ async function callAI(route: ProviderRoute, system: string, user: string, rawMod
   } else if (route.provider === 'azure-deepseek') {
     const deepseekModel = (route as any).deepseekModel || 'DeepSeek-V3.1';
     return callAzureDeepSeekForSeo(system, user, modelPolicy.maxOutputTokens, deepseekModel);
-  } else {
+  } else if (route.provider === 'bedrock-mistral') {
     return callBedrockMistralForSeo(system, user, modelPolicy.maxOutputTokens);
+  } else if (route.provider === 'sarvam') {
+    const { callSarvamChat } = await import('../_shared/sarvam.ts');
+    const text = await callSarvamChat(`${system}\n\n${user}`, { model: 'sarvam-m', maxTokens: modelPolicy.maxOutputTokens, temperature: 0.3 });
+    return { text, attemptsMade: 1, retryEvents: [] };
+  } else if (route.provider === 'groq') {
+    const apiKey = Deno.env.get('GROQ_API_KEY');
+    if (!apiKey) throw new Error('GROQ_API_KEY not configured');
+    const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'system', content: system }, { role: 'user', content: user }], max_tokens: modelPolicy.maxOutputTokens, temperature: 0.3 }),
+    });
+    if (!resp.ok) throw new Error(`Groq API error ${resp.status}`);
+    const data = await resp.json();
+    return { text: data?.choices?.[0]?.message?.content || '', attemptsMade: 1, retryEvents: [] };
+  } else if (route.provider === 'anthropic') {
+    const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
+    if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured');
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: modelPolicy.maxOutputTokens, system, messages: [{ role: 'user', content: user }] }),
+    });
+    if (!resp.ok) throw new Error(`Anthropic API error ${resp.status}`);
+    const data = await resp.json();
+    return { text: data?.content?.[0]?.text || '', attemptsMade: 1, retryEvents: [] };
+  } else {
+    throw new Error(`Unsupported provider: ${route.provider}. No fallback allowed.`);
   }
 }
 

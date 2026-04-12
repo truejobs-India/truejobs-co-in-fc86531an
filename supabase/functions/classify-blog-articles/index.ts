@@ -279,7 +279,7 @@ async function callLovableGeminiClassifier(systemPrompt: string, userPrompt: str
 // Unified Classifier Dispatcher — NO silent fallback
 // ═══════════════════════════════════════════════════════════════
 
-const SUPPORTED_MODELS = ['gemini', 'gemini-flash', 'gemini-pro', 'mistral', 'claude-sonnet', 'claude', 'openai', 'gpt5', 'gpt5-mini', 'groq', 'lovable-gemini', 'vertex-flash', 'vertex-pro', 'vertex-3.1-pro', 'vertex-3-flash', 'vertex-3.1-flash-lite'];
+const SUPPORTED_MODELS = ['gemini', 'gemini-flash', 'gemini-pro', 'mistral', 'claude-sonnet', 'claude', 'openai', 'gpt5', 'gpt5-mini', 'groq', 'lovable-gemini', 'vertex-flash', 'vertex-pro', 'vertex-3.1-pro', 'vertex-3-flash', 'vertex-3.1-flash-lite', 'nova-pro', 'nova-premier', 'nemotron-120b', 'azure-gpt4o-mini', 'azure-gpt41-mini', 'azure-gpt5-mini', 'azure-deepseek-v3', 'azure-deepseek-r1', 'sarvam-30b', 'sarvam-105b'];
 
 async function callClassifierAI(
   aiModel: string,
@@ -352,8 +352,43 @@ async function callClassifierAI(
       rawText = await callVertexGemini('gemini-3.1-flash-lite-preview', fullPrompt, 60_000, { temperature: 0.1, maxOutputTokens: maxTokens, responseMimeType: 'application/json' });
       actualProvider = 'vertex-ai'; actualModelId = 'gemini-3.1-flash-lite-preview'; break;
     }
+    case 'nova-pro': case 'nova-premier': case 'nemotron-120b': {
+      const { callBedrockNova } = await import('../_shared/bedrock-nova.ts');
+      rawText = await callBedrockNova(model, systemPrompt + '\n\n' + userPrompt, { maxTokens, temperature: 0.1 });
+      actualProvider = 'aws-bedrock'; actualModelId = model; break;
+    }
+    case 'azure-gpt4o-mini': {
+      const { callAzureOpenAI } = await import('../_shared/azure-openai.ts');
+      rawText = await callAzureOpenAI(systemPrompt + '\n\n' + userPrompt, { maxTokens, temperature: 0.1 });
+      actualProvider = 'azure-openai'; actualModelId = 'gpt-4o-mini'; break;
+    }
+    case 'azure-gpt41-mini': {
+      const { callAzureGPT41Mini } = await import('../_shared/azure-openai.ts');
+      rawText = await callAzureGPT41Mini(systemPrompt + '\n\n' + userPrompt, { maxTokens, temperature: 0.1 });
+      actualProvider = 'azure-openai'; actualModelId = 'gpt-4.1-mini'; break;
+    }
+    case 'azure-gpt5-mini': {
+      const { callAzureGPT5Mini } = await import('../_shared/azure-openai.ts');
+      rawText = await callAzureGPT5Mini(systemPrompt + '\n\n' + userPrompt, { maxTokens, temperature: 0.1 });
+      actualProvider = 'azure-openai'; actualModelId = 'gpt-5-mini'; break;
+    }
+    case 'azure-deepseek-v3': {
+      const { callAzureDeepSeek } = await import('../_shared/azure-deepseek.ts');
+      rawText = await callAzureDeepSeek(systemPrompt + '\n\n' + userPrompt, { maxTokens, temperature: 0.1 });
+      actualProvider = 'azure-deepseek'; actualModelId = 'DeepSeek-V3.1'; break;
+    }
+    case 'azure-deepseek-r1': {
+      const { callAzureDeepSeek } = await import('../_shared/azure-deepseek.ts');
+      rawText = await callAzureDeepSeek(systemPrompt + '\n\n' + userPrompt, { model: 'DeepSeek-R1', maxTokens, temperature: 0.1 });
+      actualProvider = 'azure-deepseek'; actualModelId = 'DeepSeek-R1'; break;
+    }
+    case 'sarvam-30b': case 'sarvam-105b': {
+      const { callSarvamChat } = await import('../_shared/sarvam.ts');
+      rawText = await callSarvamChat(systemPrompt + '\n\n' + userPrompt, { model: 'sarvam-m', maxTokens, temperature: 0.1 });
+      actualProvider = 'sarvam'; actualModelId = model; break;
+    }
     default:
-      throw new Error(`Unsupported AI model: "${model}". Supported: ${SUPPORTED_MODELS.join(', ')}`);
+      throw new Error(`Unsupported AI model: "${model}". No fallback allowed. Supported: ${SUPPORTED_MODELS.join(', ')}`);
   }
 
   console.log(`[classify] DISPATCH_OK actual_provider=${actualProvider} actual_model=${actualModelId} responseLen=${rawText.length}`);

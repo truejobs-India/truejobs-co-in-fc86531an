@@ -236,6 +236,7 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
         slug: formData.slug,
         category: formData.category || undefined,
         tags: formData.tags || undefined,
+        aiModel: blogTextModel,
       });
       setToolState('seo', { isLoading: false, result: data });
       setResultsOpen(true);
@@ -260,6 +261,7 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
         category: formData.category || undefined,
         tags: formData.tags || undefined,
         slug: formData.slug,
+        aiModel: blogTextModel,
       });
       setToolState('faq', { isLoading: false, result: data });
       setResultsOpen(true);
@@ -282,6 +284,7 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
         slug: formData.slug,
         category: formData.category || undefined,
         tags: formData.tags || undefined,
+        aiModel: blogTextModel,
       });
       const validSuggestions = filterValidInternalLinks(data.suggestions || []);
       setToolState('internalLinks', { isLoading: false, result: { ...data, suggestions: validSuggestions } });
@@ -303,6 +306,7 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
         title: formData.title,
         content: formData.content,
         action: 'structure',
+        aiModel: blogTextModel,
         headings: currentMetadata?.headings || [],
         hasIntro: currentMetadata?.hasIntro ?? false,
         hasConclusion: currentMetadata?.hasConclusion ?? false,
@@ -347,6 +351,7 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
         title: formData.title,
         content: formData.content,
         action: 'rewrite-section',
+        aiModel: blogTextModel,
         selectedHtml: htmlContent,
         category: formData.category || undefined,
         tags: formData.tags || undefined,
@@ -639,6 +644,7 @@ export function BlogAITools({ formData, onApplyField, editorInstance, currentCom
       const data = await invokeFunction('improve-blog-content', {
         title: formData.title, content: formData.content,
         action: 'enrich-article', targetWordCount: enrichWordLimit,
+        aiModel: blogTextModel,
         category: formData.category || undefined, tags: formData.tags || undefined,
       });
       setToolState('enrichArticle', { isLoading: false, result: data });

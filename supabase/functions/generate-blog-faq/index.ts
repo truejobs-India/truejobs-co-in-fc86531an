@@ -195,8 +195,16 @@ async function callAI(model: string, prompt: string): Promise<string> {
       return import('../_shared/azure-deepseek.ts').then(m => m.callAzureDeepSeek(prompt, { maxTokens: 4096, temperature: 0.4 }));
     case 'azure-deepseek-r1':
       return import('../_shared/azure-deepseek.ts').then(m => m.callAzureDeepSeek(prompt, { model: 'DeepSeek-R1', maxTokens: 4096, temperature: 0.4 }));
+    case 'sarvam-30b': {
+      const { callSarvamChat } = await import('../_shared/sarvam.ts');
+      return callSarvamChat(prompt, { model: 'sarvam-m', maxTokens: 4000, temperature: 0.4 });
+    }
+    case 'sarvam-105b': {
+      const { callSarvamChat } = await import('../_shared/sarvam.ts');
+      return callSarvamChat(prompt, { model: 'sarvam-m', maxTokens: 4000, temperature: 0.4 });
+    }
     default:
-      throw new Error(`Unsupported AI model: "${model}". Supported: gemini, mistral, claude-sonnet, openai, groq, lovable-gemini, vertex-flash, vertex-pro, vertex-3.1-pro, vertex-3-flash, vertex-3.1-flash-lite, nova-pro, nova-premier, nemotron-120b, azure-gpt4o-mini, azure-gpt41-mini, azure-gpt5-mini, azure-deepseek-v3, azure-deepseek-r1`);
+      throw new Error(`Unsupported AI model: "${model}". No fallback allowed.`);
   }
 }
 

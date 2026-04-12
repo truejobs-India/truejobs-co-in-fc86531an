@@ -254,7 +254,7 @@ async function callLovableGemini(prompt: string, maxTokens: number): Promise<str
 // Unified dispatcher — NO silent fallback
 // ═══════════════════════════════════════════════════════════════
 
-const SUPPORTED_MODELS = ['gemini', 'gemini-flash', 'gemini-pro', 'mistral', 'claude-sonnet', 'claude', 'openai', 'gpt5', 'gpt5-mini', 'groq', 'lovable-gemini', 'vertex-flash', 'vertex-pro', 'vertex-3.1-pro', 'vertex-3-flash', 'vertex-3.1-flash-lite', 'nova-pro', 'nova-premier', 'nemotron-120b', 'azure-gpt4o-mini', 'azure-gpt41-mini', 'azure-gpt5-mini', 'azure-deepseek-v3', 'azure-deepseek-r1'];
+const SUPPORTED_MODELS = ['gemini', 'gemini-flash', 'gemini-pro', 'mistral', 'claude-sonnet', 'claude', 'openai', 'gpt5', 'gpt5-mini', 'groq', 'lovable-gemini', 'vertex-flash', 'vertex-pro', 'vertex-3.1-pro', 'vertex-3-flash', 'vertex-3.1-flash-lite', 'nova-pro', 'nova-premier', 'nemotron-120b', 'azure-gpt4o-mini', 'azure-gpt41-mini', 'azure-gpt5-mini', 'azure-deepseek-v3', 'azure-deepseek-r1', 'sarvam-30b', 'sarvam-105b'];
 
 async function callAI(aiModel: string, prompt: string, maxTokens: number, options?: { systemPrompt?: string }): Promise<{ raw: string; finishReason: string; actualProvider: string; actualModelId: string; usage?: { inputTokens?: number; outputTokens?: number } }> {
   const model = aiModel || 'gemini';
@@ -368,8 +368,14 @@ async function callAI(aiModel: string, prompt: string, maxTokens: number, option
       resultJson = JSON.stringify({ __raw: text, __finishReason: 'stop' });
       actualProvider = 'azure-deepseek'; actualModelId = 'DeepSeek-R1'; break;
     }
+    case 'sarvam-30b': case 'sarvam-105b': {
+      const { callSarvamChat } = await import('../_shared/sarvam.ts');
+      const sarvamText = await callSarvamChat(prompt, { model: 'sarvam-m', maxTokens, temperature: 0.5 });
+      resultJson = JSON.stringify({ __raw: sarvamText, __finishReason: 'stop' });
+      actualProvider = 'sarvam'; actualModelId = model; break;
+    }
     default:
-      throw new Error(`Unsupported AI model: "${model}". Supported models: ${SUPPORTED_MODELS.join(', ')}`);
+      throw new Error(`Unsupported AI model: "${model}". No fallback allowed. Supported: ${SUPPORTED_MODELS.join(', ')}`);
   }
 
   const parsed = JSON.parse(resultJson);

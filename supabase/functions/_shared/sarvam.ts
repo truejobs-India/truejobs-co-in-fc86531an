@@ -23,10 +23,13 @@ export async function callSarvamChat(
 
   const {
     model = 'sarvam-30b',
-    maxTokens = 4096,
+    maxTokens: rawMaxTokens = 4096,
     temperature = 0.5,
     timeoutMs = 120_000,
   } = options;
+
+  // Sarvam starter tier caps at 4096 tokens for all models
+  const maxTokens = Math.min(rawMaxTokens, 4096);
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);

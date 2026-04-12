@@ -240,7 +240,7 @@ No markdown code blocks.`;
       }
     }
 
-    console.log(`[COMPLIANCE] Raw response length: ${raw.length} chars`);
+    console.log(`[COMPLIANCE] Raw response length: ${raw.length} chars (model: ${usedModel})`);
 
     // Strip markdown fences
     raw = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();

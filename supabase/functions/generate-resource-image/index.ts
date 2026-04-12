@@ -287,13 +287,13 @@ Deno.serve(async (req) => {
     const warnings: string[] = [];
 
     try {
-      if (route.provider === 'vertex-ai') {
-        if (route.vertexEndpoint === 'imagen') {
-          const result = await generateImageVertexImagen(imagePrompt, requestId);
+      if (route.provider === 'gemini-direct') {
+        if (false) {
+          const result = await (() => { throw new Error('Imagen removed') })();
           imageBase64 = result.base64;
           mimeType = result.mimeType;
         } else {
-          const result = await generateImageVertexGemini(imagePrompt, route.apiModel, requestId);
+          const result = await generateImageGeminiDirect(imagePrompt, route.apiModel, requestId);
           imageBase64 = result.base64;
           mimeType = result.mimeType;
         }

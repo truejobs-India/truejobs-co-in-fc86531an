@@ -1,169 +1,150 @@
 
 
-# Strict AI Model Routing — Deep Audit & Fix Plan
+# Gemini Migration: Vertex AI to Direct Google Gemini API — Final Execution Plan
 
-## Complete Audit Results
+## Scope
 
-Here is every violation found across all text-generation edge functions and frontend callers. Each model in the registry (`src/lib/aiModels.ts`) has 30 text-capable models. The table below shows which functions support which models and where violations exist.
+Replace all Gemini model calls that currently depend on Vertex AI (GCP service account, OAuth JWT, project/location endpoints) with direct Google Gemini API calls via `generativelanguage.googleapis.com` using a single `GEMINI_API_KEY`. Non-Gemini providers remain untouched.
 
-### TEXT MODELS IN REGISTRY (30 total)
-```text
-BUILT-IN (10):
-  gemini-flash, gemini-pro, groq, claude-sonnet, nova-pro,
-  nova-premier, mistral, gpt5, gpt5-mini, lovable-gemini
+## Exact File Inventory
 
-EXTERNAL-API (20):
-  vertex-flash, vertex-pro, vertex-3.1-pro, vertex-3-flash,
-  vertex-3.1-flash-lite, nemotron-120b, azure-gpt4o-mini,
-  azure-gpt41-mini, azure-gpt5-mini, azure-deepseek-v3,
-  azure-deepseek-r1, sarvam-30b, sarvam-105b
-  (+ 7 image-only models, not relevant here)
-```
+**Category A — 26 files importing `_shared/vertex-ai.ts` (shared dynamic import):**
 
-### VIOLATION SUMMARY BY FUNCTION
+| # | File |
+|---|---|
+| 1 | `analyze-blog-compliance-fixes/index.ts` |
+| 2 | `azure-emp-news-ai-clean-drafts/index.ts` |
+| 3 | `classify-blog-articles/index.ts` |
+| 4 | `company-research/index.ts` |
+| 5 | `enrich-authority-pages/index.ts` |
+| 6 | `enrich-blog-articles/index.ts` |
+| 7 | `enrich-employment-news/index.ts` |
+| 8 | `extract-employment-news/index.ts` |
+| 9 | `firecrawl-ai-enrich/index.ts` |
+| 10 | `fix-seo-metadata/index.ts` |
+| 11 | `gemini-generate/index.ts` |
+| 12 | `generate-blog-article/index.ts` |
+| 13 | `generate-blog-faq/index.ts` |
+| 14 | `generate-blog-seo/index.ts` |
+| 15 | `generate-custom-page/index.ts` |
+| 16 | `generate-guide-content/index.ts` |
+| 17 | `generate-resource-content/index.ts` |
+| 18 | `generate-resource-image/index.ts` |
+| 19 | `improve-blog-content/index.ts` |
+| 20 | `intake-ai-classify/index.ts` |
+| 21 | `job-search-ai/index.ts` |
+| 22 | `linkedin-import/index.ts` |
+| 23 | `resume-ai/index.ts` |
+| 24 | `rss-ai-process/index.ts` |
+| 25 | `seo-audit-fix/index.ts` |
+| 26 | `suggest-blog-internal-links/index.ts` |
 
-| # | Function | Sarvam Support | Default Fallback | aiModel Param | Violations |
-|---|----------|---------------|------------------|---------------|------------|
-| 1 | `analyze-blog-compliance-fixes` | NO | `default:` -> Vertex `gemini-2.5-pro` | Yes (from UI) | Missing: sarvam-30b, sarvam-105b, groq. Default falls to Vertex. |
-| 2 | `generate-blog-seo` | NO | Hardcoded Vertex Flash | NO — ignores selector | Fully hardcoded to Vertex. No aiModel param accepted. |
-| 3 | `suggest-blog-internal-links` | NO | Hardcoded Vertex Flash | NO — ignores selector | Fully hardcoded to Vertex. No aiModel param accepted. |
-| 4 | `generate-blog-faq` | NO | `default:` throws error (good) | Yes | Missing: sarvam-30b, sarvam-105b. |
-| 5 | `improve-blog-content` | NO | `default:` throws error (good) | Yes | Missing: sarvam-30b, sarvam-105b. |
-| 6 | `enrich-employment-news` | YES but wrong | `default:` uses raw model string | Yes | Collapses sarvam-30b AND sarvam-105b to `sarvam-m`. |
-| 7 | `extract-employment-news` | YES but wrong | `default:` -> Vertex Flash | Yes | Collapses sarvam-30b AND sarvam-105b to `sarvam-m`. Default falls to Vertex. |
-| 8 | `generate-blog-article` | YES (correct) | `default:` throws error (good) | Yes | OK — supports both sarvam models correctly. |
-| 9 | `classify-blog-articles` | NO | `default:` throws error (good) | Yes | Missing: sarvam-30b, sarvam-105b, azure-* models. |
-| 10 | `seo-audit-fix` | NO | `default:` -> Vertex Flash | Yes | Missing: sarvam, azure-deepseek. Default falls to Vertex. |
-| 11 | `fix-seo-metadata` | NO | Hardcoded Vertex Pro | NO | Fully hardcoded to Vertex. No aiModel param. |
-| 12 | `enrich-blog-articles` | NO | Hardcoded Vertex Flash | NO | Fully hardcoded to Vertex. No aiModel param. |
-| 13 | `generate-blog-seo` (bulk mode) | NO | Hardcoded Vertex Flash | NO | Same as #2 — bulk path also hardcoded. |
+**Category B — 3 files with their own LOCAL duplicated `getVertexAccessToken()` (do NOT import from shared):**
 
-### FRONTEND CALLER VIOLATIONS
+| # | File |
+|---|---|
+| 27 | `generate-premium-article/index.ts` |
+| 28 | `generate-seo-helper/index.ts` |
+| 29 | `generate-vertex-image/index.ts` |
 
-| # | UI Component / Hook | Where aiModel is NOT sent | Impact |
-|---|---------------------|--------------------------|--------|
-| 1 | `BlogAITools.tsx` → `handleGenerateSEO` | `generate-blog-seo` — no `aiModel` sent | Always hits Vertex |
-| 2 | `BlogAITools.tsx` → `handleGenerateFAQ` | `generate-blog-faq` — no `aiModel` sent | Falls to default |
-| 3 | `BlogAITools.tsx` → `handleSuggestLinks` | `suggest-blog-internal-links` — no `aiModel` sent | Always hits Vertex |
-| 4 | `BlogAITools.tsx` → `handleImproveStructure` | `improve-blog-content` — no `aiModel` sent | Falls to default |
-| 5 | `BlogAITools.tsx` → `handleRewriteSection` | `improve-blog-content` — no `aiModel` sent | Falls to default |
-| 6 | `BlogAITools.tsx` → `handleEnrichArticle` | `improve-blog-content` — no `aiModel` sent | Falls to default |
-| 7 | `BulkPublishModal.tsx` → SEO fix | `generate-blog-seo` bulk — no `aiModel` sent | Always hits Vertex |
-| 8 | `useBulkBlogWorkflow.ts` → Pass 2 | Forces `gemini-2.5-pro` for enrichment escalation | Ignores selected model |
+**Category C — Frontend model registry:**
 
-### CORRECTLY PASSING aiModel (no changes needed)
-- `BlogAITools.tsx` → `handleComplianceFixes` — sends `aiModel: blogTextModel` ✓
-- `BlogAITools.tsx` → Fix All button — sends `aiModel: blogTextModel` ✓
-- `useBulkAutoFix.ts` — sends `aiModel: blogTextModel` ✓
-- `useBulkBlogWorkflow.ts` → compliance fixes — sends `aiModel` ✓
-- `BulkEnrichByWordCount.tsx` — sends `aiModel: blogTextModel` ✓
-- `PendingActionsPanel.tsx` — sends `aiModel: blogTextModel` ✓
-- `BlogPostEditor.tsx` — sends `aiModel: blogTextModel` ✓
+| # | File |
+|---|---|
+| 30 | `src/lib/aiModels.ts` |
 
----
+**Category D — New shared helper:**
 
-## Implementation Plan
+| # | File |
+|---|---|
+| 31 | `supabase/functions/_shared/gemini-direct.ts` (NEW) |
 
-### Part 1: Add Sarvam support to all blog edge functions (5 functions)
+**Total files changed: 31** (26 shared-import replacements + 3 local-auth rewrites + 1 frontend registry + 1 new shared helper)
 
-**1.1 `analyze-blog-compliance-fixes/index.ts`**
-- Add cases for `sarvam-30b` and `sarvam-105b` using `callSarvamChat` from `../_shared/sarvam.ts`
-- Add case for `groq` using Groq API
-- Replace `default:` branch (currently routes to Vertex) with `throw new Error('Unsupported model')`
+## Model Availability
 
-**1.2 `generate-blog-seo/index.ts`**
-- Accept `aiModel` from request body
-- Replace hardcoded `callVertexGemini('gemini-2.5-flash', ...)` with a dispatcher that routes to the selected model
-- Support all 30 text models
-- Return 400 for unsupported/missing models
+Models will be verified at runtime during end-to-end testing. The following are expected to be available via direct Google Gemini API based on current documentation, but will only be exposed in selectors after live verification confirms they work for this account:
 
-**1.3 `suggest-blog-internal-links/index.ts`**
-- Accept `aiModel` from request body
-- Replace hardcoded `callVertexGemini('gemini-2.5-flash', ...)` with dispatcher
-- Support all 30 text models
-- Return 400 for unsupported/missing models
+**Text models (pending verification):**
+| Registry Key | Direct API Model ID |
+|---|---|
+| `vertex-flash` | `gemini-2.5-flash` |
+| `vertex-pro` | `gemini-2.5-pro` |
+| `vertex-3.1-pro` | `gemini-3.1-pro-preview` |
+| `vertex-3-flash` | `gemini-3-flash-preview` |
+| `vertex-3.1-flash-lite` | `gemini-3.1-flash-lite-preview` |
 
-**1.4 `generate-blog-faq/index.ts`**
-- Add `sarvam-30b` and `sarvam-105b` cases to existing `callAI` dispatcher
+**Image-capable models (pending verification):**
+| Registry Key | Direct API Model ID |
+|---|---|
+| `vertex-flash-image` | `gemini-2.5-flash-preview-image-generation` |
+| `vertex-3-pro-image` | `gemini-3-pro-image-preview` |
+| `vertex-3.1-flash-image` | `gemini-3.1-flash-image-preview` |
 
-**1.5 `improve-blog-content/index.ts`**
-- Add `sarvam-30b` and `sarvam-105b` cases to existing `callAI` dispatcher
+**NOT migratable (remove from selectors):**
+| Model | Reason |
+|---|---|
+| `vertex-imagen` | Uses Vertex predict API, not generateContent. Vertex-only. |
 
-### Part 2: Fix frontend callers to always pass aiModel (3 files)
+## Execution Steps
 
-**2.1 `BlogAITools.tsx`**
-- Add `aiModel: blogTextModel` to ALL 6 function calls that currently omit it:
-  - `handleGenerateSEO` → `generate-blog-seo`
-  - `handleGenerateFAQ` → `generate-blog-faq`
-  - `handleSuggestLinks` → `suggest-blog-internal-links`
-  - `handleImproveStructure` → `improve-blog-content`
-  - `handleRewriteSection` → `improve-blog-content`
-  - `handleEnrichArticle` → `improve-blog-content`
+### Step 1: Add `GEMINI_API_KEY` secret
+Use `add_secret` tool. Wait for user to provide the key before proceeding.
 
-**2.2 `BulkPublishModal.tsx`**
-- Accept `blogTextModel` prop and pass `aiModel` to bulk SEO call
+### Step 2: Create `supabase/functions/_shared/gemini-direct.ts`
+New shared helper exporting:
+- `callGeminiDirect(model, prompt, timeoutMs, options)` — same signature as `callVertexGemini`
+- `callGeminiDirectWithMeta(model, prompt, timeoutMs, options)` — same signature as `callVertexGeminiWithMeta`
+- `callGeminiDirectImage(model, prompt, timeoutMs)` — for image generation with `responseModalities: ['IMAGE', 'TEXT']`
 
-**2.3 `useBulkBlogWorkflow.ts`**
-- Remove the Pass 2 forced escalation to `gemini-2.5-pro` (line 1110)
-- Use the user's selected model for all passes
+Authentication: `GEMINI_API_KEY` in URL query param. Endpoint: `https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent`. Retry logic for 429s preserved.
 
-### Part 3: Fix Sarvam model collapsing (2 functions)
+### Step 3: Update Category A — 26 files (shared import replacement)
+In each file, replace every `import('../_shared/vertex-ai.ts')` with `import('../_shared/gemini-direct.ts')` and swap function names:
+- `callVertexGemini` → `callGeminiDirect`
+- `callVertexGeminiWithMeta` → `callGeminiDirectWithMeta`
+- `getVertexAccessToken` → removed (not needed)
 
-**3.1 `enrich-employment-news/index.ts`**
-- Change `sarvam-30b` → route to `sarvam-30b` (not `sarvam-m`)
-- Change `sarvam-105b` → route to `sarvam-105b` (not `sarvam-m`)
-- Fix the `resolveModel` function AND the `callAI` switch for both entries
-- Replace `default:` with explicit error
+Also update provider metadata strings from `'vertex-ai'` to `'gemini-direct'` where used in response metadata.
 
-**3.2 `extract-employment-news/index.ts`**
-- Same fixes as 3.1
-- Replace `default:` → Vertex Flash with explicit error
+### Step 4: Rewrite Category B — 3 files (local Vertex auth removal)
 
-### Part 4: Fix remaining hardcoded Vertex functions (3 functions)
+**4a. `generate-premium-article/index.ts`** — Delete the local `getVertexAccessToken()` function and local `callVertexGemini()`. Import `callGeminiDirect` from `_shared/gemini-direct.ts` instead.
 
-**4.1 `fix-seo-metadata/index.ts`**
-- Accept `aiModel` param, add dispatcher, remove hardcoded Vertex Pro
+**4b. `generate-seo-helper/index.ts`** — Same treatment: delete local Vertex auth, import from shared helper.
 
-**4.2 `enrich-blog-articles/index.ts`**
-- Accept `aiModel` param, add dispatcher, remove hardcoded Vertex Flash
+**4c. `generate-vertex-image/index.ts`** — Delete the local `getVertexAccessToken()`. Replace `generateViaGeminiFlashImage()` and `generateViaVertexDirectImage()` to use `callGeminiDirectImage()` from the shared helper. Remove Imagen routing (Vertex-only). Keep non-Gemini image providers (Nova Canvas, Azure FLUX, Azure MAI-Image, Lovable Gateway) unchanged.
 
-**4.3 `seo-audit-fix/index.ts`**
-- Add sarvam-30b, sarvam-105b support
-- Replace `default:` → Vertex Flash with explicit error
+### Step 5: Update `src/lib/aiModels.ts`
+- Change `provider` from `'Google Vertex AI'` to `'Google Gemini API'` for all `vertex-*` entries
+- Update labels: replace `(From API)` with `(Direct API)` 
+- Remove `vertex-imagen` entry entirely
+- Remove `'image'` from `vertex-pro` capabilities (was routing to Imagen)
+- Keep registry key values unchanged (e.g. `vertex-flash` stays `vertex-flash`) to preserve localStorage preferences
 
-### Part 5: Fix classifier (1 function)
+### Step 6: Deploy all 29 modified edge functions
+Deploy all functions from Categories A and B.
 
-**5.1 `classify-blog-articles/index.ts`**
-- Add sarvam-30b, sarvam-105b, azure-gpt5-mini, azure-gpt41-mini, azure-gpt4o-mini, azure-deepseek-v3, azure-deepseek-r1 support
+### Step 7: Live verification
+- Test one text model (`gemini-2.5-flash`) via `analyze-blog-compliance-fixes`
+- Test one image model via `generate-vertex-image`
+- If any model returns 404 or unsupported error, remove it from selectors before finalizing
 
----
+### Step 8: Final codebase search for remaining Vertex imports
+Run `grep -r "vertex-ai\.ts" supabase/functions/` to confirm zero remaining imports. Only then decide whether `_shared/vertex-ai.ts` can be deleted (it will be deleted only if zero imports remain and no non-Gemini code depends on it).
 
-## Files to modify (16 total)
+## Secrets Summary
 
-**Edge functions (11):**
-1. `supabase/functions/analyze-blog-compliance-fixes/index.ts`
-2. `supabase/functions/generate-blog-seo/index.ts`
-3. `supabase/functions/suggest-blog-internal-links/index.ts`
-4. `supabase/functions/generate-blog-faq/index.ts`
-5. `supabase/functions/improve-blog-content/index.ts`
-6. `supabase/functions/enrich-employment-news/index.ts`
-7. `supabase/functions/extract-employment-news/index.ts`
-8. `supabase/functions/fix-seo-metadata/index.ts`
-9. `supabase/functions/enrich-blog-articles/index.ts`
-10. `supabase/functions/seo-audit-fix/index.ts`
-11. `supabase/functions/classify-blog-articles/index.ts`
+| Secret | Status |
+|---|---|
+| `GEMINI_API_KEY` | **Must add** (new) |
+| `GCP_PROJECT_ID` | Already deleted |
+| `GCP_CLIENT_EMAIL` | Already deleted |
+| `GCP_PRIVATE_KEY` | Already deleted |
+| `GCP_LOCATION` | Already deleted |
 
-**Frontend (5):**
-12. `src/components/admin/blog/BlogAITools.tsx`
-13. `src/components/admin/bulk-blog/BulkPublishModal.tsx`
-14. `src/hooks/useBulkBlogWorkflow.ts`
-15. `src/components/admin/bulk-blog/ArticleEditPanel.tsx` (if needed for prop threading)
-16. `src/components/admin/BulkBlogUpload.tsx` (if needed for prop threading)
-
-## Strict rules enforced
-- No `default:` branch that routes to any AI provider
-- Every unsupported model returns explicit 400 error
-- No model collapsing (sarvam-105b stays sarvam-105b)
-- No forced escalation passes
-- Every frontend AI call includes `aiModel: blogTextModel`
+## What stays unchanged
+- All non-Gemini providers: Sarvam, Azure OpenAI, Azure DeepSeek, Azure FLUX, Azure MAI-Image, Amazon Bedrock (Nova), Anthropic Claude, Groq, Lovable Gateway
+- Lovable Gateway Gemini models (`gemini-flash-image`, `gemini-pro-image`, `gemini-flash-image-2`) — these route through Lovable AI Gateway, not direct API
+- Built-in platform `gemini-flash` and `gemini-pro` entries (source: `built-in`, provider: `Google`) — these also route through Lovable Gateway
 

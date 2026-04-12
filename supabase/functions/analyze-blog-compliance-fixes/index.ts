@@ -346,6 +346,18 @@ No markdown code blocks.`;
     // Strip markdown fences
     raw = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
 
+    // Strip leading non-JSON text (some models prepend explanatory text)
+    const arrayStart = raw.indexOf('[');
+    if (arrayStart > 0 && arrayStart < 100) {
+      raw = raw.substring(arrayStart);
+    }
+
+    // Strip trailing non-JSON text after the closing bracket
+    const arrayEnd = raw.lastIndexOf(']');
+    if (arrayEnd > 0 && arrayEnd < raw.length - 1) {
+      raw = raw.substring(0, arrayEnd + 1);
+    }
+
     let truncated = false;
     let parseError = false;
     let recoveryAttempted = false;

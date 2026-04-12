@@ -559,10 +559,12 @@ async function processOneArticle(
   const { actionable: failedChecks } = splitActionableChecks(allFailedChecks);
   
   if (failedChecks.length === 0) {
-    await stampBulkFixStatus(post.id, 'skipped', 0);
+    // Article is now clean — stamp as fixed (pipeline confirmed compliance)
+    await supabase.from('blog_posts').update({ ai_fixed_at: new Date().toISOString() }).eq('id', post.id);
+    await stampBulkFixStatus(post.id, 'fixed', 0);
     return {
       postId: post.id, slug: post.slug, title: post.title,
-      status: 'skipped', issuesFound: 0, fixesApplied: [], fixesSkipped: [],
+      status: 'fixed', issuesFound: 0, fixesApplied: [], fixesSkipped: [],
     };
   }
 
@@ -605,6 +607,22 @@ async function processOneArticle(
   }
 
   const fixes: any[] = Array.isArray(data?.fixes) ? data.fixes : [];
+
+  // Detect AI response failure: parseError means AI returned unusable output
+  if (data?.parseError && fixes.length === 0) {
+    console.warn(`[BULK_AUTO_FIX] AI parseError for "${post.slug}" — marking failed for retry`);
+    await stampBulkFixStatus(post.id, 'failed', failedChecks.length);
+    return {
+      postId: post.id, slug: post.slug, title: post.title,
+      status: 'failed' as const, issuesFound: failedChecks.length, fixesApplied: [], fixesSkipped: [],
+      error: 'AI returned unparseable response — will retry next run',
+    };
+  }
+
+  // Log truncation warnings for observability
+  if (data?.truncated && fixes.length > 0) {
+    console.warn(`[BULK_AUTO_FIX] Truncated AI response for "${post.slug}" — ${fixes.length} fixes salvaged via recovery`);
+  }
   const fixesApplied: FixApplied[] = [];
   const fixesSkipped: FixSkipped[] = [];
   const updatePayload: Record<string, any> = {};
@@ -800,17 +818,14 @@ async function processOneArticle(
     updatePayload.reading_time = reading_time;
   }
 
-  // Write content/metadata to DB
-  if (Object.keys(updatePayload).length > 0) {
-    if (fixesApplied.length > 0) {
-      updatePayload.ai_fixed_at = new Date().toISOString();
-    }
-    const { error: updateError } = await supabase
-      .from('blog_posts')
-      .update(updatePayload)
-      .eq('id', post.id);
-    if (updateError) throw new Error(`DB update failed: ${updateError.message}`);
-  }
+  // Always stamp ai_fixed_at — article completed AI processing successfully
+  updatePayload.ai_fixed_at = new Date().toISOString();
+
+  const { error: updateError } = await supabase
+    .from('blog_posts')
+    .update(updatePayload)
+    .eq('id', post.id);
+  if (updateError) throw new Error(`DB update failed: ${updateError.message}`);
 
   // ── Post-fix re-evaluation ──
   // Build a virtual post with updated fields for re-analysis

@@ -554,6 +554,16 @@ async function processOneArticle(
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) throw new Error('Not authenticated');
 
+  // Pre-fix: sync faq_count from content if DB says 0 but content has FAQs
+  if ((post.faq_count ?? 0) === 0 && post.content) {
+    const faqQs = (post.content.match(/<h[3-4][^>]*>[^<]*\?/gi) || []).length;
+    if (faqQs > 0) {
+      console.log(`[BULK_AUTO_FIX] Pre-fix faq_count sync for "${post.slug}": ${faqQs} FAQs found in content`);
+      await supabase.from('blog_posts').update({ faq_count: faqQs }).eq('id', post.id);
+      (post as any).faq_count = faqQs;
+    }
+  }
+
   const meta = blogPostToMetadata(post);
   const compliance = analyzePublishCompliance(meta);
   const allFailedChecks = compliance.checks.filter(c => c.status === 'fail' || c.status === 'warn');

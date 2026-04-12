@@ -398,6 +398,7 @@ async function processSource(
     let itemsNew = 0;
     let itemsUpdated = 0;
     let itemsSkipped = 0;
+    const newItemIds: string[] = []; // Track new items for Firecrawl enrichment
 
     for (const item of parsed.items) {
       try {
@@ -490,6 +491,15 @@ async function processSource(
       etag: fetchResult.etag || source.etag,
       last_modified: fetchResult.lastModified || source.last_modified,
     }).eq('id', source.id);
+
+    // Fire-and-forget Firecrawl enrichment for qualifying new items
+    if (itemsNew > 0) {
+      try {
+        await dispatchFirecrawlEnrichment(newItemIds, supabaseUrl, serviceRoleKey);
+      } catch (fcErr) {
+        console.warn('[rss-ingest] Firecrawl dispatch failed (non-blocking):', fcErr);
+      }
+    }
 
     return {
       status: runStatus,

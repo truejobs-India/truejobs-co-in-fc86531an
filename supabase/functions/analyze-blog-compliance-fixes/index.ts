@@ -82,6 +82,21 @@ function normalizeFix(raw: any): {
   if (!VALID_FIX_TYPES.has(fixType)) fixType = 'advisory';
   if (!VALID_APPLY_MODES.has(applyMode)) applyMode = 'advisory';
 
+  // Rescue: AI returned real content with wrong fixType — infer from issueKey
+  if (fixType === 'advisory' && suggestedValue.length > 20) {
+    if (issueKey === 'missing-intro') { fixType = 'intro'; applyMode = 'insert_before_first_heading'; }
+    else if (issueKey === 'missing-conclusion') { fixType = 'conclusion'; applyMode = 'append_content'; }
+    else if (issueKey === 'faq-schema') { fixType = 'faq'; applyMode = 'append_content'; }
+    else if (issueKey === 'seo-internal-links') { fixType = 'internal_links'; applyMode = 'append_content'; }
+    else if (issueKey === 'missing-lists') { fixType = 'readability'; applyMode = 'append_content'; }
+    else if (issueKey === 'low-heading-count') { fixType = 'heading_structure'; applyMode = 'append_content'; }
+  }
+
+  // Rescue: correct applyMode for known fixTypes
+  if (fixType === 'intro' && applyMode !== 'insert_before_first_heading') applyMode = 'insert_before_first_heading';
+  if (fixType === 'conclusion' && applyMode !== 'append_content') applyMode = 'append_content';
+  if (fixType === 'readability' && applyMode !== 'append_content') applyMode = 'append_content';
+
   // Safety net: internal_links must NEVER use destructive modes
   if (fixType === 'internal_links' && (applyMode === 'replace_section' || applyMode === 'review_replacement')) {
     applyMode = 'append_content';

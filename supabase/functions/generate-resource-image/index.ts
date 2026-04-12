@@ -181,10 +181,8 @@ async function generateImageLovableGateway(
 // Validate env vars for a specific provider
 // ═══════════════════════════════════════════════════════════════
 function validateProviderEnv(provider: string): string | null {
-  if (provider === 'vertex-ai') {
-    if (!Deno.env.get('GCP_PROJECT_ID')) return 'GCP_PROJECT_ID not configured';
-    if (!Deno.env.get('GCP_CLIENT_EMAIL')) return 'GCP_CLIENT_EMAIL not configured';
-    if (!Deno.env.get('GCP_PRIVATE_KEY')) return 'GCP_PRIVATE_KEY not configured';
+  if (provider === 'gemini-direct') {
+    if (!Deno.env.get('GEMINI_API_KEY')) return 'GEMINI_API_KEY not configured';
     return null;
   }
   if (provider === 'lovable-gateway') {

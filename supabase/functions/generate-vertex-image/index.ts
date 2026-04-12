@@ -1173,7 +1173,7 @@ serve(async (req) => {
       if (isGatewayModel(selectedCoverModel) && selectedCoverModel !== 'gemini-flash-image') {
         return await generateViaGatewayModel(selectedCoverModel, body, imagePrompt);
       }
-      if (selectedCoverModel === 'gemini-flash-image' || selectedCoverModel === 'vertex-flash-image') {
+      if (selectedCoverModel === 'gemini-flash-image') {
         return await generateViaGeminiFlashImage(body, slug, imagePrompt, adminClient, startMs, strict);
       }
       // Strict mode: reject unresolved routing
@@ -1209,7 +1209,7 @@ serve(async (req) => {
       if (isGatewayModel(selectedInlineModel) && selectedInlineModel !== 'gemini-flash-image') {
         return await generateViaGatewayModel(selectedInlineModel, { ...body, purpose: 'inline' }, imagePrompt);
       }
-      if (selectedInlineModel === 'gemini-flash-image' || selectedInlineModel === 'vertex-flash-image') {
+      if (selectedInlineModel === 'gemini-flash-image') {
         return await generateViaGeminiFlashImage({ ...body, purpose: 'inline' }, slug, imagePrompt, adminClient, startMs, strict);
       }
       // Strict mode: reject catch-all default
@@ -1246,7 +1246,7 @@ serve(async (req) => {
     if (isGatewayModel(selectedModel) && selectedModel !== 'gemini-flash-image') {
       return await generateViaGatewayModel(selectedModel, body, imagePrompt);
     }
-    if (selectedModel === 'gemini-flash-image' || selectedModel === 'vertex-flash-image') {
+    if (selectedModel === 'gemini-flash-image') {
       return await generateViaGeminiFlashImage(body, slug, imagePrompt, adminClient, startMs, strict);
     }
     // Strict mode: reject unresolved catch-all

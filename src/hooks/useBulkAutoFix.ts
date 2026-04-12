@@ -12,7 +12,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { calcLiveWordCount, calcReadingTime, wordCountFields } from '@/lib/blogWordCount';
-import { blogPostToMetadata } from '@/lib/blogArticleAnalyzer';
+import { blogPostToMetadata, analyzeQuality, analyzeSEO } from '@/lib/blogArticleAnalyzer';
 import { analyzePublishCompliance } from '@/lib/blogComplianceAnalyzer';
 import { isValidInternalPagePath } from '@/lib/blogLinkValidator';
 import {
@@ -47,6 +47,7 @@ const AUTO_FIXABLE_CHECK_KEYS = new Set([
   'h1-present', 'heading-hierarchy', 'faq-schema',
   'seo-meta-title', 'seo-meta-description', 'seo-internal-links',
   'seo-headings', 'seo-excerpt/summary',
+  'missing-intro', 'missing-conclusion', 'missing-lists', 'low-heading-count',
 ]);
 
 function splitActionableChecks<T extends { key: string; status: string }>(checks: T[]) {
@@ -713,7 +714,15 @@ async function processOneArticle(
           updatePayload.faq_schema = validSchema;
           updatePayload.has_faq_schema = true;
           updatePayload.faq_count = validSchema.length;
+      }
+
+      // Fallback: count FAQ items from appended HTML when faqSchema wasn't provided
+      if (!updatePayload.faq_count) {
+        const faqQuestions = (sanitized.match(/<h[3-4][^>]*>[^<]*\?/gi) || []).length;
+        if (faqQuestions > 0) {
+          updatePayload.faq_count = faqQuestions;
         }
+      }
       }
 
       fixesApplied.push({ field: 'content (FAQ)', fixType, beforeValue: '(no FAQ section)', afterValue: `Added FAQ (${stripHtmlLength(sanitized)} chars)` });
@@ -785,6 +794,61 @@ async function processOneArticle(
       continue;
     }
 
+    // ── APPEND_CONTENT: Readability (lists/tables) ──
+    if (applyMode === 'append_content' && fixType === 'readability') {
+      if (!suggestedValue || stripHtmlLength(suggestedValue) < 20) {
+        fixesSkipped.push({ field: 'readability', fixType, reason: 'Content too short' }); continue;
+      }
+      if (contentBlockAlreadyExists(modifiedContent, suggestedValue)) {
+        fixesSkipped.push({ field: 'readability', fixType, reason: 'Content already exists' }); continue;
+      }
+      // Validate: must contain at least one readability structure
+      if (!/<[uo]l|<table|<dl/i.test(suggestedValue)) {
+        fixesSkipped.push({ field: 'readability', fixType, reason: 'No list/table/dl structure in suggestion' }); continue;
+      }
+      const sanitized = sanitizeLinkBlockHtml(suggestedValue);
+      // Insert before FAQ/Conclusion if found, else append
+      const rdFaqIdx = modifiedContent.search(/<h[23][^>]*>\s*(?:FAQ|Frequently Asked)/i);
+      const rdConcIdx = modifiedContent.search(/<h[23][^>]*>\s*(?:Conclusion|Summary|Final Thoughts)/i);
+      const rdInsertBefore = Math.min(rdFaqIdx >= 0 ? rdFaqIdx : Infinity, rdConcIdx >= 0 ? rdConcIdx : Infinity);
+      if (rdInsertBefore < Infinity) {
+        modifiedContent = modifiedContent.substring(0, rdInsertBefore) + sanitized + modifiedContent.substring(rdInsertBefore);
+      } else {
+        modifiedContent = modifiedContent + sanitized;
+      }
+      contentChanged = true;
+      fixesApplied.push({ field: 'content (Readability)', fixType, beforeValue: '(no lists)', afterValue: `Added structured content (${stripHtmlLength(sanitized)} chars)` });
+      logBlogAiAudit({ tool_name: 'bulk_auto_fix', before_value: '(no lists)', after_value: sanitized.substring(0, 200), apply_mode: applyMode, target_field: 'readability', slug: post.slug });
+      continue;
+    }
+
+    // ── APPEND_CONTENT: Low heading count (add H2 sections) ──
+    if (applyMode === 'append_content' && fixType === 'heading_structure') {
+      if (!suggestedValue || stripHtmlLength(suggestedValue) < 30) {
+        fixesSkipped.push({ field: 'headings', fixType, reason: 'Content too short' }); continue;
+      }
+      if (!/<h2/i.test(suggestedValue)) {
+        fixesSkipped.push({ field: 'headings', fixType, reason: 'No H2 tags in suggestion' }); continue;
+      }
+      if (contentBlockAlreadyExists(modifiedContent, suggestedValue)) {
+        fixesSkipped.push({ field: 'headings', fixType, reason: 'Content already exists' }); continue;
+      }
+      const sanitized = sanitizeLinkBlockHtml(suggestedValue);
+      // Insert before FAQ/Conclusion if found, else append
+      const hFaqIdx = modifiedContent.search(/<h[23][^>]*>\s*(?:FAQ|Frequently Asked)/i);
+      const hConcIdx = modifiedContent.search(/<h[23][^>]*>\s*(?:Conclusion|Summary|Final Thoughts)/i);
+      const hInsertBefore = Math.min(hFaqIdx >= 0 ? hFaqIdx : Infinity, hConcIdx >= 0 ? hConcIdx : Infinity);
+      if (hInsertBefore < Infinity) {
+        modifiedContent = modifiedContent.substring(0, hInsertBefore) + sanitized + modifiedContent.substring(hInsertBefore);
+      } else {
+        modifiedContent = modifiedContent + sanitized;
+      }
+      contentChanged = true;
+      fixesApplied.push({ field: 'content (Headings)', fixType, beforeValue: '(low H2 count)', afterValue: `Added H2 sections (${stripHtmlLength(sanitized)} chars)` });
+      logBlogAiAudit({ tool_name: 'bulk_auto_fix', before_value: '(low H2 count)', after_value: sanitized.substring(0, 200), apply_mode: applyMode, target_field: 'headings', slug: post.slug });
+      continue;
+    }
+
     // ── Catch-all ──
     fixesSkipped.push({ field: field || fixType || 'unknown', fixType, reason: `Unhandled fix type/mode combination: ${fixType}/${applyMode}` });
   }
@@ -847,6 +911,48 @@ async function processOneArticle(
 
   // Stamp tracking columns
   await stampBulkFixStatus(post.id, status as BulkFixStatus, remainingAutoFixable);
+
+  // ── Post-fix scoring log ──
+  const postFixMeta = blogPostToMetadata(updatedPost);
+  const postFixQuality = analyzeQuality(postFixMeta);
+  const postFixSEO = analyzeSEO(postFixMeta);
+  console.log(`[BULK_AUTO_FIX] Post-fix "${post.slug}": quality=${postFixQuality.totalScore}/100, seo=${postFixSEO.totalScore}/100, remaining=${remainingAutoFixable}, status=${status}`);
+
+  // ── Bounded second-pass repair ──
+  if (status === 'partially_fixed' && remainingAutoFixable > 0 && remainingAutoFixable <= 5 && fixesApplied.length > 0) {
+    console.log(`[BULK_AUTO_FIX] Second pass for "${post.slug}" — ${remainingAutoFixable} remaining`);
+    try {
+      const reCompliance = analyzePublishCompliance(postFixMeta);
+      const reFailedAll = reCompliance.checks.filter(c => c.status === 'fail' || c.status === 'warn');
+      const { actionable: reFailedChecks } = splitActionableChecks(reFailedAll);
+
+      if (reFailedChecks.length > 0 && reFailedChecks.length <= 5) {
+        const { data: pass2Data } = await supabase.functions.invoke('analyze-blog-compliance-fixes', {
+          body: {
+            title: post.title, content: updatedPost.content, slug: post.slug,
+            aiModel: blogTextModel,
+            issues: reFailedChecks.map(c => ({ key: c.key, label: c.label, detail: c.detail, recommendation: c.recommendation })),
+            existingMeta: {
+              meta_title: updatedPost.meta_title, meta_description: updatedPost.meta_description,
+              excerpt: updatedPost.excerpt, featured_image_alt: updatedPost.featured_image_alt,
+              canonical_url: updatedPost.canonical_url, hasCoverImage: !!updatedPost.cover_image_url,
+              hasIntro: postFixMeta.hasIntro, hasConclusion: postFixMeta.hasConclusion,
+              wordCount: postFixMeta.wordCount, faqCount: postFixMeta.faqCount,
+              internalLinkCount: postFixMeta.internalLinks?.length || 0, headings: postFixMeta.headings,
+            },
+          },
+        });
+
+        if (pass2Data?.fixes?.length > 0 && !pass2Data.timedOut && !pass2Data.parseError) {
+          console.log(`[BULK_AUTO_FIX] Second pass returned ${pass2Data.fixes.length} fixes for "${post.slug}"`);
+          // Note: Full second-pass fix application requires extracting the fix loop into a shared function.
+          // For now, log the opportunity — the primary value is from the expanded first pass.
+        }
+      }
+    } catch (e) {
+      console.warn(`[BULK_AUTO_FIX] Second pass failed for "${post.slug}":`, e);
+    }
+  }
 
   // Telemetry
   trackBlogToolEvent({

@@ -190,7 +190,7 @@ export function analyzeQuality(metadata: ArticleMetadata): QualityReport {
   });
 
   // 9. Readability (0-5)
-  const hasLists = /<[uo]l/i.test(metadata.content);
+  const hasLists = /<[uo]l|<table|<dl/i.test(metadata.content);
   const readScore = hasLists ? 5 : 2;
   factors.push({
     name: 'Readability',
@@ -386,6 +386,11 @@ function detectIntro(content: string): boolean {
     const tag = child.tagName.toLowerCase();
     if (/^h[1-6]$/.test(tag)) return false; // heading before any paragraph
     if (tag === 'p' && (child.textContent?.trim().length || 0) > 20) return true;
+    if (tag === 'div') {
+      const inner = child.querySelector('p');
+      if (inner && (inner.textContent?.trim().length || 0) > 20) return true;
+      if (child.querySelector('h1,h2,h3,h4,h5,h6')) return false;
+    }
   }
   return false;
 }

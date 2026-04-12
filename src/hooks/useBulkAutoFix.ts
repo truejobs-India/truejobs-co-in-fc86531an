@@ -12,7 +12,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { calcLiveWordCount, calcReadingTime, wordCountFields } from '@/lib/blogWordCount';
-import { blogPostToMetadata } from '@/lib/blogArticleAnalyzer';
+import { blogPostToMetadata, analyzeQuality, analyzeSEO } from '@/lib/blogArticleAnalyzer';
 import { analyzePublishCompliance } from '@/lib/blogComplianceAnalyzer';
 import { isValidInternalPagePath } from '@/lib/blogLinkValidator';
 import {
@@ -911,6 +911,48 @@ async function processOneArticle(
 
   // Stamp tracking columns
   await stampBulkFixStatus(post.id, status as BulkFixStatus, remainingAutoFixable);
+
+  // ── Post-fix scoring log ──
+  const postFixMeta = blogPostToMetadata(updatedPost);
+  const postFixQuality = analyzeQuality(postFixMeta);
+  const postFixSEO = analyzeSEO(postFixMeta);
+  console.log(`[BULK_AUTO_FIX] Post-fix "${post.slug}": quality=${postFixQuality.totalScore}/100, seo=${postFixSEO.totalScore}/100, remaining=${remainingAutoFixable}, status=${status}`);
+
+  // ── Bounded second-pass repair ──
+  if (status === 'partially_fixed' && remainingAutoFixable > 0 && remainingAutoFixable <= 5 && fixesApplied.length > 0) {
+    console.log(`[BULK_AUTO_FIX] Second pass for "${post.slug}" — ${remainingAutoFixable} remaining`);
+    try {
+      const reCompliance = analyzePublishCompliance(postFixMeta);
+      const reFailedAll = reCompliance.checks.filter(c => c.status === 'fail' || c.status === 'warn');
+      const { actionable: reFailedChecks } = splitActionableChecks(reFailedAll);
+
+      if (reFailedChecks.length > 0 && reFailedChecks.length <= 5) {
+        const { data: pass2Data } = await supabase.functions.invoke('analyze-blog-compliance-fixes', {
+          body: {
+            title: post.title, content: updatedPost.content, slug: post.slug,
+            aiModel: blogTextModel,
+            issues: reFailedChecks.map(c => ({ key: c.key, label: c.label, detail: c.detail, recommendation: c.recommendation })),
+            existingMeta: {
+              meta_title: updatedPost.meta_title, meta_description: updatedPost.meta_description,
+              excerpt: updatedPost.excerpt, featured_image_alt: updatedPost.featured_image_alt,
+              canonical_url: updatedPost.canonical_url, hasCoverImage: !!updatedPost.cover_image_url,
+              hasIntro: postFixMeta.hasIntro, hasConclusion: postFixMeta.hasConclusion,
+              wordCount: postFixMeta.wordCount, faqCount: postFixMeta.faqCount,
+              internalLinkCount: postFixMeta.internalLinks?.length || 0, headings: postFixMeta.headings,
+            },
+          },
+        });
+
+        if (pass2Data?.fixes?.length > 0 && !pass2Data.timedOut && !pass2Data.parseError) {
+          console.log(`[BULK_AUTO_FIX] Second pass returned ${pass2Data.fixes.length} fixes for "${post.slug}"`);
+          // Note: Full second-pass fix application requires extracting the fix loop into a shared function.
+          // For now, log the opportunity — the primary value is from the expanded first pass.
+        }
+      }
+    } catch (e) {
+      console.warn(`[BULK_AUTO_FIX] Second pass failed for "${post.slug}":`, e);
+    }
+  }
 
   // Telemetry
   trackBlogToolEvent({

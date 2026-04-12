@@ -24,7 +24,7 @@ function sanitizeText(raw: string): string {
 
 // ── Model resolution ──
 interface ResolvedModel {
-  provider: 'vertex-ai' | 'lovable-gateway' | 'groq' | 'anthropic' | 'bedrock' | 'azure-openai' | 'azure-gpt41-mini' | 'azure-gpt5-mini' | 'azure-deepseek' | 'sarvam';
+  provider: 'gemini-direct' | 'lovable-gateway' | 'groq' | 'anthropic' | 'bedrock' | 'azure-openai' | 'azure-gpt41-mini' | 'azure-gpt5-mini' | 'azure-deepseek' | 'sarvam';
   modelId: string;
   timeout: number;
 }
@@ -32,15 +32,15 @@ interface ResolvedModel {
 function resolveModel(aiModel: string | undefined): ResolvedModel {
   switch (aiModel) {
     case 'vertex-flash':
-      return { provider: 'vertex-ai', modelId: 'gemini-2.5-flash', timeout: 90_000 };
+      return { provider: 'gemini-direct', modelId: 'gemini-2.5-flash', timeout: 90_000 };
     case 'vertex-pro':
-      return { provider: 'vertex-ai', modelId: 'gemini-2.5-pro', timeout: 120_000 };
+      return { provider: 'gemini-direct', modelId: 'gemini-2.5-pro', timeout: 120_000 };
     case 'vertex-3.1-pro':
-      return { provider: 'vertex-ai', modelId: 'gemini-3.1-pro-preview', timeout: 90_000 };
+      return { provider: 'gemini-direct', modelId: 'gemini-3.1-pro-preview', timeout: 90_000 };
     case 'vertex-3-flash':
-      return { provider: 'vertex-ai', modelId: 'gemini-3-flash-preview', timeout: 90_000 };
+      return { provider: 'gemini-direct', modelId: 'gemini-3-flash-preview', timeout: 90_000 };
     case 'vertex-3.1-flash-lite':
-      return { provider: 'vertex-ai', modelId: 'gemini-3.1-flash-lite-preview', timeout: 60_000 };
+      return { provider: 'gemini-direct', modelId: 'gemini-3.1-flash-lite-preview', timeout: 60_000 };
     case 'gemini-flash':
       return { provider: 'lovable-gateway', modelId: 'google/gemini-2.5-flash', timeout: 90_000 };
     case 'gemini-pro':
@@ -389,7 +389,7 @@ async function callAI(
   const maxTokens = 8192;
   console.log(`[${requestId}] AI call | provider=${resolved.provider} | model=${resolved.modelId} | prompt_len=${fullPrompt.length} | maxTokens=${maxTokens}`);
 
-  if (resolved.provider === 'vertex-ai') {
+  if (resolved.provider === 'gemini-direct') {
     const { callGeminiDirectWithMeta } = await import('../_shared/gemini-direct.ts');
     try {
       const { text: rawText, finishReason } = await callGeminiDirectWithMeta(resolved.modelId, fullPrompt, resolved.timeout, {

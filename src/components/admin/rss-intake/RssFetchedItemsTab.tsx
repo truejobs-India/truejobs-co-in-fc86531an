@@ -358,6 +358,7 @@ export function RssFetchedItemsTab() {
                   <TableHead>Type</TableHead>
                   <TableHead>Date</TableHead>
                   <TableHead className="text-center" title="AI Pipeline Status">AI</TableHead>
+                  <TableHead className="text-center" title="Firecrawl Status">FC</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -385,6 +386,11 @@ export function RssFetchedItemsTab() {
                         </div>
                       </TableCell>
                       <TableCell>
+                        <div className="flex items-center justify-center" title={`FC: ${item.firecrawl_status}${item.firecrawl_reason ? ` (${item.firecrawl_reason})` : ''}`}>
+                          {FC_STATUS_ICON[item.firecrawl_status] || FC_STATUS_ICON['not_needed']}
+                        </div>
+                      </TableCell>
+                      <TableCell>
                         <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -403,6 +409,14 @@ export function RssFetchedItemsTab() {
                               <DropdownMenuItem onClick={() => openAiAction('seo-check', [item.id])}>
                                 <ShieldCheck className="h-4 w-4 mr-2" /> SEO Check
                               </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleFirecrawlEnrich([item.id])}>
+                                <Globe className="h-4 w-4 mr-2" /> Firecrawl Enrich
+                              </DropdownMenuItem>
+                              {item.firecrawl_status === 'failed' && (
+                                <DropdownMenuItem onClick={() => handleFirecrawlEnrich([item.id], true)}>
+                                  <RefreshCw className="h-4 w-4 mr-2" /> Retry Firecrawl
+                                </DropdownMenuItem>
+                              )}
                             </DropdownMenuContent>
                           </DropdownMenu>
                           <Button size="sm" variant="ghost" onClick={() => handleQueue(item)} title="Queue for Review" disabled={item.current_status === 'queued'}>
@@ -424,7 +438,7 @@ export function RssFetchedItemsTab() {
                     </TableRow>
                     {expandedId === item.id && (
                       <TableRow key={`${item.id}-detail`}>
-                        <TableCell colSpan={9}>
+                        <TableCell colSpan={10}>
                           <div className="p-3 bg-muted/30 rounded space-y-3 text-sm">
                             {/* Source data */}
                             <p><strong>Full Title:</strong> {item.item_title}</p>
@@ -503,6 +517,35 @@ export function RssFetchedItemsTab() {
                                 )}
                               </div>
                             )}
+
+                            {/* Firecrawl Enrichment */}
+                            <div className="mt-2 p-2 bg-background rounded border space-y-1">
+                              <p className="font-medium text-xs uppercase tracking-wider text-muted-foreground">Firecrawl Enrichment</p>
+                              <div className="flex items-center gap-2 text-xs">
+                                <span className="flex items-center gap-1">{FC_STATUS_ICON[item.firecrawl_status] || FC_STATUS_ICON['not_needed']} {item.firecrawl_status}</span>
+                                {item.firecrawl_reason && <span className="text-muted-foreground">({item.firecrawl_reason})</span>}
+                                {item.firecrawl_pdf_mode && <Badge variant="outline" className="text-[10px] px-1 py-0">{item.firecrawl_pdf_mode}</Badge>}
+                                {item.firecrawl_last_run_at && <span className="text-muted-foreground">Last: {new Date(item.firecrawl_last_run_at).toLocaleString()}</span>}
+                              </div>
+                              {item.firecrawl_error && <p className="text-xs text-destructive">Error: {item.firecrawl_error}</p>}
+                              {item.firecrawl_source_url && <p className="text-xs"><strong>Scraped URL:</strong> <a href={item.firecrawl_source_url} target="_blank" className="text-primary hover:underline">{item.firecrawl_source_url.substring(0, 80)}</a></p>}
+                              {item.firecrawl_content_markdown && (
+                                <details className="text-xs">
+                                  <summary className="cursor-pointer text-primary">Preview enriched content ({item.firecrawl_content_markdown.length} chars)</summary>
+                                  <pre className="mt-1 p-2 bg-muted/40 rounded text-[11px] max-h-40 overflow-auto whitespace-pre-wrap">{item.firecrawl_content_markdown.substring(0, 2000)}</pre>
+                                </details>
+                              )}
+                              <div className="flex gap-1 mt-1">
+                                <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => handleFirecrawlEnrich([item.id])}>
+                                  <Globe className="h-3 w-3 mr-1" /> Enrich
+                                </Button>
+                                {(item.firecrawl_status === 'failed' || item.firecrawl_status === 'partial') && (
+                                  <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => handleFirecrawlEnrich([item.id], true)}>
+                                    <RefreshCw className="h-3 w-3 mr-1" /> Retry
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
 
                             <p className="text-xs text-muted-foreground">First seen: {new Date(item.first_seen_at).toLocaleString()} | Last seen: {new Date(item.last_seen_at).toLocaleString()}</p>
                           </div>

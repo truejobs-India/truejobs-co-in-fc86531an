@@ -794,6 +794,61 @@ async function processOneArticle(
       continue;
     }
 
+    // ── APPEND_CONTENT: Readability (lists/tables) ──
+    if (applyMode === 'append_content' && fixType === 'readability') {
+      if (!suggestedValue || stripHtmlLength(suggestedValue) < 20) {
+        fixesSkipped.push({ field: 'readability', fixType, reason: 'Content too short' }); continue;
+      }
+      if (contentBlockAlreadyExists(modifiedContent, suggestedValue)) {
+        fixesSkipped.push({ field: 'readability', fixType, reason: 'Content already exists' }); continue;
+      }
+      // Validate: must contain at least one readability structure
+      if (!/<[uo]l|<table|<dl/i.test(suggestedValue)) {
+        fixesSkipped.push({ field: 'readability', fixType, reason: 'No list/table/dl structure in suggestion' }); continue;
+      }
+      const sanitized = sanitizeLinkBlockHtml(suggestedValue);
+      // Insert before FAQ/Conclusion if found, else append
+      const rdFaqIdx = modifiedContent.search(/<h[23][^>]*>\s*(?:FAQ|Frequently Asked)/i);
+      const rdConcIdx = modifiedContent.search(/<h[23][^>]*>\s*(?:Conclusion|Summary|Final Thoughts)/i);
+      const rdInsertBefore = Math.min(rdFaqIdx >= 0 ? rdFaqIdx : Infinity, rdConcIdx >= 0 ? rdConcIdx : Infinity);
+      if (rdInsertBefore < Infinity) {
+        modifiedContent = modifiedContent.substring(0, rdInsertBefore) + sanitized + modifiedContent.substring(rdInsertBefore);
+      } else {
+        modifiedContent = modifiedContent + sanitized;
+      }
+      contentChanged = true;
+      fixesApplied.push({ field: 'content (Readability)', fixType, beforeValue: '(no lists)', afterValue: `Added structured content (${stripHtmlLength(sanitized)} chars)` });
+      logBlogAiAudit({ tool_name: 'bulk_auto_fix', before_value: '(no lists)', after_value: sanitized.substring(0, 200), apply_mode: applyMode, target_field: 'readability', slug: post.slug });
+      continue;
+    }
+
+    // ── APPEND_CONTENT: Low heading count (add H2 sections) ──
+    if (applyMode === 'append_content' && fixType === 'heading_structure') {
+      if (!suggestedValue || stripHtmlLength(suggestedValue) < 30) {
+        fixesSkipped.push({ field: 'headings', fixType, reason: 'Content too short' }); continue;
+      }
+      if (!/<h2/i.test(suggestedValue)) {
+        fixesSkipped.push({ field: 'headings', fixType, reason: 'No H2 tags in suggestion' }); continue;
+      }
+      if (contentBlockAlreadyExists(modifiedContent, suggestedValue)) {
+        fixesSkipped.push({ field: 'headings', fixType, reason: 'Content already exists' }); continue;
+      }
+      const sanitized = sanitizeLinkBlockHtml(suggestedValue);
+      // Insert before FAQ/Conclusion if found, else append
+      const hFaqIdx = modifiedContent.search(/<h[23][^>]*>\s*(?:FAQ|Frequently Asked)/i);
+      const hConcIdx = modifiedContent.search(/<h[23][^>]*>\s*(?:Conclusion|Summary|Final Thoughts)/i);
+      const hInsertBefore = Math.min(hFaqIdx >= 0 ? hFaqIdx : Infinity, hConcIdx >= 0 ? hConcIdx : Infinity);
+      if (hInsertBefore < Infinity) {
+        modifiedContent = modifiedContent.substring(0, hInsertBefore) + sanitized + modifiedContent.substring(hInsertBefore);
+      } else {
+        modifiedContent = modifiedContent + sanitized;
+      }
+      contentChanged = true;
+      fixesApplied.push({ field: 'content (Headings)', fixType, beforeValue: '(low H2 count)', afterValue: `Added H2 sections (${stripHtmlLength(sanitized)} chars)` });
+      logBlogAiAudit({ tool_name: 'bulk_auto_fix', before_value: '(low H2 count)', after_value: sanitized.substring(0, 200), apply_mode: applyMode, target_field: 'headings', slug: post.slug });
+      continue;
+    }
+
     // ── Catch-all ──
     fixesSkipped.push({ field: field || fixType || 'unknown', fixType, reason: `Unhandled fix type/mode combination: ${fixType}/${applyMode}` });
   }

@@ -30,31 +30,30 @@ const GATEWAY_MODEL_MAP: Record<string, string> = {
   'lovable-gemini': 'google/gemini-3-flash-preview',
 };
 
-const VERTEX_MODEL_MAP: Record<string, { vertexModel: string; timeoutMs: number }> = {
-  'vertex-flash': { vertexModel: 'gemini-2.5-flash', timeoutMs: 90_000 },
-  'vertex-pro': { vertexModel: 'gemini-2.5-pro', timeoutMs: 120_000 },
-  'vertex-3.1-pro': { vertexModel: 'gemini-3.1-pro-preview', timeoutMs: 120_000 },
-  'vertex-3-flash': { vertexModel: 'gemini-3-flash-preview', timeoutMs: 90_000 },
-  'vertex-3.1-flash-lite': { vertexModel: 'gemini-3.1-flash-lite-preview', timeoutMs: 60_000 },
+const GEMINI_DIRECT_MODEL_MAP: Record<string, { geminiModel: string; timeoutMs: number }> = {
+  'vertex-flash': { geminiModel: 'gemini-2.5-flash', timeoutMs: 90_000 },
+  'vertex-pro': { geminiModel: 'gemini-2.5-pro', timeoutMs: 120_000 },
+  'vertex-3.1-pro': { geminiModel: 'gemini-3.1-pro-preview', timeoutMs: 120_000 },
+  'vertex-3-flash': { geminiModel: 'gemini-3-flash-preview', timeoutMs: 90_000 },
+  'vertex-3.1-flash-lite': { geminiModel: 'gemini-3.1-flash-lite-preview', timeoutMs: 60_000 },
 };
 
 const BEDROCK_MODELS = new Set(['nova-pro', 'nova-premier', 'mistral']);
 
-// ── Image model routing: maps frontend registry keys to gateway/vertex image models ──
+// ── Image model routing: maps frontend registry keys to gateway/gemini-direct image models ──
 interface ImageModelRoute {
-  provider: 'lovable-gateway' | 'vertex-ai';
+  provider: 'lovable-gateway' | 'gemini-direct';
   apiModel: string;
-  vertexEndpoint?: 'gemini' | 'imagen';
 }
 
 const IMAGE_MODEL_REGISTRY: Record<string, ImageModelRoute> = {
   'gemini-flash-image':   { provider: 'lovable-gateway', apiModel: 'google/gemini-2.5-flash-image' },
   'gemini-pro-image':     { provider: 'lovable-gateway', apiModel: 'google/gemini-3-pro-image-preview' },
   'gemini-flash-image-2': { provider: 'lovable-gateway', apiModel: 'google/gemini-3.1-flash-image-preview' },
-  'vertex-pro':           { provider: 'vertex-ai', apiModel: 'gemini-2.5-flash-image', vertexEndpoint: 'gemini' },
-  'vertex-3-pro-image':   { provider: 'vertex-ai', apiModel: 'gemini-3-pro-image-preview', vertexEndpoint: 'gemini' },
-  'vertex-imagen':        { provider: 'vertex-ai', apiModel: 'imagen-3.0-generate-002', vertexEndpoint: 'imagen' },
-  'vertex-3.1-flash-image': { provider: 'vertex-ai', apiModel: 'gemini-3.1-flash-image-preview', vertexEndpoint: 'gemini' },
+  'vertex-pro':           { provider: 'gemini-direct', apiModel: 'gemini-2.5-flash-preview-image-generation' },
+  'vertex-flash-image':   { provider: 'gemini-direct', apiModel: 'gemini-2.5-flash-preview-image-generation' },
+  'vertex-3-pro-image':   { provider: 'gemini-direct', apiModel: 'gemini-3-pro-image-preview' },
+  'vertex-3.1-flash-image': { provider: 'gemini-direct', apiModel: 'gemini-3.1-flash-image-preview' },
 };
 
 // Aggregator domains that must NEVER appear as official links
@@ -854,79 +853,15 @@ async function handleAiCoverImage(draftId: string, client: any, apiKey: string, 
 
   let imageUrl: string | undefined;
 
-  if (route.provider === 'vertex-ai') {
-    // ── Vertex AI direct path with retry for 429 ──
-    const { getGeminiDirectToken_REMOVED } = await import('../_shared/gemini-direct.ts');
-    const accessToken = await getGeminiDirectToken_REMOVED();
-    const projectId = Deno.env.get('GCP_PROJECT_ID');
-    const location = Deno.env.get('GCP_LOCATION') || 'us-central1';
-    const maxImageRetries = 4;
-
-    if (route.vertexEndpoint === 'imagen') {
-      // Imagen model
-      const imagenUrl = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${route.apiModel}:predict`;
-      for (let attempt = 0; attempt <= maxImageRetries; attempt++) {
-        const imagenResp = await fetch(imagenUrl, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            instances: [{ prompt }],
-            parameters: { sampleCount: 1, aspectRatio: '16:9', personGeneration: 'allow_adult' },
-          }),
-        });
-        if (imagenResp.status === 429 && attempt < maxImageRetries) {
-          const wait = Math.min(3000 * Math.pow(2, attempt), 60000) + Math.random() * 2000;
-          console.log(`[firecrawl-ai-enrich] Imagen 429, retry ${attempt + 1}/${maxImageRetries} after ${Math.round(wait)}ms`);
-          await new Promise(r => setTimeout(r, wait));
-          continue;
-        }
-        if (!imagenResp.ok) {
-          const errText = await imagenResp.text().catch(() => '');
-          throw new Error(`Imagen error ${imagenResp.status}: ${errText.substring(0, 300)}`);
-        }
-        const imagenData = await imagenResp.json();
-        const b64 = imagenData.predictions?.[0]?.bytesBase64Encoded;
-        if (b64) imageUrl = `data:image/png;base64,${b64}`;
-        break;
-      }
-    } else {
-      // Gemini image model via Vertex
-      const isGemini3 = route.apiModel.startsWith('gemini-3');
-      const apiVersion = isGemini3 ? 'v1beta1' : 'v1';
-      const loc = isGemini3 ? 'global' : location;
-      const host = isGemini3 ? 'aiplatform.googleapis.com' : `${location}-aiplatform.googleapis.com`;
-      const vertexUrl = `https://${host}/${apiVersion}/projects/${projectId}/locations/${loc}/publishers/google/models/${route.apiModel}:generateContent`;
-
-      for (let attempt = 0; attempt <= maxImageRetries; attempt++) {
-        const vertexResp = await fetch(vertexUrl, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            generationConfig: { responseModalities: ['IMAGE', 'TEXT'] },
-          }),
-        });
-        if (vertexResp.status === 429 && attempt < maxImageRetries) {
-          const wait = Math.min(3000 * Math.pow(2, attempt), 60000) + Math.random() * 2000;
-          console.log(`[firecrawl-ai-enrich] Vertex image 429, retry ${attempt + 1}/${maxImageRetries} after ${Math.round(wait)}ms`);
-          await new Promise(r => setTimeout(r, wait));
-          continue;
-        }
-        if (!vertexResp.ok) {
-          const errText = await vertexResp.text().catch(() => '');
-          throw new Error(`Vertex image error ${vertexResp.status}: ${errText.substring(0, 300)}`);
-        }
-        const vertexData = await vertexResp.json();
-        const parts = vertexData.candidates?.[0]?.content?.parts || [];
-        for (const part of parts) {
-          if (part.inlineData?.data) {
-            const mime = part.inlineData.mimeType || 'image/png';
-            imageUrl = `data:${mime};base64,${part.inlineData.data}`;
-            break;
-          }
-        }
-        break;
-      }
+  if (route.provider === 'gemini-direct') {
+    // ── Gemini Direct API path ──
+    const { callGeminiDirectImage } = await import('../_shared/gemini-direct.ts');
+    try {
+      const result = await callGeminiDirectImage(route.apiModel, prompt, 120_000);
+      imageUrl = `data:${result.mimeType};base64,${result.base64}`;
+    } catch (imgErr: any) {
+      console.error(`[firecrawl-ai-enrich] Gemini direct image error: ${imgErr.message}`);
+      throw new Error(`Image generation failed: ${imgErr.message}`);
     }
   } else {
     // ── Lovable AI Gateway path ──

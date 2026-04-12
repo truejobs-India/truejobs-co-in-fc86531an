@@ -159,7 +159,7 @@ Deno.serve(async (req) => {
     const authResult = await verifyAdmin(req);
     if (authResult instanceof Response) return authResult;
 
-    const { title, content, issues, slug, existingMeta, aiModel } = await req.json();
+    const { title, content, issues, slug, existingMeta, aiModel, availableSlugs } = await req.json();
     if (!title || !issues || !Array.isArray(issues)) {
       return new Response(JSON.stringify({ error: 'title and issues[] required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
@@ -216,7 +216,7 @@ RULES:
 - missing-lists (readability): fixType=readability, applyMode=append_content. Convert one key topic into a <ul> or <ol> with 4-6 items. Include a short <h3> context heading. Must contain <ul>, <ol>, <table>, or <dl> tags.
 - low-heading-count: fixType=heading_structure, applyMode=append_content. Add 1-2 new <h2> sections with 2-3 paragraphs each, relevant to article topic.
 - FAQ: fixType=faq, applyMode=append_content. Include faqSchemaEligible (boolean). If true, include faqSchema as [{question,answer},...]. ALWAYS include faqSchemaEligible=true and faqSchema array when generating FAQ content. If not eligible, explain why. Article eligible if >300 words, informational/how-to, has user questions.
-- internal_links: fixType=internal_links, applyMode=append_content. Return <h3>Related Resources</h3><ul><li><a href="/path">text</a> — desc</li></ul>. Never use replace_section.
+- internal_links: fixType=internal_links, applyMode=append_content. Pick 3-6 links from the AVAILABLE SLUGS list below. Return as: <h3>Related Resources</h3><ul><li><a href="/blog/{slug}">anchor text</a> — short description</li></ul>. ONLY use slugs from the provided list. Never invent URLs. Never use replace_section.
 - trust_signal: applyMode=review_replacement
 - affiliate_links: applyMode=advisory
 - Provide COMPLETE ready-to-use values. No placeholders.

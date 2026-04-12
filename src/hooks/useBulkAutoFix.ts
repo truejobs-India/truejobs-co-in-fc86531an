@@ -404,6 +404,30 @@ export function useBulkAutoFix(
     const totalToProcess = fixableItems.length + cleanItems.length;
     setProgress({ done: 0, total: totalToProcess, current: '' });
 
+    // Fetch slug pool once for internal linking (avoids per-article queries)
+    let availableSlugs: string[] = [];
+    try {
+      const slugBatches: string[] = [];
+      let from = 0;
+      const SLUG_BATCH = 1000;
+      while (true) {
+        const { data: slugRows } = await supabase
+          .from('blog_posts')
+          .select('slug')
+          .eq('is_published', true)
+          .order('id', { ascending: true })
+          .range(from, from + SLUG_BATCH - 1);
+        if (!slugRows || slugRows.length === 0) break;
+        slugBatches.push(...slugRows.map(r => r.slug).filter(Boolean));
+        if (slugRows.length < SLUG_BATCH) break;
+        from += SLUG_BATCH;
+      }
+      availableSlugs = slugBatches;
+      console.log(`[BULK_AUTO_FIX] Fetched ${availableSlugs.length} published slugs for internal linking`);
+    } catch (e) {
+      console.warn('[BULK_AUTO_FIX] Failed to fetch slug pool for internal linking:', e);
+    }
+
     const allResults: ArticleResult[] = [];
 
     // Process fixable items first
@@ -444,7 +468,7 @@ export function useBulkAutoFix(
       setProgress({ done: i, total: totalToProcess, current: item.title });
 
       try {
-        const result = await processOneArticle(post, item, blogTextModel);
+        const result = await processOneArticle(post, item, blogTextModel, availableSlugs);
         allResults.push(result);
       } catch (err: any) {
         allResults.push({
@@ -700,16 +724,28 @@ function applyFixLoop(
       const hrefs = extractHrefsFromHtml(suggestedValue);
       const validLinks: { href: string; text: string }[] = [];
 
-      for (const href of hrefs) {
+      for (let href of hrefs) {
+        // Normalize full URLs to relative paths (AI may return full truejobs URLs despite instructions)
+        try {
+          const parsed = new URL(href, 'https://truejobs.co.in');
+          if (parsed.hostname === 'truejobs.co.in' || parsed.hostname.endsWith('.truejobs.co.in')) {
+            href = parsed.pathname;
+          }
+        } catch {}
+
         if (!isValidInternalPagePath(href)) continue;
         if (linkAlreadyInContent(modifiedContent, href)) continue;
         if (validLinks.length >= MAX_AUTO_LINKS) break;
-        const linkMatch = suggestedValue.match(new RegExp(`<a[^>]*href=["']${href.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["'][^>]*>([^<]*)</a>`, 'i'));
+        const escapedHref = href.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const linkMatch = suggestedValue.match(new RegExp(`<a[^>]*href=["'][^"']*${escapedHref}["'][^>]*>([^<]*)</a>`, 'i'));
         const text = linkMatch?.[1]?.trim() || href;
         validLinks.push({ href, text });
       }
 
-      if (validLinks.length === 0) { fixesSkipped.push({ field: 'internal_links', fixType, reason: 'No valid internal link targets found' }); continue; }
+      if (validLinks.length === 0) {
+        console.warn(`[BULK_AUTO_FIX] Internal links: ${hrefs.length} hrefs extracted, 0 passed validation. Raw hrefs:`, hrefs);
+        fixesSkipped.push({ field: 'internal_links', fixType, reason: 'No valid internal link targets found' }); continue;
+      }
 
       const cleanBlock = buildCleanLinkBlock(validLinks);
       modifiedContent = modifiedContent + cleanBlock;
@@ -827,6 +863,7 @@ async function processOneArticle(
   post: BlogPost,
   scanItem: ScanItem,
   blogTextModel: string,
+  availableSlugs: string[] = [],
 ): Promise<ArticleResult> {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) throw new Error('Not authenticated');
@@ -889,6 +926,7 @@ async function processOneArticle(
       slug: post.slug,
       aiModel: blogTextModel,
       issues: failedChecks.map(c => ({ key: c.key, label: c.label, detail: c.detail, recommendation: c.recommendation })),
+      availableSlugs: availableSlugs.filter(s => s !== post.slug).slice(0, 200),
       existingMeta: {
         meta_title: post.meta_title,
         meta_description: post.meta_description,

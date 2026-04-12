@@ -12,10 +12,10 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import {
   FileText, ExternalLink, Search, RefreshCw, ClipboardList, EyeOff,
   ChevronDown, ChevronUp, FileDown, Sparkles, Brain, Image, ShieldCheck, MoreHorizontal,
-  CheckCircle2, XCircle, Loader2, Clock, Trash2,
+  CheckCircle2, XCircle, Loader2, Clock, Trash2, Globe, AlertTriangle, Minus,
 } from 'lucide-react';
 import type { RssItem, RssSource } from './rssTypes';
-import { ITEM_TYPES, RELEVANCE_LEVELS, ITEM_STATUSES, PRIMARY_DOMAINS, DOMAIN_LABELS } from './rssTypes';
+import { ITEM_TYPES, RELEVANCE_LEVELS, ITEM_STATUSES, PRIMARY_DOMAINS, DOMAIN_LABELS, FIRECRAWL_STATUSES } from './rssTypes';
 import { RssAiActionModal } from './RssAiActionModal';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 

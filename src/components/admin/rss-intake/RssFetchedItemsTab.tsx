@@ -11,11 +11,11 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import {
   FileText, ExternalLink, Search, RefreshCw, ClipboardList, EyeOff,
-  ChevronDown, ChevronUp, FileDown, Sparkles, Brain, Image, ShieldCheck, MoreHorizontal,
+  ChevronDown, ChevronUp, Sparkles, Brain, Image, ShieldCheck,
   CheckCircle2, XCircle, Loader2, Clock, Trash2, Globe, AlertTriangle, Minus,
 } from 'lucide-react';
 import type { RssItem, RssSource } from './rssTypes';
-import { ITEM_TYPES, RELEVANCE_LEVELS, ITEM_STATUSES, PRIMARY_DOMAINS, DOMAIN_LABELS, FIRECRAWL_STATUSES } from './rssTypes';
+import { ITEM_TYPES, RELEVANCE_LEVELS, ITEM_STATUSES, PRIMARY_DOMAINS, DOMAIN_LABELS } from './rssTypes';
 import { RssAiActionModal } from './RssAiActionModal';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 

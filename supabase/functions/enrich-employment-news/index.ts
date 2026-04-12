@@ -539,8 +539,8 @@ function resolveProviderInfo(model: string): { provider: string; apiModel: strin
     case 'azure-deepseek-v3': return { provider: 'azure-deepseek', apiModel: 'DeepSeek-V3.1' };
     case 'azure-deepseek-r1': return { provider: 'azure-deepseek', apiModel: 'DeepSeek-R1' };
     case 'nemotron-120b': return { provider: 'lovable-gateway', apiModel: 'nvidia/llama-3.3-nemotron-super-49b-v1' };
-    case 'sarvam-30b': return { provider: 'sarvam', apiModel: 'sarvam-m' };
-    case 'sarvam-105b': return { provider: 'sarvam', apiModel: 'sarvam-m' };
+    case 'sarvam-30b': return { provider: 'sarvam', apiModel: 'sarvam-30b' };
+    case 'sarvam-105b': return { provider: 'sarvam', apiModel: 'sarvam-105b' };
     default: throw new Error(`Unsupported AI model: "${model}". No fallback allowed.`);
   }
 }
@@ -629,7 +629,7 @@ async function callAI(model: string, prompt: string, maxTokensParam?: number): P
     case 'sarvam-30b':
     case 'sarvam-105b': {
       const { callSarvamChat } = await import('../_shared/sarvam.ts');
-      rawText = await callSarvamChat(prompt, { model: model === 'sarvam-105b' ? 'sarvam-m' : 'sarvam-m', maxTokens: maxTokensParam || 4096 });
+      rawText = await callSarvamChat(prompt, { model: model === 'sarvam-105b' ? 'sarvam-105b' : 'sarvam-30b', maxTokens: maxTokensParam || 4096 });
       break;
     }
     case 'groq': {

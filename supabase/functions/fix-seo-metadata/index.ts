@@ -92,7 +92,7 @@ Deno.serve(async (req) => {
       switch (aiModel) {
         case 'sarvam-30b': case 'sarvam-105b': {
           const { callSarvamChat } = await import('../_shared/sarvam.ts');
-          return callSarvamChat(prompt, { model: 'sarvam-m', maxTokens: 8192, temperature: 0.2 });
+          return callSarvamChat(prompt, { model: selectedModel === 'sarvam-105b' ? 'sarvam-105b' : 'sarvam-30b', maxTokens: 8192, temperature: 0.2 });
         }
         case 'azure-gpt5-mini': {
           const { callAzureGPT5Mini } = await import('../_shared/azure-openai.ts');

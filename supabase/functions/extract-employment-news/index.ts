@@ -74,9 +74,9 @@ function resolveModel(aiModel: string | undefined): ResolvedModel {
     case 'azure-deepseek-r1':
       return { provider: 'azure-deepseek', modelId: 'DeepSeek-R1', timeout: 120_000 };
     case 'sarvam-30b':
-      return { provider: 'sarvam', modelId: 'sarvam-m', timeout: 90_000 };
+      return { provider: 'sarvam', modelId: 'sarvam-30b', timeout: 90_000 };
     case 'sarvam-105b':
-      return { provider: 'sarvam', modelId: 'sarvam-m', timeout: 90_000 };
+      return { provider: 'sarvam', modelId: 'sarvam-105b', timeout: 90_000 };
     default:
       throw new Error(`Unsupported AI model: "${aiModel}". No fallback allowed.`);
   }

@@ -384,7 +384,7 @@ async function callClassifierAI(
     }
     case 'sarvam-30b': case 'sarvam-105b': {
       const { callSarvamChat } = await import('../_shared/sarvam.ts');
-      rawText = await callSarvamChat(systemPrompt + '\n\n' + userPrompt, { model: 'sarvam-m', maxTokens, temperature: 0.1 });
+      rawText = await callSarvamChat(systemPrompt + '\n\n' + userPrompt, { model: model === 'sarvam-105b' ? 'sarvam-105b' : 'sarvam-30b', maxTokens, temperature: 0.1 });
       actualProvider = 'sarvam'; actualModelId = model; break;
     }
     default:

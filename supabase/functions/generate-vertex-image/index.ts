@@ -37,7 +37,6 @@ const KNOWN_IMAGE_MODEL_KEYS = new Set([
   ...Object.keys(GATEWAY_IMAGE_MODELS),
   'vertex-3-pro-image',
   'vertex-3.1-flash-image',
-  'vertex-flash-image', // Gemini 2.5 Flash Image via direct Google Gemini API
   'nova-canvas', // Amazon Nova Canvas via Bedrock InvokeModel
   'azure-flux-kontext', // Azure FLUX.1 Kontext Pro via Azure AI Foundry
   'azure-flux2-pro', // Azure FLUX.2 Pro via Azure AI Foundry
@@ -194,7 +193,7 @@ async function generateViaGeminiFlashImage(
   try {
     const result = await callGeminiDirectImage(GEMINI_IMAGE_MODEL, imagePrompt, IMAGEN_TIMEOUT_MS);
 
-    if (!result.imageBase64) {
+  if (!result.base64) {
       // Text-only STOP — retry once with explicit image instruction
       if (result.finishReason === 'STOP' && !body.__geminiImageRetry) {
         console.warn(`[gemini-flash-image] Retrying text-only STOP with explicit image instruction for slug=${slug}`);
@@ -224,7 +223,7 @@ async function generateViaGeminiFlashImage(
     const slotSuffix = isInlineFallback && body.slotNumber ? `-slot${body.slotNumber}` : '';
     const filePath = `${pathPrefix}/${slug}-gemini-flash${slotSuffix}.${ext}`;
 
-    const uploadResult = await uploadGeneratedImage({ adminClient, imageBase64: result.imageBase64, mimeType: result.mimeType, filePath });
+    const uploadResult = await uploadGeneratedImage({ adminClient, imageBase64: result.base64, mimeType: result.mimeType, filePath });
     if (uploadResult instanceof Response) return uploadResult;
 
     const elapsed = Date.now() - startMs;
@@ -278,7 +277,7 @@ async function generateViaGeminiDirectImage(
   try {
     const result = await callGeminiDirectImage(geminiModelId, imagePrompt, IMAGEN_TIMEOUT_MS);
 
-    if (!result.imageBase64) {
+    if (!result.base64) {
       return new Response(JSON.stringify({ success: false, error: 'No image data returned. Prompt may have been filtered.', model: geminiModelId }),
         { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
@@ -290,7 +289,7 @@ async function generateViaGeminiDirectImage(
     const modelTag = geminiModelId.replace(/[^a-z0-9]/gi, '-').substring(0, 20);
     const filePath = `${pathPrefix}/${slug}-${modelTag}${slotSuffix}.${ext}`;
 
-    const uploadResult = await uploadGeneratedImage({ adminClient, imageBase64: result.imageBase64, mimeType: result.mimeType, filePath });
+    const uploadResult = await uploadGeneratedImage({ adminClient, imageBase64: result.base64, mimeType: result.mimeType, filePath });
     if (uploadResult instanceof Response) return uploadResult;
 
     const elapsed = Date.now() - startMs;

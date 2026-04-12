@@ -1,121 +1,100 @@
 
 
-# Fix: Selected-Scope By-ID Fetch + Paginated Bulk Fetch
+# Fix: Internal Links Always Skipped — "No valid internal link targets found"
 
-## Problem
-The `scanAll` function fetches all blog posts in a single unpaginated query (line 228-230), hitting Supabase's default 1000-row limit. Selected articles outside the first 1000 rows are silently dropped, causing "0 scanned."
+## Root Cause
 
-## Changes
+Two compounding issues cause every internal link fix to be skipped:
 
-### File: `src/hooks/useBulkAutoFix.ts` (lines 226-274)
+1. **The AI has no knowledge of real pages.** The edge function prompt tells the AI to return paths like `/path`, but provides zero actual slugs from the database. The AI hallucates URLs — either full URLs (`https://truejobs.co.in/blog/best-books-for-upsc`) or invented relative paths that may not exist.
 
-Replace the single monolithic fetch + scope filtering with scope-aware fetching:
+2. **Full URLs are rejected by the validator.** `isValidInternalPagePath` blocks anything starting with `https:`. If the AI returns `https://truejobs.co.in/blog/some-slug`, `extractHrefsFromHtml` extracts it, then `isValidInternalPagePath` rejects it → 0 valid links → skip.
+
+Both issues must be fixed for internal links to ever succeed.
+
+## Plan
+
+### Change 1: Supply real blog slugs to the edge function
+
+**Files:** `src/hooks/useBulkAutoFix.ts` + `supabase/functions/analyze-blog-compliance-fixes/index.ts`
+
+Before calling the edge function in `processOneArticle` (~line 885), fetch a pool of existing published blog slugs (excluding the current article) and pass them in the request body as `availableSlugs`.
+
+In `useBulkAutoFix.ts` — fetch the slug pool once at the start of `executeAutoFix` (not per-article) and pass it through:
 
 ```typescript
-const SELECT_COLS = 'id, title, slug, content, excerpt, cover_image_url, featured_image_alt, is_published, meta_title, meta_description, canonical_url, author_name, faq_count, has_faq_schema, faq_schema, internal_links, word_count, updated_at, last_bulk_scanned_at, last_bulk_fixed_at, last_bulk_fix_status, remaining_auto_fixable_count';
+// At start of executeAutoFix, fetch slug pool once
+const { data: slugRows } = await supabase
+  .from('blog_posts')
+  .select('slug')
+  .eq('is_published', true)
+  .order('id', { ascending: true })
+  .limit(500);
+const availableSlugs = (slugRows || []).map(r => r.slug).filter(Boolean);
+```
 
-let allFetchedPosts: BlogPost[];
-let postsToScan: BlogPost[];
-const stateBreakdown = { neverBulkFixed: 0, changed: 0, failed: 0, partial: 0, noActionTaken: 0, skippedUnchanged: 0, alreadyClean: 0 };
+Pass `availableSlugs` into each `processOneArticle` call and include it in the edge function body.
 
-if (scope === 'selected' && targetPosts && targetPosts.length > 0) {
-  // Direct by-ID fetch — no 1000-row limit risk
-  const targetIds = targetPosts.map(p => p.id);
-  console.log(`[BULK_AUTO_FIX] Selected scope: fetching ${targetIds.length} posts by ID`);
-  const { data, error } = await supabase
-    .from('blog_posts')
-    .select(SELECT_COLS)
-    .in('id', targetIds);
-  if (error || !data) {
-    console.error('[BULK_AUTO_FIX] Failed to fetch selected posts:', error);
-    allFetchedPosts = [];
-  } else {
-    allFetchedPosts = data as BlogPost[];
-  }
-  postsToScan = allFetchedPosts;
-  if (postsToScan.length === 0 && targetIds.length > 0) {
-    console.error(`[BULK_AUTO_FIX] Selected ${targetIds.length} posts but 0 matched in DB fetch — IDs may be stale`);
-  }
-  console.log(`[BULK_AUTO_FIX] Selected scope: ${postsToScan.length}/${targetIds.length} fetched`);
-} else {
-  // Paginated fetch for all/smart/failed_partial
-  allFetchedPosts = [];
-  let from = 0;
-  const BATCH = 1000;
-  while (true) {
-    const { data: batch, error } = await supabase
-      .from('blog_posts')
-      .select(SELECT_COLS)
-      .order('id', { ascending: true })
-      .range(from, from + BATCH - 1);
-    if (error || !batch || batch.length === 0) break;
-    allFetchedPosts.push(...(batch as BlogPost[]));
-    if (batch.length < BATCH) break;
-    from += BATCH;
-  }
-  console.log(`[BULK_AUTO_FIX] Paginated fetch: ${allFetchedPosts.length} total posts`);
+In the edge function prompt (line 219), replace the generic instruction with:
 
-  // Apply scope filtering
-  if (scope === 'all') {
-    postsToScan = allFetchedPosts;
-  } else if (scope === 'failed_partial') {
-    postsToScan = allFetchedPosts.filter(p => isEligibleForFailedPartialScope(p));
-  } else {
-    // Smart scope
-    postsToScan = [];
-    for (const post of allFetchedPosts) {
-      const { eligible, reason } = isEligibleForSmartScope(post);
-      if (eligible) {
-        postsToScan.push(post);
-        if (reason === 'neverBulkFixed') stateBreakdown.neverBulkFixed++;
-        else if (reason === 'changed') stateBreakdown.changed++;
-        else if (reason === 'failed') stateBreakdown.failed++;
-        else if (reason === 'partial') stateBreakdown.partial++;
-      } else {
-        stateBreakdown.skippedUnchanged++;
-      }
+```
+- internal_links: fixType=internal_links, applyMode=append_content.
+  Pick 3-6 links from the AVAILABLE SLUGS list below. Return as:
+  <h3>Related Resources</h3><ul><li><a href="/blog/{slug}">anchor text</a></li></ul>
+  ONLY use slugs from the provided list. Never invent URLs.
+```
+
+Add the slug list to the prompt context:
+
+```
+Available blog slugs for internal linking (pick relevant ones):
+${availableSlugs.filter(s => s !== slug).slice(0, 200).map(s => `/blog/${s}`).join('\n')}
+```
+
+### Change 2: Normalize full URLs to relative paths before validation
+
+**File:** `src/hooks/useBulkAutoFix.ts`, lines 700-710
+
+Before calling `isValidInternalPagePath`, strip the TrueJobs domain if the AI returned a full URL despite instructions:
+
+```typescript
+for (let href of hrefs) {
+  // Normalize full URLs to relative paths
+  try {
+    const parsed = new URL(href, 'https://truejobs.co.in');
+    if (parsed.hostname === 'truejobs.co.in' || parsed.hostname.endsWith('.truejobs.co.in')) {
+      href = parsed.pathname;
     }
-  }
-  console.log(`[BULK_AUTO_FIX] Scope "${scope}": ${postsToScan.length} candidates after filtering`);
+  } catch {}
+
+  if (!isValidInternalPagePath(href)) continue;
+  if (linkAlreadyInContent(modifiedContent, href)) continue;
+  if (validLinks.length >= MAX_AUTO_LINKS) break;
+  // ... rest unchanged
 }
 ```
 
-The `stateBreakdown` declaration and its usage in the rest of the scan loop (lines 276+) remain unchanged.
+### Change 3: Add debug logging for internal link validation
 
-### File: `src/components/admin/BlogPostEditor.tsx` (line 1208-1220)
-
-Add debug logs inside `handleBulkFixScan`:
+**File:** `src/hooks/useBulkAutoFix.ts`, before the `validLinks.length === 0` check at line 712
 
 ```typescript
-const handleBulkFixScan = (scopeOverride?: ...) => {
-  const scope = scopeOverride || (selectedPostIds.size > 0 ? 'selected' : bulkScanScope);
-  console.log(`[BULK_FIX_UI] handleBulkFixScan scope=${scope}, selectedPostIds=${selectedPostIds.size}`);
-  if (scope === 'selected') {
-    const selectedPosts = posts.filter(p => selectedPostIds.has(p.id));
-    console.log(`[BULK_FIX_UI] Selected posts resolved: ${selectedPosts.length}, IDs:`, selectedPosts.map(p => p.id));
-    // ... rest unchanged
-  }
-  // ... rest unchanged
-};
+if (validLinks.length === 0) {
+  console.warn(`[BULK_AUTO_FIX] Internal links: ${hrefs.length} hrefs extracted, 0 passed validation. Raw hrefs:`, hrefs);
+  fixesSkipped.push({ ... });
+  continue;
+}
 ```
 
-### Improved zero-scan message
+## Summary of changes
 
-In the scan report dialog rendering in `BlogPostEditor.tsx`, when `totalScanned === 0` and scope was `'selected'`, show a more truthful message like:
+| # | Change | File |
+|---|--------|------|
+| 1 | Fetch slug pool once in `executeAutoFix` | `src/hooks/useBulkAutoFix.ts` |
+| 2 | Pass `availableSlugs` to edge function | `src/hooks/useBulkAutoFix.ts` |
+| 3 | Add slug list to AI prompt | `supabase/functions/analyze-blog-compliance-fixes/index.ts` |
+| 4 | Normalize full URLs → relative paths | `src/hooks/useBulkAutoFix.ts` (lines 700-710) |
+| 5 | Debug log on zero valid links | `src/hooks/useBulkAutoFix.ts` (line 712) |
 
-> "Selected articles could not be loaded for scanning. They may have been deleted or the selection was stale."
-
-Instead of the generic "No articles matched the scan criteria."
-
-## What this fixes
-- **Selected scope**: fetches exactly the chosen articles by ID — no truncation possible
-- **Bulk scopes**: paginated with deterministic `order('id')` — fetches all 1400+ articles
-- **Debug logs**: trace scope, IDs, fetch counts at every stage
-- **Zero-scan reason**: explicit message when selected articles fail to load
-
-## What stays unchanged
-- All analyzer logic, thresholds, scoring
-- H1 persistence, FAQ fix, second pass, re-eligibility, edge-function rescue
-- Compliance check flow after fetch
-- `executeAutoFix` and `processOneArticle`
+No analyzer changes. No scoring changes. No threshold changes.
 

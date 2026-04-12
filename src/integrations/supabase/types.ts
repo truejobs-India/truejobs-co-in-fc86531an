@@ -4209,6 +4209,20 @@ export type Database = {
       }
       rss_items: {
         Row: {
+          ai_decision_band: string | null
+          ai_decision_status: string
+          ai_error: string | null
+          ai_firecrawl_decision: string | null
+          ai_model_used: string | null
+          ai_queue_priority: string | null
+          ai_stage_one_confidence: number | null
+          ai_stage_one_decided_at: string | null
+          ai_stage_one_json: Json | null
+          ai_stage_one_reason: string | null
+          ai_stage_two_confidence: number | null
+          ai_stage_two_decided_at: string | null
+          ai_stage_two_json: Json | null
+          ai_stage_two_reason: string | null
           author: string | null
           canonical_link: string | null
           categories: string[]
@@ -4244,6 +4258,20 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          ai_decision_band?: string | null
+          ai_decision_status?: string
+          ai_error?: string | null
+          ai_firecrawl_decision?: string | null
+          ai_model_used?: string | null
+          ai_queue_priority?: string | null
+          ai_stage_one_confidence?: number | null
+          ai_stage_one_decided_at?: string | null
+          ai_stage_one_json?: Json | null
+          ai_stage_one_reason?: string | null
+          ai_stage_two_confidence?: number | null
+          ai_stage_two_decided_at?: string | null
+          ai_stage_two_json?: Json | null
+          ai_stage_two_reason?: string | null
           author?: string | null
           canonical_link?: string | null
           categories?: string[]
@@ -4279,6 +4307,20 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          ai_decision_band?: string | null
+          ai_decision_status?: string
+          ai_error?: string | null
+          ai_firecrawl_decision?: string | null
+          ai_model_used?: string | null
+          ai_queue_priority?: string | null
+          ai_stage_one_confidence?: number | null
+          ai_stage_one_decided_at?: string | null
+          ai_stage_one_json?: Json | null
+          ai_stage_one_reason?: string | null
+          ai_stage_two_confidence?: number | null
+          ai_stage_two_decided_at?: string | null
+          ai_stage_two_json?: Json | null
+          ai_stage_two_reason?: string | null
           author?: string | null
           canonical_link?: string | null
           categories?: string[]

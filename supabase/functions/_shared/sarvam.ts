@@ -12,6 +12,7 @@ export interface SarvamChatOptions {
   maxTokens?: number;
   temperature?: number;
   timeoutMs?: number;
+  reasoningEffort?: 'low' | 'medium' | 'high' | null;
 }
 
 export async function callSarvamChat(
@@ -26,6 +27,7 @@ export async function callSarvamChat(
     maxTokens: rawMaxTokens = 4096,
     temperature = 0.5,
     timeoutMs = 120_000,
+    reasoningEffort = null,
   } = options;
 
   // Sarvam starter tier caps at 4096 tokens for all models
@@ -35,7 +37,7 @@ export async function callSarvamChat(
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    console.log(`[sarvam] Calling ${model}, maxTokens=${maxTokens}`);
+    console.log(`[sarvam] Calling ${model}, maxTokens=${maxTokens}, reasoning=${reasoningEffort ?? 'none'}`);
 
     const resp = await fetch(SARVAM_CHAT_ENDPOINT, {
       method: 'POST',
@@ -48,6 +50,7 @@ export async function callSarvamChat(
         messages: [{ role: 'user', content: prompt }],
         max_tokens: maxTokens,
         temperature,
+        reasoning_effort: reasoningEffort,
       }),
       signal: controller.signal,
     });
@@ -58,13 +61,19 @@ export async function callSarvamChat(
     }
 
     const data = await resp.json();
-    const text = data?.choices?.[0]?.message?.content || '';
+    const choice = data?.choices?.[0];
+    const text = typeof choice?.message?.content === 'string' ? choice.message.content : '';
+    const reasoningText = typeof choice?.message?.reasoning_content === 'string' ? choice.message.reasoning_content : '';
+    const finishReason = choice?.finish_reason || 'unknown';
 
     if (!text.trim()) {
-      throw new Error(`Sarvam ${model} returned empty response`);
+      if (reasoningText.trim()) {
+        throw new Error(`Sarvam ${model} returned no final content (finish_reason=${finishReason}, reasoning_only=true)`);
+      }
+      throw new Error(`Sarvam ${model} returned empty response (finish_reason=${finishReason})`);
     }
 
-    console.log(`[sarvam] ${model} success, output length=${text.length}`);
+    console.log(`[sarvam] ${model} success, output length=${text.length}, finishReason=${finishReason}`);
     return text;
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') {

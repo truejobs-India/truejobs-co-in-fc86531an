@@ -2468,15 +2468,20 @@ export function BlogPostEditor() {
             </div>
             {/* State breakdown for smart scope */}
             {bulkAutoFix.scanReport.scope === 'smart' && (
-              <div className="grid grid-cols-7 gap-1 text-center">
-                <div className="bg-blue-500/10 rounded p-1.5"><div className="text-sm font-bold text-blue-700 dark:text-blue-400">{bulkAutoFix.scanReport.stateBreakdown.neverBulkFixed}</div><div className="text-[9px] text-muted-foreground">Never Fixed</div></div>
-                <div className="bg-amber-500/10 rounded p-1.5"><div className="text-sm font-bold text-amber-700 dark:text-amber-400">{bulkAutoFix.scanReport.stateBreakdown.changed}</div><div className="text-[9px] text-muted-foreground">Changed</div></div>
-                <div className="bg-destructive/10 rounded p-1.5"><div className="text-sm font-bold text-destructive">{bulkAutoFix.scanReport.stateBreakdown.failed}</div><div className="text-[9px] text-muted-foreground">Failed</div></div>
-                <div className="bg-orange-500/10 rounded p-1.5"><div className="text-sm font-bold text-orange-700 dark:text-orange-400">{bulkAutoFix.scanReport.stateBreakdown.partial}</div><div className="text-[9px] text-muted-foreground">Partial</div></div>
-                <div className="bg-muted rounded p-1.5"><div className="text-sm font-bold">{bulkAutoFix.scanReport.stateBreakdown.noActionTaken}</div><div className="text-[9px] text-muted-foreground">No Action</div></div>
-                <div className="bg-muted/50 rounded p-1.5"><div className="text-sm font-bold text-muted-foreground">{bulkAutoFix.scanReport.stateBreakdown.skippedUnchanged}</div><div className="text-[9px] text-muted-foreground">Unchanged</div></div>
-                <div className="bg-green-500/10 rounded p-1.5"><div className="text-sm font-bold text-green-700 dark:text-green-400">{bulkAutoFix.scanReport.stateBreakdown.alreadyClean}</div><div className="text-[9px] text-muted-foreground">Clean</div></div>
-              </div>
+              <>
+                <div className="grid grid-cols-5 gap-1 text-center">
+                  <div className="bg-blue-500/10 rounded p-1.5"><div className="text-sm font-bold text-blue-700 dark:text-blue-400">{bulkAutoFix.scanReport.stateBreakdown.neverBulkFixed}</div><div className="text-[9px] text-muted-foreground">Never Fixed</div></div>
+                  <div className="bg-amber-500/10 rounded p-1.5"><div className="text-sm font-bold text-amber-700 dark:text-amber-400">{bulkAutoFix.scanReport.stateBreakdown.changed}</div><div className="text-[9px] text-muted-foreground">Changed</div></div>
+                  <div className="bg-destructive/10 rounded p-1.5"><div className="text-sm font-bold text-destructive">{bulkAutoFix.scanReport.stateBreakdown.failed}</div><div className="text-[9px] text-muted-foreground">Failed</div></div>
+                  <div className="bg-muted/50 rounded p-1.5"><div className="text-sm font-bold text-muted-foreground">{bulkAutoFix.scanReport.stateBreakdown.unchanged}</div><div className="text-[9px] text-muted-foreground">Unchanged</div></div>
+                  <div className="bg-green-500/10 rounded p-1.5"><div className="text-sm font-bold text-green-700 dark:text-green-400">{bulkAutoFix.scanReport.stateBreakdown.alreadyClean}</div><div className="text-[9px] text-muted-foreground">Clean</div></div>
+                </div>
+                {bulkAutoFix.scanReport.stateBreakdown.excluded > 0 && (
+                  <div className="text-[10px] text-muted-foreground text-center">
+                    {bulkAutoFix.scanReport.stateBreakdown.excluded} article(s) excluded due to incomplete data or unknown status
+                  </div>
+                )}
+              </>
             )}
             {/* Standard summary grid for non-smart scopes */}
             {bulkAutoFix.scanReport.scope !== 'smart' && (
@@ -2505,7 +2510,12 @@ export function BlogPostEditor() {
                 <TableBody>
                   {bulkAutoFix.scanReport.allItems.map(item => (
                     <TableRow key={item.postId}>
-                      <TableCell className="text-xs truncate max-w-[260px]">{item.title}</TableCell>
+                      <TableCell className="text-xs truncate max-w-[260px]">
+                        {item.title}
+                        {item.eligibilityReason === 'never_fixed' && <Badge variant="outline" className="ml-1 text-[9px] px-1 py-0 border-blue-300 text-blue-700 dark:text-blue-400">Never fixed</Badge>}
+                        {item.eligibilityReason === 'fix_failed' && <Badge variant="destructive" className="ml-1 text-[9px] px-1 py-0">Failed</Badge>}
+                        {item.eligibilityReason === 'changed_since_fix' && <Badge variant="outline" className="ml-1 text-[9px] px-1 py-0 border-amber-300 text-amber-700 dark:text-amber-400">Changed after fix</Badge>}
+                      </TableCell>
                       <TableCell>
                         {item.classification === 'clean' && <Badge className="text-[10px] bg-green-600 hover:bg-green-700 text-white">Clean</Badge>}
                         {item.classification === 'fixable' && <Badge className="text-[10px] bg-primary hover:bg-primary/90 text-primary-foreground">Fixable</Badge>}
@@ -2534,9 +2544,14 @@ export function BlogPostEditor() {
                 ? '⚠️ Selected articles could not be loaded for scanning. They may have been deleted or the selection was stale.'
                 : '✅ No articles matched the scan criteria.'}
             </div>
-            {bulkAutoFix.scanReport.scope === 'smart' && bulkAutoFix.scanReport.stateBreakdown.skippedUnchanged > 0 && (
-              <div className="text-xs text-muted-foreground">
-                {bulkAutoFix.scanReport.stateBreakdown.skippedUnchanged} unchanged article(s) were skipped. Use "Force Full Rescan" to scan all.
+            {bulkAutoFix.scanReport.scope === 'smart' && (bulkAutoFix.scanReport.stateBreakdown.unchanged > 0 || bulkAutoFix.scanReport.stateBreakdown.excluded > 0) && (
+              <div className="text-xs text-muted-foreground space-y-1">
+                {bulkAutoFix.scanReport.stateBreakdown.unchanged > 0 && (
+                  <div>{bulkAutoFix.scanReport.stateBreakdown.unchanged} unchanged article(s) were skipped. Use "Force Full Rescan" to scan all.</div>
+                )}
+                {bulkAutoFix.scanReport.stateBreakdown.excluded > 0 && (
+                  <div>{bulkAutoFix.scanReport.stateBreakdown.excluded} article(s) excluded due to incomplete data or unknown status.</div>
+                )}
               </div>
             )}
             {bulkAutoFix.scanReport.scope !== 'all' && (

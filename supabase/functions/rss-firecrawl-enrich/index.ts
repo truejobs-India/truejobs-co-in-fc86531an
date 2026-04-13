@@ -435,7 +435,7 @@ async function enrichSingleItem(
   }
 
   // ── Deterministic enrichment decision (baseline) ──
-  const decision = shouldEnrich(item, force);
+  const decision = shouldEnrich(item, force, sourceUsefulnessScore);
   if (!decision.should) {
     await client.from('rss_items').update({
       firecrawl_status: 'skipped',

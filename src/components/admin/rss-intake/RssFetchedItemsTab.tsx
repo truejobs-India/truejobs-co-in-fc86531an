@@ -517,7 +517,7 @@ export function RssFetchedItemsTab() {
                     </TableRow>
                     {expandedId === item.id && (
                       <TableRow key={`${item.id}-detail`}>
-                        <TableCell colSpan={11}>
+                        <TableCell colSpan={12}>
                           <div className="p-3 bg-muted/30 rounded space-y-3 text-sm">
                             {/* Source data */}
                             <p><strong>Full Title:</strong> {item.item_title}</p>

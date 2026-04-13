@@ -81,10 +81,10 @@ export function computeBand(item: Record<string, unknown>, force = false): BandR
   const linkedPdfs = (item.linked_pdf_urls as string[]) || [];
   const hasLinkedPdfs = linkedPdfs.length > 0;
   const domain = (item.primary_domain as string) || 'general_alerts';
-  const detectionReason = (item.detection_reason as string) || '';
+  const skipReason = (item.skip_reason as string) || '';
 
   // Band 1 Low: noise-rejected items always skip
-  if (detectionReason === 'noise_rejected') {
+  if (skipReason === 'noise_rejected' || detectionReason === 'noise_rejected') {
     return { band: 'band_1_low', reason: 'noise_rejected' };
   }
 
@@ -98,9 +98,10 @@ export function computeBand(item: Record<string, unknown>, force = false): BandR
     return { band: 'band_1_low', reason: 'low_relevance_sufficient_summary' };
   }
 
-  // Extract score from detection_reason if present
-  const scoreMatch = detectionReason.match(/^score=(\d+)/);
-  const truejobsScore = scoreMatch ? parseInt(scoreMatch[1], 10) : 0;
+  // Use real DB column for score, fall back to parsing from detection_reason for legacy items
+  const truejobsScore = typeof item.truejobs_relevance_score === 'number'
+    ? (item.truejobs_relevance_score as number)
+    : (() => { const m = detectionReason.match(/^score=(\d+)/); return m ? parseInt(m[1], 10) : 0; })();
 
   // Band 1 Low: very low TrueJobs score
   if (truejobsScore < 20 && relevance !== 'High') {

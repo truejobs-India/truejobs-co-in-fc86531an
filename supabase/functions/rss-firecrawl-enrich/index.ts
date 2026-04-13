@@ -40,18 +40,24 @@ const NON_CORE_DOMAINS = new Set([
 
 function shouldEnrich(
   item: Record<string, unknown>,
-  manual: boolean
+  manual: boolean,
+  sourceUsefulnessScore?: number
 ): EnrichDecision {
   if (manual) return { should: true, reason: 'manual' };
 
   const relevance = item.relevance_level as string;
   const domain = (item.primary_domain as string) || 'general_alerts';
   const itemType = (item.item_type as string) || 'unknown';
-  const detectionReason = (item.detection_reason as string) || '';
+  const skipReason = (item.skip_reason as string) || '';
 
   // Noise-rejected items: never enrich
-  if (detectionReason === 'noise_rejected') {
+  if (skipReason === 'noise_rejected') {
     return { should: false, reason: 'noise_rejected' };
+  }
+
+  // Source usefulness gating: skip enrichment for non-core types from chronically noisy sources
+  if (sourceUsefulnessScore !== undefined && sourceUsefulnessScore < 15 && !CORE_ENRICH_TYPES.has(itemType) && relevance !== 'High') {
+    return { should: false, reason: 'source_low_usefulness' };
   }
 
   // Non-core domains: only enrich if item_type is core recruitment/exam type

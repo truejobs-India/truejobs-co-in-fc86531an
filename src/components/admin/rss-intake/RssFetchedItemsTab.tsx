@@ -288,6 +288,34 @@ export function RssFetchedItemsTab() {
 
   const selectedArray = Array.from(selectedIds);
 
+  // ── TrueJobs Score & Skip Reason helpers ──
+
+  const parseTrueJobsScore = (item: RssItem): number | null => {
+    const reason = item.detection_reason || '';
+    const match = reason.match(/^score=(\d+)/);
+    return match ? parseInt(match[1], 10) : null;
+  };
+
+  const getTrueJobsScoreBadge = (item: RssItem) => {
+    const score = parseTrueJobsScore(item);
+    if (score === null) return <span className="text-xs text-muted-foreground">—</span>;
+    const color = score >= 60 ? 'bg-emerald-100 text-emerald-800' : score >= 30 ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-700';
+    return <Badge className={`${color} text-[10px] px-1.5 py-0`}>{score}</Badge>;
+  };
+
+  const getSkipReasonBadge = (item: RssItem) => {
+    const reason = item.detection_reason || '';
+    const fcReason = item.firecrawl_reason || '';
+    const band = item.ai_decision_band || '';
+
+    if (reason === 'noise_rejected') return <Badge variant="outline" className="text-[9px] px-1 py-0 border-gray-300 text-gray-500">Noise</Badge>;
+    if (fcReason === 'non_core_domain' || fcReason.includes('non_core')) return <Badge variant="outline" className="text-[9px] px-1 py-0 border-gray-300 text-gray-500">Non-core</Badge>;
+    if (fcReason === 'low_value' || band === 'band_1_low') return <Badge variant="outline" className="text-[9px] px-1 py-0 border-gray-300 text-gray-400">Auto-skip</Badge>;
+    if (item.primary_domain === 'policy_updates' && item.relevance_level === 'Low') return <Badge variant="outline" className="text-[9px] px-1 py-0 border-pink-300 text-pink-500">Policy</Badge>;
+    if (item.primary_domain === 'public_services' && item.relevance_level === 'Low') return <Badge variant="outline" className="text-[9px] px-1 py-0 border-gray-300 text-gray-500">Service</Badge>;
+    return null;
+  };
+
   return (
     <Card>
       <CardHeader>

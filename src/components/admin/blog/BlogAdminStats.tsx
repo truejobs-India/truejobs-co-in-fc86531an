@@ -32,15 +32,27 @@ export function BlogAdminStats({ onDrilldown }: BlogAdminStatsProps) {
   }, []);
 
   const fetchStats = async () => {
-    const { data } = await supabase.from('blog_posts').select('*');
-    if (!data) return;
+    const allData: any[] = [];
+    let from = 0;
+    const batchSize = 1000;
+    while (true) {
+      const { data } = await supabase
+        .from('blog_posts')
+        .select('id, is_published, meta_title, meta_description, cover_image_url, word_count, published_at, author_name, content')
+        .range(from, from + batchSize - 1);
+      if (!data || data.length === 0) break;
+      allData.push(...data);
+      if (data.length < batchSize) break;
+      from += batchSize;
+    }
+    if (allData.length === 0) return;
 
     const now = new Date();
     const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
     let blocked = 0, needsReview = 0, missingAuthor = 0, policyRisk = 0;
 
-    for (const post of data) {
+    for (const post of allData) {
       const meta = blogPostToMetadata(post);
       const compliance = analyzePublishCompliance(meta);
       const status = getComplianceReadinessStatus(compliance, meta);
@@ -56,13 +68,13 @@ export function BlogAdminStats({ onDrilldown }: BlogAdminStatsProps) {
     }
 
     setStats({
-      total: data.length,
-      published: data.filter(p => p.is_published).length,
-      drafts: data.filter(p => !p.is_published).length,
-      missingMeta: data.filter(p => !p.meta_title || !p.meta_description).length,
-      missingCover: data.filter(p => !p.cover_image_url).length,
-      thinContent: data.filter(p => (p.word_count || 0) < 500).length,
-      recentlyPublished: data.filter(p => p.published_at && new Date(p.published_at) > weekAgo).length,
+      total: allData.length,
+      published: allData.filter(p => p.is_published).length,
+      drafts: allData.filter(p => !p.is_published).length,
+      missingMeta: allData.filter(p => !p.meta_title || !p.meta_description).length,
+      missingCover: allData.filter(p => !p.cover_image_url).length,
+      thinContent: allData.filter(p => (p.word_count || 0) < 500).length,
+      recentlyPublished: allData.filter(p => p.published_at && new Date(p.published_at) > weekAgo).length,
       blocked,
       needsReview,
       missingAuthor,

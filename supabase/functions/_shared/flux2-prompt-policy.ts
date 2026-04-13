@@ -50,19 +50,36 @@ const ANTI_ADORNMENT_BLOCK = [
   'Faces must be completely clean and undecorated — bare forehead, bare nose, minimal or no earrings.',
 ].join(' ');
 
+// ─── Controlled glamour layer ───────────────────────────────────
+// Increases visual appeal while preserving documentary realism.
+// Tunable independently — only used by FLUX.2-pro prompt builders.
+const CONTROLLED_GLAMOUR_BLOCK = [
+  'Subjects should look attractive, polished, and visually appealing while remaining completely believable.',
+  'Clear, healthy skin with visible natural texture — pores, subtle imperfections — never airbrushed or waxy.',
+  'Neat, well-groomed hair styled simply and naturally.',
+  'Flattering, soft directional lighting that sculpts facial features — golden-hour warmth or gentle window light.',
+  'Refined, photogenic composition with shallow depth-of-field drawing attention to the subject.',
+  'Elegant, clean, aspirational presentation — the kind of person you would see on a top university prospectus.',
+  'Confident, appealing, youthful appearance with natural posture and relaxed body language.',
+  'Believable body proportions, realistic hands with correct finger count, natural arm positioning.',
+  'Expressions: focused study concentration, or a mild pleasant look — never an exaggerated smile or blank stare.',
+  'Do not apply beauty-filter smoothing, fashion-shoot posing, stock-photo grinning, Bollywood poster styling, or over-sexualized framing.',
+  'Do not create plastic or synthetic-looking faces. Maintain documentary-style photographic realism throughout.',
+].join(' ');
+
 // ─── Aesthetic enforcement block ────────────────────────────────
 const AESTHETIC_BLOCK = [
   'Photorealistic photograph, shot on a professional DSLR camera.',
   'Realistic Indian context with natural lighting.',
   'If people are shown: fair young Indian women and men, ordinary exam aspirants or college-going students aged 18–21.',
   'Clean natural face with no facial adornments — no bindi, no tilak, no teeka, no sindoor, no forehead marks, no nose pin, no nose stud, no nose ring.',
-  'Simple grooming, not glamorized, not ceremonial, not festive, not bridal, not devotional-poster style.',
+  'Simple but well-groomed appearance, polished without being glamorized, not ceremonial, not festive, not bridal, not devotional-poster style.',
   'Simple natural clothing appropriate for students — casual kurta, shirt, salwar-kameez, or jeans.',
   'No fashion models, no corporate professionals, no office workers unless the topic explicitly requires it.',
   'No heavy jewellery, no glamorous styling, no unnecessary makeup-heavy beauty look.',
   'No exaggerated makeup, no ornate facial accessories.',
   'No fantasy, surreal, horror, abstract, or cinematic drift.',
-  'Natural skin textures, realistic expressions, no airbrushed perfection.',
+  'Natural skin textures with visible pores, realistic expressions, no airbrushed or waxy perfection.',
   'Clean natural backgrounds — libraries, classrooms, corridors, parks, study desks.',
   'Documentary-style authenticity. No stock-photo posing.',
 ].join(' ');
@@ -80,7 +97,10 @@ const NEGATIVE_BLOCK = [
   'devotional-poster style, ornate facial accessories, maang tikka, mangalsutra,',
   'corporate office setting, boardroom, suit and tie (unless topic requires),',
   'generic decorative objects, random symbolic items,',
-  'malformed anatomy, fused fingers, broken wrists, extra limbs.',
+  'malformed anatomy, fused fingers, broken wrists, extra limbs,',
+  'uncanny face, waxy skin, plastic skin, artificial smile, excessive beauty retouching,',
+  'fashion shoot pose, ad poster look, bridal look, forehead mark, nose stud,',
+  'corporate stock photo drift, beauty-filter smoothing, hyper-glossy skin.',
 ].join(' ');
 
 // ─── Scene mapping ──────────────────────────────────────────────

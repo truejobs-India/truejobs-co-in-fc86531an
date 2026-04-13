@@ -2,7 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { parseFeed, resolveUrl } from '../_shared/rss/feed-parser.ts';
 import { classifyItem } from '../_shared/rss/classifier.ts';
 import { generateNormalizedHash, extractPdfUrls, getCanonicalLink } from '../_shared/rss/deduper.ts';
-import { shouldQueue, upsertReviewEntry } from '../_shared/rss/queue-router.ts';
+import { shouldQueueForTrueJobs, upsertReviewEntry } from '../_shared/rss/queue-router.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -134,7 +134,7 @@ async function handleTestSource(
 
   const parsed = parseFeed(fetchResult.body!, feedUrl);
   const previewItems = parsed.items.slice(0, 10).map((item) => {
-    const classification = classifyItem(item.title, item.summary, item.categories);
+    const classification = classifyItem(item.title, item.summary, item.categories, !!pdfs.firstPdfUrl);
     const pdfs = extractPdfUrls(item.enclosureUrls, item.content, item.link);
     return {
       title: item.title,
@@ -149,6 +149,7 @@ async function handleTestSource(
       displayGroup: classification.displayGroup,
       relevanceLevel: classification.relevanceLevel,
       detectionReason: classification.detectionReason,
+      truejobsScore: classification.truejobsScore,
       firstPdfUrl: pdfs.firstPdfUrl,
       pdfCount: pdfs.linkedPdfUrls.length,
     };
@@ -402,8 +403,8 @@ async function processSource(
 
     for (const item of parsed.items) {
       try {
-        const classification = classifyItem(item.title, item.summary, item.categories);
         const pdfs = extractPdfUrls(item.enclosureUrls, item.content, item.link);
+        const classification = classifyItem(item.title, item.summary, item.categories, !!pdfs.firstPdfUrl);
         const canonicalLink = getCanonicalLink(item.link, item.guid);
         const normalizedHash = await generateNormalizedHash(
           source.id,
@@ -442,8 +443,14 @@ async function processSource(
         if (upsertResult.action === 'inserted') {
           itemsNew++;
           if (upsertResult.itemId) newItemIds.push(upsertResult.itemId);
-          // Queue if relevant
-          if (shouldQueue(classification.relevanceLevel)) {
+          // Queue if relevant — strict TrueJobs gating
+          const queueDecision = shouldQueueForTrueJobs(
+            classification.relevanceLevel,
+            classification.primaryDomain,
+            classification.itemType,
+            classification.truejobsScore
+          );
+          if (queueDecision.shouldQueue) {
             await upsertReviewEntry(supabaseUrl, serviceRoleKey, {
               rssItemId: upsertResult.itemId!,
               rssSourceId: source.id,

@@ -288,6 +288,34 @@ export function RssFetchedItemsTab() {
 
   const selectedArray = Array.from(selectedIds);
 
+  // ── TrueJobs Score & Skip Reason helpers ──
+
+  const parseTrueJobsScore = (item: RssItem): number | null => {
+    const reason = item.detection_reason || '';
+    const match = reason.match(/^score=(\d+)/);
+    return match ? parseInt(match[1], 10) : null;
+  };
+
+  const getTrueJobsScoreBadge = (item: RssItem) => {
+    const score = parseTrueJobsScore(item);
+    if (score === null) return <span className="text-xs text-muted-foreground">—</span>;
+    const color = score >= 60 ? 'bg-emerald-100 text-emerald-800' : score >= 30 ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-700';
+    return <Badge className={`${color} text-[10px] px-1.5 py-0`}>{score}</Badge>;
+  };
+
+  const getSkipReasonBadge = (item: RssItem) => {
+    const reason = item.detection_reason || '';
+    const fcReason = item.firecrawl_reason || '';
+    const band = item.ai_decision_band || '';
+
+    if (reason === 'noise_rejected') return <Badge variant="outline" className="text-[9px] px-1 py-0 border-gray-300 text-gray-500">Noise</Badge>;
+    if (fcReason === 'non_core_domain' || fcReason.includes('non_core')) return <Badge variant="outline" className="text-[9px] px-1 py-0 border-gray-300 text-gray-500">Non-core</Badge>;
+    if (fcReason === 'low_value' || band === 'band_1_low') return <Badge variant="outline" className="text-[9px] px-1 py-0 border-gray-300 text-gray-400">Auto-skip</Badge>;
+    if (item.primary_domain === 'policy_updates' && item.relevance_level === 'Low') return <Badge variant="outline" className="text-[9px] px-1 py-0 border-pink-300 text-pink-500">Policy</Badge>;
+    if (item.primary_domain === 'public_services' && item.relevance_level === 'Low') return <Badge variant="outline" className="text-[9px] px-1 py-0 border-gray-300 text-gray-500">Service</Badge>;
+    return null;
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -386,6 +414,7 @@ export function RssFetchedItemsTab() {
                   <TableHead>Title</TableHead>
                   <TableHead>Domain</TableHead>
                   <TableHead>Type</TableHead>
+                  <TableHead className="text-center" title="TrueJobs Relevance Score">Score</TableHead>
                   <TableHead>Date</TableHead>
                    <TableHead className="text-center" title="AI Pipeline Status">AI</TableHead>
                    <TableHead className="text-center" title="AI Decision">Dec</TableHead>
@@ -404,9 +433,15 @@ export function RssFetchedItemsTab() {
                         {expandedId === item.id ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground max-w-[100px] truncate" onClick={() => setExpandedId(expandedId === item.id ? null : item.id)}>{sourceNameMap[item.rss_source_id] || '—'}</TableCell>
-                      <TableCell className="max-w-[220px]" onClick={() => setExpandedId(expandedId === item.id ? null : item.id)}><p className="text-sm font-medium truncate">{item.item_title}</p></TableCell>
+                      <TableCell className="max-w-[220px]" onClick={() => setExpandedId(expandedId === item.id ? null : item.id)}>
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-sm font-medium truncate">{item.item_title}</p>
+                          {getSkipReasonBadge(item)}
+                        </div>
+                      </TableCell>
                       <TableCell><Badge className={domainBadgeColors[item.primary_domain] || 'bg-gray-100 text-gray-500'}>{DOMAIN_LABELS[item.primary_domain] || item.primary_domain}</Badge></TableCell>
                       <TableCell><Badge className={typeBadgeColors[item.item_type] || 'bg-gray-100 text-gray-500'}>{item.item_type.replace(/_/g, ' ')}</Badge></TableCell>
+                      <TableCell className="text-center">{getTrueJobsScoreBadge(item)}</TableCell>
                       <TableCell className="text-xs">{displayDate(item)}</TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1" title="A · E · I · S">
@@ -482,7 +517,7 @@ export function RssFetchedItemsTab() {
                     </TableRow>
                     {expandedId === item.id && (
                       <TableRow key={`${item.id}-detail`}>
-                        <TableCell colSpan={11}>
+                        <TableCell colSpan={12}>
                           <div className="p-3 bg-muted/30 rounded space-y-3 text-sm">
                             {/* Source data */}
                             <p><strong>Full Title:</strong> {item.item_title}</p>

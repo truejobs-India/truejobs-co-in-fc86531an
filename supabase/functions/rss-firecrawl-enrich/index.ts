@@ -28,12 +28,15 @@ const MAX_ITEMS_PER_CALL = 10;
 const FRESHNESS_HOURS = 24;
 const MIN_MARKDOWN_LENGTH = 50;
 
-// ── Decision helper (deterministic baseline) ──
+// Core TrueJobs item types that justify enrichment
+const CORE_ENRICH_TYPES = new Set([
+  'recruitment', 'vacancy', 'exam', 'admit_card', 'result', 'answer_key',
+]);
 
-interface EnrichDecision {
-  should: boolean;
-  reason: string;
-}
+// Non-core domains — skip enrichment unless item_type is core
+const NON_CORE_DOMAINS = new Set([
+  'policy_updates', 'public_services', 'general_alerts', 'education_services',
+]);
 
 function shouldEnrich(
   item: Record<string, unknown>,
@@ -42,22 +45,40 @@ function shouldEnrich(
   if (manual) return { should: true, reason: 'manual' };
 
   const relevance = item.relevance_level as string;
-  if (relevance === 'High' || relevance === 'Medium') {
+  const domain = (item.primary_domain as string) || 'general_alerts';
+  const itemType = (item.item_type as string) || 'unknown';
+  const detectionReason = (item.detection_reason as string) || '';
+
+  // Noise-rejected items: never enrich
+  if (detectionReason === 'noise_rejected') {
+    return { should: false, reason: 'noise_rejected' };
+  }
+
+  // Non-core domains: only enrich if item_type is core recruitment/exam type
+  if (NON_CORE_DOMAINS.has(domain) && !CORE_ENRICH_TYPES.has(itemType)) {
+    return { should: false, reason: 'non_core_domain' };
+  }
+
+  // Core types always qualify
+  if (CORE_ENRICH_TYPES.has(itemType)) {
+    return { should: true, reason: 'core_type' };
+  }
+
+  if (relevance === 'High') {
     return { should: true, reason: 'high_relevance' };
   }
 
-  const summary = (item.item_summary as string) || '';
-  if (summary.length < 80) {
-    return { should: true, reason: 'weak_summary' };
+  // Medium relevance: only if summary is weak or has PDF
+  if (relevance === 'Medium') {
+    const summary = (item.item_summary as string) || '';
+    if (summary.length < 80) return { should: true, reason: 'medium_weak_summary' };
+    if (item.first_pdf_url) return { should: true, reason: 'medium_with_pdf' };
+    return { should: true, reason: 'medium_relevance' };
   }
 
-  if (item.first_pdf_url) {
+  // Low relevance with PDF — only for recruitment/exam context
+  if (item.first_pdf_url && (relevance === 'High' || relevance === 'Medium')) {
     return { should: true, reason: 'direct_pdf' };
-  }
-
-  const linkedPdfs = (item.linked_pdf_urls as string[]) || [];
-  if (linkedPdfs.length > 0) {
-    return { should: true, reason: 'linked_pdf' };
   }
 
   return { should: false, reason: 'low_value' };

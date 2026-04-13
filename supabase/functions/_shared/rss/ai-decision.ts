@@ -1,5 +1,6 @@
 /**
  * RSS AI Decision Layer — Mistral Large via AWS Bedrock
+ * Tightened for TrueJobs.co.in: strict govt jobs/exams relevance gatekeeper
  * 
  * Two decision points:
  *   Stage One: before Firecrawl — should we enrich? how?
@@ -23,6 +24,11 @@ const TIMEOUT_MS = 30_000;
 const MIN_SUBSTANTIVE_CONTENT = 200;
 const STAGE_TWO_EXCERPT_LENGTH = 500;
 
+// Non-core domains that get auto-skipped unless High relevance
+const NON_CORE_DOMAINS = new Set([
+  'policy_updates', 'public_services', 'general_alerts', 'education_services',
+]);
+
 // ── Types ──
 
 export interface StageOneOutput {
@@ -31,6 +37,7 @@ export interface StageOneOutput {
   queue_priority: 'urgent' | 'normal' | 'low' | 'ignore';
   should_queue_for_review: boolean;
   should_skip_as_low_value: boolean;
+  truejobs_relevance_score: number;
   reason_code: string;
   reason_text: string;
   confidence: number;
@@ -42,6 +49,7 @@ export interface StageTwoOutput {
   queue_priority: 'urgent' | 'normal' | 'low' | 'ignore';
   should_queue_for_review: boolean;
   should_retry_firecrawl: boolean;
+  truejobs_relevance_score: number;
   reason_code: string;
   reason_text: string;
   confidence: number;
@@ -59,7 +67,7 @@ export interface AiDecisionResult<T> {
   model: string;
 }
 
-// ── Banding Logic ──
+// ── Banding Logic (Tightened) ──
 
 export function computeBand(item: Record<string, unknown>, force = false): BandResult {
   if (force) {
@@ -72,10 +80,36 @@ export function computeBand(item: Record<string, unknown>, force = false): BandR
   const hasPdf = !!(item.first_pdf_url);
   const linkedPdfs = (item.linked_pdf_urls as string[]) || [];
   const hasLinkedPdfs = linkedPdfs.length > 0;
+  const domain = (item.primary_domain as string) || 'general_alerts';
+  const detectionReason = (item.detection_reason as string) || '';
+
+  // Band 1 Low: noise-rejected items always skip
+  if (detectionReason === 'noise_rejected') {
+    return { band: 'band_1_low', reason: 'noise_rejected' };
+  }
+
+  // Band 1 Low: non-core domains with Low relevance — skip AI entirely
+  if (relevance === 'Low' && NON_CORE_DOMAINS.has(domain)) {
+    return { band: 'band_1_low', reason: 'non_core_low_relevance' };
+  }
 
   // Band 1 Low: obvious low-value — skip AI and Firecrawl
   if (relevance === 'Low' && !hasPdf && !hasLinkedPdfs && summary.length >= 80) {
     return { band: 'band_1_low', reason: 'low_relevance_sufficient_summary' };
+  }
+
+  // Extract score from detection_reason if present
+  const scoreMatch = detectionReason.match(/^score=(\d+)/);
+  const truejobsScore = scoreMatch ? parseInt(scoreMatch[1], 10) : 0;
+
+  // Band 1 Low: very low TrueJobs score
+  if (truejobsScore < 20 && relevance !== 'High') {
+    return { band: 'band_1_low', reason: 'low_truejobs_score' };
+  }
+
+  // Band 1 High: High relevance exam_updates — auto-proceed even with short summaries
+  if (relevance === 'High' && domain === 'exam_updates') {
+    return { band: 'band_1_high', reason: 'high_relevance_exam_update' };
   }
 
   // Band 1 High: obvious high-value with enough context — deterministic proceed
@@ -108,12 +142,38 @@ export async function runStageOne(item: Record<string, unknown>): Promise<AiDeci
     categories: ((item.categories as string[]) || []).slice(0, 5),
   };
 
-  const systemPrompt = `You are a content routing engine for a government jobs and education portal. Analyze the RSS item and decide routing. Return ONLY valid JSON matching this exact schema:
-{"should_use_firecrawl":boolean,"crawl_target":"none"|"page"|"pdf","queue_priority":"urgent"|"normal"|"low"|"ignore","should_queue_for_review":boolean,"should_skip_as_low_value":boolean,"reason_code":"string","reason_text":"string","confidence":number}
+  const systemPrompt = `You are a STRICT relevance gatekeeper for TrueJobs.co.in — an Indian government jobs, exams, results, and admit cards website. Your audience is ONLY job aspirants preparing for and tracking government recruitment.
+
+STRONGLY PRIORITIZE and queue:
+- Government recruitment notifications, vacancy announcements
+- Exam notifications, exam dates, exam schedules
+- Admit cards, hall tickets, call letters
+- Results, merit lists, cut-off marks, score cards, selection lists
+- Answer keys (provisional and final)
+- Application start dates, last dates, correction windows
+- Document verification, interview, skill test, PET/PST, joining updates
+- Counselling schedules related to recruitment/exams
+
+STRONGLY REJECT and skip:
+- Policy circulars, office memorandums, general government orders
+- NOC services, certificate services, registration portals
+- Citizen services, public grievances, RTI
+- Tenders, corrigendums, procurement notices
+- Legal orders, SEBI orders, financial regulatory notices
+- Satellite data, weather bulletins, scientific research
+- General education services (marksheets, transcripts, school admissions) unless tied to recruitment
+- Generic schemes/programs without clear candidate search intent
+
+RULE: When in doubt, prefer SKIP over queue. TrueJobs audience = job aspirants only.
+
+Return ONLY valid JSON matching this exact schema:
+{"should_use_firecrawl":boolean,"crawl_target":"none"|"page"|"pdf","queue_priority":"urgent"|"normal"|"low"|"ignore","should_queue_for_review":boolean,"should_skip_as_low_value":boolean,"truejobs_relevance_score":number,"reason_code":"string","reason_text":"string","confidence":number}
+
 Rules:
+- truejobs_relevance_score: 0-100 (30 pts recruitment intent, 25 pts exam/result/admit card, 20 pts urgency/actionability, 15 pts SEO demand, -30 pts policy/service/NOC noise)
 - confidence must be 0.0 to 1.0
 - crawl_target "pdf" only if has_pdf is true
-- urgent priority only for active recruitment with deadlines
+- urgent priority only for active recruitment with imminent deadlines
 - Return ONLY the JSON object, no markdown, no explanation`;
 
   const userPrompt = `Analyze this RSS item:\n${JSON.stringify(payload, null, 2)}`;
@@ -167,9 +227,30 @@ export async function runStageTwo(
     pdf_mode: (item.firecrawl_pdf_mode as string) || null,
   };
 
-  const systemPrompt = `You are a content quality evaluator for a government jobs and education portal. Assess the enriched content excerpt and decide its usefulness. Return ONLY valid JSON matching this exact schema:
-{"is_useful_after_enrichment":boolean,"likely_content_type":"vacancy"|"result"|"admit_card"|"answer_key"|"exam"|"counselling"|"document_update"|"other","queue_priority":"urgent"|"normal"|"low"|"ignore","should_queue_for_review":boolean,"should_retry_firecrawl":boolean,"reason_code":"string","reason_text":"string","confidence":number}
+  const systemPrompt = `You are a STRICT content quality evaluator for TrueJobs.co.in — an Indian government jobs, exams, results, and admit cards website.
+
+After Firecrawl enrichment, you must confirm the extracted content actually contains USEFUL information for job aspirants:
+- Vacancy details: post names, vacancy count, eligibility criteria, pay scale
+- Exam details: exam date, syllabus, admit card download links
+- Result details: merit list, cut-off marks, selection list, score cards
+- Application process: dates, how to apply, application fee, age limit
+- Interview/DV/joining: schedule, documents required, venue
+
+Mark as NOT USEFUL if the content is:
+- A generic portal landing page or navigation menu
+- A policy circular, government order, or administrative notice
+- A certificate/NOC/registration service page
+- A tender or procurement document
+- Satellite/weather/research data
+- Mostly boilerplate with no substantive recruitment/exam information
+
+RULE: If the content doesn't clearly help a job aspirant, mark is_useful_after_enrichment = false.
+
+Return ONLY valid JSON matching this exact schema:
+{"is_useful_after_enrichment":boolean,"likely_content_type":"vacancy"|"result"|"admit_card"|"answer_key"|"exam"|"counselling"|"document_update"|"other","queue_priority":"urgent"|"normal"|"low"|"ignore","should_queue_for_review":boolean,"should_retry_firecrawl":boolean,"truejobs_relevance_score":number,"reason_code":"string","reason_text":"string","confidence":number}
+
 Rules:
+- truejobs_relevance_score: 0-100 based on actual content quality for job aspirants
 - confidence must be 0.0 to 1.0
 - should_retry_firecrawl only if content seems truncated or garbled
 - Return ONLY the JSON object, no markdown, no explanation`;
@@ -267,6 +348,10 @@ function validateStageOneOutput(data: Record<string, unknown>): ValidationResult
   if (typeof data.reason_code !== 'string' || !data.reason_code) return { valid: false, error: 'reason_code must be non-empty string' };
   if (typeof data.reason_text !== 'string' || !data.reason_text) return { valid: false, error: 'reason_text must be non-empty string' };
   if (typeof data.confidence !== 'number' || data.confidence < 0 || data.confidence > 1) return { valid: false, error: 'confidence must be number 0.0–1.0' };
+  // truejobs_relevance_score is optional — AI may not always return it
+  if (data.truejobs_relevance_score !== undefined && typeof data.truejobs_relevance_score !== 'number') {
+    data.truejobs_relevance_score = 0;
+  }
   return { valid: true };
 }
 
@@ -279,5 +364,8 @@ function validateStageTwoOutput(data: Record<string, unknown>): ValidationResult
   if (typeof data.reason_code !== 'string' || !data.reason_code) return { valid: false, error: 'reason_code must be non-empty string' };
   if (typeof data.reason_text !== 'string' || !data.reason_text) return { valid: false, error: 'reason_text must be non-empty string' };
   if (typeof data.confidence !== 'number' || data.confidence < 0 || data.confidence > 1) return { valid: false, error: 'confidence must be number 0.0–1.0' };
+  if (data.truejobs_relevance_score !== undefined && typeof data.truejobs_relevance_score !== 'number') {
+    data.truejobs_relevance_score = 0;
+  }
   return { valid: true };
 }

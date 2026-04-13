@@ -1,4 +1,5 @@
 // Queue routing: decides which items go to monitoring_review_queue and upserts them
+// Tightened for TrueJobs.co.in: only core job/exam content reaches review queue
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -17,8 +18,63 @@ export interface QueueableItem {
   parsedPayload: Record<string, unknown>;
 }
 
+// Core TrueJobs item types — always eligible for queueing
+const CORE_TYPES = new Set([
+  'recruitment', 'vacancy', 'exam', 'admit_card', 'result', 'answer_key',
+]);
+
+// Exam-adjacent types — queue only if High relevance
+const EXAM_ADJACENT_TYPES = new Set(['syllabus']);
+
+// Non-core domains that need high score to qualify
+const NON_CORE_DOMAINS = new Set([
+  'policy_updates', 'public_services', 'general_alerts', 'education_services',
+]);
+
+export interface QueueDecision {
+  shouldQueue: boolean;
+  reason: string;
+}
+
 /**
- * Should this item be auto-queued for review?
+ * Should this item be queued for review?
+ * Strict TrueJobs gating: only core job/exam types, or high-score overrides.
+ */
+export function shouldQueueForTrueJobs(
+  relevanceLevel: string,
+  primaryDomain: string,
+  itemType: string,
+  truejobsScore: number
+): QueueDecision {
+  // Always queue core types with High or Medium relevance
+  if (CORE_TYPES.has(itemType) && (relevanceLevel === 'High' || relevanceLevel === 'Medium')) {
+    return { shouldQueue: true, reason: 'core_type' };
+  }
+
+  // Queue exam-adjacent types only if High relevance
+  if (EXAM_ADJACENT_TYPES.has(itemType) && relevanceLevel === 'High') {
+    return { shouldQueue: true, reason: 'exam_adjacent' };
+  }
+
+  // Non-core domains need score >= 60 to qualify
+  if (NON_CORE_DOMAINS.has(primaryDomain)) {
+    if (truejobsScore >= 60) {
+      return { shouldQueue: true, reason: 'high_score_override' };
+    }
+    return { shouldQueue: false, reason: 'non_core_domain' };
+  }
+
+  // Default: queue only if High relevance
+  if (relevanceLevel === 'High') {
+    return { shouldQueue: true, reason: 'high_relevance' };
+  }
+
+  return { shouldQueue: false, reason: 'insufficient_relevance' };
+}
+
+/**
+ * Legacy compat — old callers that pass only relevanceLevel
+ * @deprecated Use shouldQueueForTrueJobs instead
  */
 export function shouldQueue(relevanceLevel: string): boolean {
   return relevanceLevel === 'High' || relevanceLevel === 'Medium';
@@ -26,7 +82,6 @@ export function shouldQueue(relevanceLevel: string): boolean {
 
 /**
  * Upsert an item into monitoring_review_queue
- * Carries primary_domain and display_group as dedicated columns for reliable filtering
  */
 export async function upsertReviewEntry(
   supabaseUrl: string,

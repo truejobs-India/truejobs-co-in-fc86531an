@@ -1,65 +1,109 @@
 
 
-# Update FLUX.2-pro Prompt Policy — Controlled Glamour Layer
+# Manual Image Prompt Test — with Policy Guard
 
-## What changes
+## Summary
+Add a "Manual Image Prompt Test" panel to the AI Test section. The user types a raw prompt, selects any image model, and generates. The raw prompt is never sent directly — it is always wrapped through the prompt policy layer on the backend. The UI shows both the raw and final guarded prompt, plus preview and download.
 
-**Single file**: `supabase/functions/_shared/flux2-prompt-policy.ts`
+## Architecture
 
-No other model routes, prompt builders, or edge functions are touched.
+The prompt-guard logic lives on the **backend** (edge function), not the frontend. This prevents any bypass.
 
-## Changes in detail
+### Files changed
 
-### 1. Add new `CONTROLLED_GLAMOUR_BLOCK` constant (after `ANTI_ADORNMENT_BLOCK`)
+**1. `supabase/functions/_shared/flux2-prompt-policy.ts`** — add 1 new export
 
-A dedicated, clearly named block that encourages attractive presentation while preserving realism:
+Add `buildGuardedManualPrompt(userPrompt: string, model: string)`:
+- For `azure-flux2-pro`: wraps user prompt as the "scene" input, then applies CONTROLLED_GLAMOUR_BLOCK + AESTHETIC_BLOCK + ANTI_TEXT_BLOCK + ANTI_ADORNMENT_BLOCK + NEGATIVE_BLOCK (same as `buildFlux2CoverPrompt` but using user prompt as the scene instead of auto-detected scene)
+- For all other models: constructs a generic guarded prompt that merges the user prompt with the same policy intent — controlled realism, anti-text, anti-adornment, anti-glamour-excess, realistic hands/faces rules — formatted as a universal policy block that any model can interpret
+
+This keeps the policy centralized in one file.
+
+**2. `supabase/functions/generate-vertex-image/index.ts`** — add `purpose=manual-test` route
+
+When `body.purpose === 'manual-test'`:
+- Import `buildGuardedManualPrompt` from flux2-prompt-policy
+- Call `buildGuardedManualPrompt(body.userPrompt, body.model)` to get `guardedPrompt`
+- Route to the correct model generator (same routing logic as existing cover/inline)
+- Return `guardedPrompt` in the response as `data.promptUsed` so UI can display it
+
+**3. `src/components/admin/ManualImagePromptTest.tsx`** — new component
+
+UI panel with:
+- Textarea for raw user prompt
+- Model dropdown (populated from `getImageModels()`)
+- Aspect ratio selector (16:9, 4:3, 1:1, 9:16)
+- Generate button with loading state
+- Read-only textarea showing the final guarded prompt returned by backend
+- Image preview
+- Download button (uses `<a download>` on the image URL)
+- Copy-final-prompt button
+- Error display
+
+Calls `supabase.functions.invoke('generate-vertex-image', { body: { purpose: 'manual-test', model, userPrompt, aspectRatio, slug: 'manual-test-...' } })`
+
+**4. `src/components/admin/VertexAITestPanel.tsx`** — import and render
+
+Add `<ManualImagePromptTest />` below the existing 4-card grid.
+
+## Prompt guard logic detail
 
 ```typescript
-const CONTROLLED_GLAMOUR_BLOCK = [
-  'Subjects should look attractive, polished, and visually appealing while remaining completely believable.',
-  'Clear, healthy skin with visible natural texture — pores, subtle imperfections — never airbrushed or waxy.',
-  'Neat, well-groomed hair styled simply and naturally.',
-  'Flattering, soft directional lighting that sculpts facial features — golden-hour warmth or gentle window light.',
-  'Refined, photogenic composition with shallow depth-of-field drawing attention to the subject.',
-  'Elegant, clean, aspirational presentation — the kind of person you would see on a top university prospectus.',
-  'Confident, appealing, youthful appearance with natural posture and relaxed body language.',
-  'Believable body proportions, realistic hands with correct finger count, natural arm positioning.',
-  'Expressions: focused study concentration, or a mild pleasant look — never an exaggerated smile or blank stare.',
-  'Do not apply beauty-filter smoothing, fashion-shoot posing, stock-photo grinning, Bollywood poster styling, or over-sexualized framing.',
-  'Do not create plastic or synthetic-looking faces. Maintain documentary-style photographic realism throughout.',
-].join(' ');
+// In flux2-prompt-policy.ts
+export function buildGuardedManualPrompt(userPrompt: string, model: string): string {
+  const isFlux2 = model === 'azure-flux2-pro';
+  
+  if (isFlux2) {
+    // Use user prompt as the scene, apply full FLUX.2-pro policy
+    const parts = [
+      userPrompt + '.',
+      'Indian context. Young Indian aspirants aged 18–21.',
+      CONTROLLED_GLAMOUR_BLOCK,
+      AESTHETIC_BLOCK,
+      ANTI_TEXT_BLOCK,
+      ANTI_ADORNMENT_BLOCK,
+      NEGATIVE_BLOCK,
+    ];
+    return parts.join('\n\n');
+  }
+  
+  // For all other models: universal guard
+  const parts = [
+    userPrompt,
+    UNIVERSAL_GUARD_BLOCK, // (new constant — same rules as FLUX policy but written model-agnostically)
+  ];
+  return parts.join('\n\n');
+}
 ```
 
-### 2. Update `AESTHETIC_BLOCK` — tune two lines
+The `UNIVERSAL_GUARD_BLOCK` will contain the same exclusions (anti-text, anti-adornment, controlled realism, realistic hands, no bindi/tilak/sindoor/nose-pin, no bridal/glamour-excess, no corporate drift) written in a model-agnostic format.
 
-- Change `'Simple grooming, not glamorized, …'` → `'Simple but well-groomed appearance, polished without being glamorized, not ceremonial, not festive, not bridal, not devotional-poster style.'`
-- Change `'Natural skin textures, realistic expressions, no airbrushed perfection.'` → `'Natural skin textures with visible pores, realistic expressions, no airbrushed or waxy perfection.'`
+## Sample output for "create an image of 2 students"
 
-### 3. Expand `NEGATIVE_BLOCK` — add 11 suppression terms
-
-Append after the existing `malformed anatomy` line:
-
+For FLUX.2-pro, the final prompt would be:
 ```
-'uncanny face, waxy skin, plastic skin, artificial smile, excessive beauty retouching,',
-'fashion shoot pose, ad poster look, bridal look, forehead mark, nose stud,',
-'corporate stock photo drift, beauty-filter smoothing, hyper-glossy skin,',
+create an image of 2 students.
+Indian context. Young Indian aspirants aged 18–21.
+
+Subjects should look attractive, polished, and visually appealing while remaining completely believable. Clear, healthy skin with visible natural texture — pores, subtle imperfections — never airbrushed or waxy. [... full CONTROLLED_GLAMOUR_BLOCK ...]
+
+Photorealistic photograph, shot on a professional DSLR camera. [... full AESTHETIC_BLOCK ...]
+
+Absolutely no text anywhere in the image. [... full ANTI_TEXT_BLOCK ...]
+
+No bindi. No tilak. [... full ANTI_ADORNMENT_BLOCK ...]
+
+Strictly avoid: text overlay, written content, [... full NEGATIVE_BLOCK ...]
 ```
 
-### 4. Wire `CONTROLLED_GLAMOUR_BLOCK` into both prompt builders
+## What is NOT changed
+- Existing 4 test cards (Flash, Pro, Imagen, Gemini Image) remain untouched
+- Existing `buildBlogCoverPrompt` / `buildBlogInlinePrompt` / `applyFluxRealismLayer` remain untouched
+- No other model's production prompt path is affected
 
-In `buildFlux2CoverPrompt` and `buildFlux2InlinePrompt`, insert `CONTROLLED_GLAMOUR_BLOCK` into the `parts` array between the scene and `AESTHETIC_BLOCK`.
-
-### 5. Verification — 3 sample prompts
-
-After the code change, I will generate and display 3 sample prompts for these article contexts:
-1. "UPSC CSE 2025 Prelims Admit Card Released" (category: Admit Card)
-2. "SBI PO Recruitment 2025 Notification — 2000 Vacancies" (category: Banking)
-3. "Best Books for SSC CGL Tier 1 Preparation" (category: Study Tips)
-
-This lets you compare the glamour increase vs. realism preservation.
-
-## Files changed: 1
-- `supabase/functions/_shared/flux2-prompt-policy.ts`
-
-No edge function redeployment needed — this shared module is imported at runtime by the existing `generate-vertex-image` function which will pick up changes on next deploy.
+## Files changed: 3 (+ 1 new)
+- `supabase/functions/_shared/flux2-prompt-policy.ts` — add `buildGuardedManualPrompt` + `UNIVERSAL_GUARD_BLOCK`
+- `supabase/functions/generate-vertex-image/index.ts` — add `purpose=manual-test` routing block
+- `src/components/admin/ManualImagePromptTest.tsx` — new component
+- `src/components/admin/VertexAITestPanel.tsx` — import new component
 

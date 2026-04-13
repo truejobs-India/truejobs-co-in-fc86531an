@@ -430,6 +430,8 @@ async function processSource(
           display_group: classification.displayGroup,
           relevance_level: classification.relevanceLevel,
           detection_reason: classification.detectionReason,
+          truejobs_relevance_score: classification.truejobsScore,
+          skip_reason: classification.skipReason,
           first_pdf_url: pdfs.firstPdfUrl,
           linked_pdf_urls: pdfs.linkedPdfUrls,
           normalized_hash: normalizedHash,
@@ -472,6 +474,9 @@ async function processSource(
             });
             // Set status to queued
             await adminClient.from('rss_items').update({ current_status: 'queued' }).eq('id', upsertResult.itemId);
+          } else if (!classification.skipReason) {
+            // If queue decision rejected it but classifier didn't set a skip reason, use queue reason
+            await adminClient.from('rss_items').update({ skip_reason: queueDecision.reason }).eq('id', upsertResult.itemId);
           }
         } else if (upsertResult.action === 'updated') {
           itemsUpdated++;

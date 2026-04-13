@@ -291,15 +291,25 @@ export function buildGuardedManualPrompt(userPrompt: string, model: string): str
   const isFlux2 = model === 'azure-flux2-pro';
 
   if (isFlux2) {
-    const parts = [
-      userPrompt + '.',
-      'Indian context. Young Indian aspirants aged 18–21.',
-      CONTROLLED_GLAMOUR_BLOCK,
-      AESTHETIC_BLOCK,
-      ANTI_TEXT_BLOCK,
-      ANTI_ADORNMENT_BLOCK,
-      NEGATIVE_BLOCK,
-    ];
+    // Compact FLUX.2-pro guard — positive framing to avoid Azure hate-speech filter.
+    // The full multi-block chain is too long and triggers content moderation.
+    const compactGuard = [
+      'Photorealistic photograph, DSLR camera, Indian context.',
+      'Young Indian aspirants aged 18–21 in a study or exam setting.',
+      'Attractive, polished, visually appealing while completely believable.',
+      'Clear healthy skin with visible natural texture and pores.',
+      'Neat well-groomed hair, soft directional lighting, shallow depth-of-field.',
+      'Confident youthful appearance, natural posture, focused expressions.',
+      'Realistic hands with correct finger count, natural arm positioning.',
+      'Simple student clothing — casual kurta, shirt, jeans, or salwar-kameez.',
+      'Clean natural backgrounds — libraries, classrooms, study desks.',
+      'Documentary-style authenticity throughout.',
+      'No text, words, letters, numbers, watermarks, logos, or signage anywhere in the image.',
+      'All books, papers, screens must show blank or blurred pages.',
+      'Clean unadorned faces only. No forehead marks, no nose jewelry, no heavy jewelry.',
+      'No bridal, ceremonial, or festive styling. No fantasy or surreal elements.',
+    ].join(' ');
+    const parts = [userPrompt + '.', compactGuard];
     const prompt = parts.join('\n\n');
     console.log(`[flux2-policy] Manual guarded prompt built for FLUX.2-pro (${prompt.length} chars)`);
     return prompt;

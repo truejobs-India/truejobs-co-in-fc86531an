@@ -386,6 +386,7 @@ export function RssFetchedItemsTab() {
                   <TableHead>Title</TableHead>
                   <TableHead>Domain</TableHead>
                   <TableHead>Type</TableHead>
+                  <TableHead className="text-center" title="TrueJobs Relevance Score">Score</TableHead>
                   <TableHead>Date</TableHead>
                    <TableHead className="text-center" title="AI Pipeline Status">AI</TableHead>
                    <TableHead className="text-center" title="AI Decision">Dec</TableHead>
@@ -404,9 +405,15 @@ export function RssFetchedItemsTab() {
                         {expandedId === item.id ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground max-w-[100px] truncate" onClick={() => setExpandedId(expandedId === item.id ? null : item.id)}>{sourceNameMap[item.rss_source_id] || '—'}</TableCell>
-                      <TableCell className="max-w-[220px]" onClick={() => setExpandedId(expandedId === item.id ? null : item.id)}><p className="text-sm font-medium truncate">{item.item_title}</p></TableCell>
+                      <TableCell className="max-w-[220px]" onClick={() => setExpandedId(expandedId === item.id ? null : item.id)}>
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-sm font-medium truncate">{item.item_title}</p>
+                          {getSkipReasonBadge(item)}
+                        </div>
+                      </TableCell>
                       <TableCell><Badge className={domainBadgeColors[item.primary_domain] || 'bg-gray-100 text-gray-500'}>{DOMAIN_LABELS[item.primary_domain] || item.primary_domain}</Badge></TableCell>
                       <TableCell><Badge className={typeBadgeColors[item.item_type] || 'bg-gray-100 text-gray-500'}>{item.item_type.replace(/_/g, ' ')}</Badge></TableCell>
+                      <TableCell className="text-center">{getTrueJobsScoreBadge(item)}</TableCell>
                       <TableCell className="text-xs">{displayDate(item)}</TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1" title="A · E · I · S">

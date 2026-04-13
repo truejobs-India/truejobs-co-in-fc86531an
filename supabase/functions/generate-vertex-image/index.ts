@@ -1125,6 +1125,62 @@ serve(async (req) => {
 
     console.log(`[generate-vertex-image] Routing: purpose=${purpose || 'none'}, model=${body.model || 'none'}, slug=${slug}, strict=${strict}`);
 
+    // ═══════════════════════════════════════════════════════════════
+    // PURPOSE: manual-test — Admin Manual Image Prompt Test
+    // Raw user prompt is ALWAYS guarded through prompt policy.
+    // ═══════════════════════════════════════════════════════════════
+    if (purpose === 'manual-test') {
+      const userPrompt = (body.userPrompt || '').trim();
+      if (!userPrompt) {
+        return new Response(JSON.stringify({ success: false, error: 'userPrompt is required for manual-test.' }), {
+          status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      const selectedModel = body.model || 'gemini-flash-image';
+      console.log(`[generate-vertex-image] purpose=manual-test model=${selectedModel} slug=${slug}`);
+
+      // Import and apply prompt guard
+      const { buildGuardedManualPrompt } = await import('../_shared/flux2-prompt-policy.ts');
+      const guardedPrompt = buildGuardedManualPrompt(userPrompt, selectedModel);
+
+      // Route to the correct model generator using the guarded prompt
+      const testBody = { ...body, purpose: 'cover', title: userPrompt };
+      let result: Response;
+
+      if (selectedModel === 'azure-flux2-pro') {
+        result = await generateViaAzureFlux2(testBody, slug, guardedPrompt, adminClient, startMs, true);
+      } else if (selectedModel === 'azure-flux-kontext') {
+        result = await generateViaAzureFlux(testBody, slug, guardedPrompt, adminClient, startMs, true);
+      } else if (selectedModel === 'nova-canvas') {
+        result = await generateViaNovaCanvas(testBody, slug, guardedPrompt, adminClient, startMs, true);
+      } else if (selectedModel === 'azure-mai-image-2') {
+        result = await generateViaAzureMaiImage(testBody, slug, guardedPrompt, adminClient, startMs, true);
+      } else if (isGeminiDirectImageModel(selectedModel)) {
+        result = await generateViaGeminiDirectImage(testBody, slug, guardedPrompt, adminClient, startMs, resolveGeminiDirectRuntimeModel(selectedModel));
+      } else if (isGatewayModel(selectedModel)) {
+        const gatewayModelId = GATEWAY_IMAGE_MODELS[selectedModel] || LOVABLE_GATEWAY_IMAGE_MODEL;
+        result = await generateViaLovableGatewayImageWithModel(testBody, slug, guardedPrompt, adminClient, startMs, `manual-test`, gatewayModelId);
+      } else if (selectedModel === 'gemini-flash-image') {
+        result = await generateViaGeminiFlashImage(testBody, slug, guardedPrompt, adminClient, startMs, true);
+      } else {
+        return new Response(JSON.stringify({ success: false, error: `Unknown image model "${selectedModel}" for manual test.` }), {
+          status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // Inject guardedPrompt into response so UI can display it
+      try {
+        const resultBody = await result.json();
+        resultBody.guardedPrompt = guardedPrompt;
+        return new Response(JSON.stringify(resultBody), {
+          status: result.status,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      } catch {
+        return result;
+      }
+    }
+
     // ── Strict mode: validate model key is a known image model ──
     if (strict && body.model && !KNOWN_IMAGE_MODEL_KEYS.has(body.model)) {
       return buildStrictErrorResponse(400, `Unknown image model key "${body.model}". No fallback was used.`, { selectedModelKey: body.model });

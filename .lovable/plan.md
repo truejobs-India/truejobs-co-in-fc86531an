@@ -1,46 +1,34 @@
 
+# Fix: BlogAdminStats Pagination (Re-apply)
 
-# Fix: BlogAdminStats Showing Wrong Counts (1000 Instead of 2595)
+The file still contains the original single `select('*')` call (line 35) that hits the 1,000-row limit. The previous fix attempts did not persist.
 
-## Root Cause
-`BlogAdminStats.fetchStats()` calls `supabase.from('blog_posts').select('*')` which hits the **Supabase default 1,000 row limit**. Only 1,000 of 2,595 articles are fetched, making every stat wrong.
+## Change: `src/components/admin/blog/BlogAdminStats.tsx`
 
-## Fix
-
-### File: `src/components/admin/blog/BlogAdminStats.tsx`
-
-**A. Use server-side counting via paginated fetches**
-
-Replace the single `.select('*')` with a paginated approach that fetches only needed columns:
+Replace `fetchStats` (lines 34-71) with paginated fetching:
 
 ```typescript
-// Fetch ALL posts in batches of 1000, only needed columns
-const allData = [];
-let from = 0;
-const batchSize = 1000;
-while (true) {
-  const { data } = await supabase
-    .from('blog_posts')
-    .select('id, is_published, meta_title, meta_description, cover_image_url, word_count, published_at, author_name, content')
-    .range(from, from + batchSize - 1);
-  if (!data || data.length === 0) break;
-  allData.push(...data);
-  if (data.length < batchSize) break;
-  from += batchSize;
-}
+const fetchStats = async () => {
+  const allData: any[] = [];
+  let from = 0;
+  const batchSize = 1000;
+  while (true) {
+    const { data } = await supabase
+      .from('blog_posts')
+      .select('id, is_published, meta_title, meta_description, cover_image_url, word_count, published_at, author_name, content')
+      .range(from, from + batchSize - 1);
+    if (!data || data.length === 0) break;
+    allData.push(...data);
+    if (data.length < batchSize) break;
+    from += batchSize;
+  }
+  if (allData.length === 0) return;
+
+  // rest of stats logic uses allData instead of data
+  // (same compliance loop + setStats block, just referencing allData)
 ```
 
-Note: `content` is needed for the compliance checks (`blogPostToMetadata` / `analyzePublishCompliance`). If the compliance logic can work without full content, we'll exclude it too — but the current code passes full post objects to `blogPostToMetadata`, so we keep it for correctness.
-
-**B. Use `allData` instead of `data` for all stat calculations**
-
-All `.filter()` calls and the compliance loop operate on `allData` instead of the capped `data`.
-
-## Result
-- Stats will show the real **2,595 Total** (and correct Published, Drafts, etc.)
-- Only metadata columns fetched per batch (smaller payload per request)
-- Works for any number of posts
+All `.filter()` and loop references change from `data` to `allData`.
 
 ## Files changed: 1
-- `src/components/admin/blog/BlogAdminStats.tsx`
-
+- `src/components/admin/blog/BlogAdminStats.tsx` — paginated fetch replacing single query

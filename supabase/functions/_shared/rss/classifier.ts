@@ -24,8 +24,9 @@ interface Rule {
 // ── Noise Rejection Patterns ──
 // Items matching these are immediately rejected as irrelevant to TrueJobs
 const NOISE_PATTERNS: RegExp[] = [
-  // Satellite / telemetry / remote sensing
-  /\b(3RIMG|3RSND|3DIMG|L1B|L2B|SB1|SA1|MER2|L1C|HDF5|sounder|imager|radiance|spectral|geolocation|swath)\b/i,
+  // Satellite / telemetry / remote sensing (use lookahead instead of \b for underscore-separated codes)
+  /(?:^|[\s,;|])(?:3RIMG|3RSND|3DIMG|L1B|L2B|SB1|SA1|MER2|L1C|HDF5|S1SCT|S1IRS)(?:[\s_,;|]|$)/i,
+  /\b(sounder|imager|radiance|spectral|geolocation|swath)\b/i,
   /\b(INSAT[\s-]*3D|INSAT[\s-]*3DR|Kalpana[\s-]*1|Oceansat|Resourcesat|Cartosat|RISAT)\b/i,
   /\b(satellite\s*data|satellite\s*image|remote\s*sensing|earth\s*observation|meteorological\s*data)\b/i,
   // Weather / science / research

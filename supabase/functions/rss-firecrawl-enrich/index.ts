@@ -338,7 +338,8 @@ async function enrichItems(
 async function enrichSingleItem(
   client: ReturnType<typeof createClient>,
   item: Record<string, unknown>,
-  force: boolean
+  force: boolean,
+  sourceUsefulnessScore?: number
 ): Promise<EnrichResult> {
   const itemId = item.id as string;
 

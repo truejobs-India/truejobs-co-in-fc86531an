@@ -1,172 +1,173 @@
 
 
-# Plan: Tighten RSS + AI + Firecrawl System for TrueJobs Business Goal
+# Plan: Tighten RSS System with Real DB Support for TrueJobs
 
-## Current State Analysis
+## Problem Summary
+- `truejobs_relevance_score` is computed but only embedded in `detection_reason` text — no real DB column
+- `skip_reason` doesn't exist — reconstructed from scattered text fields in UI
+- No source-level usefulness tracking
+- 7 policy items and 2 education service items polluting the 19-item review queue (47% noise)
+- Noise rejection is keyword-blind — no positive override for recruitment context
+- 172/195 items (88%) are unknown/general_alerts/Low
 
-**Data confirms the problem clearly:**
-- **172 of 195 items** (88%) are `unknown/general_alerts/Low` — satellite telemetry from mosdac.gov.in, SEBI legal recovery certificates, income tax press releases
-- Only **10 items** (5%) are actual jobs/exam content
-- Review queue has **7 policy items** alongside **10 relevant items** — 40% noise
-- False positives: "Application for NOC of Mobile Tower" classified as `recruitment`; "Check Application Status" classified as `exam`
-- Sources include ISRO satellite data feeds (`mosdac.gov.in/3drimager.xml`), which are completely irrelevant
+## Changes
 
-## Changes Required (4 Files)
+### DB Migration 1: Add columns to `rss_items`
+
+```sql
+ALTER TABLE rss_items ADD COLUMN truejobs_relevance_score smallint DEFAULT 0;
+ALTER TABLE rss_items ADD COLUMN skip_reason text DEFAULT NULL;
+CREATE INDEX idx_rss_items_truejobs_score ON rss_items (truejobs_relevance_score);
+CREATE INDEX idx_rss_items_skip_reason ON rss_items (skip_reason) WHERE skip_reason IS NOT NULL;
+```
+
+### DB Migration 2: Add source usefulness columns to `rss_sources`
+
+```sql
+ALTER TABLE rss_sources ADD COLUMN usefulness_score smallint DEFAULT 50;
+ALTER TABLE rss_sources ADD COLUMN total_items_ingested integer DEFAULT 0;
+ALTER TABLE rss_sources ADD COLUMN core_items_count integer DEFAULT 0;
+ALTER TABLE rss_sources ADD COLUMN noise_items_count integer DEFAULT 0;
+```
+
+These are simple counters updated during ingestion — no complex subsystem.
 
 ### File 1: `supabase/functions/_shared/rss/classifier.ts`
 
-**A. Add early noise-rejection layer (before all rules)**
+**A. Context-aware noise rejection with positive overrides**
 
-Add a `NOISE_PATTERNS` blocklist that immediately returns `Low` relevance with a `noise_rejected` reason for items matching:
-- Satellite/telemetry: `3RSND`, `L1B`, `L2B`, `SB1`, `SA1`, `sounder`, `imager`, `radiance`, `spectral`
-- Financial/legal: `recovery certificate`, `attachment`, `illiquid stock`, `SEBI order`, `adjudicating officer`, `PAN:`, `penalty order`
-- Tender-only: `tender`, `corrigendum`, `addendum` (when no recruitment keyword co-occurs)
-- Weather/research: `satellite`, `weather`, `cyclone`, `monsoon`, `research paper`, `scientific`
-- Utility/NOC: `NOC of Mobile Tower`, `status check`, `status lookup`, `grievance`, `RTI`
+Expand `RESCUE_KEYWORDS` to include the full TrueJobs intent set:
+- Add: `cut[\s-]*off`, `score\s*card`, `merit\s*list`, `selection\s*list`, `counselling`, `document\s*verification`, `interview`, `PET`, `PST`, `DV`, `joining`, `last\s*date`, `correction\s*window`, `application\s*start`, `skill\s*test`
 
-**B. Tighten existing rules to reduce false positives**
+This ensures items containing noise patterns but with strong recruitment/exam co-signals are NOT rejected.
 
-- Move `document_service` relevance from `Medium` → `Low`
-- Move `certificate`, `marksheet`, `school_service`, `university_service` from `Medium` → `Low`
-- Move `policy`, `circular` from `Medium` → `Low`
-- Move `notification` (public_services) from `Medium` → `Low`
-- Move `signal` to remain `Low` (no change)
-- Add `scholarship` as `Medium` only if co-occurring with recruitment keywords, else `Low`
+**B. Add `skipReason` to `ClassificationResult`**
 
-**C. Add new high-value patterns (currently missed)**
+Return a structured `skipReason` field (null if not skipped):
+- `noise_rejected` — matched noise pattern with no rescue
+- `non_core_domain` — policy/public_services/education_services with Low relevance
+- `generic_department_notice` — signal/unknown type with no recruitment signals
+- `null` — item is relevant, not skipped
 
-Add patterns for:
-- `cut[\s-]*off`, `score\s*card`, `merit\s*list` → `exam_updates/result`, `High`
-- `selection\s*list`, `counselling`, `document\s*verification` (when near recruitment context) → `exam_updates/result`, `High`
-- `last\s*date`, `application\s*start`, `correction\s*window` → `jobs/recruitment`, `High`
-- `joining`, `interview`, `PET`, `PST`, `DV`, `skill\s*test` → `exam_updates/exam`, `High`
+**C. Reweight scoring to prioritize candidate-action over SEO**
 
-**D. Add `truejobs_relevance_score` to ClassificationResult**
+Current: recruitment +40, exam +25, result +20, urgency +15, PDF +5
+Change to: recruitment +40, exam/result/admit card +30, urgency +20, PDF +5, SEO demand removed as explicit factor (it was never actually computed — the AI prompt mentioned it but the deterministic scorer doesn't have it). Non-core penalty stays at -30/-40.
 
-Add a numeric 0–100 score based on weighted signals:
-- Recruitment intent: +40
-- Exam/result/admit card: +35
-- Urgency (dates, deadlines): +15
-- PDF presence: +5
-- Non-core domain penalty: −30 (policy, public_services, education_services)
-- Noise domain penalty: −50 (satellite, legal, financial)
+**D. Fix `document_service` false positive**
 
-This score is used by downstream banding and queue routing.
+The `document_service` rule at line 282 matches `document\s*verification` which is a core TrueJobs intent. Split:
+- `document\s*verification` + `DV\s*schedule` → stays under `exam` type with High relevance (already handled by line 123)
+- Remaining `document_service` patterns (correction, upload, etc.) → stay Low
 
-### File 2: `supabase/functions/_shared/rss/ai-decision.ts`
+Ensure rule ordering prevents the Low `document_service` rule from matching before the High `exam` rule for DV-related items. Currently correct (exam rule at line 117 comes before document_service at line 276).
 
-**A. Tighten Stage One system prompt**
+### File 2: `supabase/functions/_shared/rss/queue-router.ts`
 
-Replace the generic "government jobs and education portal" prompt with a strict TrueJobs-specific prompt:
-- Explicitly state: "You are a strict relevance gatekeeper for TrueJobs.co.in, an Indian government jobs, exams, results, and admit cards website"
-- List what to strongly prioritize (recruitment, vacancy, exam notification, result, admit card, answer key, cut-off, merit list, counselling, application dates, DV/interview/joining)
-- List what to strongly reject (policy, NOC, certificate services, registration portals, citizen services, tenders, legal orders, satellite data, research, general schemes)
-- Add explicit instruction: "When in doubt, prefer skip over queue. TrueJobs audience = job aspirants only."
+**A. Tighten queue routing**
 
-**B. Tighten Stage Two system prompt**
+Current: Medium relevance policy items enter queue. Fix:
+- Core types (recruitment, vacancy, exam, admit_card, result, answer_key) with High or Medium → queue
+- Syllabus with High only → queue
+- Non-core domains (policy_updates, public_services, general_alerts, education_services) → queue ONLY if `truejobs_relevance_score >= 60` (unchanged threshold but now using real DB column)
+- Everything else → NOT queued
 
-Same TrueJobs-specific framing. After Firecrawl, the AI must confirm the content actually contains:
-- Vacancy details (post names, count, eligibility)
-- Exam details (date, syllabus, admit card link)
-- Result details (merit list, cut-off, selection list)
-- Application process details (dates, how to apply)
+This is already mostly implemented. The key fix is ensuring the score comparison uses the real DB value.
 
-If the content is just a portal landing page, policy circular, or generic service page → mark as not useful.
+**B. Return `skipReason` in QueueDecision**
 
-**C. Add `truejobs_relevance_score` to both stage outputs**
+Already returns `reason` — rename to be consistent. Map reasons to the structured skip_reason values: `non_core_domain`, `insufficient_relevance`, etc.
 
-Add a 0–100 score field to both StageOneOutput and StageTwoOutput schemas. AI must assign based on:
-- Recruitment/vacancy intent: 30 points
-- Exam/result/admit card: 25 points  
-- Urgency/actionability: 20 points
-- SEO/search demand: 15 points
-- Noise penalty: −30 points (policy, service, certificate, NOC)
+### File 3: `supabase/functions/rss-ingest/index.ts`
 
-**D. Tighten banding logic**
+**A. Store `truejobs_relevance_score` and `skip_reason` as real DB fields**
 
-- Band 1 Low: expand criteria — also skip items where `truejobs_relevance_score < 20` OR domain is `policy_updates`/`public_services`/`education_services` with no co-occurring job/exam keywords
-- Band 1 High: expand criteria — also auto-proceed for `exam_updates` domain with `High` relevance even with short summaries (these are often brief but high-value)
+In `processSource`, after classification:
+- Write `truejobs_relevance_score: classification.truejobsScore` to the item row
+- Write `skip_reason: classification.skipReason` to the item row (null if relevant)
+- If queue decision says don't queue, update `skip_reason` from queue decision reason
 
-### File 3: `supabase/functions/_shared/rss/queue-router.ts`
+**B. Update source usefulness counters**
 
-**A. Replace simple `shouldQueue` with `shouldQueueForTrueJobs`**
-
-Current logic: `relevance === 'High' || relevance === 'Medium'` — this lets all Medium items through including policy, certificates, etc.
-
-New logic:
+After processing all items for a source, update:
 ```
-function shouldQueueForTrueJobs(relevanceLevel, primaryDomain, itemType, score):
-  // Always queue core types
-  if itemType in ['recruitment', 'vacancy', 'exam', 'admit_card', 'result', 'answer_key'] AND relevance in ['High', 'Medium']:
-    return { queue: true, reason: 'core_type' }
-  
-  // Queue high-relevance exam-adjacent types
-  if itemType in ['syllabus'] AND relevance === 'High':
-    return { queue: true, reason: 'exam_adjacent' }
-  
-  // Never queue non-core domains unless score > 60
-  if primaryDomain in ['policy_updates', 'public_services', 'general_alerts', 'education_services']:
-    if score >= 60: return { queue: true, reason: 'high_score_override' }
-    return { queue: false, reason: 'non_core_domain' }
-  
-  // Default: queue only if High relevance
-  if relevance === 'High': return { queue: true, reason: 'high_relevance' }
-  return { queue: false, reason: 'insufficient_relevance' }
+total_items_ingested += items_seen
+core_items_count += count of items with type in CORE_TYPES
+noise_items_count += count of items with skip_reason = 'noise_rejected'
+usefulness_score = round(core_items_count / max(total_items_ingested, 1) * 100)
 ```
 
-**B. Add `skip_reason` to returned data** so the admin UI can show why items were not queued.
+**C. Use source usefulness to skip enrichment on chronic noisy sources**
 
-### File 4: `src/components/admin/rss-intake/RssFetchedItemsTab.tsx`
+If `source.usefulness_score < 10` and item is not High relevance core type → skip enrichment. Flag in admin.
 
-**A. Add skip/deprioritization reason badge**
+### File 4: `supabase/functions/_shared/rss/ai-decision.ts`
 
-When an item has `firecrawl_reason` containing skip reasons or `ai_stage_one_json?.reason_code`, show a small muted badge:
-- `noise_rejected` → "Noise" (gray)
-- `non_core_domain` → "Non-core" (gray)
-- `low_candidate_intent` → "Low intent" (gray)
-- `policy_only` → "Policy only" (pink)
-- `citizen_service` → "Service page" (gray)
-- `band_1_low` → "Auto-skip" (gray)
+**A. Tighten banding to use real score column**
 
-**B. Add TrueJobs relevance score column** (small numeric badge, color-coded: green ≥60, amber 30-59, red <30)
+Replace `detectionReason.match(/^score=(\d+)/)` parsing with direct access to `item.truejobs_relevance_score` (the real DB column).
 
-### File 5: `supabase/functions/rss-ingest/index.ts`
+**B. No prompt changes needed** — prompts were already tightened in the previous implementation and are correct.
 
-**A. Pass `truejobs_relevance_score` from classifier into item data**
+### File 5: `supabase/functions/rss-firecrawl-enrich/index.ts`
 
-Store the score on the rss_items row (will need a column addition — but instruction says no DB changes, so store it in `raw_payload` or `detection_reason` string as `"score=75 | Matched..."`)
+**A. Use source usefulness for enrichment gating**
 
-**B. Use tightened `shouldQueueForTrueJobs` instead of `shouldQueue`**
+Add source lookup. If source usefulness_score < 15, skip enrichment for non-core types.
 
-Pass the domain, type, and score to the new queue routing function.
+**B. Use real `truejobs_relevance_score` column** instead of parsing from text.
 
-### File 6: `supabase/functions/rss-firecrawl-enrich/index.ts`
+### File 6: `src/components/admin/rss-intake/RssFetchedItemsTab.tsx`
 
-**A. Tighten `shouldEnrich` deterministic rules**
+**A. Use real DB columns for score and skip reason display**
 
-- Do NOT enrich items where `primaryDomain` is `policy_updates`, `public_services`, `general_alerts`, or `education_services` unless item_type is `recruitment`, `vacancy`, `exam`, `admit_card`, `result`, or `answer_key`
-- Prefer PDF extraction for `recruitment` + `exam` type items with PDFs
-- Prefer page scrape for items with `item_link` pointing to known recruitment board domains
+Replace `parseTrueJobsScore` (which parses from `detection_reason` text) with direct access to `item.truejobs_relevance_score`.
 
-**B. Add Firecrawl `onlyMainContent: true` always** (currently false for PDFs — keep that, but ensure page scrapes strip navigation/chrome)
+Replace `getSkipReasonBadge` logic (which reconstructs from scattered fields) with direct `item.skip_reason` mapping:
+- `noise_rejected` → gray "Noise"
+- `non_core_domain` → gray "Non-core"
+- `policy_only` → pink "Policy"
+- `citizen_service` → gray "Service"
+- `low_candidate_intent` → gray "Low intent"
+- `weak_truejobs_relevance` → gray "Weak"
+- `generic_department_notice` → gray "Generic"
+- `source_low_usefulness` → orange "Noisy source"
+
+**B. Add skip_reason filter** to the filter bar for quick isolation.
+
+### File 7: `src/components/admin/rss-intake/rssTypes.ts`
+
+Add `truejobs_relevance_score` and `skip_reason` to the `RssItem` interface. Add `usefulness_score`, `total_items_ingested`, `core_items_count`, `noise_items_count` to `RssSource` interface.
+
+### File 8: `src/components/admin/rss-intake/RssSourcesTab.tsx` (or equivalent source management UI)
+
+Show source usefulness_score as a small badge. Flag sources with score < 15 in orange/red.
 
 ---
 
-## Live Verification Plan
+## What stays the same
+- Architecture unchanged
+- AI model (Mistral via Bedrock) unchanged
+- AI prompts unchanged (already tightened)
+- Feed parser, deduper unchanged
+- Firecrawl client unchanged
+- Review queue table schema unchanged
+- No enterprise complexity added
 
-After implementation:
-1. Query rss_items to show before/after classification distribution
-2. Confirm mosdac.gov.in satellite items → `noise_rejected`, not queued
-3. Confirm SEBI legal items → `noise_rejected`, not queued
-4. Confirm income tax press releases → `Low` relevance, not queued (unless recruitment-specific)
-5. Confirm recruitment/exam items still classified `High` and queued
-6. Show review queue composition improvement
+## Verification plan
+1. Query before/after classification distribution
+2. Confirm policy items no longer enter review queue on re-ingest
+3. Confirm core recruitment/exam items still queued correctly
+4. Show source usefulness scores after re-ingest
+5. Confirm score and skip_reason columns populated and visible in admin UI
 
-## What Stays the Same
-- No DB schema changes (score stored in detection_reason or raw_payload)
-- No new edge functions
-- No architecture changes
-- Execution, dedup, feed parsing unchanged
-- AI model (Mistral) unchanged
-- RSS source management unchanged
+## Files changed (8 total)
+1. DB migration (2 ALTER TABLE statements)
+2. `supabase/functions/_shared/rss/classifier.ts`
+3. `supabase/functions/_shared/rss/queue-router.ts`
+4. `supabase/functions/rss-ingest/index.ts`
+5. `supabase/functions/_shared/rss/ai-decision.ts`
+6. `supabase/functions/rss-firecrawl-enrich/index.ts`
+7. `src/components/admin/rss-intake/RssFetchedItemsTab.tsx`
+8. `src/components/admin/rss-intake/rssTypes.ts`
 

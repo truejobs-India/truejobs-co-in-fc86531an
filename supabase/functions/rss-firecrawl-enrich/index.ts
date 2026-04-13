@@ -40,18 +40,24 @@ const NON_CORE_DOMAINS = new Set([
 
 function shouldEnrich(
   item: Record<string, unknown>,
-  manual: boolean
+  manual: boolean,
+  sourceUsefulnessScore?: number
 ): EnrichDecision {
   if (manual) return { should: true, reason: 'manual' };
 
   const relevance = item.relevance_level as string;
   const domain = (item.primary_domain as string) || 'general_alerts';
   const itemType = (item.item_type as string) || 'unknown';
-  const detectionReason = (item.detection_reason as string) || '';
+  const skipReason = (item.skip_reason as string) || '';
 
   // Noise-rejected items: never enrich
-  if (detectionReason === 'noise_rejected') {
+  if (skipReason === 'noise_rejected') {
     return { should: false, reason: 'noise_rejected' };
+  }
+
+  // Source usefulness gating: skip enrichment for non-core types from chronically noisy sources
+  if (sourceUsefulnessScore !== undefined && sourceUsefulnessScore < 15 && !CORE_ENRICH_TYPES.has(itemType) && relevance !== 'High') {
+    return { should: false, reason: 'source_low_usefulness' };
   }
 
   // Non-core domains: only enrich if item_type is core recruitment/exam type
@@ -302,6 +308,21 @@ async function enrichItems(
     return itemIds.map(id => ({ itemId: id, status: 'failed', reason: 'db_error', error: error?.message || 'Items not found' }));
   }
 
+  // Look up source usefulness scores for all relevant sources
+  const sourceIds = [...new Set(items.map((i: any) => i.rss_source_id).filter(Boolean))];
+  const sourceUsefulnessMap = new Map<string, number>();
+  if (sourceIds.length > 0) {
+    const { data: sourcesData } = await client
+      .from('rss_sources')
+      .select('id, usefulness_score')
+      .in('id', sourceIds);
+    if (sourcesData) {
+      for (const s of sourcesData as any[]) {
+        sourceUsefulnessMap.set(s.id, s.usefulness_score ?? 50);
+      }
+    }
+  }
+
   const itemMap = new Map(items.map((i: any) => [i.id, i]));
 
   for (const itemId of itemIds) {
@@ -312,7 +333,8 @@ async function enrichItems(
     }
 
     try {
-      const result = await enrichSingleItem(client, item, force);
+      const sourceScore = sourceUsefulnessMap.get(item.rss_source_id as string);
+      const result = await enrichSingleItem(client, item, force, sourceScore);
       results.push(result);
     } catch (e) {
       const errMsg = e instanceof Error ? e.message : String(e);
@@ -332,7 +354,8 @@ async function enrichItems(
 async function enrichSingleItem(
   client: ReturnType<typeof createClient>,
   item: Record<string, unknown>,
-  force: boolean
+  force: boolean,
+  sourceUsefulnessScore?: number
 ): Promise<EnrichResult> {
   const itemId = item.id as string;
 
@@ -412,7 +435,7 @@ async function enrichSingleItem(
   }
 
   // ── Deterministic enrichment decision (baseline) ──
-  const decision = shouldEnrich(item, force);
+  const decision = shouldEnrich(item, force, sourceUsefulnessScore);
   if (!decision.should) {
     await client.from('rss_items').update({
       firecrawl_status: 'skipped',

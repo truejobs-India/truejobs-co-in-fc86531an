@@ -4255,6 +4255,8 @@ export type Database = {
           raw_payload: Json
           relevance_level: string
           rss_source_id: string
+          skip_reason: string | null
+          truejobs_relevance_score: number | null
           updated_at: string
         }
         Insert: {
@@ -4304,6 +4306,8 @@ export type Database = {
           raw_payload?: Json
           relevance_level?: string
           rss_source_id: string
+          skip_reason?: string | null
+          truejobs_relevance_score?: number | null
           updated_at?: string
         }
         Update: {
@@ -4353,6 +4357,8 @@ export type Database = {
           raw_payload?: Json
           relevance_level?: string
           rss_source_id?: string
+          skip_reason?: string | null
+          truejobs_relevance_score?: number | null
           updated_at?: string
         }
         Relationships: [
@@ -4369,6 +4375,7 @@ export type Database = {
         Row: {
           category: string | null
           check_interval_hours: number
+          core_items_count: number | null
           created_at: string
           etag: string | null
           feed_url: string
@@ -4380,6 +4387,7 @@ export type Database = {
           last_fetched_at: string | null
           last_modified: string | null
           last_success_at: string | null
+          noise_items_count: number | null
           notes: string | null
           official_site: string | null
           priority: string
@@ -4387,11 +4395,14 @@ export type Database = {
           source_type: string
           state_or_scope: string | null
           status: string
+          total_items_ingested: number | null
           updated_at: string
+          usefulness_score: number | null
         }
         Insert: {
           category?: string | null
           check_interval_hours?: number
+          core_items_count?: number | null
           created_at?: string
           etag?: string | null
           feed_url: string
@@ -4403,6 +4414,7 @@ export type Database = {
           last_fetched_at?: string | null
           last_modified?: string | null
           last_success_at?: string | null
+          noise_items_count?: number | null
           notes?: string | null
           official_site?: string | null
           priority?: string
@@ -4410,11 +4422,14 @@ export type Database = {
           source_type?: string
           state_or_scope?: string | null
           status?: string
+          total_items_ingested?: number | null
           updated_at?: string
+          usefulness_score?: number | null
         }
         Update: {
           category?: string | null
           check_interval_hours?: number
+          core_items_count?: number | null
           created_at?: string
           etag?: string | null
           feed_url?: string
@@ -4426,6 +4441,7 @@ export type Database = {
           last_fetched_at?: string | null
           last_modified?: string | null
           last_success_at?: string | null
+          noise_items_count?: number | null
           notes?: string | null
           official_site?: string | null
           priority?: string
@@ -4433,7 +4449,9 @@ export type Database = {
           source_type?: string
           state_or_scope?: string | null
           status?: string
+          total_items_ingested?: number | null
           updated_at?: string
+          usefulness_score?: number | null
         }
         Relationships: []
       }

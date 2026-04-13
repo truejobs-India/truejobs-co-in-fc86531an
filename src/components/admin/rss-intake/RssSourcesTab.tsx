@@ -375,6 +375,7 @@ export function RssSourcesTab() {
                   <TableHead>Name</TableHead>
                   <TableHead>Priority</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead className="text-center" title="Source Usefulness Score">Use%</TableHead>
                   <TableHead>Interval</TableHead>
                   <TableHead>Enabled</TableHead>
                   <TableHead>Last Success</TableHead>
@@ -405,6 +406,13 @@ export function RssSourcesTab() {
                     </TableCell>
                     <TableCell>{priorityBadge(src.priority)}</TableCell>
                     <TableCell>{statusBadge(src.status)}</TableCell>
+                    <TableCell className="text-center">
+                      {(() => {
+                        const score = src.usefulness_score ?? 50;
+                        const color = score >= 50 ? 'bg-emerald-100 text-emerald-800' : score >= 15 ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-700';
+                        return <Badge className={`${color} text-[10px] px-1.5 py-0`}>{score}%</Badge>;
+                      })()}
+                    </TableCell>
                     <TableCell className="text-sm">{src.check_interval_hours}h</TableCell>
                     <TableCell>
                       <Switch checked={src.fetch_enabled} onCheckedChange={() => toggleEnabled(src)} />

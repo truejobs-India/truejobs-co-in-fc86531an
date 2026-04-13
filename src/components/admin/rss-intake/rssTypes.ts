@@ -11,6 +11,10 @@ export interface RssSource {
   category: string | null;
   state_or_scope: string | null;
   fetch_enabled: boolean;
+  usefulness_score: number;
+  total_items_ingested: number;
+  core_items_count: number;
+  noise_items_count: number;
   check_interval_hours: number;
   last_fetched_at: string | null;
   last_success_at: string | null;
@@ -64,6 +68,8 @@ export interface RssItem {
   first_seen_at: string;
   last_seen_at: string;
   current_status: string;
+  truejobs_relevance_score: number;
+  skip_reason: string | null;
   created_at: string;
   updated_at: string;
   // Firecrawl enrichment fields

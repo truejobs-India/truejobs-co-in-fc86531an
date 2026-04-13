@@ -10,6 +10,7 @@ export interface ClassificationResult {
   relevanceLevel: 'High' | 'Medium' | 'Low';
   detectionReason: string;
   truejobsScore: number; // 0–100 relevance score for TrueJobs business goal
+  skipReason: string | null; // structured reason if item is skipped/deprioritized
 }
 
 interface Rule {
@@ -22,9 +23,9 @@ interface Rule {
 }
 
 // ── Noise Rejection Patterns ──
-// Items matching these are immediately rejected as irrelevant to TrueJobs
+// Items matching these are rejected UNLESS rescued by strong recruitment/exam co-signals
 const NOISE_PATTERNS: RegExp[] = [
-  // Satellite / telemetry / remote sensing (use lookahead instead of \b for underscore-separated codes)
+  // Satellite / telemetry / remote sensing
   /(?:^|[\s,;|])(?:3RIMG|3RSND|3DIMG|L1B|L2B|SB1|SA1|MER2|L1C|HDF5|S1SCT|S1IRS)(?:[\s_,;|]|$)/i,
   /\b(sounder|imager|radiance|spectral|geolocation|swath)\b/i,
   /\b(INSAT[\s-]*3D|INSAT[\s-]*3DR|Kalpana[\s-]*1|Oceansat|Resourcesat|Cartosat|RISAT)\b/i,
@@ -44,14 +45,15 @@ const NOISE_PATTERNS: RegExp[] = [
   /\b(e[\s-]*tender|tender\s*notice|tender\s*document|NIT\s*for|invitation\s*(?:for|of)\s*tender)\b/i,
 ];
 
-// Keywords that rescue an item from noise rejection if they co-occur
-const RESCUE_KEYWORDS = /\b(recruitment|vacancy|vacancies|bharti|भर्ती|niyukti|नियुक्ति|exam(?:ination)?|result|admit\s*card|answer\s*key|merit\s*list|cut[\s-]*off|selection\s*list)\b/i;
+// Full TrueJobs intent rescue set — if ANY of these appear alongside noise, the item is rescued
+const RESCUE_KEYWORDS = /\b(recruitment|vacancy|vacancies|bharti|भर्ती|niyukti|नियुक्ति|exam(?:ination)?|result|admit\s*card|hall\s*ticket|answer\s*key|merit\s*list|cut[\s-]*off|score\s*card|selection\s*list|counselling|counseling|document\s*verification|DV\s*schedule|interview|PET|PST|skill\s*test|typing\s*test|joining|last\s*date|correction\s*window|application\s*start|opening\s*date|apply\s*(?:before|by|online))\b/i;
 
 // ── Core TrueJobs signal patterns for scoring ──
 const RECRUITMENT_SIGNAL = /\b(recruitment|vacancy|vacancies|hiring|bharti|भर्ती|नियुक्ति|appointment|posts?\s*(?:of|for)|job\s*(?:notification|opening))\b/i;
 const EXAM_SIGNAL = /\b(exam(?:ination)?|written\s*test|CBT|परीक्षा|admit\s*card|hall\s*ticket|answer\s*key|syllabus|exam\s*date|exam\s*schedule)\b/i;
 const RESULT_SIGNAL = /\b(result|merit\s*list|cut[\s-]*off|score\s*card|selection\s*list|shortlisted|selected\s*candidates|परिणाम)\b/i;
 const URGENCY_SIGNAL = /\b(last\s*date|closing\s*date|apply\s*(?:before|by)|deadline|correction\s*window|application\s*start|opening\s*date)\b/i;
+const PROCESS_SIGNAL = /\b(document\s*verification|DV\s*schedule|interview|PET|PST|skill\s*test|typing\s*test|joining|counselling|counseling)\b/i;
 
 /**
  * Check if text matches noise patterns and is NOT rescued by recruitment/exam keywords
@@ -59,7 +61,7 @@ const URGENCY_SIGNAL = /\b(last\s*date|closing\s*date|apply\s*(?:before|by)|dead
 function isNoise(text: string): boolean {
   for (const pattern of NOISE_PATTERNS) {
     if (pattern.test(text)) {
-      // Check if rescued by co-occurring recruitment keywords
+      // Check if rescued by co-occurring recruitment/exam keywords
       if (RESCUE_KEYWORDS.test(text)) return false;
       return true;
     }
@@ -69,17 +71,20 @@ function isNoise(text: string): boolean {
 
 /**
  * Compute TrueJobs relevance score (0–100)
+ * Weights: recruitment +40, exam/result/process +30, urgency +20, PDF +5
+ * Penalties: non-core domain -30, general_alerts -40
  */
 function computeTrueJobsScore(text: string, domain: string, hasPdf: boolean): number {
   let score = 0;
 
   // Recruitment intent: +40
   if (RECRUITMENT_SIGNAL.test(text)) score += 40;
-  // Exam/result/admit card: +35
-  if (EXAM_SIGNAL.test(text)) score += 25;
+  // Exam/result/admit card/process: +30
+  if (EXAM_SIGNAL.test(text)) score += 20;
   if (RESULT_SIGNAL.test(text)) score += 20;
-  // Urgency (dates, deadlines): +15
-  if (URGENCY_SIGNAL.test(text)) score += 15;
+  if (PROCESS_SIGNAL.test(text)) score += 10;
+  // Urgency (dates, deadlines): +20
+  if (URGENCY_SIGNAL.test(text)) score += 20;
   // PDF presence: +5
   if (hasPdf) score += 5;
 
@@ -94,12 +99,42 @@ function computeTrueJobsScore(text: string, domain: string, hasPdf: boolean): nu
   return Math.max(0, Math.min(100, score));
 }
 
+/**
+ * Determine a structured skip reason for non-core / low-value items
+ */
+function computeSkipReason(
+  itemType: string,
+  domain: string,
+  relevance: 'High' | 'Medium' | 'Low',
+  isNoiseRejected: boolean,
+  text: string
+): string | null {
+  if (isNoiseRejected) return 'noise_rejected';
+
+  // Non-core domains with Low relevance
+  if (relevance === 'Low') {
+    if (domain === 'policy_updates') return 'policy_only';
+    if (domain === 'public_services') return 'citizen_service';
+    if (domain === 'education_services') {
+      if (itemType === 'certificate') return 'certificate_service';
+      if (itemType === 'university_service' || itemType === 'school_service') return 'citizen_service';
+      return 'low_candidate_intent';
+    }
+    if (domain === 'general_alerts') {
+      if (itemType === 'signal' || itemType === 'unknown') return 'generic_department_notice';
+      return 'weak_truejobs_relevance';
+    }
+  }
+
+  return null;
+}
+
 // IMPORTANT: Rules are ordered by specificity — most specific first.
 // TrueJobs core rules (jobs, exams, results) come first with High relevance.
 // Education services, policy, public services are deprioritized to Low.
 
 const RULES: Rule[] = [
-  // ── NEW: Post-exam / post-recruitment process (very specific, checked first) ──
+  // ── Post-exam / post-recruitment process (very specific, checked first) ──
   {
     type: 'result',
     domain: 'exam_updates',
@@ -279,7 +314,9 @@ const RULES: Rule[] = [
     relevance: 'Low',
     baseScore: 10,
     patterns: [
-      /\b(document\s*verification|document\s*correction|document\s*service|upload\s*document|education\s*record\s*service)\b/i,
+      // NOTE: "document verification" is handled ABOVE in exam rules (High relevance)
+      // This only catches non-DV document services
+      /\b(document\s*correction|document\s*service|upload\s*document|education\s*record\s*service)\b/i,
     ],
   },
 
@@ -351,6 +388,7 @@ export function classifyItem(
       relevanceLevel: 'Low',
       detectionReason: 'noise_rejected',
       truejobsScore: 0,
+      skipReason: 'noise_rejected',
     };
   }
 
@@ -361,13 +399,15 @@ export function classifyItem(
       if (match) {
         const score = computeTrueJobsScore(text, rule.domain, hasPdf);
         const finalScore = Math.max(score, rule.baseScore);
+        const skipReason = computeSkipReason(rule.type, rule.domain, rule.relevance, false, text);
         return {
           itemType: rule.type,
           primaryDomain: rule.domain,
           displayGroup: rule.displayGroup,
           relevanceLevel: rule.relevance,
-          detectionReason: `score=${finalScore} | Matched "${match[0]}" → ${rule.domain}/${rule.type}`,
+          detectionReason: `Matched "${match[0]}" → ${rule.domain}/${rule.type}`,
           truejobsScore: finalScore,
+          skipReason,
         };
       }
     }
@@ -380,7 +420,8 @@ export function classifyItem(
     primaryDomain: 'general_alerts',
     displayGroup: 'General Alerts',
     relevanceLevel: 'Low',
-    detectionReason: `score=${fallbackScore} | No keyword match found`,
+    detectionReason: 'No keyword match found',
     truejobsScore: fallbackScore,
+    skipReason: 'generic_department_notice',
   };
 }

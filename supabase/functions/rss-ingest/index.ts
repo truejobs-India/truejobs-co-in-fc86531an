@@ -430,6 +430,8 @@ async function processSource(
           display_group: classification.displayGroup,
           relevance_level: classification.relevanceLevel,
           detection_reason: classification.detectionReason,
+          truejobs_relevance_score: classification.truejobsScore,
+          skip_reason: classification.skipReason,
           first_pdf_url: pdfs.firstPdfUrl,
           linked_pdf_urls: pdfs.linkedPdfUrls,
           normalized_hash: normalizedHash,
@@ -472,6 +474,9 @@ async function processSource(
             });
             // Set status to queued
             await adminClient.from('rss_items').update({ current_status: 'queued' }).eq('id', upsertResult.itemId);
+          } else if (!classification.skipReason) {
+            // If queue decision rejected it but classifier didn't set a skip reason, use queue reason
+            await adminClient.from('rss_items').update({ skip_reason: queueDecision.reason }).eq('id', upsertResult.itemId);
           }
         } else if (upsertResult.action === 'updated') {
           itemsUpdated++;
@@ -499,6 +504,41 @@ async function processSource(
       etag: fetchResult.etag || source.etag,
       last_modified: fetchResult.lastModified || source.last_modified,
     }).eq('id', source.id);
+
+    // Update source usefulness counters
+    if (parsed.items.length > 0) {
+      try {
+        const CORE_TYPES = new Set(['recruitment', 'vacancy', 'exam', 'admit_card', 'result', 'answer_key']);
+        // Count core and noise items from this run's new items
+        const { data: newItems } = await adminClient
+          .from('rss_items')
+          .select('item_type, skip_reason')
+          .in('id', newItemIds);
+        
+        if (newItems && newItems.length > 0) {
+          const coreCount = newItems.filter((i: any) => CORE_TYPES.has(i.item_type)).length;
+          const noiseCount = newItems.filter((i: any) => i.skip_reason === 'noise_rejected').length;
+          
+          const prevTotal = (source.total_items_ingested || 0);
+          const prevCore = (source.core_items_count || 0);
+          const prevNoise = (source.noise_items_count || 0);
+          
+          const newTotal = prevTotal + newItems.length;
+          const newCore = prevCore + coreCount;
+          const newNoise = prevNoise + noiseCount;
+          const usefulnessScore = Math.round((newCore / Math.max(newTotal, 1)) * 100);
+
+          await adminClient.from('rss_sources').update({
+            total_items_ingested: newTotal,
+            core_items_count: newCore,
+            noise_items_count: newNoise,
+            usefulness_score: usefulnessScore,
+          }).eq('id', source.id);
+        }
+      } catch (counterErr) {
+        console.warn('[rss-ingest] Source usefulness counter update failed (non-blocking):', counterErr);
+      }
+    }
 
     // Band computation + Fire-and-forget Firecrawl enrichment for qualifying new items
     if (itemsNew > 0) {

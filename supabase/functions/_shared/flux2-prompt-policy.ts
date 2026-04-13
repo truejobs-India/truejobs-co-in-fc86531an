@@ -223,6 +223,7 @@ export function buildFlux2CoverPrompt(body: any): string {
   const scene = findBestScene(ctx.allText);
   const parts = [
     scene + '.',
+    CONTROLLED_GLAMOUR_BLOCK,
     AESTHETIC_BLOCK,
     ANTI_TEXT_BLOCK,
     ANTI_ADORNMENT_BLOCK,
@@ -241,6 +242,7 @@ export function buildFlux2InlinePrompt(body: any): string {
   const parts = [
     scene + '.',
     'Close-up or medium shot suitable for an inline article image.',
+    CONTROLLED_GLAMOUR_BLOCK,
     AESTHETIC_BLOCK,
     ANTI_TEXT_BLOCK,
     ANTI_ADORNMENT_BLOCK,

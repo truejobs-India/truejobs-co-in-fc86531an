@@ -71,9 +71,11 @@ export interface ScanStateBreakdown {
   neverBulkFixed: number;
   changed: number;
   failed: number;
-  partial: number;
-  noActionTaken: number;
-  skippedUnchanged: number;
+  partial: number;       // compat — always 0, merged into failed
+  noActionTaken: number;  // compat — always 0, merged into failed
+  skippedUnchanged: number; // compat — always 0, replaced by unchanged
+  unchanged: number;      // reason = already_fixed_unchanged
+  excluded: number;       // reason = excluded (bad data / unknown status)
   alreadyClean: number;
 }
 
@@ -162,37 +164,79 @@ interface BlogPost {
 }
 
 // ── Eligibility check for smart scope ──
-function isEligibleForSmartScope(post: BlogPost): { eligible: boolean; reason: string } {
-  // Never scanned
+// Debug flag — set to true to log per-post eligibility decisions
+const SMART_SCOPE_DEBUG = false;
+const CHANGED_BUFFER_MS = 120_000; // 120 seconds — ignore trigger/metadata bumps
+
+type SmartScopeReason = 'never_fixed' | 'fix_failed' | 'changed_since_fix' | 'already_fixed_unchanged' | 'excluded';
+
+function safeDateMs(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const ms = new Date(value).getTime();
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function isEligibleForSmartScope(post: BlogPost): { eligible: boolean; reason: SmartScopeReason } {
+  const status = post.last_bulk_fix_status;
+  const remaining = post.remaining_auto_fixable_count ?? 0;
+
+  // Rule 1: Never scanned at all
   if (!post.last_bulk_scanned_at) {
-    return { eligible: true, reason: 'neverBulkFixed' };
+    return debugResult(post, true, 'never_fixed');
   }
 
-  // Content changed since last scan
-  if (post.updated_at && post.last_bulk_scanned_at) {
-    const updatedAt = new Date(post.updated_at).getTime();
-    const scannedAt = new Date(post.last_bulk_scanned_at).getTime();
-    if (updatedAt > scannedAt) {
-      return { eligible: true, reason: 'changed' };
+  // Rule 2: Technical failure — always retry
+  if (status === 'failed') {
+    return debugResult(post, true, 'fix_failed');
+  }
+
+  // Rule 3: Partially fixed with remaining issues
+  if (status === 'partially_fixed' && remaining > 0) {
+    return debugResult(post, true, 'fix_failed');
+  }
+
+  // Rule 4: no_action_taken with remaining fixable issues
+  if (status === 'no_action_taken' && remaining > 0) {
+    return debugResult(post, true, 'fix_failed');
+  }
+
+  // Rule 5: fixed or baseline — check for content changes with buffer
+  if (status === 'fixed' || status === 'baseline') {
+    const refMs = safeDateMs(post.last_bulk_fixed_at) ?? safeDateMs(post.last_bulk_scanned_at);
+    if (refMs === null) {
+      // No valid reference time despite having a status — treat as never_fixed
+      return debugResult(post, true, 'never_fixed');
     }
+    const updatedMs = safeDateMs(post.updated_at);
+    if (updatedMs === null) {
+      // Can't determine if changed — exclude (don't widen eligibility)
+      return debugResult(post, false, 'excluded');
+    }
+    if (updatedMs > refMs + CHANGED_BUFFER_MS) {
+      return debugResult(post, true, 'changed_since_fix');
+    }
+    return debugResult(post, false, 'already_fixed_unchanged');
   }
 
-  // Technical failure — always retry
-  if (post.last_bulk_fix_status === 'failed') {
-    return { eligible: true, reason: 'failed' };
-  }
+  // Rule 6: Any other status (e.g. "skipped", unknown values)
+  return debugResult(post, false, 'excluded');
+}
 
-  // Partially fixed with remaining issues
-  if (post.last_bulk_fix_status === 'partially_fixed' && (post.remaining_auto_fixable_count ?? 0) > 0) {
-    return { eligible: true, reason: 'partial' };
+function debugResult(post: BlogPost, eligible: boolean, reason: SmartScopeReason): { eligible: boolean; reason: SmartScopeReason } {
+  if (SMART_SCOPE_DEBUG) {
+    console.debug('[SMART_SCOPE]', {
+      id: post.id,
+      title: post.title?.substring(0, 60),
+      last_bulk_fix_status: post.last_bulk_fix_status,
+      remaining_auto_fixable_count: post.remaining_auto_fixable_count,
+      updated_at: post.updated_at,
+      last_bulk_scanned_at: post.last_bulk_scanned_at,
+      last_bulk_fixed_at: post.last_bulk_fixed_at,
+      eligible,
+      reason,
+    });
   }
-
-  // no_action_taken with remaining fixable issues — retry (pipeline may now handle them)
-  if (post.last_bulk_fix_status === 'no_action_taken' && (post.remaining_auto_fixable_count ?? 0) > 0) {
-    return { eligible: true, reason: 'partial' };
-  }
-
-  return { eligible: false, reason: 'skippedUnchanged' };
+  return { eligible, reason };
 }
 
 function isEligibleForFailedPartialScope(post: BlogPost): boolean {
@@ -230,9 +274,11 @@ export function useBulkAutoFix(
       neverBulkFixed: 0,
       changed: 0,
       failed: 0,
-      partial: 0,
-      noActionTaken: 0,
-      skippedUnchanged: 0,
+      partial: 0,         // compat — always 0
+      noActionTaken: 0,    // compat — always 0
+      skippedUnchanged: 0, // compat — always 0
+      unchanged: 0,
+      excluded: 0,
       alreadyClean: 0,
     };
 
@@ -279,18 +325,20 @@ export function useBulkAutoFix(
       } else if (scope === 'failed_partial') {
         postsToScan = allFetchedPosts.filter(p => isEligibleForFailedPartialScope(p));
       } else {
-        // Smart scope — filter by eligibility
+        // Smart scope — filter by eligibility (strict ordering: failed before changed)
         postsToScan = [];
         for (const post of allFetchedPosts) {
           const { eligible, reason } = isEligibleForSmartScope(post);
           if (eligible) {
             postsToScan.push(post);
-            if (reason === 'neverBulkFixed') stateBreakdown.neverBulkFixed++;
-            else if (reason === 'changed') stateBreakdown.changed++;
-            else if (reason === 'failed') stateBreakdown.failed++;
-            else if (reason === 'partial') stateBreakdown.partial++;
+            // Tag the post so ScanItem can inherit the reason later
+            (post as any).__eligibilityReason = reason;
+            if (reason === 'never_fixed') stateBreakdown.neverBulkFixed++;
+            else if (reason === 'changed_since_fix') stateBreakdown.changed++;
+            else if (reason === 'fix_failed') stateBreakdown.failed++;
           } else {
-            stateBreakdown.skippedUnchanged++;
+            if (reason === 'already_fixed_unchanged') stateBreakdown.unchanged++;
+            else if (reason === 'excluded') stateBreakdown.excluded++;
           }
         }
       }
@@ -369,6 +417,7 @@ export function useBulkAutoFix(
         failCount: actionable.filter(c => c.status === 'fail').length,
         warnCount: actionable.filter(c => c.status === 'warn').length,
         issuesByType: byType,
+        eligibilityReason: (post as any).__eligibilityReason,
       });
     }
 

@@ -308,6 +308,21 @@ async function enrichItems(
     return itemIds.map(id => ({ itemId: id, status: 'failed', reason: 'db_error', error: error?.message || 'Items not found' }));
   }
 
+  // Look up source usefulness scores for all relevant sources
+  const sourceIds = [...new Set(items.map((i: any) => i.rss_source_id).filter(Boolean))];
+  const sourceUsefulnessMap = new Map<string, number>();
+  if (sourceIds.length > 0) {
+    const { data: sourcesData } = await client
+      .from('rss_sources')
+      .select('id, usefulness_score')
+      .in('id', sourceIds);
+    if (sourcesData) {
+      for (const s of sourcesData as any[]) {
+        sourceUsefulnessMap.set(s.id, s.usefulness_score ?? 50);
+      }
+    }
+  }
+
   const itemMap = new Map(items.map((i: any) => [i.id, i]));
 
   for (const itemId of itemIds) {
@@ -318,7 +333,8 @@ async function enrichItems(
     }
 
     try {
-      const result = await enrichSingleItem(client, item, force);
+      const sourceScore = sourceUsefulnessMap.get(item.rss_source_id as string);
+      const result = await enrichSingleItem(client, item, force, sourceScore);
       results.push(result);
     } catch (e) {
       const errMsg = e instanceof Error ? e.message : String(e);

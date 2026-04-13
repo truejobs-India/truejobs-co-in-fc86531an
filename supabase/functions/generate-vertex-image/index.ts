@@ -1161,9 +1161,12 @@ serve(async (req) => {
         result = await generateViaNovaCanvas(testBody, slug, guardedPrompt, adminClient, startMs, true);
       } else if (selectedModel === 'azure-mai-image-2') {
         result = await generateViaAzureMaiImage(testBody, slug, guardedPrompt, adminClient, startMs, true);
-      } else if (isGeminiDirectImageModel(selectedModel)) {
-        result = await generateViaGeminiDirectImage(testBody, slug, guardedPrompt, adminClient, startMs, resolveGeminiDirectRuntimeModel(selectedModel));
-      } else if (isGatewayModel(selectedModel)) {
+      } else if (selectedModel === 'vertex-3-pro-image' || selectedModel === 'vertex-3.1-flash-image') {
+        const runtimeModelId = selectedModel === 'vertex-3.1-flash-image'
+          ? 'gemini-3.1-flash-image-preview'
+          : 'gemini-3-pro-image-preview';
+        result = await generateViaGeminiDirectImage(testBody, slug, guardedPrompt, adminClient, startMs, runtimeModelId);
+      } else if (selectedModel in GATEWAY_IMAGE_MODELS && GATEWAY_IMAGE_MODELS[selectedModel] !== '__gemini_direct__') {
         const gatewayModelId = GATEWAY_IMAGE_MODELS[selectedModel] || LOVABLE_GATEWAY_IMAGE_MODEL;
         result = await generateViaLovableGatewayImageWithModel(testBody, slug, guardedPrompt, adminClient, startMs, `manual-test`, gatewayModelId);
       } else if (selectedModel === 'gemini-flash-image') {

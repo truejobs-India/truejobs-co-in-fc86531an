@@ -375,6 +375,7 @@ export function RssSourcesTab() {
                   <TableHead>Name</TableHead>
                   <TableHead>Priority</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead className="text-center" title="Source Usefulness Score">Use%</TableHead>
                   <TableHead>Interval</TableHead>
                   <TableHead>Enabled</TableHead>
                   <TableHead>Last Success</TableHead>

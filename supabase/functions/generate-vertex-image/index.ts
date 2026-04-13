@@ -953,18 +953,24 @@ async function generateViaAzureFlux2(
   };
 
   const purpose = body.purpose || 'cover';
+  const isManualTest = purpose === 'manual-test';
   const slotNumber = body.slotNumber;
   const requestedRatio = body.aspectRatio || '16:9';
   const dims = flux2DimensionsFromAspectRatio(requestedRatio);
 
   // ── FLUX.2-pro uses its own dedicated prompt policy ──
-  // This bypasses the shared prompt pipeline (buildBlogCoverPrompt / applyFluxRealismLayer)
-  // because FLUX.2-pro needs stricter anti-text control and TrueJobs-specific scene construction.
-  // Other models (FLUX.1-Kontext, Gemini, Imagen, MAI-Image-2, etc.) are NOT affected.
+  // Manual-test is the only exception: it must use the already-guarded prompt passed in,
+  // otherwise the manual test path silently rebuilds a different prompt and can hit moderation again.
   const { buildFlux2CoverPrompt, buildFlux2InlinePrompt } = await import('../_shared/flux2-prompt-policy.ts');
-  const fluxPrompt = purpose === 'inline'
-    ? buildFlux2InlinePrompt(body)
-    : buildFlux2CoverPrompt(body);
+  const fluxPrompt = isManualTest
+    ? imagePrompt
+    : purpose === 'inline'
+      ? buildFlux2InlinePrompt(body)
+      : buildFlux2CoverPrompt(body);
+
+  if (isManualTest) {
+    console.log(`[azure-flux2] manual-test using provided guarded prompt (${fluxPrompt.length} chars)`);
+  }
 
   console.log(`[azure-flux2] slug=${slug} purpose=${purpose} ${dims.width}x${dims.height}`);
 
@@ -1144,7 +1150,7 @@ serve(async (req) => {
       const guardedPrompt = buildGuardedManualPrompt(userPrompt, selectedModel);
 
       // Route to the correct model generator using the guarded prompt
-      const testBody = { ...body, purpose: 'cover', title: userPrompt };
+      const testBody = { ...body, purpose: 'manual-test', title: userPrompt };
       let result: Response;
 
       if (selectedModel === 'azure-flux2-pro') {

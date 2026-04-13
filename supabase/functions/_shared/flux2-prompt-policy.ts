@@ -294,20 +294,16 @@ export function buildGuardedManualPrompt(userPrompt: string, model: string): str
     // Compact FLUX.2-pro guard — positive framing to avoid Azure hate-speech filter.
     // The full multi-block chain is too long and triggers content moderation.
     const compactGuard = [
-      'Photorealistic photograph, DSLR camera, Indian context.',
-      'Young Indian aspirants aged 18–21 in a study or exam setting.',
-      'Attractive, polished, visually appealing while completely believable.',
-      'Clear healthy skin with visible natural texture and pores.',
-      'Neat well-groomed hair, soft directional lighting, shallow depth-of-field.',
-      'Confident youthful appearance, natural posture, focused expressions.',
-      'Realistic hands with correct finger count, natural arm positioning.',
-      'Simple student clothing — casual kurta, shirt, jeans, or salwar-kameez.',
-      'Clean natural backgrounds — libraries, classrooms, study desks.',
-      'Documentary-style authenticity throughout.',
-      'No text, words, letters, numbers, watermarks, logos, or signage anywhere in the image.',
-      'All books, papers, screens must show blank or blurred pages.',
-      'Clean unadorned faces only. No forehead marks, no nose jewelry, no heavy jewelry.',
-      'No bridal, ceremonial, or festive styling. No fantasy or surreal elements.',
+      'Photorealistic editorial-style photograph in an Indian education or exam context.',
+      'Young Indian students or aspirants aged 18–21 in a believable study, exam, recruitment, or result-checking scene.',
+      'Polished, visually appealing, and fully realistic.',
+      'Natural skin texture, neat dark hair, soft natural lighting, and subtle depth-of-field.',
+      'Focused expressions, natural posture, and anatomically correct hands.',
+      'Simple contemporary student clothing and clean academic surroundings.',
+      'The image should contain no readable writing, logos, watermarks, or signage.',
+      'Books, papers, phones, and screens should appear blurred, blank, or unreadable.',
+      'Prefer a plain forehead, an undecorated face, and minimal jewelry with no facial jewelry.',
+      'Avoid bridal or ceremonial styling and keep the image grounded in everyday student realism.',
     ].join(' ');
     const parts = [userPrompt + '.', compactGuard];
     const prompt = parts.join('\n\n');

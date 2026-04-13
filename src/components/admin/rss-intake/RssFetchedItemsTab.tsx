@@ -290,30 +290,32 @@ export function RssFetchedItemsTab() {
 
   // ── TrueJobs Score & Skip Reason helpers ──
 
-  const parseTrueJobsScore = (item: RssItem): number | null => {
-    const reason = item.detection_reason || '';
-    const match = reason.match(/^score=(\d+)/);
-    return match ? parseInt(match[1], 10) : null;
-  };
-
   const getTrueJobsScoreBadge = (item: RssItem) => {
-    const score = parseTrueJobsScore(item);
-    if (score === null) return <span className="text-xs text-muted-foreground">—</span>;
+    const score = item.truejobs_relevance_score ?? 0;
+    if (score === 0 && !item.skip_reason) return <span className="text-xs text-muted-foreground">—</span>;
     const color = score >= 60 ? 'bg-emerald-100 text-emerald-800' : score >= 30 ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-700';
     return <Badge className={`${color} text-[10px] px-1.5 py-0`}>{score}</Badge>;
   };
 
   const getSkipReasonBadge = (item: RssItem) => {
-    const reason = item.detection_reason || '';
-    const fcReason = item.firecrawl_reason || '';
-    const band = item.ai_decision_band || '';
+    const reason = item.skip_reason;
+    if (!reason) return null;
 
-    if (reason === 'noise_rejected') return <Badge variant="outline" className="text-[9px] px-1 py-0 border-gray-300 text-gray-500">Noise</Badge>;
-    if (fcReason === 'non_core_domain' || fcReason.includes('non_core')) return <Badge variant="outline" className="text-[9px] px-1 py-0 border-gray-300 text-gray-500">Non-core</Badge>;
-    if (fcReason === 'low_value' || band === 'band_1_low') return <Badge variant="outline" className="text-[9px] px-1 py-0 border-gray-300 text-gray-400">Auto-skip</Badge>;
-    if (item.primary_domain === 'policy_updates' && item.relevance_level === 'Low') return <Badge variant="outline" className="text-[9px] px-1 py-0 border-pink-300 text-pink-500">Policy</Badge>;
-    if (item.primary_domain === 'public_services' && item.relevance_level === 'Low') return <Badge variant="outline" className="text-[9px] px-1 py-0 border-gray-300 text-gray-500">Service</Badge>;
-    return null;
+    const map: Record<string, { label: string; cls: string }> = {
+      noise_rejected: { label: 'Noise', cls: 'border-gray-300 text-gray-500' },
+      non_core_domain: { label: 'Non-core', cls: 'border-gray-300 text-gray-500' },
+      policy_only: { label: 'Policy', cls: 'border-pink-300 text-pink-500' },
+      citizen_service: { label: 'Service', cls: 'border-gray-300 text-gray-500' },
+      certificate_service: { label: 'Certificate', cls: 'border-gray-300 text-gray-500' },
+      low_candidate_intent: { label: 'Low intent', cls: 'border-gray-300 text-gray-400' },
+      weak_truejobs_relevance: { label: 'Weak', cls: 'border-gray-300 text-gray-400' },
+      generic_department_notice: { label: 'Generic', cls: 'border-gray-300 text-gray-400' },
+      insufficient_relevance: { label: 'Low rel.', cls: 'border-gray-300 text-gray-400' },
+      source_low_usefulness: { label: 'Noisy src', cls: 'border-orange-300 text-orange-500' },
+    };
+
+    const entry = map[reason] || { label: reason.replace(/_/g, ' '), cls: 'border-gray-300 text-gray-400' };
+    return <Badge variant="outline" className={`text-[9px] px-1 py-0 ${entry.cls}`}>{entry.label}</Badge>;
   };
 
   return (

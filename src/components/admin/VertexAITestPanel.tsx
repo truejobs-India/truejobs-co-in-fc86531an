@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { Loader2, CheckCircle2, XCircle, Zap, Crown, ImageIcon, Sparkles } from 'lucide-react';
+import { ManualImagePromptTest } from './ManualImagePromptTest';
 
 type TestStatus = 'idle' | 'running' | 'success' | 'error';
 
@@ -155,6 +156,7 @@ export function VertexAITestPanel() {
         <ResultCard label="Imagen" icon={ImageIcon} result={imagen} onRun={testImagen} />
         <ResultCard label="Gemini 2.5 Flash Image" icon={Sparkles} result={geminiImage} onRun={testGeminiImage} />
       </div>
+      <ManualImagePromptTest />
     </div>
   );
 }

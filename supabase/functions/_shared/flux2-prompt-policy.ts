@@ -252,3 +252,65 @@ export function buildFlux2InlinePrompt(body: any): string {
   console.log(`[flux2-policy] Inline prompt built for: "${ctx.title.substring(0, 60)}..." section: "${sectionHint.substring(0, 40)}..."`);
   return prompt;
 }
+
+// ─── Universal guard block (model-agnostic) ─────────────────────
+// Used by Manual Image Prompt Test for non-FLUX.2-pro models.
+// Same policy intent as the FLUX.2-pro blocks but written generically.
+const UNIVERSAL_GUARD_BLOCK = [
+  'Indian context. Young Indian aspirants aged 18–21.',
+  'Photorealistic photograph with documentary-style realism.',
+  'Subjects should look attractive, polished, and visually appealing while remaining completely believable.',
+  'Clear, healthy skin with visible natural texture — never airbrushed or waxy.',
+  'Neat, well-groomed hair. Flattering, soft directional lighting.',
+  'Refined, photogenic composition. Elegant, clean, aspirational presentation.',
+  'Confident, appealing, youthful appearance with natural posture.',
+  'Believable body proportions, realistic hands with correct finger count.',
+  'Expressions: focused study concentration, or a mild pleasant look — never an exaggerated smile.',
+  'No bindi. No tilak. No teeka. No sindoor. No forehead marks. No nose pin. No nose stud. No nose ring.',
+  'No heavy jewellery. No bridal styling. No ceremonial or festive appearance.',
+  'No beauty-filter smoothing. No fashion-shoot posing. No stock-photo grinning. No Bollywood poster styling.',
+  'No corporate office drift unless explicitly required.',
+  'Absolutely no text anywhere in the image. No words, letters, numbers, Hindi text, English text.',
+  'No typography, captions, labels, watermarks, logos, signage, poster text.',
+  'No UI text, handwritten text, printed text, exam-paper text, badge text.',
+  'All books, papers, screens must show blank or blurred pages — never legible text.',
+  'No fantasy, surreal, horror, abstract, or cinematic drift.',
+  'No malformed anatomy, fused fingers, broken wrists, extra limbs.',
+  'No uncanny face, waxy skin, plastic skin, artificial smile, hyper-glossy skin.',
+].join(' ');
+
+/**
+ * buildGuardedManualPrompt — wraps a raw user prompt with the full
+ * image-policy guard layer. Used by Manual Image Prompt Test to ensure
+ * no raw prompt can bypass the policy.
+ *
+ * For azure-flux2-pro: applies the full FLUX.2-pro policy chain.
+ * For all other models: applies the universal guard block.
+ */
+export function buildGuardedManualPrompt(userPrompt: string, model: string): string {
+  const isFlux2 = model === 'azure-flux2-pro';
+
+  if (isFlux2) {
+    const parts = [
+      userPrompt + '.',
+      'Indian context. Young Indian aspirants aged 18–21.',
+      CONTROLLED_GLAMOUR_BLOCK,
+      AESTHETIC_BLOCK,
+      ANTI_TEXT_BLOCK,
+      ANTI_ADORNMENT_BLOCK,
+      NEGATIVE_BLOCK,
+    ];
+    const prompt = parts.join('\n\n');
+    console.log(`[flux2-policy] Manual guarded prompt built for FLUX.2-pro (${prompt.length} chars)`);
+    return prompt;
+  }
+
+  // Universal guard for all other models
+  const parts = [
+    userPrompt,
+    UNIVERSAL_GUARD_BLOCK,
+  ];
+  const prompt = parts.join('\n\n');
+  console.log(`[flux2-policy] Manual guarded prompt built for model=${model} (${prompt.length} chars)`);
+  return prompt;
+}

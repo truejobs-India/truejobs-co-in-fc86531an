@@ -149,6 +149,7 @@ async function handleTestSource(
       displayGroup: classification.displayGroup,
       relevanceLevel: classification.relevanceLevel,
       detectionReason: classification.detectionReason,
+      truejobsScore: classification.truejobsScore,
       firstPdfUrl: pdfs.firstPdfUrl,
       pdfCount: pdfs.linkedPdfUrls.length,
     };

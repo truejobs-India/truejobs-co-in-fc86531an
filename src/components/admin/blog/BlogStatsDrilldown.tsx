@@ -287,11 +287,15 @@ export function BlogStatsDrilldown({ open, onOpenChange, filter, posts, onEditPo
       return;
     }
     setBulkFixing(true);
-    let fixedCount = 0, failedCount = 0;
+    stopRequestedRef.current = false;
+    setFixProgress(null);
+    let fixedCount = 0, failedCount = 0, skippedCount = 0;
 
     if (filter === 'missing-seo') {
-      for (const { post } of articles) {
-        if (fixResults.get(post.id)?.status === 'fixed') continue;
+      for (const [i, { post }] of articles.entries()) {
+        if (stopRequestedRef.current) break;
+        if (fixResults.get(post.id)?.status === 'fixed') { skippedCount++; continue; }
+        setFixProgress({ current: i + 1, total: articles.length, currentTitle: post.title });
         setFixingIds(prev => new Set([...prev, post.id]));
         try {
           const content = await fetchPostContent(post.id);
@@ -299,6 +303,7 @@ export function BlogStatsDrilldown({ open, onOpenChange, filter, posts, onEditPo
           if (result) {
             setFixResults(prev => new Map(prev).set(post.id, result));
             if (result.status === 'fixed') fixedCount++;
+            else if (result.status === 'skipped') skippedCount++;
             else failedCount++;
           }
         } catch {
@@ -309,8 +314,8 @@ export function BlogStatsDrilldown({ open, onOpenChange, filter, posts, onEditPo
         await new Promise(r => setTimeout(r, 2000));
       }
       toast({
-        title: `✅ Bulk SEO fix complete`,
-        description: `${fixedCount} fixed, ${failedCount} failed out of ${articles.length}`,
+        title: stopRequestedRef.current ? '⏹ Bulk SEO fix stopped' : `✅ Bulk SEO fix complete`,
+        description: `${fixedCount} fixed, ${failedCount} failed, ${skippedCount} skipped out of ${articles.length}`,
         variant: failedCount > 0 && fixedCount === 0 ? 'destructive' : 'default',
       });
     } else if (filter === 'no-author') {
@@ -321,8 +326,10 @@ export function BlogStatsDrilldown({ open, onOpenChange, filter, posts, onEditPo
       }
       toast({ title: `✅ Set author "${DEFAULT_AUTHOR}" for ${ids.length} articles` });
     } else if (filter === 'policy-risk' || filter === 'needs-review') {
-      for (const { post, reasons } of articles) {
-        if (fixResults.get(post.id)?.status === 'fixed') continue;
+      for (const [i, { post, reasons }] of articles.entries()) {
+        if (stopRequestedRef.current) break;
+        if (fixResults.get(post.id)?.status === 'fixed') { skippedCount++; continue; }
+        setFixProgress({ current: i + 1, total: articles.length, currentTitle: post.title });
         setFixingIds(prev => new Set([...prev, post.id]));
         try {
           const content = await fetchPostContent(post.id);
@@ -333,10 +340,10 @@ export function BlogStatsDrilldown({ open, onOpenChange, filter, posts, onEditPo
               action: 'enrich-article',
               aiModel,
               wordCount: content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().split(/\s+/).length,
-              targetWordCount: 0, // let the function compute dynamic target
+              targetWordCount: 0,
               category: post.category || 'General',
               tags: post.tags || [],
-              failingCriteria: reasons, // pass compliance issues as failing criteria
+              failingCriteria: reasons,
             },
           });
           if (error) throw error;
@@ -356,6 +363,7 @@ export function BlogStatsDrilldown({ open, onOpenChange, filter, posts, onEditPo
               id: post.id, slug: post.slug, status: 'skipped', reason: 'No usable changes from AI',
               changes: {}, ai_summary: '',
             }));
+            skippedCount++;
           }
         } catch (err: any) {
           failedCount++;
@@ -369,13 +377,15 @@ export function BlogStatsDrilldown({ open, onOpenChange, filter, posts, onEditPo
         await new Promise(r => setTimeout(r, 2000));
       }
       toast({
-        title: `✅ Compliance fix complete`,
-        description: `${fixedCount} fixed, ${failedCount} failed out of ${articles.length}`,
+        title: stopRequestedRef.current ? '⏹ Compliance fix stopped' : `✅ Compliance fix complete`,
+        description: `${fixedCount} fixed, ${failedCount} failed, ${skippedCount} skipped out of ${articles.length}`,
         variant: failedCount > 0 && fixedCount === 0 ? 'destructive' : 'default',
       });
     }
 
     setBulkFixing(false);
+    setFixProgress(null);
+    stopRequestedRef.current = false;
     onRefresh?.();
   }, [filter, articles, fixSingleArticle, fixResults, toast, onRefresh, aiModel, fetchPostContent]);
 

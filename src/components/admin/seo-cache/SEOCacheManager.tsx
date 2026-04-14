@@ -9,7 +9,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Globe, RefreshCw, Loader2, Download, Trash2 } from 'lucide-react';
+import { Globe, RefreshCw, Loader2, Download, Trash2, Square } from 'lucide-react';
 import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
 import { supabase } from '@/integrations/supabase/client';
 import { CacheFiltersState, CachePage } from './cacheTypes';
@@ -24,6 +24,7 @@ import { CacheBuildLog } from './CacheBuildLog';
 import { CacheFailedItems } from './CacheFailedItems';
 import { SEOValidationDashboard } from './SEOValidationDashboard';
 import { exportAsCSV, exportAsJSON } from './cacheExport';
+import { Progress } from '@/components/ui/progress';
 
 export function SEOCacheManager() {
   const { toast } = useToast();
@@ -42,6 +43,8 @@ export function SEOCacheManager() {
   const [isRebuilding, setIsRebuilding] = useState(false);
   const [rebuildProgress, setRebuildProgress] = useState('');
   const [purgeConfirmText, setPurgeConfirmText] = useState('');
+  const [rebuildStats, setRebuildStats] = useState<{ rebuilt: number; skipped: number; failed: number; total: number; current: number } | null>(null);
+  const stopRebuildRef = useRef(false);
 
   const handleFiltersChange = (f: CacheFiltersState) => {
     setFilters(f);
@@ -90,9 +93,10 @@ export function SEOCacheManager() {
 
   const handleRebuildAll = async (force = false) => {
     setIsRebuilding(true);
+    stopRebuildRef.current = false;
     setRebuildProgress('Collecting slugs...');
+    setRebuildStats(null);
     try {
-      // Step 1: Collect all slugs (lightweight call)
       const { data: collectData, error: collectError } = await supabase.functions.invoke('seo-cache-rebuild', {
         body: { mode: 'full-collect', trigger: 'admin-ui' },
       });
@@ -103,14 +107,18 @@ export function SEOCacheManager() {
         return;
       }
 
-      // Step 2: Process in batches of 50
       const BATCH_SIZE = 5;
       let totalRebuilt = 0, totalSkipped = 0, totalFailed = 0;
       const totalBatches = Math.ceil(allSlugs.length / BATCH_SIZE);
+      setRebuildStats({ rebuilt: 0, skipped: 0, failed: 0, total: allSlugs.length, current: 0 });
 
       for (let i = 0; i < allSlugs.length; i += BATCH_SIZE) {
+        if (stopRebuildRef.current) {
+          toast({ title: 'Rebuild Stopped', description: `Stopped by admin. Rebuilt: ${totalRebuilt}, Skipped: ${totalSkipped}, Failed: ${totalFailed}` });
+          break;
+        }
         const batchNum = Math.floor(i / BATCH_SIZE) + 1;
-        setRebuildProgress(`Batch ${batchNum}/${totalBatches} (${i}/${allSlugs.length} pages)...`);
+        setRebuildProgress(`Batch ${batchNum}/${totalBatches}`);
         const batch = allSlugs.slice(i, i + BATCH_SIZE);
         const { data, error } = await supabase.functions.invoke('seo-cache-rebuild', {
           body: { mode: 'slugs', slugs: batch, trigger: 'admin-ui', force },
@@ -118,23 +126,27 @@ export function SEOCacheManager() {
         if (error) {
           console.error(`Batch ${batchNum} failed:`, error);
           totalFailed += batch.length;
-          continue;
+        } else {
+          totalRebuilt += data?.rebuilt ?? 0;
+          totalSkipped += data?.skipped ?? 0;
+          totalFailed += data?.failed ?? 0;
         }
-        totalRebuilt += data?.rebuilt ?? 0;
-        totalSkipped += data?.skipped ?? 0;
-        totalFailed += data?.failed ?? 0;
+        setRebuildStats({ rebuilt: totalRebuilt, skipped: totalSkipped, failed: totalFailed, total: allSlugs.length, current: Math.min(i + BATCH_SIZE, allSlugs.length) });
       }
 
-      toast({
-        title: force ? 'Force Rebuild Complete' : 'Full Rebuild Complete',
-        description: `Rebuilt: ${totalRebuilt}, Skipped: ${totalSkipped}, Failed: ${totalFailed}`,
-      });
+      if (!stopRebuildRef.current) {
+        toast({
+          title: force ? 'Force Rebuild Complete' : 'Full Rebuild Complete',
+          description: `Rebuilt: ${totalRebuilt}, Skipped: ${totalSkipped}, Failed: ${totalFailed}`,
+        });
+      }
       refresh();
     } catch (err: any) {
       toast({ title: 'Rebuild Failed', description: err.message, variant: 'destructive' });
     } finally {
       setIsRebuilding(false);
       setRebuildProgress('');
+      stopRebuildRef.current = false;
     }
   };
 

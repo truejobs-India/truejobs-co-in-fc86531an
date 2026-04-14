@@ -343,22 +343,22 @@ export function BlogStatsDrilldown({ open, onOpenChange, filter, posts, onEditPo
               .update({ content: data.result, updated_at: new Date().toISOString() })
               .eq('id', post.id);
             setFixResults(prev => new Map(prev).set(post.id, {
-              slug: post.slug, status: 'fixed',
+              id: post.id, slug: post.slug, status: 'fixed',
               reason: `Fixed ${reasons.length} compliance issue(s)`,
-              changes: {},
+              changes: {}, ai_summary: '',
             }));
             fixedCount++;
           } else {
             setFixResults(prev => new Map(prev).set(post.id, {
-              slug: post.slug, status: 'skipped', reason: 'No usable changes from AI',
-              changes: {},
+              id: post.id, slug: post.slug, status: 'skipped', reason: 'No usable changes from AI',
+              changes: {}, ai_summary: '',
             }));
           }
         } catch (err: any) {
           failedCount++;
           setFixResults(prev => new Map(prev).set(post.id, {
-            slug: post.slug, status: 'failed', reason: err.message || 'Unknown error',
-            changes: {},
+            id: post.id, slug: post.slug, status: 'failed', reason: err.message || 'Unknown error',
+            changes: {}, ai_summary: '',
           }));
         } finally {
           setFixingIds(prev => { const n = new Set(prev); n.delete(post.id); return n; });

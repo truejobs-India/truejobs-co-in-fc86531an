@@ -189,7 +189,7 @@ export function useSeoMetadataWorkflow() {
     setStatus('scan_complete');
   }, []);
 
-  const execute = useCallback(async (onArticleComplete?: () => void) => {
+  const execute = useCallback(async (onArticleComplete?: () => void, aiModel?: string) => {
     if (!scanReport) return;
     const queue = scanReport.articles_with_issues;
     if (queue.length === 0) return;
@@ -229,7 +229,7 @@ export function useSeoMetadataWorkflow() {
         }));
 
         const { data, error } = await supabase.functions.invoke('fix-seo-metadata', {
-          body: { articles: articlesPayload, mode: 'fix', apply: true },
+          body: { articles: articlesPayload, mode: 'fix', apply: true, ...(aiModel ? { aiModel } : {}) },
         });
 
         if (error) {
@@ -278,7 +278,7 @@ export function useSeoMetadataWorkflow() {
     setStatus(cancelRef.current ? 'stopped' : 'completed');
   }, [scanReport]);
 
-  const fixSingleArticle = useCallback(async (post: any): Promise<SeoFixResult | null> => {
+  const fixSingleArticle = useCallback(async (post: any, aiModel?: string): Promise<SeoFixResult | null> => {
     const issues = detectSeoIssues(post);
     if (issues.length === 0) return null;
 
@@ -301,6 +301,7 @@ export function useSeoMetadataWorkflow() {
           }],
           mode: 'fix',
           apply: true,
+          ...(aiModel ? { aiModel } : {}),
         },
       });
 

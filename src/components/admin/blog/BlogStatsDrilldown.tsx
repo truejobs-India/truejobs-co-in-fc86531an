@@ -435,21 +435,49 @@ export function BlogStatsDrilldown({ open, onOpenChange, filter, posts, onEditPo
                   />
                 )}
                 {aiFixConfig.supported && (
-                  <Button
-                    size="sm"
-                    onClick={handleBulkFix}
-                    disabled={bulkFixing || (aiFixConfig.supported && (filter === 'missing-seo' || filter === 'needs-review' || filter === 'policy-risk') && !aiModel)}
-                    className="shrink-0"
-                  >
-                    {bulkFixing ? (
-                      <><Loader2 className="h-3 w-3 mr-1 animate-spin" /> Fixing…</>
-                    ) : (
-                      <><Sparkles className="h-3 w-3 mr-1" /> Fix All ({articles.length})</>
+                  <>
+                    <Button
+                      size="sm"
+                      onClick={handleBulkFix}
+                      disabled={bulkFixing || (aiFixConfig.supported && (filter === 'missing-seo' || filter === 'needs-review' || filter === 'policy-risk') && !aiModel)}
+                      className="shrink-0"
+                    >
+                      {bulkFixing && fixProgress ? (
+                        <><Loader2 className="h-3 w-3 mr-1 animate-spin" /> Fixing {fixProgress.current}/{fixProgress.total}…</>
+                      ) : bulkFixing ? (
+                        <><Loader2 className="h-3 w-3 mr-1 animate-spin" /> Starting…</>
+                      ) : (
+                        <><Sparkles className="h-3 w-3 mr-1" /> Fix All ({articles.length})</>
+                      )}
+                    </Button>
+                    {bulkFixing && (
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        className="shrink-0"
+                        onClick={() => { stopRequestedRef.current = true; }}
+                      >
+                        <Square className="h-3 w-3 mr-1" /> Stop
+                      </Button>
                     )}
-                  </Button>
+                  </>
                 )}
               </div>
             </div>
+            {/* Progress indicator during bulk fix */}
+            {bulkFixing && fixProgress && (
+              <div className="mt-2 space-y-1.5">
+                <Progress value={(fixProgress.current / fixProgress.total) * 100} className="h-2" />
+                <p className="text-xs text-muted-foreground truncate">
+                  Currently fixing: <span className="font-medium text-foreground">{fixProgress.currentTitle}</span>
+                </p>
+                <div className="flex gap-3 text-xs text-muted-foreground">
+                  <span>✅ {[...fixResults.values()].filter(r => r.status === 'fixed').length} fixed</span>
+                  <span>❌ {[...fixResults.values()].filter(r => r.status === 'failed').length} failed</span>
+                  <span>⏭ {[...fixResults.values()].filter(r => r.status === 'skipped').length} skipped</span>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

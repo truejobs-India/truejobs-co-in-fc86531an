@@ -63,6 +63,7 @@ export default function EmploymentNewsJobDetail() {
   if (error || !job) {
     return (
       <Layout>
+        <SEO title="Job Not Found" description="This job listing may have been removed." noindex={true} />
         <div className="container mx-auto py-16 text-center">
           <Briefcase className="h-16 w-16 mx-auto mb-4 text-muted-foreground opacity-50" />
           <h1 className="text-2xl font-bold mb-2">Job Not Found</h1>

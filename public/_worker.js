@@ -33,6 +33,7 @@ const SITEMAP_ROUTES = {
 const SEO_ROUTE_PATTERNS = [
   /^\/$/,
   /^\/jobs$/,
+  /^\/jobs\/[a-z0-9][a-z0-9-]*$/,
   /^\/blog$/,
   /^\/blog\/[a-z0-9][a-z0-9-]*$/,
   /^\/blog\/category\/[a-z0-9][a-z0-9-]*$/,
@@ -112,6 +113,39 @@ function isLikelyValid(pathname) {
   // Multi-segment → must match a known prefix or be a private route
   return KNOWN_MULTI_SEGMENT_PREFIXES.some(p => pathname.startsWith(p))
     || PRIVATE_PREFIXES.some(p => pathname.startsWith(p));
+}
+
+// ── Existence check for detail pages ────────────────────────────────
+// Returns: 'exists' | 'gone' | 'missing' | 'error'
+async function checkResourceExists(cfg, table, slug) {
+  try {
+    const select = table === 'jobs' ? 'id,is_deleted,is_duplicate' : 'id';
+    const url = `${cfg.SUPABASE_URL}/rest/v1/${table}?slug=eq.${encodeURIComponent(slug)}&select=${select}&limit=1`;
+    const res = await fetch(url, {
+      headers: {
+        'apikey': cfg.SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${cfg.SUPABASE_ANON_KEY}`,
+        'Accept': 'application/json',
+      },
+    });
+    if (!res.ok) {
+      console.error(`[SFC] DB existence check failed: ${table}/slug=${slug} → HTTP ${res.status} ${res.statusText}`);
+      return 'error';
+    }
+    const rows = await res.json();
+    if (!Array.isArray(rows) || rows.length === 0) {
+      console.log(`[SFC] Resource not found: ${table}/slug=${slug} → missing`);
+      return 'missing';
+    }
+    if (table === 'jobs' && (rows[0].is_deleted || rows[0].is_duplicate)) {
+      console.log(`[SFC] Resource gone: ${table}/slug=${slug} → is_deleted=${rows[0].is_deleted} is_duplicate=${rows[0].is_duplicate}`);
+      return 'gone';
+    }
+    return 'exists';
+  } catch (err) {
+    console.error(`[SFC] DB existence check exception: ${table}/slug=${slug}`, err);
+    return 'error';
+  }
 }
 
 function isSEORoute(pathname) {
@@ -319,9 +353,38 @@ export default {
           fetchSpaShell(cfg),
         ]);
 
-        // Cache miss or error → return SPA shell
+        // Cache miss or error → check DB existence for detail pages before choosing status
         if (!cacheRes.ok || cacheRes.status === 404) {
           const shellHtml = await originRes.text();
+
+          // Detail pages: verify the resource exists in DB
+          const jobMatch = pathname.match(/^\/jobs\/([a-z0-9][a-z0-9-]*)$/);
+          const blogMatch = !jobMatch && pathname.match(/^\/blog\/([a-z0-9][a-z0-9-]*)$/);
+          const empMatch = !jobMatch && !blogMatch && pathname.match(/^\/jobs\/employment-news\/([a-z0-9][a-z0-9-]*)$/);
+
+          if (empMatch || jobMatch || blogMatch) {
+            const table = empMatch ? 'employment_news_jobs' : jobMatch ? 'jobs' : 'blog_posts';
+            const detailSlug = (empMatch || jobMatch || blogMatch)[1];
+            const existence = await checkResourceExists(cfg, table, detailSlug);
+
+            if (existence === 'missing' || existence === 'gone') {
+              const status = existence === 'gone' ? 410 : 404;
+              console.log(`[SFC] Returning ${status} for ${pathname} (existence=${existence})`);
+              return new Response(shellHtml, {
+                status,
+                headers: {
+                  'Content-Type': 'text/html; charset=utf-8',
+                  'Cache-Control': 'no-cache, max-age=0',
+                  'X-Robots-Tag': 'noindex, nofollow',
+                },
+              });
+            }
+            if (existence === 'error') {
+              console.warn(`[SFC] DB check error for ${pathname}, falling back to 200`);
+            }
+            // existence === 'exists' or 'error' → serve 200
+          }
+
           return new Response(shellHtml, {
             status: 200,
             headers: {

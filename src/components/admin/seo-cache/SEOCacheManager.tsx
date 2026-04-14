@@ -104,7 +104,7 @@ export function SEOCacheManager() {
       }
 
       // Step 2: Process in batches of 50
-      const BATCH_SIZE = 50;
+      const BATCH_SIZE = 15;
       let totalRebuilt = 0, totalSkipped = 0, totalFailed = 0;
       const totalBatches = Math.ceil(allSlugs.length / BATCH_SIZE);
 

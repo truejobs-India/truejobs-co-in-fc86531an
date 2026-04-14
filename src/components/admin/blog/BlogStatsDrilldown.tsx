@@ -334,9 +334,19 @@ export function BlogStatsDrilldown({ open, onOpenChange, filter, posts, onEditPo
         <SheetHeader>
           <SheetTitle>{FILTER_LABELS[filter]}</SheetTitle>
           <SheetDescription>
-            {articles.length} article{articles.length !== 1 ? 's' : ''} found
+            {complianceLoading
+              ? 'Loading article content for compliance analysis…'
+              : `${articles.length} article${articles.length !== 1 ? 's' : ''} found`}
           </SheetDescription>
         </SheetHeader>
+
+        {/* Compliance loading spinner */}
+        {complianceLoading && (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            <span className="ml-2 text-sm text-muted-foreground">Fetching content for compliance checks…</span>
+          </div>
+        )}
 
         {/* AI Fix Action Bar */}
         {showAiActions && (

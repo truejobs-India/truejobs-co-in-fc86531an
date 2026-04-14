@@ -387,7 +387,7 @@ export function BlogStatsDrilldown({ open, onOpenChange, filter, posts, onEditPo
           </div>
         )}
 
-        <div className="mt-4">
+        {!complianceLoading && <div className="mt-4">
           {articles.length === 0 ? (
             <p className="text-sm text-muted-foreground py-8 text-center">No articles match this filter.</p>
           ) : (

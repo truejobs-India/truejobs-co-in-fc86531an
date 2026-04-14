@@ -263,15 +263,25 @@ export function BlogPostEditor() {
   }, [formData, hasUnsavedChanges, editingPost]);
 
   const fetchPosts = async () => {
-    const { data, error } = await supabase
-      .from('blog_posts')
-      .select('id,title,slug,is_published,published_at,created_at,updated_at,meta_title,meta_description,cover_image_url,featured_image_alt,excerpt,category,tags,author_name,word_count,reading_time,content_mode,canonical_url,author_id,status,primary_keyword,secondary_keywords,search_intent,noindex,schema_json,page_template,language,target_category,target_department,target_exam,target_language,target_state,target_year,scheduled_at,stale_after,last_verified_at,review_status,needs_revalidation,official_source_url,official_source_label,source_evidence,fact_confidence,has_faq_schema,faq_schema,faq_count,thin_content_risk,thin_content_reason,duplicate_risk_score,duplicate_risk_reason,long_tail_metadata,internal_links,ai_fixed_at,last_bulk_scanned_at,last_bulk_fixed_at,last_bulk_fix_status,remaining_auto_fixable_count,article_images')
-      .order('created_at', { ascending: false });
+    const selectFields = 'id,title,slug,is_published,published_at,created_at,updated_at,meta_title,meta_description,cover_image_url,featured_image_alt,excerpt,category,tags,author_name,word_count,reading_time,content_mode,canonical_url,author_id,status,primary_keyword,secondary_keywords,search_intent,noindex,schema_json,page_template,language,target_category,target_department,target_exam,target_language,target_state,target_year,scheduled_at,stale_after,last_verified_at,review_status,needs_revalidation,official_source_url,official_source_label,source_evidence,fact_confidence,has_faq_schema,faq_schema,faq_count,thin_content_risk,thin_content_reason,duplicate_risk_score,duplicate_risk_reason,long_tail_metadata,internal_links,ai_fixed_at,last_bulk_scanned_at,last_bulk_fixed_at,last_bulk_fix_status,remaining_auto_fixable_count,article_images';
+    const allData: any[] = [];
+    let from = 0;
+    const batchSize = 1000;
 
-    if (!error && data) {
-      // Content is not fetched here for performance — loaded on-demand when editing
-      setPosts(data.map(d => ({ ...d, content: '' })) as BlogPost[]);
+    while (true) {
+      const { data, error } = await supabase
+        .from('blog_posts')
+        .select(selectFields)
+        .order('created_at', { ascending: false })
+        .range(from, from + batchSize - 1);
+      if (error || !data || data.length === 0) break;
+      allData.push(...data);
+      if (data.length < batchSize) break;
+      from += batchSize;
     }
+
+    // Content is not fetched here for performance — loaded on-demand when editing
+    setPosts(allData.map(d => ({ ...d, content: '' })) as BlogPost[]);
     setIsLoading(false);
   };
 

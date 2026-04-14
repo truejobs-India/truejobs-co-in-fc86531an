@@ -348,7 +348,7 @@ export function BlogStatsDrilldown({ open, onOpenChange, filter, posts, onEditPo
                             size="sm"
                             variant="outline"
                             className="h-7 text-xs gap-1"
-                            disabled={isFixing}
+                            disabled={isFixing || !aiModel}
                             onClick={() => handleFixSingleSeo(post)}
                           >
                             {isFixing ? (

@@ -1,8 +1,9 @@
-import { useMemo, useState, useCallback, useEffect } from 'react';
+import { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Edit, Sparkles, CheckCircle2, XCircle } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
+import { Loader2, Edit, Sparkles, CheckCircle2, XCircle, Square } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { blogPostToMetadata } from '@/lib/blogArticleAnalyzer';
 import { analyzePublishCompliance, getComplianceReadinessStatus } from '@/lib/blogComplianceAnalyzer';
@@ -243,6 +244,8 @@ export function BlogStatsDrilldown({ open, onOpenChange, filter, posts, onEditPo
   const [fixingIds, setFixingIds] = useState<Set<string>>(new Set());
   const [fixResults, setFixResults] = useState<Map<string, SeoFixResult>>(new Map());
   const [aiModel, setAiModel] = useState(() => getLastUsedModel('text', ''));
+  const [fixProgress, setFixProgress] = useState<{ current: number; total: number; currentTitle: string } | null>(null);
+  const stopRequestedRef = useRef(false);
 
   // Fetch full content from DB (editor state has content:'')
   const fetchPostContent = useCallback(async (postId: string): Promise<string> => {
@@ -284,11 +287,15 @@ export function BlogStatsDrilldown({ open, onOpenChange, filter, posts, onEditPo
       return;
     }
     setBulkFixing(true);
-    let fixedCount = 0, failedCount = 0;
+    stopRequestedRef.current = false;
+    setFixProgress(null);
+    let fixedCount = 0, failedCount = 0, skippedCount = 0;
 
     if (filter === 'missing-seo') {
-      for (const { post } of articles) {
-        if (fixResults.get(post.id)?.status === 'fixed') continue;
+      for (const [i, { post }] of articles.entries()) {
+        if (stopRequestedRef.current) break;
+        if (fixResults.get(post.id)?.status === 'fixed') { skippedCount++; continue; }
+        setFixProgress({ current: i + 1, total: articles.length, currentTitle: post.title });
         setFixingIds(prev => new Set([...prev, post.id]));
         try {
           const content = await fetchPostContent(post.id);
@@ -296,6 +303,7 @@ export function BlogStatsDrilldown({ open, onOpenChange, filter, posts, onEditPo
           if (result) {
             setFixResults(prev => new Map(prev).set(post.id, result));
             if (result.status === 'fixed') fixedCount++;
+            else if (result.status === 'skipped') skippedCount++;
             else failedCount++;
           }
         } catch {
@@ -306,8 +314,8 @@ export function BlogStatsDrilldown({ open, onOpenChange, filter, posts, onEditPo
         await new Promise(r => setTimeout(r, 2000));
       }
       toast({
-        title: `✅ Bulk SEO fix complete`,
-        description: `${fixedCount} fixed, ${failedCount} failed out of ${articles.length}`,
+        title: stopRequestedRef.current ? '⏹ Bulk SEO fix stopped' : `✅ Bulk SEO fix complete`,
+        description: `${fixedCount} fixed, ${failedCount} failed, ${skippedCount} skipped out of ${articles.length}`,
         variant: failedCount > 0 && fixedCount === 0 ? 'destructive' : 'default',
       });
     } else if (filter === 'no-author') {
@@ -318,8 +326,10 @@ export function BlogStatsDrilldown({ open, onOpenChange, filter, posts, onEditPo
       }
       toast({ title: `✅ Set author "${DEFAULT_AUTHOR}" for ${ids.length} articles` });
     } else if (filter === 'policy-risk' || filter === 'needs-review') {
-      for (const { post, reasons } of articles) {
-        if (fixResults.get(post.id)?.status === 'fixed') continue;
+      for (const [i, { post, reasons }] of articles.entries()) {
+        if (stopRequestedRef.current) break;
+        if (fixResults.get(post.id)?.status === 'fixed') { skippedCount++; continue; }
+        setFixProgress({ current: i + 1, total: articles.length, currentTitle: post.title });
         setFixingIds(prev => new Set([...prev, post.id]));
         try {
           const content = await fetchPostContent(post.id);
@@ -330,10 +340,10 @@ export function BlogStatsDrilldown({ open, onOpenChange, filter, posts, onEditPo
               action: 'enrich-article',
               aiModel,
               wordCount: content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().split(/\s+/).length,
-              targetWordCount: 0, // let the function compute dynamic target
+              targetWordCount: 0,
               category: post.category || 'General',
               tags: post.tags || [],
-              failingCriteria: reasons, // pass compliance issues as failing criteria
+              failingCriteria: reasons,
             },
           });
           if (error) throw error;
@@ -353,6 +363,7 @@ export function BlogStatsDrilldown({ open, onOpenChange, filter, posts, onEditPo
               id: post.id, slug: post.slug, status: 'skipped', reason: 'No usable changes from AI',
               changes: {}, ai_summary: '',
             }));
+            skippedCount++;
           }
         } catch (err: any) {
           failedCount++;
@@ -366,13 +377,15 @@ export function BlogStatsDrilldown({ open, onOpenChange, filter, posts, onEditPo
         await new Promise(r => setTimeout(r, 2000));
       }
       toast({
-        title: `✅ Compliance fix complete`,
-        description: `${fixedCount} fixed, ${failedCount} failed out of ${articles.length}`,
+        title: stopRequestedRef.current ? '⏹ Compliance fix stopped' : `✅ Compliance fix complete`,
+        description: `${fixedCount} fixed, ${failedCount} failed, ${skippedCount} skipped out of ${articles.length}`,
         variant: failedCount > 0 && fixedCount === 0 ? 'destructive' : 'default',
       });
     }
 
     setBulkFixing(false);
+    setFixProgress(null);
+    stopRequestedRef.current = false;
     onRefresh?.();
   }, [filter, articles, fixSingleArticle, fixResults, toast, onRefresh, aiModel, fetchPostContent]);
 
@@ -422,21 +435,49 @@ export function BlogStatsDrilldown({ open, onOpenChange, filter, posts, onEditPo
                   />
                 )}
                 {aiFixConfig.supported && (
-                  <Button
-                    size="sm"
-                    onClick={handleBulkFix}
-                    disabled={bulkFixing || (aiFixConfig.supported && (filter === 'missing-seo' || filter === 'needs-review' || filter === 'policy-risk') && !aiModel)}
-                    className="shrink-0"
-                  >
-                    {bulkFixing ? (
-                      <><Loader2 className="h-3 w-3 mr-1 animate-spin" /> Fixing…</>
-                    ) : (
-                      <><Sparkles className="h-3 w-3 mr-1" /> Fix All ({articles.length})</>
+                  <>
+                    <Button
+                      size="sm"
+                      onClick={handleBulkFix}
+                      disabled={bulkFixing || (aiFixConfig.supported && (filter === 'missing-seo' || filter === 'needs-review' || filter === 'policy-risk') && !aiModel)}
+                      className="shrink-0"
+                    >
+                      {bulkFixing && fixProgress ? (
+                        <><Loader2 className="h-3 w-3 mr-1 animate-spin" /> Fixing {fixProgress.current}/{fixProgress.total}…</>
+                      ) : bulkFixing ? (
+                        <><Loader2 className="h-3 w-3 mr-1 animate-spin" /> Starting…</>
+                      ) : (
+                        <><Sparkles className="h-3 w-3 mr-1" /> Fix All ({articles.length})</>
+                      )}
+                    </Button>
+                    {bulkFixing && (
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        className="shrink-0"
+                        onClick={() => { stopRequestedRef.current = true; }}
+                      >
+                        <Square className="h-3 w-3 mr-1" /> Stop
+                      </Button>
                     )}
-                  </Button>
+                  </>
                 )}
               </div>
             </div>
+            {/* Progress indicator during bulk fix */}
+            {bulkFixing && fixProgress && (
+              <div className="mt-2 space-y-1.5">
+                <Progress value={(fixProgress.current / fixProgress.total) * 100} className="h-2" />
+                <p className="text-xs text-muted-foreground truncate">
+                  Currently fixing: <span className="font-medium text-foreground">{fixProgress.currentTitle}</span>
+                </p>
+                <div className="flex gap-3 text-xs text-muted-foreground">
+                  <span>✅ {[...fixResults.values()].filter(r => r.status === 'fixed').length} fixed</span>
+                  <span>❌ {[...fixResults.values()].filter(r => r.status === 'failed').length} failed</span>
+                  <span>⏭ {[...fixResults.values()].filter(r => r.status === 'skipped').length} skipped</span>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

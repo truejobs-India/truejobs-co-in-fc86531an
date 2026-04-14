@@ -349,7 +349,7 @@ export function BlogStatsDrilldown({ open, onOpenChange, filter, posts, onEditPo
         )}
 
         {/* AI Fix Action Bar */}
-        {showAiActions && (
+        {!complianceLoading && showAiActions && (
           <div className="mt-3 p-3 border rounded-lg bg-muted/50 space-y-2">
             <div className="flex items-center justify-between gap-2">
               <div>

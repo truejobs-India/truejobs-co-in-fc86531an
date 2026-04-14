@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -9,7 +9,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Globe, RefreshCw, Loader2, Download, Trash2 } from 'lucide-react';
+import { Globe, RefreshCw, Loader2, Download, Trash2, Square } from 'lucide-react';
 import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
 import { supabase } from '@/integrations/supabase/client';
 import { CacheFiltersState, CachePage } from './cacheTypes';
@@ -24,6 +24,7 @@ import { CacheBuildLog } from './CacheBuildLog';
 import { CacheFailedItems } from './CacheFailedItems';
 import { SEOValidationDashboard } from './SEOValidationDashboard';
 import { exportAsCSV, exportAsJSON } from './cacheExport';
+import { Progress } from '@/components/ui/progress';
 
 export function SEOCacheManager() {
   const { toast } = useToast();
@@ -42,6 +43,8 @@ export function SEOCacheManager() {
   const [isRebuilding, setIsRebuilding] = useState(false);
   const [rebuildProgress, setRebuildProgress] = useState('');
   const [purgeConfirmText, setPurgeConfirmText] = useState('');
+  const [rebuildStats, setRebuildStats] = useState<{ rebuilt: number; skipped: number; failed: number; total: number; current: number } | null>(null);
+  const stopRebuildRef = useRef(false);
 
   const handleFiltersChange = (f: CacheFiltersState) => {
     setFilters(f);
@@ -90,9 +93,10 @@ export function SEOCacheManager() {
 
   const handleRebuildAll = async (force = false) => {
     setIsRebuilding(true);
+    stopRebuildRef.current = false;
     setRebuildProgress('Collecting slugs...');
+    setRebuildStats(null);
     try {
-      // Step 1: Collect all slugs (lightweight call)
       const { data: collectData, error: collectError } = await supabase.functions.invoke('seo-cache-rebuild', {
         body: { mode: 'full-collect', trigger: 'admin-ui' },
       });
@@ -103,14 +107,18 @@ export function SEOCacheManager() {
         return;
       }
 
-      // Step 2: Process in batches of 50
       const BATCH_SIZE = 5;
       let totalRebuilt = 0, totalSkipped = 0, totalFailed = 0;
       const totalBatches = Math.ceil(allSlugs.length / BATCH_SIZE);
+      setRebuildStats({ rebuilt: 0, skipped: 0, failed: 0, total: allSlugs.length, current: 0 });
 
       for (let i = 0; i < allSlugs.length; i += BATCH_SIZE) {
+        if (stopRebuildRef.current) {
+          toast({ title: 'Rebuild Stopped', description: `Stopped by admin. Rebuilt: ${totalRebuilt}, Skipped: ${totalSkipped}, Failed: ${totalFailed}` });
+          break;
+        }
         const batchNum = Math.floor(i / BATCH_SIZE) + 1;
-        setRebuildProgress(`Batch ${batchNum}/${totalBatches} (${i}/${allSlugs.length} pages)...`);
+        setRebuildProgress(`Batch ${batchNum}/${totalBatches}`);
         const batch = allSlugs.slice(i, i + BATCH_SIZE);
         const { data, error } = await supabase.functions.invoke('seo-cache-rebuild', {
           body: { mode: 'slugs', slugs: batch, trigger: 'admin-ui', force },
@@ -118,23 +126,27 @@ export function SEOCacheManager() {
         if (error) {
           console.error(`Batch ${batchNum} failed:`, error);
           totalFailed += batch.length;
-          continue;
+        } else {
+          totalRebuilt += data?.rebuilt ?? 0;
+          totalSkipped += data?.skipped ?? 0;
+          totalFailed += data?.failed ?? 0;
         }
-        totalRebuilt += data?.rebuilt ?? 0;
-        totalSkipped += data?.skipped ?? 0;
-        totalFailed += data?.failed ?? 0;
+        setRebuildStats({ rebuilt: totalRebuilt, skipped: totalSkipped, failed: totalFailed, total: allSlugs.length, current: Math.min(i + BATCH_SIZE, allSlugs.length) });
       }
 
-      toast({
-        title: force ? 'Force Rebuild Complete' : 'Full Rebuild Complete',
-        description: `Rebuilt: ${totalRebuilt}, Skipped: ${totalSkipped}, Failed: ${totalFailed}`,
-      });
+      if (!stopRebuildRef.current) {
+        toast({
+          title: force ? 'Force Rebuild Complete' : 'Full Rebuild Complete',
+          description: `Rebuilt: ${totalRebuilt}, Skipped: ${totalSkipped}, Failed: ${totalFailed}`,
+        });
+      }
       refresh();
     } catch (err: any) {
       toast({ title: 'Rebuild Failed', description: err.message, variant: 'destructive' });
     } finally {
       setIsRebuilding(false);
       setRebuildProgress('');
+      stopRebuildRef.current = false;
     }
   };
 
@@ -183,7 +195,7 @@ export function SEOCacheManager() {
               <AlertDialogTrigger asChild>
                 <Button size="sm" variant="secondary" disabled={isRebuilding} className="gap-1 h-8">
                   {isRebuilding ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-                   ② Rebuild All
+                  {isRebuilding && rebuildStats ? `Rebuilding ${rebuildStats.current}/${rebuildStats.total}…` : '② Rebuild All'}
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
@@ -282,6 +294,39 @@ export function SEOCacheManager() {
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Rebuild Progress Panel */}
+        {isRebuilding && rebuildStats && (
+          <div className="rounded-lg border border-border bg-muted/50 p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                <span className="text-sm font-medium">
+                  Rebuilding {rebuildStats.current}/{rebuildStats.total} pages…
+                </span>
+              </div>
+              <Button
+                size="sm"
+                variant="destructive"
+                className="gap-1 h-7"
+                onClick={() => { stopRebuildRef.current = true; }}
+              >
+                <Square className="h-3 w-3" /> Stop
+              </Button>
+            </div>
+            <Progress value={rebuildStats.total > 0 ? (rebuildStats.current / rebuildStats.total) * 100 : 0} className="h-2" />
+            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+              <span>{rebuildProgress}</span>
+              <span>•</span>
+              <span>5 slugs per batch</span>
+            </div>
+            <div className="flex items-center gap-3 text-xs">
+              <span className="text-green-600 dark:text-green-400">✅ {rebuildStats.rebuilt} rebuilt</span>
+              <span className="text-muted-foreground">⏭ {rebuildStats.skipped} skipped</span>
+              <span className="text-destructive">❌ {rebuildStats.failed} failed</span>
+            </div>
+          </div>
+        )}
+
         <CacheOverviewCards stats={stats} isLoading={isLoading && currentPage === 0} />
 
         <Tabs defaultValue="pages">

@@ -89,6 +89,7 @@ export interface ScanItem {
   issuesByType: Record<string, number>;
   skipReason?: string;
   eligibilityReason?: string;
+  lastBulkFixStatus?: string | null;
 }
 
 export interface FixApplied {
@@ -125,6 +126,7 @@ export interface ScanReport {
   issueBreakdown: Record<string, number>;
   stateBreakdown: ScanStateBreakdown;
   scope: BulkScanScope;
+  previouslyProcessed: number;
 }
 
 export interface BulkFixSummary {

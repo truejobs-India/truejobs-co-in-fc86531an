@@ -33,6 +33,7 @@ const SITEMAP_ROUTES = {
 const SEO_ROUTE_PATTERNS = [
   /^\/$/,
   /^\/jobs$/,
+  /^\/jobs\/[a-z0-9][a-z0-9-]*$/,
   /^\/blog$/,
   /^\/blog\/[a-z0-9][a-z0-9-]*$/,
   /^\/blog\/category\/[a-z0-9][a-z0-9-]*$/,
@@ -112,6 +113,39 @@ function isLikelyValid(pathname) {
   // Multi-segment → must match a known prefix or be a private route
   return KNOWN_MULTI_SEGMENT_PREFIXES.some(p => pathname.startsWith(p))
     || PRIVATE_PREFIXES.some(p => pathname.startsWith(p));
+}
+
+// ── Existence check for detail pages ────────────────────────────────
+// Returns: 'exists' | 'gone' | 'missing' | 'error'
+async function checkResourceExists(cfg, table, slug) {
+  try {
+    const select = table === 'jobs' ? 'id,is_deleted,is_duplicate' : 'id';
+    const url = `${cfg.SUPABASE_URL}/rest/v1/${table}?slug=eq.${encodeURIComponent(slug)}&select=${select}&limit=1`;
+    const res = await fetch(url, {
+      headers: {
+        'apikey': cfg.SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${cfg.SUPABASE_ANON_KEY}`,
+        'Accept': 'application/json',
+      },
+    });
+    if (!res.ok) {
+      console.error(`[SFC] DB existence check failed: ${table}/slug=${slug} → HTTP ${res.status} ${res.statusText}`);
+      return 'error';
+    }
+    const rows = await res.json();
+    if (!Array.isArray(rows) || rows.length === 0) {
+      console.log(`[SFC] Resource not found: ${table}/slug=${slug} → missing`);
+      return 'missing';
+    }
+    if (table === 'jobs' && (rows[0].is_deleted || rows[0].is_duplicate)) {
+      console.log(`[SFC] Resource gone: ${table}/slug=${slug} → is_deleted=${rows[0].is_deleted} is_duplicate=${rows[0].is_duplicate}`);
+      return 'gone';
+    }
+    return 'exists';
+  } catch (err) {
+    console.error(`[SFC] DB existence check exception: ${table}/slug=${slug}`, err);
+    return 'error';
+  }
 }
 
 function isSEORoute(pathname) {

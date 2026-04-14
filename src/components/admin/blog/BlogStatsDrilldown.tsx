@@ -1,12 +1,11 @@
-import { useMemo, useState, useCallback } from 'react';
+import { useMemo, useState, useCallback, useEffect } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Edit, Sparkles, CheckCircle2, XCircle, Image as ImageIcon, UserPlus, ShieldAlert } from 'lucide-react';
+import { Loader2, Edit, Sparkles, CheckCircle2, XCircle } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { blogPostToMetadata } from '@/lib/blogArticleAnalyzer';
 import { analyzePublishCompliance, getComplianceReadinessStatus } from '@/lib/blogComplianceAnalyzer';
-import { ComplianceReadinessBadge } from './ComplianceReadinessBadge';
 import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
 import { useSeoMetadataWorkflow, type SeoFixResult } from '@/hooks/useSeoMetadataWorkflow';
 import { supabase } from '@/integrations/supabase/client';
@@ -130,7 +129,9 @@ function getArticleReasons(post: BlogPost, filter: DrilldownFilter): string[] {
   return reasons;
 }
 
-function filterPosts(posts: BlogPost[], filter: DrilldownFilter): DrilldownArticle[] {
+const COMPLIANCE_FILTERS: DrilldownFilter[] = ['blocked', 'needs-review', 'policy-risk'];
+
+function filterPostsSync(posts: BlogPost[], filter: DrilldownFilter): DrilldownArticle[] {
   const now = new Date();
   const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
@@ -143,16 +144,6 @@ function filterPosts(posts: BlogPost[], filter: DrilldownFilter): DrilldownArtic
         case 'missing-seo': return !post.meta_title || !post.meta_description;
         case 'no-cover': return !post.cover_image_url;
         case 'no-author': return !post.author_name;
-        case 'blocked':
-        case 'needs-review':
-        case 'policy-risk': {
-          const meta = blogPostToMetadata(post);
-          const compliance = analyzePublishCompliance(meta);
-          const status = getComplianceReadinessStatus(compliance, meta);
-          if (filter === 'blocked') return status === 'Blocked';
-          if (filter === 'needs-review') return status === 'Needs Review';
-          return compliance.checks.some(c => c.category === 'adsense-safety' && c.status === 'fail');
-        }
         default: return false;
       }
     })
@@ -160,6 +151,43 @@ function filterPosts(posts: BlogPost[], filter: DrilldownFilter): DrilldownArtic
       post,
       reasons: getArticleReasons(post, filter),
     }));
+}
+
+function filterPostsWithContent(posts: BlogPost[], contentMap: Map<string, string>, filter: DrilldownFilter): DrilldownArticle[] {
+  return posts
+    .filter(post => {
+      const enriched = { ...post, content: contentMap.get(post.id) || post.content };
+      const meta = blogPostToMetadata(enriched);
+      const compliance = analyzePublishCompliance(meta);
+      const status = getComplianceReadinessStatus(compliance, meta);
+      if (filter === 'blocked') return status === 'Blocked';
+      if (filter === 'needs-review') return status === 'Needs Review';
+      return compliance.checks.some(c => c.category === 'adsense-safety' && c.status === 'fail');
+    })
+    .map(post => {
+      const enriched = { ...post, content: contentMap.get(post.id) || post.content };
+      return { post, reasons: getArticleReasons(enriched, filter) };
+    });
+}
+
+/** Batch-fetch content for all blog posts, paginated in 1000-row chunks */
+async function fetchAllPostContent(): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  let from = 0;
+  const PAGE_SIZE = 1000;
+  while (true) {
+    const { data } = await supabase
+      .from('blog_posts')
+      .select('id, content')
+      .range(from, from + PAGE_SIZE - 1);
+    if (!data || data.length === 0) break;
+    for (const row of data) {
+      map.set(row.id, row.content);
+    }
+    if (data.length < PAGE_SIZE) break;
+    from += PAGE_SIZE;
+  }
+  return map;
 }
 
 interface BlogStatsDrilldownProps {
@@ -173,10 +201,40 @@ interface BlogStatsDrilldownProps {
 
 export function BlogStatsDrilldown({ open, onOpenChange, filter, posts, onEditPost, onRefresh }: BlogStatsDrilldownProps) {
   const { toast } = useToast();
-  const articles = useMemo(() => {
-    if (!filter) return [];
-    return filterPosts(posts, filter);
-  }, [posts, filter]);
+  const [complianceArticles, setComplianceArticles] = useState<DrilldownArticle[]>([]);
+  const [complianceLoading, setComplianceLoading] = useState(false);
+
+  const isComplianceFilter = filter ? COMPLIANCE_FILTERS.includes(filter) : false;
+
+  // Sync filtering for non-compliance filters
+  const syncArticles = useMemo(() => {
+    if (!filter || isComplianceFilter) return [];
+    return filterPostsSync(posts, filter);
+  }, [posts, filter, isComplianceFilter]);
+
+  // Async content fetch + filtering for compliance filters
+  useEffect(() => {
+    if (!open || !filter || !isComplianceFilter) {
+      setComplianceArticles([]);
+      return;
+    }
+    let cancelled = false;
+    setComplianceLoading(true);
+    fetchAllPostContent().then(contentMap => {
+      if (cancelled) return;
+      const results = filterPostsWithContent(posts, contentMap, filter);
+      setComplianceArticles(results);
+      setComplianceLoading(false);
+    }).catch(() => {
+      if (!cancelled) {
+        setComplianceLoading(false);
+        toast({ title: 'Failed to load article content for compliance check', variant: 'destructive' });
+      }
+    });
+    return () => { cancelled = true; };
+  }, [open, filter, posts, isComplianceFilter]);
+
+  const articles = isComplianceFilter ? complianceArticles : syncArticles;
 
   const { fixSingleArticle } = useSeoMetadataWorkflow();
 
@@ -276,12 +334,22 @@ export function BlogStatsDrilldown({ open, onOpenChange, filter, posts, onEditPo
         <SheetHeader>
           <SheetTitle>{FILTER_LABELS[filter]}</SheetTitle>
           <SheetDescription>
-            {articles.length} article{articles.length !== 1 ? 's' : ''} found
+            {complianceLoading
+              ? 'Loading article content for compliance analysis…'
+              : `${articles.length} article${articles.length !== 1 ? 's' : ''} found`}
           </SheetDescription>
         </SheetHeader>
 
+        {/* Compliance loading spinner */}
+        {complianceLoading && (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            <span className="ml-2 text-sm text-muted-foreground">Fetching content for compliance checks…</span>
+          </div>
+        )}
+
         {/* AI Fix Action Bar */}
-        {showAiActions && (
+        {!complianceLoading && showAiActions && (
           <div className="mt-3 p-3 border rounded-lg bg-muted/50 space-y-2">
             <div className="flex items-center justify-between gap-2">
               <div>
@@ -319,7 +387,7 @@ export function BlogStatsDrilldown({ open, onOpenChange, filter, posts, onEditPo
           </div>
         )}
 
-        <div className="mt-4">
+        {!complianceLoading && <div className="mt-4">
           {articles.length === 0 ? (
             <p className="text-sm text-muted-foreground py-8 text-center">No articles match this filter.</p>
           ) : (
@@ -418,7 +486,7 @@ export function BlogStatsDrilldown({ open, onOpenChange, filter, posts, onEditPo
               })}
             </div>
           )}
-        </div>
+        </div>}
       </SheetContent>
     </Sheet>
   );

@@ -420,8 +420,11 @@ export function useBulkAutoFix(
         warnCount: actionable.filter(c => c.status === 'warn').length,
         issuesByType: byType,
         eligibilityReason: (post as any).__eligibilityReason,
+        lastBulkFixStatus: post.last_bulk_fix_status || null,
       });
     }
+
+    const previouslyProcessed = items.filter(i => i.lastBulkFixStatus && i.lastBulkFixStatus !== 'baseline').length;
 
     const report: ScanReport = {
       totalScanned: postsToScan.length,
@@ -433,6 +436,7 @@ export function useBulkAutoFix(
       issueBreakdown,
       stateBreakdown,
       scope,
+      previouslyProcessed,
     };
 
     setScanReport(report);

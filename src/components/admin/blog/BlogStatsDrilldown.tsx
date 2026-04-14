@@ -129,7 +129,9 @@ function getArticleReasons(post: BlogPost, filter: DrilldownFilter): string[] {
   return reasons;
 }
 
-function filterPosts(posts: BlogPost[], filter: DrilldownFilter): DrilldownArticle[] {
+const COMPLIANCE_FILTERS: DrilldownFilter[] = ['blocked', 'needs-review', 'policy-risk'];
+
+function filterPostsSync(posts: BlogPost[], filter: DrilldownFilter): DrilldownArticle[] {
   const now = new Date();
   const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
@@ -142,16 +144,6 @@ function filterPosts(posts: BlogPost[], filter: DrilldownFilter): DrilldownArtic
         case 'missing-seo': return !post.meta_title || !post.meta_description;
         case 'no-cover': return !post.cover_image_url;
         case 'no-author': return !post.author_name;
-        case 'blocked':
-        case 'needs-review':
-        case 'policy-risk': {
-          const meta = blogPostToMetadata(post);
-          const compliance = analyzePublishCompliance(meta);
-          const status = getComplianceReadinessStatus(compliance, meta);
-          if (filter === 'blocked') return status === 'Blocked';
-          if (filter === 'needs-review') return status === 'Needs Review';
-          return compliance.checks.some(c => c.category === 'adsense-safety' && c.status === 'fail');
-        }
         default: return false;
       }
     })
@@ -159,6 +151,43 @@ function filterPosts(posts: BlogPost[], filter: DrilldownFilter): DrilldownArtic
       post,
       reasons: getArticleReasons(post, filter),
     }));
+}
+
+function filterPostsWithContent(posts: BlogPost[], contentMap: Map<string, string>, filter: DrilldownFilter): DrilldownArticle[] {
+  return posts
+    .filter(post => {
+      const enriched = { ...post, content: contentMap.get(post.id) || post.content };
+      const meta = blogPostToMetadata(enriched);
+      const compliance = analyzePublishCompliance(meta);
+      const status = getComplianceReadinessStatus(compliance, meta);
+      if (filter === 'blocked') return status === 'Blocked';
+      if (filter === 'needs-review') return status === 'Needs Review';
+      return compliance.checks.some(c => c.category === 'adsense-safety' && c.status === 'fail');
+    })
+    .map(post => {
+      const enriched = { ...post, content: contentMap.get(post.id) || post.content };
+      return { post, reasons: getArticleReasons(enriched, filter) };
+    });
+}
+
+/** Batch-fetch content for all blog posts, paginated in 1000-row chunks */
+async function fetchAllPostContent(): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  let from = 0;
+  const PAGE_SIZE = 1000;
+  while (true) {
+    const { data } = await supabase
+      .from('blog_posts')
+      .select('id, content')
+      .range(from, from + PAGE_SIZE - 1);
+    if (!data || data.length === 0) break;
+    for (const row of data) {
+      map.set(row.id, row.content);
+    }
+    if (data.length < PAGE_SIZE) break;
+    from += PAGE_SIZE;
+  }
+  return map;
 }
 
 interface BlogStatsDrilldownProps {
@@ -172,10 +201,40 @@ interface BlogStatsDrilldownProps {
 
 export function BlogStatsDrilldown({ open, onOpenChange, filter, posts, onEditPost, onRefresh }: BlogStatsDrilldownProps) {
   const { toast } = useToast();
-  const articles = useMemo(() => {
-    if (!filter) return [];
-    return filterPosts(posts, filter);
-  }, [posts, filter]);
+  const [complianceArticles, setComplianceArticles] = useState<DrilldownArticle[]>([]);
+  const [complianceLoading, setComplianceLoading] = useState(false);
+
+  const isComplianceFilter = filter ? COMPLIANCE_FILTERS.includes(filter) : false;
+
+  // Sync filtering for non-compliance filters
+  const syncArticles = useMemo(() => {
+    if (!filter || isComplianceFilter) return [];
+    return filterPostsSync(posts, filter);
+  }, [posts, filter, isComplianceFilter]);
+
+  // Async content fetch + filtering for compliance filters
+  useEffect(() => {
+    if (!open || !filter || !isComplianceFilter) {
+      setComplianceArticles([]);
+      return;
+    }
+    let cancelled = false;
+    setComplianceLoading(true);
+    fetchAllPostContent().then(contentMap => {
+      if (cancelled) return;
+      const results = filterPostsWithContent(posts, contentMap, filter);
+      setComplianceArticles(results);
+      setComplianceLoading(false);
+    }).catch(() => {
+      if (!cancelled) {
+        setComplianceLoading(false);
+        toast({ title: 'Failed to load article content for compliance check', variant: 'destructive' });
+      }
+    });
+    return () => { cancelled = true; };
+  }, [open, filter, posts, isComplianceFilter]);
+
+  const articles = isComplianceFilter ? complianceArticles : syncArticles;
 
   const { fixSingleArticle } = useSeoMetadataWorkflow();
 

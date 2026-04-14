@@ -145,10 +145,10 @@ export async function callGeminiDirectWithMeta(
         signal: controller.signal,
       });
 
-      if (resp.status === 429 && attempt < maxRetries) {
+      if ((resp.status === 429 || resp.status === 503) && attempt < maxRetries) {
         clearTimeout(timer);
         const wait = Math.min(2000 * Math.pow(2, attempt), 30000) + Math.random() * 1000;
-        console.log(`[gemini-direct-meta] 429 rate limited, retry ${attempt + 1}/${maxRetries} after ${Math.round(wait)}ms`);
+        console.log(`[gemini-direct-meta] ${resp.status} ${resp.status === 503 ? 'service unavailable' : 'rate limited'}, retry ${attempt + 1}/${maxRetries} after ${Math.round(wait)}ms`);
         await new Promise(r => setTimeout(r, wait));
         continue;
       }

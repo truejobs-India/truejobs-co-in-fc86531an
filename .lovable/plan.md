@@ -1,33 +1,31 @@
 
 
-# Fix: Blog Stats Showing Inconsistent Article Counts
+# Fix: "Download Titles (.txt)" Only Downloads 1000 Titles
 
 ## Root Cause
 
-Two critical bugs in `BlogAdminStats.fetchStats()`:
+The `handleDownloadArticleTitles` function (line 510) performs a single Supabase query without pagination:
 
-### 1. Non-deterministic pagination (PRIMARY CAUSE)
-The `.range()` pagination has **no `.order()` clause**. Without a deterministic sort, PostgREST returns rows in arbitrary order across pages. Between the first batch (rows 0-999) and the second batch (rows 1000-1999), the database may reorder rows, causing **duplicates or gaps**. This is why the count fluctuates — sometimes the loop gets 1000 rows and stops (if the second batch happens to return 0 due to reordering), sometimes it gets all 2595.
+```typescript
+const { data } = await supabase.from('blog_posts').select('title').order('created_at', { ascending: false });
+```
 
-### 2. Fetching `content` for 2,595 posts (CONTRIBUTING CAUSE)
-The query selects the full `content` column for every post. With 2,595 articles, this is a massive payload that can cause response truncation, timeouts, or partial data — especially on slower connections. The `content` is needed only for compliance analysis (headings, intro/conclusion detection), but the stats for blocked/needsReview/policyRisk could use a lighter approach.
+Supabase JS client has a **default limit of 1000 rows**. With 2,595+ blog posts, this silently truncates the result.
+
+The same bug also exists in `handleCheckDuplicateSlugs` (line 525).
 
 ## Solution
 
-**File: `src/components/admin/blog/BlogAdminStats.tsx`**
+**File: `src/components/admin/BlogPostEditor.tsx`**
 
-### Fix 1: Add deterministic ordering
-Add `.order('id')` to the query to guarantee stable pagination. This is the critical fix.
+Replace both functions with paginated fetching using the same `fetchAllPaginated` pattern already used elsewhere in the project (e.g., `BlogAdminStats.tsx`). Key points:
 
-### Fix 2: Split into two queries — lightweight stats + compliance sampling
-- **Query 1 (fast, no content):** Fetch `id, is_published, meta_title, meta_description, cover_image_url, word_count, published_at, author_name` with `.order('id')` pagination. This handles: total, published, drafts, missingMeta, missingCover, thinContent, recentlyPublished, missingAuthor.
-- **Query 2 (heavier, with content):** Fetch `id, title, slug, content, meta_title, meta_description, excerpt, cover_image_url, featured_image_alt, word_count, category, tags, faq_count, has_faq_schema, internal_links, canonical_url, is_published, author_name` with `.order('id')` pagination. This handles: blocked, needsReview, policyRisk via `blogPostToMetadata` + compliance analysis.
+1. **`handleDownloadArticleTitles`**: Loop in batches of 1000 using `.range(from, to)` with `.order('id')` for deterministic pagination. Concatenate all titles, then trigger the download.
 
-Both queries use `.order('id')` for deterministic pagination in 1000-row batches.
+2. **`handleCheckDuplicateSlugs`**: Same paginated approach — fetch all slugs across batches before checking for duplicates.
 
-### Fix 3: Show partial stats immediately
-Set the basic stats (total, published, drafts, etc.) as soon as Query 1 completes, then update blocked/needsReview/policyRisk when Query 2 finishes. This gives the user instant feedback while the heavier compliance scan runs.
+Both will use `.order('id')` (not `created_at`) for stable pagination, consistent with the project's pagination policy.
 
 ## File Changed
-- `src/components/admin/blog/BlogAdminStats.tsx`
+- `src/components/admin/BlogPostEditor.tsx` — two functions updated
 

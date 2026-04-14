@@ -486,7 +486,7 @@ export function BlogStatsDrilldown({ open, onOpenChange, filter, posts, onEditPo
               })}
             </div>
           )}
-        </div>
+        </div>}
       </SheetContent>
     </Sheet>
   );

@@ -507,32 +507,55 @@ export function BlogPostEditor() {
   };
 
   const handleDownloadArticleTitles = async () => {
-    const { data } = await supabase.from('blog_posts').select('title').order('created_at', { ascending: false });
-    if (data && data.length > 0) {
-      const titles = data.map(p => p.title).join('\n');
-      const blob = new Blob([titles], { type: 'text/plain' });
+    const allTitles: string[] = [];
+    let from = 0;
+    const batchSize = 1000;
+    while (true) {
+      const { data } = await supabase
+        .from('blog_posts')
+        .select('title')
+        .order('id')
+        .range(from, from + batchSize - 1);
+      if (!data || data.length === 0) break;
+      allTitles.push(...data.map(p => p.title));
+      if (data.length < batchSize) break;
+      from += batchSize;
+    }
+    if (allTitles.length > 0) {
+      const blob = new Blob([allTitles.join('\n')], { type: 'text/plain' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = `blog-article-titles-${new Date().toISOString().slice(0, 10)}.txt`;
       a.click();
       URL.revokeObjectURL(url);
-      toast({ title: '⬇️ Downloaded!', description: `${data.length} article titles saved.` });
+      toast({ title: '⬇️ Downloaded!', description: `${allTitles.length} article titles saved.` });
     }
   };
 
   const handleCheckDuplicateSlugs = async () => {
-    const { data } = await supabase.from('blog_posts').select('slug');
-    if (data) {
-      const counts: Record<string, number> = {};
-      for (const p of data) counts[p.slug] = (counts[p.slug] || 0) + 1;
-      const dupes = Object.entries(counts).filter(([, c]) => c > 1).map(([slug, count]) => ({ slug, count }));
-      if (dupes.length > 0) {
-        setDuplicateSlugs(dupes);
-        setShowDuplicates(true);
-      } else {
-        toast({ title: '✅ No duplicate slugs found' });
-      }
+    const allSlugs: string[] = [];
+    let from = 0;
+    const batchSize = 1000;
+    while (true) {
+      const { data } = await supabase
+        .from('blog_posts')
+        .select('slug')
+        .order('id')
+        .range(from, from + batchSize - 1);
+      if (!data || data.length === 0) break;
+      allSlugs.push(...data.map(p => p.slug));
+      if (data.length < batchSize) break;
+      from += batchSize;
+    }
+    const counts: Record<string, number> = {};
+    for (const slug of allSlugs) counts[slug] = (counts[slug] || 0) + 1;
+    const dupes = Object.entries(counts).filter(([, c]) => c > 1).map(([slug, count]) => ({ slug, count }));
+    if (dupes.length > 0) {
+      setDuplicateSlugs(dupes);
+      setShowDuplicates(true);
+    } else {
+      toast({ title: '✅ No duplicate slugs found' });
     }
   };
 

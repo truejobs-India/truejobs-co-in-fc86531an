@@ -244,6 +244,8 @@ export function BlogStatsDrilldown({ open, onOpenChange, filter, posts, onEditPo
   const [fixingIds, setFixingIds] = useState<Set<string>>(new Set());
   const [fixResults, setFixResults] = useState<Map<string, SeoFixResult>>(new Map());
   const [aiModel, setAiModel] = useState(() => getLastUsedModel('text', ''));
+  const [fixProgress, setFixProgress] = useState<{ current: number; total: number; currentTitle: string } | null>(null);
+  const stopRequestedRef = useRef(false);
 
   // Fetch full content from DB (editor state has content:'')
   const fetchPostContent = useCallback(async (postId: string): Promise<string> => {

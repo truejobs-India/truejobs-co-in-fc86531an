@@ -317,6 +317,59 @@ export function BlogStatsDrilldown({ open, onOpenChange, filter, posts, onEditPo
         await supabase.from('blog_posts').update({ author_name: DEFAULT_AUTHOR }).eq('id', id);
       }
       toast({ title: `✅ Set author "${DEFAULT_AUTHOR}" for ${ids.length} articles` });
+    } else if (filter === 'policy-risk' || filter === 'needs-review') {
+      for (const { post, reasons } of articles) {
+        if (fixResults.get(post.id)?.status === 'fixed') continue;
+        setFixingIds(prev => new Set([...prev, post.id]));
+        try {
+          const content = await fetchPostContent(post.id);
+          const { data, error } = await supabase.functions.invoke('improve-blog-content', {
+            body: {
+              title: post.title,
+              content,
+              action: 'enrich-article',
+              aiModel,
+              wordCount: content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().split(/\s+/).length,
+              targetWordCount: 0, // let the function compute dynamic target
+              category: post.category || 'General',
+              tags: post.tags || [],
+              failingCriteria: reasons, // pass compliance issues as failing criteria
+            },
+          });
+          if (error) throw error;
+          if (data?.error) throw new Error(data.error);
+          if (data?.result && data.result.length > 100) {
+            await supabase.from('blog_posts')
+              .update({ content: data.result, updated_at: new Date().toISOString() })
+              .eq('id', post.id);
+            setFixResults(prev => new Map(prev).set(post.id, {
+              slug: post.slug, status: 'fixed',
+              reason: `Fixed ${reasons.length} compliance issue(s)`,
+              changes: {},
+            }));
+            fixedCount++;
+          } else {
+            setFixResults(prev => new Map(prev).set(post.id, {
+              slug: post.slug, status: 'skipped', reason: 'No usable changes from AI',
+              changes: {},
+            }));
+          }
+        } catch (err: any) {
+          failedCount++;
+          setFixResults(prev => new Map(prev).set(post.id, {
+            slug: post.slug, status: 'failed', reason: err.message || 'Unknown error',
+            changes: {},
+          }));
+        } finally {
+          setFixingIds(prev => { const n = new Set(prev); n.delete(post.id); return n; });
+        }
+        await new Promise(r => setTimeout(r, 2000));
+      }
+      toast({
+        title: `✅ Compliance fix complete`,
+        description: `${fixedCount} fixed, ${failedCount} failed out of ${articles.length}`,
+        variant: failedCount > 0 && fixedCount === 0 ? 'destructive' : 'default',
+      });
     }
 
     setBulkFixing(false);

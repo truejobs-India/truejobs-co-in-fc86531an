@@ -353,9 +353,38 @@ export default {
           fetchSpaShell(cfg),
         ]);
 
-        // Cache miss or error → return SPA shell
+        // Cache miss or error → check DB existence for detail pages before choosing status
         if (!cacheRes.ok || cacheRes.status === 404) {
           const shellHtml = await originRes.text();
+
+          // Detail pages: verify the resource exists in DB
+          const jobMatch = pathname.match(/^\/jobs\/([a-z0-9][a-z0-9-]*)$/);
+          const blogMatch = !jobMatch && pathname.match(/^\/blog\/([a-z0-9][a-z0-9-]*)$/);
+          const empMatch = !jobMatch && !blogMatch && pathname.match(/^\/jobs\/employment-news\/([a-z0-9][a-z0-9-]*)$/);
+
+          if (empMatch || jobMatch || blogMatch) {
+            const table = empMatch ? 'employment_news_jobs' : jobMatch ? 'jobs' : 'blog_posts';
+            const detailSlug = (empMatch || jobMatch || blogMatch)[1];
+            const existence = await checkResourceExists(cfg, table, detailSlug);
+
+            if (existence === 'missing' || existence === 'gone') {
+              const status = existence === 'gone' ? 410 : 404;
+              console.log(`[SFC] Returning ${status} for ${pathname} (existence=${existence})`);
+              return new Response(shellHtml, {
+                status,
+                headers: {
+                  'Content-Type': 'text/html; charset=utf-8',
+                  'Cache-Control': 'no-cache, max-age=0',
+                  'X-Robots-Tag': 'noindex, nofollow',
+                },
+              });
+            }
+            if (existence === 'error') {
+              console.warn(`[SFC] DB check error for ${pathname}, falling back to 200`);
+            }
+            // existence === 'exists' or 'error' → serve 200
+          }
+
           return new Response(shellHtml, {
             status: 200,
             headers: {

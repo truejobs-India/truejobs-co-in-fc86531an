@@ -332,6 +332,9 @@ export default function JobDetail() {
   if (!job) {
     return (
       <Layout>
+        <Helmet>
+          <meta name="robots" content="noindex, nofollow" />
+        </Helmet>
         <div className="container mx-auto px-4 py-16 text-center">
           <Briefcase className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
           <h1 className="text-2xl font-bold mb-2">{t('jobDetail.jobNotFound')}</h1>

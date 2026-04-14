@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import * as XLSX from 'xlsx';
 import type { Editor } from '@tiptap/react';
 import { supabase } from '@/integrations/supabase/client';
 import { calcLiveWordCount, calcReadingTime, wordCountFields } from '@/lib/blogWordCount';
@@ -522,14 +523,13 @@ export function BlogPostEditor() {
       from += batchSize;
     }
     if (allTitles.length > 0) {
-      const blob = new Blob([allTitles.join('\n')], { type: 'text/plain' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `blog-article-titles-${new Date().toISOString().slice(0, 10)}.txt`;
-      a.click();
-      URL.revokeObjectURL(url);
-      toast({ title: '⬇️ Downloaded!', description: `${allTitles.length} article titles saved.` });
+      const wsData = allTitles.map((title, i) => ({ 'S.No.': i + 1, 'Title': title }));
+      const ws = XLSX.utils.json_to_sheet(wsData);
+      ws['!cols'] = [{ wch: 8 }, { wch: 80 }];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Blog Titles');
+      XLSX.writeFile(wb, `blog-article-titles-${new Date().toISOString().slice(0, 10)}.xlsx`);
+      toast({ title: '⬇️ Downloaded!', description: `${allTitles.length} article titles saved as Excel.` });
     }
   };
 
@@ -1677,7 +1677,7 @@ export function BlogPostEditor() {
           <FileText className="h-4 w-4 mr-1" />Copy Article Titles
         </Button>
         <Button variant="outline" size="sm" onClick={handleDownloadArticleTitles}>
-          <Download className="h-4 w-4 mr-1" />Download Titles (.txt)
+          <Download className="h-4 w-4 mr-1" />Download Titles (.xlsx)
         </Button>
         <Button variant="outline" size="sm" asChild>
           <a href="https://search.google.com/search-console/inspect?resource_id=https://truejobs.co.in" target="_blank" rel="noopener noreferrer">

@@ -2482,13 +2482,18 @@ export function BlogPostEditor() {
                 <div className="grid grid-cols-5 gap-1 text-center">
                   <div className="bg-blue-500/10 rounded p-1.5"><div className="text-sm font-bold text-blue-700 dark:text-blue-400">{bulkAutoFix.scanReport.stateBreakdown.neverBulkFixed}</div><div className="text-[9px] text-muted-foreground">Never Fixed</div></div>
                   <div className="bg-amber-500/10 rounded p-1.5"><div className="text-sm font-bold text-amber-700 dark:text-amber-400">{bulkAutoFix.scanReport.stateBreakdown.changed}</div><div className="text-[9px] text-muted-foreground">Changed</div></div>
-                  <div className="bg-destructive/10 rounded p-1.5"><div className="text-sm font-bold text-destructive">{bulkAutoFix.scanReport.stateBreakdown.failed}</div><div className="text-[9px] text-muted-foreground">Failed</div></div>
+                  <div className="bg-amber-500/10 rounded p-1.5"><div className="text-sm font-bold text-amber-700 dark:text-amber-400">{bulkAutoFix.scanReport.stateBreakdown.failed}</div><div className="text-[9px] text-muted-foreground">Prev. Failed</div></div>
                   <div className="bg-muted/50 rounded p-1.5"><div className="text-sm font-bold text-muted-foreground">{bulkAutoFix.scanReport.stateBreakdown.unchanged}</div><div className="text-[9px] text-muted-foreground">Unchanged</div></div>
                   <div className="bg-green-500/10 rounded p-1.5"><div className="text-sm font-bold text-green-700 dark:text-green-400">{bulkAutoFix.scanReport.stateBreakdown.alreadyClean}</div><div className="text-[9px] text-muted-foreground">Clean</div></div>
                 </div>
                 {bulkAutoFix.scanReport.stateBreakdown.excluded > 0 && (
                   <div className="text-[10px] text-muted-foreground text-center">
                     {bulkAutoFix.scanReport.stateBreakdown.excluded} article(s) excluded due to incomplete data or unknown status
+                  </div>
+                )}
+                {bulkAutoFix.scanReport.previouslyProcessed > 0 && (
+                  <div className="text-[10px] text-amber-700 dark:text-amber-400 text-center bg-amber-500/5 rounded px-2 py-1">
+                    ℹ️ {bulkAutoFix.scanReport.previouslyProcessed} of {bulkAutoFix.scanReport.totalFixable} fixable article(s) were previously processed by AI but still have remaining issues. Re-running may produce similar results for complex missing sections (conclusions, FAQs).
                   </div>
                 )}
               </>
@@ -2523,8 +2528,11 @@ export function BlogPostEditor() {
                       <TableCell className="text-xs truncate max-w-[260px]">
                         {item.title}
                         {item.eligibilityReason === 'never_fixed' && <Badge variant="outline" className="ml-1 text-[9px] px-1 py-0 border-blue-300 text-blue-700 dark:text-blue-400">Never fixed</Badge>}
-                        {item.eligibilityReason === 'fix_failed' && <Badge variant="destructive" className="ml-1 text-[9px] px-1 py-0">Failed</Badge>}
+                        {item.eligibilityReason === 'fix_failed' && <Badge variant="outline" className="ml-1 text-[9px] px-1 py-0 border-amber-300 text-amber-700 dark:text-amber-400">Prev. failed</Badge>}
                         {item.eligibilityReason === 'changed_since_fix' && <Badge variant="outline" className="ml-1 text-[9px] px-1 py-0 border-amber-300 text-amber-700 dark:text-amber-400">Changed after fix</Badge>}
+                        {item.lastBulkFixStatus && item.lastBulkFixStatus !== 'baseline' && !item.eligibilityReason && (
+                          <Badge variant="outline" className="ml-1 text-[9px] px-1 py-0 border-muted-foreground/30 text-muted-foreground">Prev: {item.lastBulkFixStatus.replace(/_/g, ' ')}</Badge>
+                        )}
                       </TableCell>
                       <TableCell>
                         {item.classification === 'clean' && <Badge className="text-[10px] bg-green-600 hover:bg-green-700 text-white">Clean</Badge>}

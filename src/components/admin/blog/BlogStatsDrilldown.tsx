@@ -1,8 +1,9 @@
-import { useMemo, useState, useCallback, useEffect } from 'react';
+import { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Edit, Sparkles, CheckCircle2, XCircle } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
+import { Loader2, Edit, Sparkles, CheckCircle2, XCircle, Square } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { blogPostToMetadata } from '@/lib/blogArticleAnalyzer';
 import { analyzePublishCompliance, getComplianceReadinessStatus } from '@/lib/blogComplianceAnalyzer';

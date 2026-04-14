@@ -10,6 +10,7 @@ import { ComplianceReadinessBadge } from './ComplianceReadinessBadge';
 import { useAdminToast as useToast } from '@/contexts/AdminMessagesContext';
 import { useSeoMetadataWorkflow, type SeoFixResult } from '@/hooks/useSeoMetadataWorkflow';
 import { supabase } from '@/integrations/supabase/client';
+import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSelector';
 
 export type DrilldownFilter =
   | 'published' | 'drafts' | 'this-week' | 'missing-seo'
@@ -183,12 +184,25 @@ export function BlogStatsDrilldown({ open, onOpenChange, filter, posts, onEditPo
   const [bulkFixing, setBulkFixing] = useState(false);
   const [fixingIds, setFixingIds] = useState<Set<string>>(new Set());
   const [fixResults, setFixResults] = useState<Map<string, SeoFixResult>>(new Map());
+  const [aiModel, setAiModel] = useState(() => getLastUsedModel('text', ''));
+
+  // Fetch full content from DB (editor state has content:'')
+  const fetchPostContent = useCallback(async (postId: string): Promise<string> => {
+    const { data } = await supabase.from('blog_posts').select('content').eq('id', postId).single();
+    return data?.content || '';
+  }, []);
 
   // Per-article AI fix (for missing-seo)
   const handleFixSingleSeo = useCallback(async (post: BlogPost) => {
+    if (!aiModel) {
+      toast({ title: 'Select an AI model first', variant: 'destructive' });
+      return;
+    }
     setFixingIds(prev => new Set([...prev, post.id]));
     try {
-      const result = await fixSingleArticle(post);
+      const content = await fetchPostContent(post.id);
+      const postWithContent = { ...post, content };
+      const result = await fixSingleArticle(postWithContent, aiModel);
       if (result) {
         setFixResults(prev => new Map(prev).set(post.id, result));
         toast({
@@ -202,34 +216,43 @@ export function BlogStatsDrilldown({ open, onOpenChange, filter, posts, onEditPo
     } finally {
       setFixingIds(prev => { const n = new Set(prev); n.delete(post.id); return n; });
     }
-  }, [fixSingleArticle, toast]);
+  }, [fixSingleArticle, toast, aiModel, fetchPostContent]);
 
   // Bulk AI fix for all articles in current filter
   const handleBulkFix = useCallback(async () => {
     if (!filter) return;
+    if ((filter === 'missing-seo' || filter === 'needs-review' || filter === 'policy-risk') && !aiModel) {
+      toast({ title: 'Select an AI model first', variant: 'destructive' });
+      return;
+    }
     setBulkFixing(true);
+    let fixedCount = 0, failedCount = 0;
 
     if (filter === 'missing-seo') {
-      // Batch fix all missing SEO articles
       for (const { post } of articles) {
         if (fixResults.get(post.id)?.status === 'fixed') continue;
         setFixingIds(prev => new Set([...prev, post.id]));
         try {
-          const result = await fixSingleArticle(post);
+          const content = await fetchPostContent(post.id);
+          const result = await fixSingleArticle({ ...post, content }, aiModel);
           if (result) {
             setFixResults(prev => new Map(prev).set(post.id, result));
+            if (result.status === 'fixed') fixedCount++;
+            else failedCount++;
           }
         } catch {
-          // Continue with others
+          failedCount++;
         } finally {
           setFixingIds(prev => { const n = new Set(prev); n.delete(post.id); return n; });
         }
-        // Rate limit
         await new Promise(r => setTimeout(r, 2000));
       }
-      toast({ title: '✅ Bulk SEO fix complete' });
+      toast({
+        title: `✅ Bulk SEO fix complete`,
+        description: `${fixedCount} fixed, ${failedCount} failed out of ${articles.length}`,
+        variant: failedCount > 0 && fixedCount === 0 ? 'destructive' : 'default',
+      });
     } else if (filter === 'no-author') {
-      // Rule-based: set default author
       const DEFAULT_AUTHOR = 'TrueJobs Editorial';
       const ids = articles.map(a => a.post.id);
       for (const id of ids) {
@@ -240,7 +263,7 @@ export function BlogStatsDrilldown({ open, onOpenChange, filter, posts, onEditPo
 
     setBulkFixing(false);
     onRefresh?.();
-  }, [filter, articles, fixSingleArticle, fixResults, toast, onRefresh]);
+  }, [filter, articles, fixSingleArticle, fixResults, toast, onRefresh, aiModel, fetchPostContent]);
 
   if (!filter) return null;
 
@@ -268,20 +291,30 @@ export function BlogStatsDrilldown({ open, onOpenChange, filter, posts, onEditPo
                 </p>
                 <p className="text-xs text-muted-foreground">{aiFixConfig.description}</p>
               </div>
-              {aiFixConfig.supported && (
-                <Button
-                  size="sm"
-                  onClick={handleBulkFix}
-                  disabled={bulkFixing}
-                  className="shrink-0"
-                >
-                  {bulkFixing ? (
-                    <><Loader2 className="h-3 w-3 mr-1 animate-spin" /> Fixing…</>
-                  ) : (
-                    <><Sparkles className="h-3 w-3 mr-1" /> Fix All ({articles.length})</>
-                  )}
-                </Button>
-              )}
+              <div className="flex items-center gap-2 shrink-0">
+                {aiFixConfig.supported && (filter === 'missing-seo' || filter === 'needs-review' || filter === 'policy-risk') && (
+                  <AiModelSelector
+                    value={aiModel}
+                    onValueChange={setAiModel}
+                    capability="text"
+                    size="sm"
+                  />
+                )}
+                {aiFixConfig.supported && (
+                  <Button
+                    size="sm"
+                    onClick={handleBulkFix}
+                    disabled={bulkFixing || (aiFixConfig.supported && (filter === 'missing-seo' || filter === 'needs-review' || filter === 'policy-risk') && !aiModel)}
+                    className="shrink-0"
+                  >
+                    {bulkFixing ? (
+                      <><Loader2 className="h-3 w-3 mr-1 animate-spin" /> Fixing…</>
+                    ) : (
+                      <><Sparkles className="h-3 w-3 mr-1" /> Fix All ({articles.length})</>
+                    )}
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
         )}

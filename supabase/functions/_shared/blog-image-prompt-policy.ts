@@ -111,19 +111,14 @@ export function buildBlogInlinePrompt(body: {
 // ═══════════════════════════════════════════════════════════════
 
 const FLUX_REALISM_POSITIVE = `
-FLUX-SPECIFIC REALISM DIRECTIVES (override any conflicting aesthetic rules above):
-Style: Documentary-style candid editorial photography with natural lighting and believable imperfections.
-Subjects: Authentic ordinary Indian college-going students and aspirants aged 20–24 — NOT fashion models, NOT faculty, NOT office workers, NOT corporate professionals. Grounded everyday student clothing (simple kurta, t-shirt, jeans, salwar-kameez — whatever ordinary students actually wear). Natural skin texture with realistic pores and tonal variation. Realistic facial proportions and natural expressions — no surreal symmetry or artificial smoothing.
-Gaze and behavior: Subjects must be visibly focused on study material — books, notebooks, printed notes, question papers, laptop screens, or whiteboard content. Gaze directed toward academic material, NOT toward each other or the camera. Body language must show real studying: reading, writing, solving, note-checking, or revision. If multiple students are present, they must be engaged in shared academic work over visible study material — their interaction must remain study-centered with the primary visual signal being exam preparation, revision, problem solving, or academic review. Social chemistry, conversational posing, and mutual attention to each other must never become the main scene. Even collaborative discussion must be visually anchored to shared notes, a textbook, or a screen — not to each other.
-Environment: Realistic classroom, study desk, library, exam hall, coaching center, or campus setting. Desks and study surfaces must look actively used with believable academic clutter — open textbooks, scattered notes, stationery, admit-card-style sheets. Realistic object interaction: natural pen grip, correct notebook handling, proper arm posture on desk. No staged commercial setups, no decorative empty desks.
-Anatomy: Anatomically correct hands with natural finger count (five per hand). Realistic pen grip, believable wrist posture, proper desk contact. No malformed or fused fingers, no extra digits, no broken wrists, no floating objects, no warped pages, no distorted teeth.
-Jewellery: If any jewellery is present, keep it subtle, minimal, and like ordinary college-going students might wear (simple studs, thin chain). No heavy, ornate, or gold-dominant pieces.`;
-
-const FLUX_REALISM_NEGATIVE = `
-FLUX NEGATIVE CONSTRAINTS (strictly enforced defaults):
-Do NOT depict: mutual eye contact between subjects, staring at each other, romantic pose or body language, social posing, interview-style conversation, teacher-student framing, office discussion setup, faculty appearance, corporate meeting vibe, camera-facing posed expressions, perfect-smile stock-photo energy, hyper-polished ad photography, fake study scene with decorative empty desks, over-aged subjects who look older than mid-20s.
-Do NOT add: bindi, tilak, heavy makeup, bright lipstick, glam or beauty-editorial styling, fashion-model posing, stock-photo aesthetic, artificial face smoothing or over-retouching, surreal facial symmetry, plastic or oversmoothed skin, heavy gold jewellery, bridal jewellery, ornate festive jewellery, overdressed styling that does not fit ordinary college students, nonsense or gibberish text on blackboards or books or screens or walls or posters, decorative irrelevant cultural symbolism, ad-style commercial beauty photography.
-Do NOT render: malformed hands, fused fingers, extra fingers, broken wrists, floating pens, warped pages, distorted teeth.`;
+FLUX-SPECIFIC GUIDANCE:
+Photorealistic editorial-style image in an Indian education, exam, recruitment, or career-guidance context.
+Show ordinary young Indian adults in a believable real-world scene that matches the article topic.
+Use natural skin texture, natural expressions, everyday clothing, realistic anatomy, and realistic hands.
+Focus the scene on study, reading, writing, reviewing notes, checking a notice, using a laptop, or discussing application details.
+Keep the styling neutral, grounded, and documentary-like rather than glamorous or symbolic.
+No visible text overlays, logos, watermarks, seals, or readable signage.
+Avoid poster-style layouts, infographic styling, heavy adornment, and exaggerated beauty-shoot aesthetics.`;
 
 /** Keywords that signal the user explicitly wants cultural/styling elements — suppress conflicting negatives. */
 const FLUX_USER_OVERRIDE_KEYWORDS = [
@@ -134,9 +129,8 @@ const FLUX_USER_OVERRIDE_KEYWORDS = [
 
 /**
  * FLUX.1-Kontext is more sensitive than other providers to appearance-focused wording
- * in the shared mandatory rules (especially the "very fair complexion / beautiful and
- * handsome features / premium look" phrasing). Sanitize those phrases ONLY for FLUX
- * while leaving the shared policy untouched for other models.
+ * and long negative lists. Sanitize those phrases ONLY for FLUX while leaving the
+ * shared policy untouched for other models.
  */
 const FLUX_SENSITIVE_APPEARANCE_REPLACEMENTS: Array<[RegExp, string]> = [
   [
@@ -146,6 +140,11 @@ const FLUX_SENSITIVE_APPEARANCE_REPLACEMENTS: Array<[RegExp, string]> = [
   [/\bvery fair complexion\b/gi, 'natural skin tone'],
   [/\bbeautiful and handsome features\b/gi, 'natural-looking features'],
   [/\bpolished,\s*aspirational,\s*premium look\b/gi, 'clean, credible, professional look'],
+  [/Absolutely NO Hindi text, Hinglish text, Devanagari script, or any Indic script anywhere in the image\./gi, 'Do not include visible text in the image.'],
+  [/If any text is required, it MUST be in English only\./gi, 'Avoid readable text whenever possible.'],
+  [/Strongly prefer images with NO visible text at all unless text is truly necessary\./gi, 'Prefer no readable text.'],
+  [/Never use Hindi fonts, Devanagari, or any Indic script in any form\./gi, 'Do not include readable text or script.'],
+  [/Do NOT include any text overlays, watermarks, official government seals, emblems, logos, or misleading official symbols\./gi, 'Do not include text overlays, watermarks, seals, emblems, or logos.'],
 ];
 
 function sanitizePromptForFlux(prompt: string): string {
@@ -156,38 +155,35 @@ function sanitizePromptForFlux(prompt: string): string {
   return sanitized;
 }
 
+function extractFluxSafeBasePrompt(prompt: string): string {
+  const marker = 'MANDATORY IMAGE RULES';
+  const markerIndex = prompt.indexOf(marker);
+  const base = markerIndex >= 0 ? prompt.slice(0, markerIndex) : prompt;
+  return base.replace(/\s+/g, ' ').trim();
+}
+
 /**
- * Apply the FLUX-only strict realism layer to a prompt.
+ * Apply the FLUX-only compact realism layer to a prompt.
  *
  * This function is called ONLY when the selected model is FLUX.
- * It first sanitizes appearance-focused phrases that can trigger Azure's
- * content blocklists, then appends positive realism directives and negative
- * constraints. It still respects explicit user intent — if the user's custom
- * prompt contains keywords like "traditional", "bridal", "bindi", etc.,
- * the negative constraints for those elements are softened.
- *
- * @param prompt     The fully-built image prompt (from buildBlogCoverPrompt or buildBlogInlinePrompt)
- * @param userPrompt Optional raw user-provided prompt text to check for override keywords
- * @returns          The prompt with FLUX realism layer appended
+ * It strips the long shared rule block, sanitizes sensitive wording,
+ * and replaces it with a shorter FLUX-safe guidance block to reduce
+ * Azure content-filter false positives.
  */
 export function applyFluxRealismLayer(
   prompt: string,
   userPrompt?: string,
 ): string {
-  // First neutralize FLUX-sensitive appearance phrases from the shared policy
-  let result = sanitizePromptForFlux(prompt) + '\n' + FLUX_REALISM_POSITIVE;
+  const safeBasePrompt = sanitizePromptForFlux(extractFluxSafeBasePrompt(prompt));
+  let result = `${safeBasePrompt}\n\n${FLUX_REALISM_POSITIVE}`;
 
-  // Check if user explicitly requested cultural/styling elements
   const lowerUser = (userPrompt || '').toLowerCase();
   const hasOverride = FLUX_USER_OVERRIDE_KEYWORDS.some(kw => lowerUser.includes(kw));
 
   if (hasOverride) {
-    // User explicitly wants styling elements — skip the negative block
-    // so their intent is preserved
-    result += `\nNote: User has explicitly requested specific styling. Respect the user's styling choices while maintaining photorealistic quality.`;
+    result += '\n\nRespect any explicitly requested cultural styling while keeping the image photorealistic and grounded.';
   } else {
-    // Default: apply full negative constraints
-    result += '\n' + FLUX_REALISM_NEGATIVE;
+    result += '\n\nKeep accessories minimal, avoid heavy ceremonial styling, and keep the scene visually neutral and grounded.';
   }
 
   return result;

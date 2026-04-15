@@ -2,6 +2,7 @@ import { Layout } from '@/components/layout/Layout';
 import { GovtHeroBlock } from '@/components/home/GovtHeroBlock';
 import { HeroSideCards } from '@/components/home/HeroSideCards';
 import { LatestGovtJobs } from '@/components/home/LatestGovtJobs';
+import { LatestArticles } from '@/components/home/LatestArticles';
 import { GovtJobCategories } from '@/components/home/GovtJobCategories';
 import { StateQuickFilter } from '@/components/home/StateQuickFilter';
 import { InfoCardsRow } from '@/components/home/InfoCardsRow';

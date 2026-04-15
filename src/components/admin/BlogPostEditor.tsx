@@ -2470,7 +2470,7 @@ export function BlogPostEditor() {
 
     {/* ── Bulk Auto-Fix Dialog ── */}
     <Dialog open={bulkAutoFix.showDialog} onOpenChange={(open) => { if (!open) bulkAutoFix.resetDialog(); }}>
-      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><Sparkles className="h-4 w-4" /> Scan & Auto-Fix by AI</DialogTitle>
           <DialogDescription>
@@ -2480,6 +2480,7 @@ export function BlogPostEditor() {
             {bulkAutoFix.phase === 'done' && bulkAutoFix.summary && `Complete — ${bulkAutoFix.summary.totalFixed} fixed, ${bulkAutoFix.summary.totalPartial} partial, ${bulkAutoFix.summary.totalSkipped} skipped, ${bulkAutoFix.summary.totalFailed} failed, ${bulkAutoFix.summary.totalNoAction} no action.`}
           </DialogDescription>
         </DialogHeader>
+        <div className="overflow-y-auto flex-1 min-h-0 space-y-4 pr-1">
 
         {bulkAutoFix.phase === 'scanning' && (
           <div className="flex items-center gap-2 py-6 justify-center text-sm text-muted-foreground">
@@ -2671,6 +2672,7 @@ export function BlogPostEditor() {
             )}
           </div>
         )}
+        </div>
       </DialogContent>
     </Dialog>
     </>

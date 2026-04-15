@@ -926,19 +926,9 @@ async function generateViaAzureFlux(
     });
   } catch (err: any) {
     console.error(`[azure-flux] error: ${err.message}`);
-
-    // Content-filter 400 errors (Bing/DALL·E blocklist) — ALWAYS fallback regardless of strict mode
-    // Strict mode protects model routing integrity; content-filter rejections are prompt safety issues
-    // where fallback to a different model is the correct recovery path.
-    const isContentFilter = err.message?.includes('blocklist') || err.message?.includes('content filter') || err.message?.includes('error 400');
-    if (isContentFilter) {
-      console.log(`[azure-flux] content-filter rejection (strict=${strict}), falling back to gemini-flash-image for slug=${slug}`);
-      return await generateViaGeminiFlashImage(body, slug, imagePrompt, adminClient, startMs, false);
-    }
-
     return buildStrictErrorResponse(
       err.message?.includes('timeout') ? 504 : 502,
-      `Azure FLUX error: ${err.message}.${isContentFilter ? ' Content was blocked by Azure safety filters. Try rephrasing the topic or use a different image model.' : ' No fallback was used.'}`,
+      `Azure FLUX error: ${err.message}. No fallback was used.`,
       meta,
     );
   }

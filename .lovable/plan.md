@@ -1,31 +1,25 @@
 
 
-# Fix: Government Job Cards Not Clickable + Add 3D Styling
+# Fix: Bulk Auto-Fix Dialog Missing Scroll
 
-## Root Cause
+## Problem
+The "Scan & Auto-Fix by AI" dialog at line 2473 has `max-h-[85vh] overflow-y-auto` on `DialogContent`, but shadcn's `DialogContent` component applies its own `max-h-[calc(100vh-...)]` and overflow styles that can conflict, preventing the modal from scrolling when results exceed the viewport.
 
-All 8 latest `employment_news_jobs` rows have `slug = NULL`. The current link logic is:
+## Fix — Single file: `src/components/admin/BlogPostEditor.tsx`
+
+Wrap the entire dialog body (everything between `DialogHeader` and the closing `DialogContent`) in a `<div className="overflow-y-auto flex-1 min-h-0">` so the content scrolls independently of the header. Also add `flex flex-col` to the DialogContent className to enable the flex layout.
+
+**Line 2473** — update DialogContent classes:
+```
+max-w-2xl max-h-[85vh] flex flex-col overflow-hidden
+```
+
+**After DialogHeader closing tag (line 2482)** — wrap remaining content in:
 ```jsx
-<Link to={job.slug ? `/jobs/employment-news/${job.slug}` : '#'}>
-```
-Since `slug` is always null, every card links to `#` — effectively not clickable. The detail page (`EmploymentNewsJobDetail.tsx`) already supports UUID-based lookup (line 30), so we can safely link by `id` when `slug` is missing.
-
-## Changes — Single File: `src/components/home/LatestGovtJobs.tsx`
-
-**1. Fix the link target** — fall back to `id` when `slug` is null:
-```jsx
-<Link to={`/jobs/employment-news/${job.slug || job.id}`}>
+<div className="overflow-y-auto flex-1 min-h-0 space-y-4 pr-1">
 ```
 
-**2. Add 3D card styling + click animation** via Tailwind classes on the Card:
-```
-cursor-pointer rounded-xl border border-border border-b-4 border-b-primary/20
-shadow-md hover:shadow-lg hover:-translate-y-1
-active:scale-[0.97] active:shadow-sm
-transition-all duration-200
-```
+**Before closing `</DialogContent>` (line 2674)** — close the wrapper div.
 
-**3. Add `block` to the Link** to ensure full card area is clickable.
-
-That's it — one file, two lines changed.
+This ensures the header stays pinned and the body scrolls.
 

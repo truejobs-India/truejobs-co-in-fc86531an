@@ -157,21 +157,18 @@ async function buildDBRows(): Promise<{ rows: Row[]; counts: DBCounts }> {
   // Standard queries for smaller tables (well under 1000 rows)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [jobsRes, companiesRes, resourcesRes] = await Promise.all([
-    (supabase.from('jobs' as any).select('id') as any).eq('status', 'active'),
+    (supabase.from('jobs' as any).select('slug') as any).eq('status', 'active'),
     (supabase.from('companies' as any).select('slug') as any).eq('is_approved', true),
     (supabase.from('pdf_resources' as any).select('slug, resource_type') as any).eq('is_published', true),
   ]);
 
-  for (const b of blogs) {
-    rows.push(r(`${SITE}/blog/${b.slug}`, 'Blog', 'Dynamic', 'index, follow', 'sitemap-blog.xml', 'High', ''));
-  }
-  counts.blogs = blogs.length;
-
-  const jobsData = (jobsRes.data || []) as { id: string }[];
+  const jobsData = (jobsRes.data || []) as { slug: string }[];
   for (const j of jobsData) {
-    rows.push(r(`${SITE}/jobs/${j.id}`, 'Job Listing', 'Dynamic', 'index, follow', 'sitemap-jobs.xml', 'High', ''));
+    if (j.slug) {
+      rows.push(r(`${SITE}/jobs/${j.slug}`, 'Job Listing', 'Dynamic', 'index, follow', 'sitemap-jobs.xml', 'High', ''));
+    }
   }
-  counts.jobs = jobsData.length;
+  counts.jobs = jobsData.filter(j => j.slug).length;
 
   const companiesData = (companiesRes.data || []) as { slug: string }[];
   for (const c of companiesData) {

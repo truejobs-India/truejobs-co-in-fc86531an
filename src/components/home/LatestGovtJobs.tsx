@@ -73,8 +73,8 @@ export function LatestGovtJobs() {
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {jobs.map(job => (
-            <Link key={job.id} to={job.slug ? `/jobs/employment-news/${job.slug}` : '#'}>
-              <Card className="h-full hover:shadow-md transition-shadow border-border">
+            <Link key={job.id} to={`/jobs/employment-news/${job.slug || job.id}`} className="block">
+              <Card className="h-full cursor-pointer rounded-xl border border-border border-b-4 border-b-primary/20 shadow-md hover:shadow-lg hover:-translate-y-1 active:scale-[0.97] active:shadow-sm transition-all duration-200">
                 <CardContent className="p-4">
                   <h3 className="text-sm font-semibold text-foreground line-clamp-2 mb-1">
                     {job.org_name || 'Government Organization'}

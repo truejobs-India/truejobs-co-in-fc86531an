@@ -1569,6 +1569,15 @@ export function BlogPostEditor() {
                 <Label htmlFor="is_published">Publish immediately</Label>
               </div>
 
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="show_on_homepage"
+                  checked={formData.show_on_homepage}
+                  onCheckedChange={(checked) => handleFormChange({ show_on_homepage: checked })}
+                />
+                <Label htmlFor="show_on_homepage">Show on Homepage</Label>
+              </div>
+
               {/* Collapsible Quality Report */}
               {currentQuality && (
                 <Collapsible open={qualityOpen} onOpenChange={setQualityOpen}>

@@ -1,72 +1,33 @@
 
 
-# Add "Check Our Latest Articles" Homepage Section
+# Fix: Ghost-White Skin Tones Across ALL Image Models
 
-## Files to Change
-1. **New migration SQL** — add `show_on_homepage` column to `blog_posts`
-2. **New file: `src/components/home/LatestArticles.tsx`** — the section component
-3. **`src/pages/Index.tsx`** — insert component between LatestGovtJobs and in-content ad
-4. **`src/components/admin/BlogPostEditor.tsx`** — add "Show on Homepage" toggle
+## Problem
+Rule 10 in `BLOG_IMAGE_MANDATORY_RULES` (line 22 of `supabase/functions/_shared/blog-image-prompt-policy.ts`) contains **"very fair complexion, beautiful and handsome features, polished, aspirational, premium look"**. This is the shared prompt sent to **all** models — Gemini, Imagen, MAI-2, and others. Each interprets it too literally, producing unnaturally pale, ghost-white skin tones. Only FLUX has a separate realism layer that already patches this out.
 
-## 1. Database Migration
+## Fix
 
-```sql
-ALTER TABLE public.blog_posts
-  ADD COLUMN IF NOT EXISTS show_on_homepage boolean NOT NULL DEFAULT false;
+### 1. Update Rule 10 in `blog-image-prompt-policy.ts` (line 22)
 
-CREATE INDEX IF NOT EXISTS idx_blog_posts_homepage
-  ON public.blog_posts (show_on_homepage, published_at DESC)
-  WHERE is_published = true AND show_on_homepage = true;
-```
+**Before:**
+> "very fair complexion, beautiful and handsome features, polished, aspirational, premium look"
 
-## 2. Thumbnail Optimization Strategy
+**After:**
+> "natural, healthy Indian skin tones with realistic warmth and subtle color variation, attractive and well-groomed features, clean and professional appearance"
 
-Cover images are stored in Supabase Storage (`blog-assets` bucket). Supabase Storage supports server-side image transformations via URL parameters.
+This single-line change fixes the prompt for **all** models (Gemini, Imagen, MAI-2, etc.) at the source. The FLUX realism layer's regex replacements in `FLUX_SENSITIVE_APPEARANCE_REPLACEMENTS` (lines 135-148) that targeted "very fair complexion" will no longer match, but that's fine — the source text is already corrected and FLUX's own `FLUX_REALISM_POSITIVE` block already says "natural skin texture."
 
-A helper function will:
-- Detect Supabase Storage URLs (containing `/storage/v1/object/public/`)
-- Append `?width=256&height=160&resize=cover&quality=75` to serve a ~5-10KB optimized thumbnail instead of the full-size image
-- For any non-Storage URL, pass through as-is (CSS `object-cover` handles cropping)
+### 2. Update memory file `mem://style/ai-image-aesthetics`
 
-Thumbnail CSS dimensions: `w-24 h-16 sm:w-32 sm:h-20` with explicit `width`/`height` attributes for CLS safety.
+Replace references to "very fair" and "fair complexion" with the new natural skin tone policy to prevent future regressions.
 
-All thumbnails use `loading="lazy"` since this section is below the fold (after Latest Govt Jobs).
+### Files Changed
+1. `supabase/functions/_shared/blog-image-prompt-policy.ts` — Rule 10 (line 22)
+2. `mem://style/ai-image-aesthetics` — updated policy wording
 
-## 3. LatestArticles Component
-
-**Query logic:**
-- Primary: `show_on_homepage = true AND is_published = true`, limit 5, ordered by `published_at DESC`
-- Fallback (if zero results): `is_published = true`, limit 5, ordered by `published_at DESC`
-- Fields: `id, title, slug, excerpt, cover_image_url, featured_image_alt, category, reading_time, published_at`
-
-**Layout:**
-- Outer container: `rounded-2xl border border-slate-200 bg-white shadow` with tri-color top accent (matching LatestGovtJobs style)
-- Header: "Check Our Latest Articles" + subtitle + "View All →" linking to `/blog`
-- Each row: horizontal card with optimized thumbnail (left), title + excerpt + category chip + reading time (center), orange "Read Article →" CTA (right)
-- Entire row is a `<Link to={/blog/${slug}}>` — fully clickable
-- Grid: single column, `gap-3`
-- Skeleton loading: 3 rows matching final height for CLS safety
-
-## 4. Index.tsx Insertion
-
-```
-<LatestGovtJobs />
-<LatestArticles />              ← NEW
-<AdPlaceholder variant="in-content" />   ← UNCHANGED
-<GovtJobCategories />
-```
-
-No ad containers moved. Identical spacing preserved.
-
-## 5. Admin Toggle
-
-In `BlogPostEditor.tsx`:
-- Add `show_on_homepage` to `formData` state, `resetForm()`, `openEditDialog()`, `buildPostData()`, and `fetchPosts` select fields
-- Add a "Show on Homepage" `Switch` toggle in the editor form near publish controls
-
-## AdSense Safety
-- All existing ad slots remain in identical positions
-- Section `py-8` consistent with other sections
-- CLS-safe: skeleton loaders + explicit thumbnail dimensions
-- No layout grid changes in Index.tsx
+### What Does NOT Change
+- FLUX realism layer (already handles skin tone correctly)
+- No UI, layout, or ad changes
+- No other rules modified
+- No model routing changes
 

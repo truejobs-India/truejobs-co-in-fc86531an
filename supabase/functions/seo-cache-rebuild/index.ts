@@ -433,6 +433,38 @@ async function handleQueueMode(db: any, triggerSource: string, startTime: number
   return jsonResponse({ success: true, processed: pending.length, rebuilt, skipped, failed, cfPurged });
 }
 
+// ── Failure Persistence ──────────────────────────────────────────────
+
+async function persistFailedSlug(db: any, slug: string, pageType: string, errorMsg: string, triggerSource: string) {
+  try {
+    await db.from('seo_rebuild_queue').insert({
+      slug,
+      page_type: pageType,
+      status: 'failed',
+      reason: `${triggerSource} rebuild failure`,
+      error_message: (errorMsg || 'Unknown error').substring(0, 500),
+      retry_count: 0,
+      max_retries: 3,
+      processed_at: new Date().toISOString(),
+    });
+  } catch (persistErr: any) {
+    // If insert fails (e.g. unique constraint), try update instead
+    try {
+      await db.from('seo_rebuild_queue')
+        .update({
+          status: 'failed',
+          reason: `${triggerSource} rebuild failure`,
+          error_message: (errorMsg || 'Unknown error').substring(0, 500),
+          processed_at: new Date().toISOString(),
+        })
+        .eq('slug', slug);
+    } catch {
+      // Silently fail — don't break the rebuild loop for logging issues
+      console.error(`[persistFailedSlug] Could not log failure for ${slug}:`, persistErr?.message);
+    }
+  }
+}
+
 // ── Slugs Mode ───────────────────────────────────────────────────────
 
 async function handleSlugsMode(db: any, slugs: string[], triggerSource: string, startTime: number, forceRebuild = false) {
@@ -449,9 +481,12 @@ async function handleSlugsMode(db: any, slugs: string[], triggerSource: string, 
         skipped++;
       } else {
         failed++;
+        // Persist failure for visibility in admin Failed tab
+        await persistFailedSlug(db, slug, inferPageTypeFromSlug(slug), 'slugs-mode: rebuildSingleSlug returned failed', triggerSource);
       }
-    } catch {
+    } catch (err: any) {
       failed++;
+      await persistFailedSlug(db, slug, inferPageTypeFromSlug(slug), err?.message || 'Unknown error in slugs-mode', triggerSource);
     }
   }
 
@@ -543,13 +578,13 @@ async function handleFullMode(db: any, triggerSource: string, startTime: number,
     const results = await Promise.all(chunk.map(async (row) => {
       try {
         const result = await rebuildSingleSlug(db, row.slug, row.page_type, forceRebuild);
-        return { row, result };
-      } catch {
-        return { row, result: 'failed' as const };
+        return { row, result, error: null };
+      } catch (err: any) {
+        return { row, result: 'failed' as const, error: err?.message || 'Unknown error in full-mode' };
       }
     }));
 
-    for (const { row, result } of results) {
+    for (const { row, result, error } of results) {
       if (result === 'rebuilt') {
         rebuilt++;
         urlsToPurge.push(`${SITE_URL}/${row.slug}`);
@@ -557,6 +592,8 @@ async function handleFullMode(db: any, triggerSource: string, startTime: number,
         skipped++;
       } else {
         failed++;
+        // Persist failure for visibility in admin Failed tab
+        await persistFailedSlug(db, row.slug, row.page_type, error || 'rebuildSingleSlug returned failed', triggerSource);
       }
     }
   }

@@ -46,6 +46,8 @@ export default function Index() {
           <div>
             <LatestGovtJobs />
 
+            <LatestArticles />
+
             <AdPlaceholder variant="in-content" />
 
             <GovtJobCategories />

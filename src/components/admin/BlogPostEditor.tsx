@@ -94,6 +94,7 @@ interface BlogPost {
   author_name: string | null;
   ai_fixed_at: string | null;
   article_images: any;
+  show_on_homepage: boolean;
 }
 
 const POSTS_PER_PAGE = 20;

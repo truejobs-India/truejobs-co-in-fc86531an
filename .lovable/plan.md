@@ -1,33 +1,60 @@
+<final-text>Do I know what the issue is? Yes.
 
+What I found
+- The MAI2 request is already using the updated shared Rule 10. The captured `promptUsed` now contains “natural, healthy Indian skin tones...”, so the old `very fair complexion` text is not what MAI2 is receiving in this regenerate flow.
+- The problem is now twofold:
+  1. MAI2 still only gets the generic shared prompt, which is not strong enough to prevent white/Caucasian subject drift for this provider.
+  2. Regeneration writes back to the exact same public file path (`covers/<slug>-mai-image-2.png`). Because images are cached aggressively, the UI can keep showing the previous cached image after overwrite, making it look like the exact same white-man image was generated again.
+- I also found other prompt sources that still contain `fair` / `fair-skinned` wording, so the previous fix was not fully propagated across the whole image pipeline.
 
-# Fix: Ghost-White Skin Tones Across ALL Image Models
+Plan
+1. Add a MAI2-only prompt guard
+- Create a dedicated MAI2 prompt layer and use it only in `generateViaAzureMaiImage`.
+- Keep the shared blog policy, but add MAI2-specific reinforcement such as:
+  - explicitly Indian subjects
+  - explicitly not Caucasian/European-looking subjects
+  - no ghost-white / unnaturally pale skin
+  - realistic Indian skin warmth, variation, texture
+  - no generic Western stock-photo office look
+- Keep model routing unchanged.
 
-## Problem
-Rule 10 in `BLOG_IMAGE_MANDATORY_RULES` (line 22 of `supabase/functions/_shared/blog-image-prompt-policy.ts`) contains **"very fair complexion, beautiful and handsome features, polished, aspirational, premium look"**. This is the shared prompt sent to **all** models — Gemini, Imagen, MAI-2, and others. Each interprets it too literally, producing unnaturally pale, ghost-white skin tones. Only FLUX has a separate realism layer that already patches this out.
+2. Fix stale-image regeneration
+- Stop reusing the same MAI2 filename on every regenerate.
+- Save each new MAI2 render to a versioned path, then store that fresh URL on the article.
+- Optionally delete the prior generated cover file when replacing it, to avoid storage buildup.
+- This removes the “same image still showing” cache problem without weakening site performance.
 
-## Fix
+3. Expose provider rewrite/debug info
+- Surface Azure’s `revisedPrompt` in the MAI2 response/debug payload so we can confirm whether the provider is rewriting the prompt in a problematic way.
+- Keep this admin/debug only.
 
-### 1. Update Rule 10 in `blog-image-prompt-policy.ts` (line 22)
+4. Remove remaining fair-skin regressions elsewhere
+- Replace remaining `fair` / `fair-skinned` prompt wording in:
+  - `supabase/functions/generate-vertex-image/index.ts` (Nova Canvas block)
+  - `supabase/functions/_shared/flux2-prompt-policy.ts`
+  - `supabase/functions/firecrawl-ai-enrich/index.ts`
+  - `supabase/functions/generate-resource-image/index.ts`
+  - `mem://style/ai-image-aesthetics`
+- Normalize all of them to the same natural Indian skin-tone policy.
 
-**Before:**
-> "very fair complexion, beautiful and handsome features, polished, aspirational, premium look"
+5. Verify end to end
+- Regenerate the same article with MAI2 and confirm:
+  - stronger MAI2 guard is present
+  - the returned image URL changes on each regenerate
+  - the visible image actually changes
+  - the result no longer shows a white/non-Indian man
+- Then spot-check one other model to ensure the wording cleanup did not create regressions.
 
-**After:**
-> "natural, healthy Indian skin tones with realistic warmth and subtle color variation, attractive and well-groomed features, clean and professional appearance"
+Files to change
+- `supabase/functions/generate-vertex-image/index.ts`
+- New shared helper: `supabase/functions/_shared/mai-image-prompt-policy.ts`
+- `supabase/functions/_shared/flux2-prompt-policy.ts`
+- `supabase/functions/firecrawl-ai-enrich/index.ts`
+- `supabase/functions/generate-resource-image/index.ts`
+- `mem://style/ai-image-aesthetics`
 
-This single-line change fixes the prompt for **all** models (Gemini, Imagen, MAI-2, etc.) at the source. The FLUX realism layer's regex replacements in `FLUX_SENSITIVE_APPEARANCE_REPLACEMENTS` (lines 135-148) that targeted "very fair complexion" will no longer match, but that's fine — the source text is already corrected and FLUX's own `FLUX_REALISM_POSITIVE` block already says "natural skin texture."
-
-### 2. Update memory file `mem://style/ai-image-aesthetics`
-
-Replace references to "very fair" and "fair complexion" with the new natural skin tone policy to prevent future regressions.
-
-### Files Changed
-1. `supabase/functions/_shared/blog-image-prompt-policy.ts` — Rule 10 (line 22)
-2. `mem://style/ai-image-aesthetics` — updated policy wording
-
-### What Does NOT Change
-- FLUX realism layer (already handles skin tone correctly)
-- No UI, layout, or ad changes
-- No other rules modified
-- No model routing changes
-
+What will not change
+- No fallback behavior
+- No layout/UI redesign
+- No ad placement changes
+- No model routing changes</final-text>

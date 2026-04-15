@@ -433,6 +433,38 @@ async function handleQueueMode(db: any, triggerSource: string, startTime: number
   return jsonResponse({ success: true, processed: pending.length, rebuilt, skipped, failed, cfPurged });
 }
 
+// ── Failure Persistence ──────────────────────────────────────────────
+
+async function persistFailedSlug(db: any, slug: string, pageType: string, errorMsg: string, triggerSource: string) {
+  try {
+    await db.from('seo_rebuild_queue').insert({
+      slug,
+      page_type: pageType,
+      status: 'failed',
+      reason: `${triggerSource} rebuild failure`,
+      error_message: (errorMsg || 'Unknown error').substring(0, 500),
+      retry_count: 0,
+      max_retries: 3,
+      processed_at: new Date().toISOString(),
+    });
+  } catch (persistErr: any) {
+    // If insert fails (e.g. unique constraint), try update instead
+    try {
+      await db.from('seo_rebuild_queue')
+        .update({
+          status: 'failed',
+          reason: `${triggerSource} rebuild failure`,
+          error_message: (errorMsg || 'Unknown error').substring(0, 500),
+          processed_at: new Date().toISOString(),
+        })
+        .eq('slug', slug);
+    } catch {
+      // Silently fail — don't break the rebuild loop for logging issues
+      console.error(`[persistFailedSlug] Could not log failure for ${slug}:`, persistErr?.message);
+    }
+  }
+}
+
 // ── Slugs Mode ───────────────────────────────────────────────────────
 
 async function handleSlugsMode(db: any, slugs: string[], triggerSource: string, startTime: number, forceRebuild = false) {

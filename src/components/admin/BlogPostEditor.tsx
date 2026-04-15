@@ -246,6 +246,7 @@ export function BlogPostEditor() {
     category: null as string | null,
     tags: null as string[] | null,
     canonical_url: '',
+    show_on_homepage: false,
   });
 
   useEffect(() => {
@@ -265,7 +266,7 @@ export function BlogPostEditor() {
   }, [formData, hasUnsavedChanges, editingPost]);
 
   const fetchPosts = async () => {
-    const selectFields = 'id,title,slug,is_published,published_at,created_at,updated_at,meta_title,meta_description,cover_image_url,featured_image_alt,excerpt,category,tags,author_name,word_count,reading_time,content_mode,canonical_url,author_id,status,primary_keyword,secondary_keywords,search_intent,noindex,schema_json,page_template,language,target_category,target_department,target_exam,target_language,target_state,target_year,scheduled_at,stale_after,last_verified_at,review_status,needs_revalidation,official_source_url,official_source_label,source_evidence,fact_confidence,has_faq_schema,faq_schema,faq_count,thin_content_risk,thin_content_reason,duplicate_risk_score,duplicate_risk_reason,long_tail_metadata,internal_links,ai_fixed_at,last_bulk_scanned_at,last_bulk_fixed_at,last_bulk_fix_status,remaining_auto_fixable_count,article_images';
+    const selectFields = 'id,title,slug,is_published,published_at,created_at,updated_at,meta_title,meta_description,cover_image_url,featured_image_alt,excerpt,category,tags,author_name,word_count,reading_time,content_mode,canonical_url,author_id,status,primary_keyword,secondary_keywords,search_intent,noindex,schema_json,page_template,language,target_category,target_department,target_exam,target_language,target_state,target_year,scheduled_at,stale_after,last_verified_at,review_status,needs_revalidation,official_source_url,official_source_label,source_evidence,fact_confidence,has_faq_schema,faq_schema,faq_count,thin_content_risk,thin_content_reason,duplicate_risk_score,duplicate_risk_reason,long_tail_metadata,internal_links,ai_fixed_at,last_bulk_scanned_at,last_bulk_fixed_at,last_bulk_fix_status,remaining_auto_fixable_count,article_images,show_on_homepage';
     const allData: any[] = [];
     let from = 0;
     const batchSize = 1000;
@@ -295,7 +296,7 @@ export function BlogPostEditor() {
       title: '', slug: '', content: '', excerpt: '',
       cover_image_url: '', featured_image_alt: '', is_published: false,
       meta_title: '', meta_description: '', author_name: 'TrueJobs Editorial Team',
-      category: null, tags: null, canonical_url: '',
+      category: null, tags: null, canonical_url: '', show_on_homepage: false,
     });
     setEditingPost(null);
     setHasUnsavedChanges(false);
@@ -328,6 +329,7 @@ export function BlogPostEditor() {
       category: post.category || null,
       tags: post.tags || null,
       canonical_url: post.canonical_url || '',
+      show_on_homepage: (post as any).show_on_homepage ?? false,
     });
     setHasUnsavedChanges(false);
     setPublishOverride(false);
@@ -398,6 +400,7 @@ export function BlogPostEditor() {
       ai_fixed_at: null, // Clear AI fixed status on manual save
       word_count,
       reading_time,
+      show_on_homepage: formData.show_on_homepage,
     };
   };
 

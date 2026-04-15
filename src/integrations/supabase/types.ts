@@ -728,6 +728,7 @@ export type Database = {
           schema_json: string | null
           search_intent: string | null
           secondary_keywords: string[] | null
+          show_on_homepage: boolean
           slug: string
           source_evidence: Json | null
           stale_after: string | null
@@ -789,6 +790,7 @@ export type Database = {
           schema_json?: string | null
           search_intent?: string | null
           secondary_keywords?: string[] | null
+          show_on_homepage?: boolean
           slug: string
           source_evidence?: Json | null
           stale_after?: string | null
@@ -850,6 +852,7 @@ export type Database = {
           schema_json?: string | null
           search_intent?: string | null
           secondary_keywords?: string[] | null
+          show_on_homepage?: boolean
           slug?: string
           source_evidence?: Json | null
           stale_after?: string | null

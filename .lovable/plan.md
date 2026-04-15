@@ -1,61 +1,72 @@
 
 
-# Fix: "Mark as Baseline" Must Reset ALL Articles
+# Add "Check Our Latest Articles" Homepage Section
 
-## Problem
-The `baseline_mark_posts` SQL function, when called without specific post IDs, only updates posts where `last_bulk_scanned_at IS NULL`. This misses the ~1983 articles that were previously scanned but still have non-fixed statuses (`partially_fixed`, `no_action_taken`, `failed`, etc.). After baseline, these articles still qualify for smart scope and keep reappearing.
+## Files to Change
+1. **New migration SQL** — add `show_on_homepage` column to `blog_posts`
+2. **New file: `src/components/home/LatestArticles.tsx`** — the section component
+3. **`src/pages/Index.tsx`** — insert component between LatestGovtJobs and in-content ad
+4. **`src/components/admin/BlogPostEditor.tsx`** — add "Show on Homepage" toggle
 
-## Root Cause
-Line 48 of the migration: `WHERE last_bulk_scanned_at IS NULL` — too restrictive. Should baseline ALL posts regardless of current status.
-
-## Fix
-
-### 1. Database Migration — Update `baseline_mark_posts` function
-
-Replace the `ELSE` branch so that when no specific IDs are passed, it updates ALL blog posts (not just unscanned ones):
+## 1. Database Migration
 
 ```sql
-CREATE OR REPLACE FUNCTION public.baseline_mark_posts(
-  p_post_ids uuid[] DEFAULT NULL
-)
-RETURNS integer
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = 'public'
-AS $$
-DECLARE
-  v_count integer;
-BEGIN
-  IF p_post_ids IS NOT NULL THEN
-    UPDATE blog_posts
-    SET
-      last_bulk_scanned_at = now(),
-      last_bulk_fix_status = 'baseline',
-      remaining_auto_fixable_count = 0
-    WHERE id = ANY(p_post_ids);
-  ELSE
-    -- Baseline ALL posts that are not already 'fixed' or 'baseline'
-    UPDATE blog_posts
-    SET
-      last_bulk_scanned_at = now(),
-      last_bulk_fix_status = 'baseline',
-      remaining_auto_fixable_count = 0
-    WHERE last_bulk_fix_status IS DISTINCT FROM 'fixed'
-      AND last_bulk_fix_status IS DISTINCT FROM 'baseline';
-  END IF;
+ALTER TABLE public.blog_posts
+  ADD COLUMN IF NOT EXISTS show_on_homepage boolean NOT NULL DEFAULT false;
 
-  GET DIAGNOSTICS v_count = ROW_COUNT;
-  RETURN v_count;
-END;
-$$;
+CREATE INDEX IF NOT EXISTS idx_blog_posts_homepage
+  ON public.blog_posts (show_on_homepage, published_at DESC)
+  WHERE is_published = true AND show_on_homepage = true;
 ```
 
-This ensures that clicking "Mark as Baseline" (without selection) resets all `partially_fixed`, `no_action_taken`, `failed`, and `NULL`-status posts to `baseline`, so they stop appearing in smart scans.
+## 2. Thumbnail Optimization Strategy
 
-### 2. No frontend code changes needed
+Cover images are stored in Supabase Storage (`blog-assets` bucket). Supabase Storage supports server-side image transformations via URL parameters.
 
-The `isEligibleForSmartScope` logic (Rule 5) already correctly handles `baseline` status — it excludes posts unless their content has changed since the baseline timestamp. Once the DB function properly marks all posts, the smart scan will correctly skip them.
+A helper function will:
+- Detect Supabase Storage URLs (containing `/storage/v1/object/public/`)
+- Append `?width=256&height=160&resize=cover&quality=75` to serve a ~5-10KB optimized thumbnail instead of the full-size image
+- For any non-Storage URL, pass through as-is (CSS `object-cover` handles cropping)
 
-### AdSense Safety
-No UI changes. No layout changes. Database-only fix.
+Thumbnail CSS dimensions: `w-24 h-16 sm:w-32 sm:h-20` with explicit `width`/`height` attributes for CLS safety.
+
+All thumbnails use `loading="lazy"` since this section is below the fold (after Latest Govt Jobs).
+
+## 3. LatestArticles Component
+
+**Query logic:**
+- Primary: `show_on_homepage = true AND is_published = true`, limit 5, ordered by `published_at DESC`
+- Fallback (if zero results): `is_published = true`, limit 5, ordered by `published_at DESC`
+- Fields: `id, title, slug, excerpt, cover_image_url, featured_image_alt, category, reading_time, published_at`
+
+**Layout:**
+- Outer container: `rounded-2xl border border-slate-200 bg-white shadow` with tri-color top accent (matching LatestGovtJobs style)
+- Header: "Check Our Latest Articles" + subtitle + "View All →" linking to `/blog`
+- Each row: horizontal card with optimized thumbnail (left), title + excerpt + category chip + reading time (center), orange "Read Article →" CTA (right)
+- Entire row is a `<Link to={/blog/${slug}}>` — fully clickable
+- Grid: single column, `gap-3`
+- Skeleton loading: 3 rows matching final height for CLS safety
+
+## 4. Index.tsx Insertion
+
+```
+<LatestGovtJobs />
+<LatestArticles />              ← NEW
+<AdPlaceholder variant="in-content" />   ← UNCHANGED
+<GovtJobCategories />
+```
+
+No ad containers moved. Identical spacing preserved.
+
+## 5. Admin Toggle
+
+In `BlogPostEditor.tsx`:
+- Add `show_on_homepage` to `formData` state, `resetForm()`, `openEditDialog()`, `buildPostData()`, and `fetchPosts` select fields
+- Add a "Show on Homepage" `Switch` toggle in the editor form near publish controls
+
+## AdSense Safety
+- All existing ad slots remain in identical positions
+- Section `py-8` consistent with other sections
+- CLS-safe: skeleton loaders + explicit thumbnail dimensions
+- No layout grid changes in Index.tsx
 

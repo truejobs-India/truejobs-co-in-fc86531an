@@ -71,7 +71,7 @@ const CONTROLLED_GLAMOUR_BLOCK = [
 const AESTHETIC_BLOCK = [
   'Photorealistic photograph, shot on a professional DSLR camera.',
   'Realistic Indian context with natural lighting.',
-  'If people are shown: fair young Indian women and men, ordinary exam aspirants or college-going students aged 18–21.',
+  'If people are shown: young Indian women and men with natural, healthy Indian skin tones and realistic warmth, ordinary exam aspirants or college-going students aged 18–21.',
   'Clean natural face with no facial adornments — no bindi, no tilak, no teeka, no sindoor, no forehead marks, no nose pin, no nose stud, no nose ring.',
   'Simple but well-groomed appearance, polished without being glamorized, not ceremonial, not festive, not bridal, not devotional-poster style.',
   'Simple natural clothing appropriate for students — casual kurta, shirt, salwar-kameez, or jeans.',

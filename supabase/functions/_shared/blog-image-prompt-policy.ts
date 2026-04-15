@@ -19,7 +19,7 @@ MANDATORY IMAGE RULES (always enforced, cannot be overridden):
 7. If any text is required, it MUST be in English only.
 8. Strongly prefer images with NO visible text at all unless text is truly necessary.
 9. Never use Hindi fonts, Devanagari, or any Indic script in any form.
-10. Where human subjects are appropriate, depict young Indian men and young Indian women with youthful appearance, very fair complexion, beautiful and handsome features, polished, aspirational, premium look. Use realistic facial detail, realistic skin texture, realistic clothing, realistic posture, and realistic environments. Do NOT use simplified faces, cartoon faces, flat facial features, or low-detail human rendering.
+10. Where human subjects are appropriate, depict young Indian men and young Indian women with youthful appearance, natural, healthy Indian skin tones with realistic warmth and subtle color variation, attractive and well-groomed features, clean and professional appearance. Use realistic facial detail, realistic skin texture, realistic clothing, realistic posture, and realistic environments. Do NOT use simplified faces, cartoon faces, flat facial features, or low-detail human rendering.
 11. The image must be highly relevant to the specific article topic and context provided.
 12. Avoid generic stock-style scenes that do not match the article context.
 13. Do NOT include any text overlays, watermarks, official government seals, emblems, logos, or misleading official symbols.

@@ -133,12 +133,37 @@ const FLUX_USER_OVERRIDE_KEYWORDS = [
 ];
 
 /**
+ * FLUX.1-Kontext is more sensitive than other providers to appearance-focused wording
+ * in the shared mandatory rules (especially the "very fair complexion / beautiful and
+ * handsome features / premium look" phrasing). Sanitize those phrases ONLY for FLUX
+ * while leaving the shared policy untouched for other models.
+ */
+const FLUX_SENSITIVE_APPEARANCE_REPLACEMENTS: Array<[RegExp, string]> = [
+  [
+    /depict young Indian men and young Indian women with youthful appearance, very fair complexion, beautiful and handsome features, polished, aspirational, premium look\./i,
+    'depict young Indian adults with a natural, healthy, realistic appearance appropriate to the article context.',
+  ],
+  [/\bvery fair complexion\b/gi, 'natural skin tone'],
+  [/\bbeautiful and handsome features\b/gi, 'natural-looking features'],
+  [/\bpolished,\s*aspirational,\s*premium look\b/gi, 'clean, credible, professional look'],
+];
+
+function sanitizePromptForFlux(prompt: string): string {
+  let sanitized = prompt;
+  for (const [pattern, replacement] of FLUX_SENSITIVE_APPEARANCE_REPLACEMENTS) {
+    sanitized = sanitized.replace(pattern, replacement);
+  }
+  return sanitized;
+}
+
+/**
  * Apply the FLUX-only strict realism layer to a prompt.
  *
  * This function is called ONLY when the selected model is FLUX.
- * It appends positive realism directives and negative constraints,
- * but respects explicit user intent — if the user's custom prompt
- * contains keywords like "traditional", "bridal", "bindi", etc.,
+ * It first sanitizes appearance-focused phrases that can trigger Azure's
+ * content blocklists, then appends positive realism directives and negative
+ * constraints. It still respects explicit user intent — if the user's custom
+ * prompt contains keywords like "traditional", "bridal", "bindi", etc.,
  * the negative constraints for those elements are softened.
  *
  * @param prompt     The fully-built image prompt (from buildBlogCoverPrompt or buildBlogInlinePrompt)
@@ -149,8 +174,8 @@ export function applyFluxRealismLayer(
   prompt: string,
   userPrompt?: string,
 ): string {
-  // Always append positive realism directives
-  let result = prompt + '\n' + FLUX_REALISM_POSITIVE;
+  // First neutralize FLUX-sensitive appearance phrases from the shared policy
+  let result = sanitizePromptForFlux(prompt) + '\n' + FLUX_REALISM_POSITIVE;
 
   // Check if user explicitly requested cultural/styling elements
   const lowerUser = (userPrompt || '').toLowerCase();

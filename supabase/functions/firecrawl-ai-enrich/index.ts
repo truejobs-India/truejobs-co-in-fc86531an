@@ -800,7 +800,7 @@ async function handleAiCoverPrompt(draftId: string, client: any, apiKey: string,
     `Generate an image prompt for a cover image of an Indian government job notification page.
 Rules:
 - Realistic, professional, editorial 16:9 style
-- Feature fair young Indian men and women in educational/professional settings
+- Feature young Indian men and women with natural, healthy Indian skin tones in educational/professional settings
 - Include context like government buildings, offices, or exam halls if relevant
 - No text overlays in the image
 - Safe for all audiences`,

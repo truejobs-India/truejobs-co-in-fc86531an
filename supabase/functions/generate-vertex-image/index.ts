@@ -666,8 +666,8 @@ function buildNovaCanvasPrompt(body: any): { text: string; negativeText: string 
     excerptSnippet,
     'Style: True-to-life, cinematic, magazine-quality photo with realistic lighting,',
     'textures, depth of field, natural color grading. Warm professional colors suitable',
-    'for Indian government jobs portal. Young Indian men and women with youthful, fair,',
-    'polished, aspirational, premium appearance. Realistic facial detail, skin texture,',
+    'for Indian government jobs portal. Young Indian men and women with natural, healthy',
+    'Indian skin tones, realistic warmth, attractive and well-groomed appearance. Realistic facial detail, skin texture,',
     'clothing, posture in believable real environments. Highly relevant to the specific',
     'article topic. No text overlays or watermarks. English only if any text needed.',
   ].filter(Boolean).join(' ');
@@ -1051,19 +1051,30 @@ async function generateViaAzureMaiImage(
   };
 
   const purpose = body.purpose || 'cover';
+  const isManualTest = purpose === 'manual-test';
   const slotNumber = body.slotNumber;
   const requestedRatio = body.aspectRatio || '16:9';
   const dims = maiSizeFromAspectRatio(requestedRatio);
 
+  // ── Apply MAI-Image-2 prompt guard (ethnicity + skin-tone reinforcement) ──
+  const { applyMaiImagePromptGuard } = await import('../_shared/mai-image-prompt-policy.ts');
+  const maiPrompt = applyMaiImagePromptGuard(imagePrompt);
+
+  if (isManualTest) {
+    console.log(`[azure-mai-image] manual-test using MAI-guarded prompt (${maiPrompt.length} chars)`);
+  }
+
   console.log(`[azure-mai-image] slug=${slug} purpose=${purpose} ${dims.width}x${dims.height}`);
 
   try {
-    const result = await callAzureMaiImage(imagePrompt, { width: dims.width, height: dims.height });
+    const result = await callAzureMaiImage(maiPrompt, { width: dims.width, height: dims.height });
 
     const isInline = purpose === 'inline';
     const pathPrefix = isInline ? 'inline' : 'covers';
     const slotSuffix = isInline && slotNumber ? `-slot${slotNumber}` : '';
-    const filePath = `${pathPrefix}/${slug}-mai-image-2${slotSuffix}.png`;
+    // Versioned path to prevent stale-image caching
+    const ts = Date.now();
+    const filePath = `${pathPrefix}/${slug}-mai-image-2${slotSuffix}-${ts}.png`;
 
     const uploadResult = await uploadGeneratedImage({
       adminClient,
@@ -1085,16 +1096,17 @@ async function generateViaAzureMaiImage(
           path: filePath,
           altText: body.title || body.topic || `Blog image for ${slug}`,
           mimeType: result.mimeType,
-           width: dims.width,
-           height: dims.height,
+          width: dims.width,
+          height: dims.height,
         }],
-        promptUsed: imagePrompt,
+        promptUsed: maiPrompt,
       },
       model: meta.resolvedRuntimeModelId,
       action: 'generate-image',
       purpose,
       slotNumber,
       elapsedMs: elapsed,
+      revisedPrompt: result.revisedPrompt || null,
     }, { strict: true, ...meta });
 
     return new Response(JSON.stringify(successBody), {

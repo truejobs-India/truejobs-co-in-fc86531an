@@ -278,7 +278,7 @@ Deno.serve(async (req) => {
       sample_paper: 'Sample Paper', book: 'Study Book', previous_year_paper: 'Previous Year Paper', guide: 'Study Guide',
     };
     const typeLabel = typeLabels[resourceType] || 'Educational Resource';
-    const imagePrompt = `Create a realistic, high-quality cover image for an Indian government exam ${typeLabel} titled "${title}".${category ? ` Category: ${category}.` : ''}${subject ? ` Subject: ${subject}.` : ''} The image should show fair-skinned young Indian men and women (age 20-25) in a study/exam preparation setting — studying together at a desk, looking focused and confident. Include relevant visual elements like books, notebooks, pens, and a subtle Indian educational context. Professional photography style, warm natural lighting, clean composition. Landscape format 1200x630 pixels. Do NOT include any text overlays, official logos, emblems, or seals.`;
+    const imagePrompt = `Create a realistic, high-quality cover image for an Indian government exam ${typeLabel} titled "${title}".${category ? ` Category: ${category}.` : ''}${subject ? ` Subject: ${subject}.` : ''} The image should show young Indian men and women (age 20-25) with natural, healthy Indian skin tones and realistic warmth in a study/exam preparation setting — studying together at a desk, looking focused and confident. Include relevant visual elements like books, notebooks, pens, and a subtle Indian educational context. Professional photography style, warm natural lighting, clean composition. Landscape format 1200x630 pixels. Do NOT include any text overlays, official logos, emblems, or seals.`;
 
     // ── Call provider (strict routing, no fallback) ──
     console.log(`[${requestId}] Provider call start: ${route.provider}`);

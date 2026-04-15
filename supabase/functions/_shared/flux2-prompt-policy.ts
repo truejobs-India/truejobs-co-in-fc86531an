@@ -71,7 +71,7 @@ const CONTROLLED_GLAMOUR_BLOCK = [
 const AESTHETIC_BLOCK = [
   'Photorealistic photograph, shot on a professional DSLR camera.',
   'Realistic Indian context with natural lighting.',
-  'If people are shown: fair young Indian women and men, ordinary exam aspirants or college-going students aged 18–21.',
+  'If people are shown: young Indian women and men with natural, healthy Indian skin tones and realistic warmth, ordinary exam aspirants or college-going students aged 18–21.',
   'Clean natural face with no facial adornments — no bindi, no tilak, no teeka, no sindoor, no forehead marks, no nose pin, no nose stud, no nose ring.',
   'Simple but well-groomed appearance, polished without being glamorized, not ceremonial, not festive, not bridal, not devotional-poster style.',
   'Simple natural clothing appropriate for students — casual kurta, shirt, salwar-kameez, or jeans.',
@@ -112,72 +112,72 @@ interface SceneMapping {
 const SCENE_MAPPINGS: SceneMapping[] = [
   {
     keywords: ['upsc', 'ias', 'ips', 'civil services', 'upsc preparation'],
-    scene: 'A focused fair young Indian student aged 18–21 with a clean unadorned face sitting at a wooden study desk in a quiet room, surrounded by stacked books and handwritten notes, reading intently with a desk lamp casting warm light',
+    scene: 'A focused young Indian student aged 18–21 with natural brown skin tone and a clean unadorned face sitting at a wooden study desk in a quiet room, surrounded by stacked books and handwritten notes, reading intently with a desk lamp casting warm light',
   },
   {
     keywords: ['ssc', 'ssc cgl', 'ssc chsl', 'ssc mts', 'staff selection'],
-    scene: 'A group of fair young Indian aspirants aged 18–21 with clean unadorned faces sitting in a coaching center classroom, writing practice papers at their desks with notebooks and pens, natural daylight from windows',
+    scene: 'A group of young Indian aspirants aged 18–21 with natural brown skin tones and clean unadorned faces sitting in a coaching center classroom, writing practice papers at their desks with notebooks and pens, natural daylight from windows',
   },
   {
     keywords: ['admit card', 'hall ticket', 'exam hall ticket'],
-    scene: 'A fair young Indian student aged 18–21 with a clean unadorned face standing at the entrance of an exam center building, holding a folder confidently, with other students walking in the background on a clear morning',
+    scene: 'A young Indian student aged 18–21 with natural brown skin tone and a clean unadorned face standing at the entrance of an exam center building, holding a folder confidently, with other students walking in the background on a clear morning',
   },
   {
     keywords: ['railway', 'rrb', 'railway recruitment', 'indian railways'],
-    scene: 'Fair young Indian candidates aged 18–21 with clean unadorned faces walking near a railway station platform with preparation materials in hand, a train visible in the soft background, morning sunlight',
+    scene: 'Young Indian candidates aged 18–21 with natural brown skin tones and clean unadorned faces walking near a railway station platform with preparation materials in hand, a train visible in the soft background, morning sunlight',
   },
   {
     keywords: ['result', 'exam result', 'merit list', 'scorecard', 'marksheet'],
-    scene: 'A happy fair young Indian student aged 18–21 with a clean unadorned face looking at a laptop screen with a relieved smile, sitting in a home study area with books nearby, natural window light',
+    scene: 'A happy young Indian student aged 18–21 with natural brown skin tone and a clean unadorned face looking at a laptop screen with a relieved smile, sitting in a home study area with books nearby, natural window light',
   },
   {
     keywords: ['answer key', 'solution key', 'answer sheet'],
-    scene: 'A studious fair young Indian student aged 18–21 with a clean unadorned face comparing notes at a library table, with open notebooks and a pen in hand, bookshelves visible in the soft background',
+    scene: 'A studious young Indian student aged 18–21 with natural brown skin tone and a clean unadorned face comparing notes at a library table, with open notebooks and a pen in hand, bookshelves visible in the soft background',
   },
   {
     keywords: ['college', 'admission', 'university', 'enrollment', 'counselling'],
-    scene: 'Fair young Indian students aged 18–21 with clean unadorned faces walking through a college campus with trees and a building facade, carrying backpacks, bright daylight and casual conversation',
+    scene: 'Young Indian students aged 18–21 with natural brown skin tones and clean unadorned faces walking through a college campus with trees and a building facade, carrying backpacks, bright daylight and casual conversation',
   },
   {
     keywords: ['scholarship', 'fellowship', 'financial aid'],
-    scene: 'A hopeful fair young Indian student aged 18–21 with a clean unadorned face sitting in a campus garden reading a book, with a backpack beside them, dappled sunlight through trees',
+    scene: 'A hopeful young Indian student aged 18–21 with natural brown skin tone and a clean unadorned face sitting in a campus garden reading a book, with a backpack beside them, dappled sunlight through trees',
   },
   {
     keywords: ['bank', 'ibps', 'sbi', 'rbi', 'banking exam'],
-    scene: 'Fair young Indian aspirants aged 18–21 with clean unadorned faces studying together at a library table with financial textbooks and notebooks, focused expressions, warm indoor lighting',
+    scene: 'Young Indian aspirants aged 18–21 with natural brown skin tones and clean unadorned faces studying together at a library table with financial textbooks and notebooks, focused expressions, warm indoor lighting',
   },
   {
     keywords: ['teaching', 'tet', 'ctet', 'teacher recruitment'],
-    scene: 'A fair young Indian teacher-aspirant aged 18–21 with a clean unadorned face standing near a classroom whiteboard with books in hand, empty desks visible, soft morning light from windows',
+    scene: 'A young Indian teacher-aspirant aged 18–21 with natural brown skin tone and a clean unadorned face standing near a classroom whiteboard with books in hand, empty desks visible, soft morning light from windows',
   },
   {
     keywords: ['defence', 'army', 'navy', 'air force', 'nda', 'cds', 'military'],
-    scene: 'Fair young Indian aspirants aged 18–21 with clean unadorned faces jogging on a sports ground in athletic wear, early morning mist, a running track and open field in the background',
+    scene: 'Young Indian aspirants aged 18–21 with natural brown skin tones and clean unadorned faces jogging on a sports ground in athletic wear, early morning mist, a running track and open field in the background',
   },
   {
     keywords: ['police', 'constable', 'si recruitment', 'police recruitment'],
-    scene: 'Fair young Indian candidates aged 18–21 with clean unadorned faces doing physical exercises on a ground, simple athletic clothing, morning light, an open field with a few trees',
+    scene: 'Young Indian candidates aged 18–21 with natural brown skin tones and clean unadorned faces doing physical exercises on a ground, simple athletic clothing, morning light, an open field with a few trees',
   },
   {
     keywords: ['state psc', 'bpsc', 'uppsc', 'mppsc', 'rpsc', 'public service commission'],
-    scene: 'A determined fair young Indian student aged 18–21 with a clean unadorned face studying at a simple desk in a modest room, a table lamp illuminating open books and notes, a wall clock in the background',
+    scene: 'A determined young Indian student aged 18–21 with natural brown skin tone and a clean unadorned face studying at a simple desk in a modest room, a table lamp illuminating open books and notes, a wall clock in the background',
   },
   {
     keywords: ['form', 'application', 'apply online', 'registration', 'application mistake'],
-    scene: 'A fair young Indian student aged 18–21 with a clean unadorned face sitting at a desk using a laptop carefully, one hand on the keyboard and the other holding a pen, a notebook open beside the laptop',
+    scene: 'A young Indian student aged 18–21 with natural brown skin tone and a clean unadorned face sitting at a desk using a laptop carefully, one hand on the keyboard and the other holding a pen, a notebook open beside the laptop',
   },
   {
     keywords: ['syllabus', 'exam pattern', 'preparation tips', 'study plan'],
-    scene: 'A fair young Indian student aged 18–21 with a clean unadorned face organizing study notes and books on a clean desk, highlighters and sticky notes visible, a calm study environment with soft natural light',
+    scene: 'A young Indian student aged 18–21 with natural brown skin tone and a clean unadorned face organizing study notes and books on a clean desk, highlighters and sticky notes visible, a calm study environment with soft natural light',
   },
   {
     keywords: ['notification', 'vacancy', 'recruitment', 'government job', 'sarkari'],
-    scene: 'A fair young Indian job aspirant aged 18–21 with a clean unadorned face reading a notice board at a government office building, other aspirants standing nearby, afternoon daylight on the building facade',
+    scene: 'A young Indian job aspirant aged 18–21 with natural brown skin tone and a clean unadorned face reading a notice board at a government office building, other aspirants standing nearby, afternoon daylight on the building facade',
   },
 ];
 
 const FALLBACK_SCENE =
-  'A fair young Indian student aged 18–21 with a clean unadorned face studying at a clean wooden desk with open books and notes, in a bright naturally-lit room with bookshelves in the soft background, focused and determined expression';
+  'A young Indian student aged 18–21 with natural brown skin tone and a clean unadorned face studying at a clean wooden desk with open books and notes, in a bright naturally-lit room with bookshelves in the soft background, focused and determined expression';
 
 // ─── Helpers ────────────────────────────────────────────────────
 

@@ -89,12 +89,11 @@ export function buildBlogInlinePrompt(body: {
 // ═══════════════════════════════════════════════════════════════
 //
 // WHY THIS EXISTS:
-//   FLUX.1-Kontext-pro interprets the shared BLOG_IMAGE_MANDATORY_RULES
-//   (especially rule 10: "very fair complexion, beautiful and handsome
-//   features, polished, aspirational, premium look") too literally,
-//   producing glamorized, stock-photo-style images with stereotypical
-//   beauty markers (bindi, heavy makeup, gold jewellery, fashion-model
-//   look). This layer overrides those tendencies for FLUX only.
+//   FLUX.1-Kontext-pro interprets appearance-related wording too
+//   literally, producing glamorized, stock-photo-style images with
+//   stereotypical beauty markers (bindi, heavy makeup, gold jewellery,
+//   fashion-model look). This layer overrides those tendencies for
+//   FLUX only.
 //
 // HOW TO TUNE:
 //   - Edit FLUX_REALISM_POSITIVE / FLUX_REALISM_NEGATIVE below.
@@ -133,13 +132,6 @@ const FLUX_USER_OVERRIDE_KEYWORDS = [
  * shared policy untouched for other models.
  */
 const FLUX_SENSITIVE_APPEARANCE_REPLACEMENTS: Array<[RegExp, string]> = [
-  [
-    /depict young Indian men and young Indian women with youthful appearance, very fair complexion, beautiful and handsome features, polished, aspirational, premium look\./i,
-    'depict young Indian adults with a natural, healthy, realistic appearance appropriate to the article context.',
-  ],
-  [/\bvery fair complexion\b/gi, 'natural skin tone'],
-  [/\bbeautiful and handsome features\b/gi, 'natural-looking features'],
-  [/\bpolished,\s*aspirational,\s*premium look\b/gi, 'clean, credible, professional look'],
   [/Absolutely NO Hindi text, Hinglish text, Devanagari script, or any Indic script anywhere in the image\./gi, 'Do not include visible text in the image.'],
   [/If any text is required, it MUST be in English only\./gi, 'Avoid readable text whenever possible.'],
   [/Strongly prefer images with NO visible text at all unless text is truly necessary\./gi, 'Prefer no readable text.'],

@@ -1,7 +1,7 @@
 /**
  * ChatGPT Agent Manager — main admin panel for Excel-based content drafts.
  */
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -15,7 +15,7 @@ import { Progress } from '@/components/ui/progress';
 import { supabase } from '@/integrations/supabase/client';
 import {
   Upload, Search, Sparkles, Loader2, Copy, ChevronDown,
-  Send, AlertTriangle, Link2Off, Link2, RefreshCw, Wand2,
+  Send, AlertTriangle, Link2Off, Link2, RefreshCw, Wand2, StopCircle, CheckCircle2,
 } from 'lucide-react';
 import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSelector';
 import { useAdminMessages } from '@/hooks/useAdminMessages';
@@ -69,6 +69,21 @@ export function ChatGptAgentManager() {
   // Pipeline state
   const [pipelineProgress, setPipelineProgress] = useState<{ draftIndex: number; totalDrafts: number; currentStep: string; stepIndex: number; draftId: string } | null>(null);
   const [draftRuns, setDraftRuns] = useState<Record<string, PipelineRun[]>>({});
+  const stopRequestedRef = useRef(false);
+  const [stopping, setStopping] = useState(false);
+
+  // A draft is "AI Fixed" when latest validate run is ok and no step has latest status 'error'.
+  const isAiFixed = useCallback((runs?: PipelineRun[]): boolean => {
+    if (!runs || runs.length === 0) return false;
+    const latest: Record<string, PipelineRun> = {};
+    for (const r of runs) {
+      if (!latest[r.step] || new Date(r.created_at) > new Date(latest[r.step].created_at)) {
+        latest[r.step] = r;
+      }
+    }
+    if (!latest['validate'] || latest['validate'].status !== 'ok') return false;
+    return !Object.values(latest).some(r => r.status === 'error');
+  }, []);
 
   // Section counts
   const [sectionCounts, setSectionCounts] = useState<Record<string, number>>({});

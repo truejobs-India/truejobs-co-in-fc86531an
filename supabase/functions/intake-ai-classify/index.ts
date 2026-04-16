@@ -23,12 +23,12 @@ const GATEWAY_MODEL_MAP: Record<string, string> = {
   'lovable-gemini': 'google/gemini-3-flash-preview',
 };
 
-const VERTEX_MODEL_MAP: Record<string, { vertexModel: string; timeoutMs: number }> = {
-  'vertex-flash': { vertexModel: 'gemini-2.5-flash', timeoutMs: 90_000 },
-  'vertex-pro': { vertexModel: 'gemini-2.5-pro', timeoutMs: 120_000 },
-  'vertex-3.1-pro': { vertexModel: 'gemini-3.1-pro-preview', timeoutMs: 120_000 },
-  'vertex-3-flash': { vertexModel: 'gemini-3-flash-preview', timeoutMs: 90_000 },
-  'vertex-3.1-flash-lite': { vertexModel: 'gemini-3.1-flash-lite-preview', timeoutMs: 60_000 },
+const GEMINI_DIRECT_MODEL_MAP: Record<string, { geminiModel: string; timeoutMs: number }> = {
+  'vertex-flash': { geminiModel: 'gemini-2.5-flash', timeoutMs: 90_000 },
+  'vertex-pro': { geminiModel: 'gemini-2.5-pro', timeoutMs: 120_000 },
+  'vertex-3.1-pro': { geminiModel: 'gemini-3.1-pro-preview', timeoutMs: 120_000 },
+  'vertex-3-flash': { geminiModel: 'gemini-3-flash-preview', timeoutMs: 90_000 },
+  'vertex-3.1-flash-lite': { geminiModel: 'gemini-3.1-flash-lite-preview', timeoutMs: 60_000 },
 };
 
 const BEDROCK_MODELS = new Set(['nova-pro', 'nova-premier', 'nemotron-120b', 'mistral']);
@@ -190,15 +190,15 @@ async function callAI(
 ): Promise<any> {
   const modelKey = aiModel || '';
 
-  const vertexDef = VERTEX_MODEL_MAP[modelKey];
-  if (vertexDef) {
-    console.log(`[intake-ai-classify] routing to Vertex AI: ${vertexDef.vertexModel}`);
+  const geminiDef = GEMINI_DIRECT_MODEL_MAP[modelKey];
+  if (geminiDef) {
+    console.log(`[intake-ai-classify] routing to Gemini Direct API: ${geminiDef.geminiModel}`);
     const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
     const fullPrompt = `${systemPrompt}\n\n${userPrompt}\n\nReturn valid JSON matching this schema:\n${JSON.stringify(toolDef.parameters, null, 2)}`;
-    const text = await callGeminiDirect(vertexDef.vertexModel, fullPrompt, vertexDef.timeoutMs);
+    const text = await callGeminiDirect(geminiDef.geminiModel, fullPrompt, geminiDef.timeoutMs);
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (jsonMatch) return JSON.parse(jsonMatch[0]);
-    throw new Error('Vertex AI did not return valid JSON');
+    throw new Error('Gemini Direct API did not return valid JSON');
   }
 
   if (BEDROCK_MODELS.has(modelKey)) {

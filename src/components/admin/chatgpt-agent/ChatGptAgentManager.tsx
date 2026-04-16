@@ -11,6 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Progress } from '@/components/ui/progress';
 import { supabase } from '@/integrations/supabase/client';
 import {
   Upload, Search, Sparkles, Loader2, Copy, ChevronDown,
@@ -61,6 +62,8 @@ export function ChatGptAgentManager() {
 
   // AI processing
   const [aiProcessing, setAiProcessing] = useState(false);
+  const [aiProgress, setAiProgress] = useState<{ action: string; current: number; total: number; batchIndex: number; totalBatches: number } | null>(null);
+  const [processingChunkIds, setProcessingChunkIds] = useState<Set<string>>(new Set());
 
   // Section counts
   const [sectionCounts, setSectionCounts] = useState<Record<string, number>>({});
@@ -239,8 +242,12 @@ export function ChatGptAgentManager() {
       const CHUNK = 5;
       const allResults: any[] = [];
       let invokeError: string | null = null;
+      const totalBatches = Math.ceil(ids.length / CHUNK);
       for (let i = 0; i < ids.length; i += CHUNK) {
         const chunk = ids.slice(i, i + CHUNK);
+        const batchIndex = Math.floor(i / CHUNK) + 1;
+        setProcessingChunkIds(new Set(chunk));
+        setAiProgress({ action, current: i, total: ids.length, batchIndex, totalBatches });
         const res = await supabase.functions.invoke('intake-ai-classify', {
           body: { draft_ids: chunk, aiModel, action },
           headers: { Authorization: `Bearer ${session?.access_token}` },
@@ -248,6 +255,7 @@ export function ChatGptAgentManager() {
         if (res.error) { invokeError = res.error.message; break; }
         if (res.data?.error) { invokeError = res.data.error; break; }
         allResults.push(...(res.data?.results || []));
+        setAiProgress({ action, current: i + chunk.length, total: ids.length, batchIndex, totalBatches });
       }
       if (invokeError) {
         addMessage('error', `AI ${action} failed`, invokeError);
@@ -265,6 +273,8 @@ export function ChatGptAgentManager() {
       addMessage('error', `AI ${action} error`, err?.message || 'Unknown error');
     }
     setAiProcessing(false);
+    setAiProgress(null);
+    setProcessingChunkIds(new Set());
     setSelected(new Set());
     fetchDrafts();
   };
@@ -358,6 +368,27 @@ export function ChatGptAgentManager() {
             onToggleExpand={toggleExpand}
           />
 
+          {/* AI Processing Banner */}
+          {aiProcessing && aiProgress && (
+            <div className="mb-4 p-3 rounded-md border border-l-4 border-l-blue-500 bg-blue-50 dark:bg-blue-950/30">
+              <div className="flex items-center gap-2.5 mb-2">
+                <Loader2 className="h-4 w-4 animate-spin text-blue-600 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground">
+                    AI {aiProgress.action} in progress
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Batch {aiProgress.batchIndex} of {aiProgress.totalBatches} · Processing {aiProgress.current} of {aiProgress.total} drafts · Model: {aiModel}
+                  </p>
+                </div>
+                <span className="text-xs font-medium text-blue-600 shrink-0">
+                  {Math.round((aiProgress.current / aiProgress.total) * 100)}%
+                </span>
+              </div>
+              <Progress value={(aiProgress.current / aiProgress.total) * 100} className="h-1.5" />
+            </div>
+          )}
+
           {/* Section Tabs */}
           <Tabs value={activeSection} onValueChange={v => { setActiveSection(v as SectionBucket); setSelected(new Set()); setLinkFilter('all'); }}>
             <TabsList className="flex flex-wrap !h-auto gap-1 p-2 mb-3">
@@ -428,7 +459,15 @@ export function ChatGptAgentManager() {
                                   <Checkbox checked={selected.has(d.id)} onCheckedChange={() => toggleSelect(d.id)} />
                                 </TableCell>
                                 <TableCell>
-                                  <span className="text-sm font-medium line-clamp-2">{d.normalized_title || d.raw_title}</span>
+                                  <div className="flex items-start gap-1.5">
+                                    <span className="text-sm font-medium line-clamp-2">{d.normalized_title || d.raw_title}</span>
+                                    {processingChunkIds.has(d.id) && (
+                                      <Badge variant="outline" className="text-[10px] gap-1 border-blue-500 text-blue-600 shrink-0">
+                                        <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                                        Processing…
+                                      </Badge>
+                                    )}
+                                  </div>
                                 </TableCell>
                                 <TableCell className="text-xs text-muted-foreground">{d.organisation_name || '—'}</TableCell>
                                 <TableCell>

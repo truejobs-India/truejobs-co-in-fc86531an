@@ -15,7 +15,7 @@ import { Progress } from '@/components/ui/progress';
 import { supabase } from '@/integrations/supabase/client';
 import {
   Upload, Search, Sparkles, Loader2, Copy, ChevronDown,
-  Send, AlertTriangle, Link2Off, Link2, RefreshCw,
+  Send, AlertTriangle, Link2Off, Link2, RefreshCw, Wand2,
 } from 'lucide-react';
 import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSelector';
 import { useAdminMessages } from '@/hooks/useAdminMessages';
@@ -23,6 +23,7 @@ import { AdminMessageLog } from '@/components/admin/AdminMessageLog';
 import { parseExcelWorkbook, SECTION_BUCKET_LABELS, type ParseResult, type ParsedRow, type SectionBucket } from './chatgptAgentExcelParser';
 import { ChatGptAgentDraftEditor } from './ChatGptAgentDraftEditor';
 import { ChatGptAgentDuplicateFinder } from './ChatGptAgentDuplicateFinder';
+import { PipelineStepBadges, type PipelineRun } from './PipelineStepBadges';
 
 const ALL_SECTIONS: SectionBucket[] = [
   'job_postings', 'admit_cards', 'results', 'answer_keys',

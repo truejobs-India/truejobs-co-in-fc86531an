@@ -860,6 +860,13 @@ export function ChatGptAgentManager() {
         />
       )}
 
+      {/* Per-row Preview */}
+      <IntakeDraftPreviewDialog
+        draftId={previewDraftId}
+        open={!!previewDraftId}
+        onClose={() => setPreviewDraftId(null)}
+      />
+
       {/* Duplicate Finder */}
       <ChatGptAgentDuplicateFinder
         open={dedupOpen}

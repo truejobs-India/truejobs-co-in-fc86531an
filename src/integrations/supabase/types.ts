@@ -2809,6 +2809,8 @@ export type Database = {
           faq_json: Json | null
           how_to_apply_text: string | null
           id: string
+          import_row_number: number | null
+          import_source_sheet: string | null
           important_dates_json: Json | null
           important_links_json: Json | null
           job_location: string | null
@@ -2847,9 +2849,11 @@ export type Database = {
           salary_text: string | null
           scrape_run_id: string | null
           secondary_tags: Json | null
+          section_bucket: string | null
           selection_process_text: string | null
           seo_title: string | null
           slug: string | null
+          source_channel: string | null
           source_domain: string | null
           source_name: string | null
           source_type: string
@@ -2886,6 +2890,8 @@ export type Database = {
           faq_json?: Json | null
           how_to_apply_text?: string | null
           id?: string
+          import_row_number?: number | null
+          import_source_sheet?: string | null
           important_dates_json?: Json | null
           important_links_json?: Json | null
           job_location?: string | null
@@ -2924,9 +2930,11 @@ export type Database = {
           salary_text?: string | null
           scrape_run_id?: string | null
           secondary_tags?: Json | null
+          section_bucket?: string | null
           selection_process_text?: string | null
           seo_title?: string | null
           slug?: string | null
+          source_channel?: string | null
           source_domain?: string | null
           source_name?: string | null
           source_type?: string
@@ -2963,6 +2971,8 @@ export type Database = {
           faq_json?: Json | null
           how_to_apply_text?: string | null
           id?: string
+          import_row_number?: number | null
+          import_source_sheet?: string | null
           important_dates_json?: Json | null
           important_links_json?: Json | null
           job_location?: string | null
@@ -3001,9 +3011,11 @@ export type Database = {
           salary_text?: string | null
           scrape_run_id?: string | null
           secondary_tags?: Json | null
+          section_bucket?: string | null
           selection_process_text?: string | null
           seo_title?: string | null
           slug?: string | null
+          source_channel?: string | null
           source_domain?: string | null
           source_name?: string | null
           source_type?: string

@@ -106,8 +106,32 @@ export function ChatGptAgentManager() {
     setSectionCounts(counts);
   }, []);
 
+  const fetchRunsForDrafts = useCallback(async (ids: string[]) => {
+    if (ids.length === 0) return;
+    try {
+      const { data } = await (supabase as any)
+        .from('intake_pipeline_runs')
+        .select('draft_id, step, status, reason, created_at')
+        .in('draft_id', ids)
+        .order('created_at', { ascending: false })
+        .limit(ids.length * 16);
+      const map: Record<string, PipelineRun[]> = {};
+      (data || []).forEach((r: any) => {
+        if (!map[r.draft_id]) map[r.draft_id] = [];
+        map[r.draft_id].push({ step: r.step, status: r.status, reason: r.reason, created_at: r.created_at });
+      });
+      setDraftRuns(prev => ({ ...prev, ...map }));
+    } catch (err) {
+      console.error('fetch runs error:', err);
+    }
+  }, []);
+
   useEffect(() => { fetchDrafts(); }, [fetchDrafts]);
   useEffect(() => { fetchCounts(); }, [fetchCounts]);
+  useEffect(() => {
+    const ids = drafts.map(d => d.id);
+    if (ids.length > 0) fetchRunsForDrafts(ids);
+  }, [drafts, fetchRunsForDrafts]);
 
   const filteredDrafts = useMemo(() => {
     if (linkFilter === 'all') return drafts;

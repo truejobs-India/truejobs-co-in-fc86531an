@@ -235,7 +235,8 @@ export function ChatGptAgentManager() {
     addMessage('info', `⏳ AI ${action} started`, `Processing ${ids.length} draft(s) with model ${aiModel}…`);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      const CHUNK = 20;
+      // Keep chunks small: each draft takes ~15-20s with DeepSeek; edge timeout is 150s.
+      const CHUNK = 5;
       const allResults: any[] = [];
       let invokeError: string | null = null;
       for (let i = 0; i < ids.length; i += CHUNK) {

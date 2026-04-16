@@ -404,12 +404,23 @@ export function ChatGptAgentManager() {
               allowedValues={[...ALLOWED_MODELS]}
             />
 
-            {/* AI Actions */}
+            {/* Primary: Run All Needed Fixes (sequential per-draft pipeline) */}
+            <Button
+              size="sm"
+              disabled={selected.size === 0 || aiProcessing}
+              onClick={() => runFullPipeline(Array.from(selected))}
+              className="gap-1"
+            >
+              {aiProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+              Run All Needed Fixes{selected.size > 0 ? ` (${selected.size})` : ''}
+            </Button>
+
+            {/* Advanced (manual) — legacy single-action dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm" disabled={selected.size === 0 || aiProcessing}>
                   {aiProcessing ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Sparkles className="h-4 w-4 mr-1" />}
-                  AI Actions <ChevronDown className="h-3 w-3 ml-1" />
+                  Advanced (manual) <ChevronDown className="h-3 w-3 ml-1" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent>
@@ -441,8 +452,29 @@ export function ChatGptAgentManager() {
             onToggleExpand={toggleExpand}
           />
 
-          {/* AI Processing Banner */}
-          {aiProcessing && aiProgress && (
+          {/* Pipeline Progress Banner (Run All Needed Fixes) */}
+          {aiProcessing && pipelineProgress && (
+            <div className="mb-4 p-3 rounded-md border border-l-4 border-l-primary bg-primary/5">
+              <div className="flex items-center gap-2.5 mb-2">
+                <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground">
+                    Pipeline · Draft {pipelineProgress.draftIndex} of {pipelineProgress.totalDrafts}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Step {pipelineProgress.stepIndex} of 8: <span className="font-mono">{pipelineProgress.currentStep}</span> · Model: {aiModel}
+                  </p>
+                </div>
+                <span className="text-xs font-medium text-primary shrink-0">
+                  {Math.round((pipelineProgress.draftIndex / pipelineProgress.totalDrafts) * 100)}%
+                </span>
+              </div>
+              <Progress value={(pipelineProgress.draftIndex / pipelineProgress.totalDrafts) * 100} className="h-1.5" />
+            </div>
+          )}
+
+          {/* AI Processing Banner (legacy single-action) */}
+          {aiProcessing && aiProgress && !pipelineProgress && (
             <div className="mb-4 p-3 rounded-md border border-l-4 border-l-blue-500 bg-blue-50 dark:bg-blue-950/30">
               <div className="flex items-center gap-2.5 mb-2">
                 <Loader2 className="h-4 w-4 animate-spin text-blue-600 shrink-0" />
@@ -539,6 +571,13 @@ export function ChatGptAgentManager() {
                                         Processing…
                                       </Badge>
                                     )}
+                                  </div>
+                                  <div className="mt-1">
+                                    <PipelineStepBadges
+                                      runs={draftRuns[d.id] || []}
+                                      currentStep={pipelineProgress?.draftId === d.id ? pipelineProgress.currentStep : null}
+                                      isProcessing={pipelineProgress?.draftId === d.id}
+                                    />
                                   </div>
                                 </TableCell>
                                 <TableCell className="text-xs text-muted-foreground">{d.organisation_name || '—'}</TableCell>

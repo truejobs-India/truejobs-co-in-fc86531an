@@ -46,6 +46,8 @@ export function ChatGptAgentManager() {
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [linkFilter, setLinkFilter] = useState<LinkFilter>('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 20;
   const [aiModel, setAiModel] = useState(() => getLastUsedModel('text', 'gemini-flash', [...ALLOWED_MODELS]));
 
   // Upload state
@@ -105,6 +107,14 @@ export function ChatGptAgentManager() {
       linkFilter === 'with_link' ? !!d.official_notification_link : !d.official_notification_link
     );
   }, [drafts, linkFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredDrafts.length / PAGE_SIZE));
+  const paginatedDrafts = useMemo(
+    () => filteredDrafts.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
+    [filteredDrafts, currentPage],
+  );
+
+  useEffect(() => { setCurrentPage(1); }, [linkFilter, activeSection, drafts.length]);
 
   // ── Upload Excel ──
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -405,7 +415,7 @@ export function ChatGptAgentManager() {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {filteredDrafts.map(d => {
+                          {paginatedDrafts.map(d => {
                             const sd = d.structured_data_json as any || {};
                             return (
                               <TableRow
@@ -476,6 +486,55 @@ export function ChatGptAgentManager() {
                         </TableBody>
                       </Table>
                     </ScrollArea>
+                  </div>
+                )}
+                {!loading && filteredDrafts.length > PAGE_SIZE && (
+                  <div className="flex items-center justify-between mt-3 px-1">
+                    <div className="text-xs text-muted-foreground">
+                      Showing {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, filteredDrafts.length)} of {filteredDrafts.length}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs"
+                        disabled={currentPage === 1}
+                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      >
+                        Previous
+                      </Button>
+                      {Array.from({ length: totalPages }, (_, i) => i + 1)
+                        .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1)
+                        .reduce<(number | 'ellipsis')[]>((acc, p, idx, arr) => {
+                          if (idx > 0 && p - (arr[idx - 1] as number) > 1) acc.push('ellipsis');
+                          acc.push(p);
+                          return acc;
+                        }, [])
+                        .map((p, idx) =>
+                          p === 'ellipsis' ? (
+                            <span key={`e-${idx}`} className="px-1 text-xs text-muted-foreground">…</span>
+                          ) : (
+                            <Button
+                              key={p}
+                              size="sm"
+                              variant={p === currentPage ? 'default' : 'ghost'}
+                              className="h-7 w-7 p-0 text-xs"
+                              onClick={() => setCurrentPage(p as number)}
+                            >
+                              {p}
+                            </Button>
+                          ),
+                        )}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs"
+                        disabled={currentPage === totalPages}
+                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                      >
+                        Next
+                      </Button>
+                    </div>
                   </div>
                 )}
               </TabsContent>

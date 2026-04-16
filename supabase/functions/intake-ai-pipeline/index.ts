@@ -10,8 +10,8 @@
  * Conservative skip rules + shouldOverwrite() field protection ensure
  * strong existing values are never replaced with weaker AI output.
  *
- * Concurrency: row-level lock on intake_drafts.pipeline_lock_token with
- * 2-minute TTL. 409 if already locked.
+ * Concurrency: compare-and-set lock on intake_drafts.pipeline_lock_token with
+ * a 2-minute stale threshold based on pipeline_started_at. 409 if already locked.
  */
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import {
@@ -170,28 +170,48 @@ Deno.serve(async (req) => {
       return json({ ran_step: null, status: 'ok', fields_updated: [], next_step: null, message: 'pipeline already complete' });
     }
 
-    // ── Acquire lock atomically ──
-    const { data: lockRow, error: lockErr } = await (client as any)
+    // ── Acquire lock with compare-and-set semantics ──
+    const nowIso = new Date().toISOString();
+    const lockStartedAtMs = draftPre.pipeline_started_at ? Date.parse(draftPre.pipeline_started_at) : NaN;
+    const hasActiveLock = Boolean(
+      draftPre.pipeline_lock_token &&
+      (!Number.isFinite(lockStartedAtMs) || lockStartedAtMs > Date.now() - 2 * 60 * 1000)
+    );
+
+    if (hasActiveLock) {
+      return json({ error: 'locked', message: 'Draft is being processed by another worker' }, 409);
+    }
+
+    const nextLockToken = crypto.randomUUID();
+    let lockQuery = (client as any)
       .from('intake_drafts')
       .update({
-        pipeline_lock_token: crypto.randomUUID(),
-        pipeline_lock_expires_at: new Date(Date.now() + 2 * 60 * 1000).toISOString(),
+        pipeline_lock_token: nextLockToken,
         pipeline_status: 'running',
-        pipeline_started_at: draftPre.pipeline_started_at || new Date().toISOString(),
+        pipeline_started_at: nowIso,
       })
-      .eq('id', draftId)
-      .or(`pipeline_lock_expires_at.is.null,pipeline_lock_expires_at.lt.${new Date().toISOString()}`)
+      .eq('id', draftId);
+
+    if (draftPre.pipeline_lock_token) {
+      lockQuery = lockQuery.eq('pipeline_lock_token', draftPre.pipeline_lock_token);
+    } else {
+      lockQuery = lockQuery.is('pipeline_lock_token', null);
+    }
+
+    const { data: lockRow, error: lockErr } = await lockQuery
       .select('id, pipeline_lock_token')
       .maybeSingle();
 
-    if (lockErr) return json({ error: `Lock error: ${lockErr.message}` }, 500);
+    if (lockErr) {
+      console.error('[pipeline] lock error:', lockErr);
+      return json({ error: `Lock error: ${lockErr.message}` }, 500);
+    }
     if (!lockRow) return json({ error: 'locked', message: 'Draft is being processed by another worker' }, 409);
 
     const releaseLock = async (extra: Record<string, any> = {}) => {
       try {
         await (client as any).from('intake_drafts').update({
           pipeline_lock_token: null,
-          pipeline_lock_expires_at: null,
           ...extra,
         }).eq('id', draftId);
       } catch (e) {
@@ -411,7 +431,6 @@ Deno.serve(async (req) => {
 
     // Apply update + release lock in one go
     update.pipeline_lock_token = null;
-    update.pipeline_lock_expires_at = null;
 
     const { error: writeErr } = await (client as any).from('intake_drafts').update(update).eq('id', draftId);
     if (writeErr) {

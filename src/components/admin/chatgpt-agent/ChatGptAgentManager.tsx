@@ -11,13 +11,14 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import {
   Upload, Search, Sparkles, Loader2, Copy, ChevronDown,
   Send, AlertTriangle, Link2Off, Link2, RefreshCw,
 } from 'lucide-react';
 import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSelector';
+import { useAdminMessages } from '@/hooks/useAdminMessages';
+import { AdminMessageLog } from '@/components/admin/AdminMessageLog';
 import { parseExcelWorkbook, SECTION_BUCKET_LABELS, type ParseResult, type ParsedRow, type SectionBucket } from './chatgptAgentExcelParser';
 import { ChatGptAgentDraftEditor } from './ChatGptAgentDraftEditor';
 import { ChatGptAgentDuplicateFinder } from './ChatGptAgentDuplicateFinder';
@@ -29,14 +30,23 @@ const ALL_SECTIONS: SectionBucket[] = [
 
 type LinkFilter = 'all' | 'with_link' | 'missing_link';
 
+/** Only models that the intake-ai-classify edge function can actually route */
+const ALLOWED_MODELS = [
+  'gemini-flash', 'gemini-pro', 'gpt5', 'gpt5-mini', 'lovable-gemini',
+  'vertex-flash', 'vertex-pro', 'vertex-3.1-pro', 'vertex-3-flash', 'vertex-3.1-flash-lite',
+  'nova-pro', 'nova-premier', 'mistral', 'nemotron-120b',
+  'azure-gpt4o-mini', 'azure-gpt41-mini', 'azure-gpt5-mini',
+  'azure-deepseek-v3', 'azure-deepseek-r1',
+] as const;
+
 export function ChatGptAgentManager() {
-  const { toast } = useToast();
+  const { messages, addMessage, dismissMessage, clearAll, toggleExpand } = useAdminMessages('chatgpt-agent');
   const [activeSection, setActiveSection] = useState<SectionBucket>('job_postings');
   const [drafts, setDrafts] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [linkFilter, setLinkFilter] = useState<LinkFilter>('all');
-  const [aiModel, setAiModel] = useState(() => getLastUsedModel('text', 'gemini-flash'));
+  const [aiModel, setAiModel] = useState(() => getLastUsedModel('text', 'gemini-flash', [...ALLOWED_MODELS]));
 
   // Upload state
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -67,11 +77,11 @@ export function ChatGptAgentManager() {
       setDrafts(data || []);
     } catch (err) {
       console.error('Fetch error:', err);
-      toast({ title: 'Failed to load drafts', variant: 'destructive' });
+      addMessage('error', 'Failed to load drafts', err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [activeSection, toast]);
+  }, [activeSection, addMessage]);
 
   const fetchCounts = useCallback(async () => {
     const counts: Record<string, number> = {};
@@ -106,7 +116,7 @@ export function ChatGptAgentManager() {
       setParseResult(result);
       setUploadOpen(true);
     } catch (err) {
-      toast({ title: 'Failed to parse Excel file', variant: 'destructive' });
+      addMessage('error', 'Failed to parse Excel file', err instanceof Error ? err.message : 'Unknown error');
     }
     e.target.value = '';
   };
@@ -152,17 +162,14 @@ export function ChatGptAgentManager() {
         if (error) throw error;
       }
 
-      toast({
-        title: `Imported ${rows.length} drafts`,
-        description: `${parseResult.summary.needsReview} need review, ${parseResult.summary.missingLinkCount} missing links`,
-      });
+      addMessage('success', `Imported ${rows.length} drafts`, `${parseResult.summary.needsReview} need review, ${parseResult.summary.missingLinkCount} missing links`);
       setUploadOpen(false);
       setParseResult(null);
       fetchDrafts();
       fetchCounts();
     } catch (err: any) {
       console.error('Import error:', err);
-      toast({ title: 'Import failed', description: err?.message || 'Unknown error', variant: 'destructive' });
+      addMessage('error', 'Import failed', err?.message || 'Unknown error');
     } finally {
       setImporting(false);
     }
@@ -186,14 +193,14 @@ export function ChatGptAgentManager() {
           processing_status: 'publish_failed',
           publish_error: res.data.error,
         } as any).eq('id', id);
-        toast({ title: 'Publish failed', description: res.data.error, variant: 'destructive' });
+        addMessage('error', 'Publish failed', res.data.error);
       } else {
-        toast({ title: 'Published successfully' });
+        addMessage('success', 'Published successfully');
         fetchDrafts();
         fetchCounts();
       }
     } catch (err: any) {
-      toast({ title: 'Publish error', description: err?.message, variant: 'destructive' });
+      addMessage('error', 'Publish error', err?.message || 'Unknown error');
     }
   };
 
@@ -211,24 +218,36 @@ export function ChatGptAgentManager() {
   const handleAiAction = async (action: string) => {
     const ids = Array.from(selected);
     if (ids.length === 0) {
-      toast({ title: 'Select drafts first' });
+      addMessage('info', 'Select drafts first');
       return;
     }
     setAiProcessing(true);
-    let ok = 0;
-    let fail = 0;
-    for (const id of ids) {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        const res = await supabase.functions.invoke('intake-ai-classify', {
-          body: { draft_ids: [id], aiModel, action },
-          headers: { Authorization: `Bearer ${session?.access_token}` },
-        });
-        if (res.error || res.data?.error) { fail++; } else { ok++; }
-      } catch { fail++; }
+    addMessage('info', `⏳ AI ${action} started`, `Processing ${ids.length} draft(s) with model ${aiModel}…`);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await supabase.functions.invoke('intake-ai-classify', {
+        body: { draft_ids: ids, aiModel, action },
+        headers: { Authorization: `Bearer ${session?.access_token}` },
+      });
+      if (res.error) {
+        addMessage('error', `AI ${action} failed`, res.error.message);
+      } else if (res.data?.error) {
+        addMessage('error', `AI ${action} failed`, res.data.error);
+      } else {
+        const results = res.data?.results || [];
+        const ok = results.filter((r: any) => r.status === 'ok').length;
+        const fail = results.filter((r: any) => r.status === 'error').length;
+        const errors = results.filter((r: any) => r.error).map((r: any) => `${r.id.slice(0, 8)}: ${r.error}`).join('\n');
+        addMessage(
+          fail > 0 ? 'warning' : 'success',
+          `AI ${action}: ${ok} done, ${fail} failed`,
+          errors || `All ${ok} drafts processed successfully.`
+        );
+      }
+    } catch (err: any) {
+      addMessage('error', `AI ${action} error`, err?.message || 'Unknown error');
     }
     setAiProcessing(false);
-    toast({ title: `AI ${action}: ${ok} done, ${fail} failed` });
     setSelected(new Set());
     fetchDrafts();
   };
@@ -252,7 +271,7 @@ export function ChatGptAgentManager() {
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
-    toast({ title: 'Copied!' });
+    addMessage('info', 'Copied to clipboard');
   };
 
   const truncateUrl = (url: string, maxLen = 40) => {
@@ -276,8 +295,14 @@ export function ChatGptAgentManager() {
               </Button>
             </label>
 
-            {/* AI Model */}
-            <AiModelSelector value={aiModel} onValueChange={setAiModel} capability="text" size="sm" />
+            {/* AI Model — restricted to routable models only */}
+            <AiModelSelector
+              value={aiModel}
+              onValueChange={setAiModel}
+              capability="text"
+              size="sm"
+              allowedValues={[...ALLOWED_MODELS]}
+            />
 
             {/* AI Actions */}
             <DropdownMenu>
@@ -308,6 +333,14 @@ export function ChatGptAgentManager() {
         </CardHeader>
 
         <CardContent>
+          {/* Persistent Admin Messages */}
+          <AdminMessageLog
+            messages={messages}
+            onDismiss={dismissMessage}
+            onClearAll={clearAll}
+            onToggleExpand={toggleExpand}
+          />
+
           {/* Section Tabs */}
           <Tabs value={activeSection} onValueChange={v => { setActiveSection(v as SectionBucket); setSelected(new Set()); setLinkFilter('all'); }}>
             <TabsList className="flex flex-wrap !h-auto gap-1 p-2 mb-3">

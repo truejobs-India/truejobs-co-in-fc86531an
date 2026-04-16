@@ -15,8 +15,9 @@ import { Progress } from '@/components/ui/progress';
 import { supabase } from '@/integrations/supabase/client';
 import {
   Upload, Search, Sparkles, Loader2, Copy, ChevronDown,
-  Send, AlertTriangle, Link2Off, Link2, RefreshCw, Wand2, StopCircle,
+  Send, AlertTriangle, Link2Off, Link2, RefreshCw, Wand2, StopCircle, Eye,
 } from 'lucide-react';
+import { IntakeDraftPreviewDialog } from '@/components/admin/intake/IntakeDraftPreviewDialog';
 import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSelector';
 import { useAdminMessages } from '@/hooks/useAdminMessages';
 import { AdminMessageLog } from '@/components/admin/AdminMessageLog';
@@ -59,6 +60,7 @@ export function ChatGptAgentManager() {
 
   // Editor & dedup
   const [editDraft, setEditDraft] = useState<any>(null);
+  const [previewDraftId, setPreviewDraftId] = useState<string | null>(null);
   const [dedupOpen, setDedupOpen] = useState(false);
 
   // AI processing
@@ -713,15 +715,27 @@ export function ChatGptAgentManager() {
                                   ) : '—'}
                                 </TableCell>
                                 <TableCell onClick={e => e.stopPropagation()}>
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    className="h-7 text-xs"
-                                    disabled={d.processing_status === 'published'}
-                                    onClick={() => handlePublish(d.id)}
-                                  >
-                                    <Send className="h-3 w-3" />
-                                  </Button>
+                                  <div className="flex items-center gap-0.5">
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-7 w-7 p-0"
+                                      title="Preview"
+                                      onClick={() => setPreviewDraftId(d.id)}
+                                    >
+                                      <Eye className="h-3.5 w-3.5" />
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-7 text-xs"
+                                      title="Publish"
+                                      disabled={d.processing_status === 'published'}
+                                      onClick={() => handlePublish(d.id)}
+                                    >
+                                      <Send className="h-3 w-3" />
+                                    </Button>
+                                  </div>
                                 </TableCell>
                               </TableRow>
                             );
@@ -845,6 +859,13 @@ export function ChatGptAgentManager() {
           onPublish={handlePublish}
         />
       )}
+
+      {/* Per-row Preview */}
+      <IntakeDraftPreviewDialog
+        draftId={previewDraftId}
+        open={!!previewDraftId}
+        onClose={() => setPreviewDraftId(null)}
+      />
 
       {/* Duplicate Finder */}
       <ChatGptAgentDuplicateFinder

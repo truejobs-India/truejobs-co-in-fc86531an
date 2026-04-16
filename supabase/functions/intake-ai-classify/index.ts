@@ -195,10 +195,10 @@ async function callAI(
     console.log(`[intake-ai-classify] routing to Gemini Direct API: ${geminiDef.geminiModel}`);
     const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
     const fullPrompt = `${systemPrompt}\n\n${userPrompt}\n\nReturn valid JSON matching this schema:\n${JSON.stringify(toolDef.parameters, null, 2)}`;
-    const text = await callGeminiDirect(vertexDef.vertexModel, fullPrompt, vertexDef.timeoutMs);
+    const text = await callGeminiDirect(geminiDef.geminiModel, fullPrompt, geminiDef.timeoutMs);
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (jsonMatch) return JSON.parse(jsonMatch[0]);
-    throw new Error('Vertex AI did not return valid JSON');
+    throw new Error('Gemini Direct API did not return valid JSON');
   }
 
   if (BEDROCK_MODELS.has(modelKey)) {

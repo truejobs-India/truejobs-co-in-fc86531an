@@ -25,10 +25,10 @@ const GATEWAY_MODEL_MAP: Record<string, string> = {
 
 const GEMINI_DIRECT_MODEL_MAP: Record<string, { geminiModel: string; timeoutMs: number }> = {
   'vertex-flash': { geminiModel: 'gemini-2.5-flash', timeoutMs: 90_000 },
-  'vertex-pro': { vertexModel: 'gemini-2.5-pro', timeoutMs: 120_000 },
-  'vertex-3.1-pro': { vertexModel: 'gemini-3.1-pro-preview', timeoutMs: 120_000 },
-  'vertex-3-flash': { vertexModel: 'gemini-3-flash-preview', timeoutMs: 90_000 },
-  'vertex-3.1-flash-lite': { vertexModel: 'gemini-3.1-flash-lite-preview', timeoutMs: 60_000 },
+  'vertex-pro': { geminiModel: 'gemini-2.5-pro', timeoutMs: 120_000 },
+  'vertex-3.1-pro': { geminiModel: 'gemini-3.1-pro-preview', timeoutMs: 120_000 },
+  'vertex-3-flash': { geminiModel: 'gemini-3-flash-preview', timeoutMs: 90_000 },
+  'vertex-3.1-flash-lite': { geminiModel: 'gemini-3.1-flash-lite-preview', timeoutMs: 60_000 },
 };
 
 const BEDROCK_MODELS = new Set(['nova-pro', 'nova-premier', 'nemotron-120b', 'mistral']);

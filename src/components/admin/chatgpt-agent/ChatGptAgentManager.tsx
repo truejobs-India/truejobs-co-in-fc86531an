@@ -1,7 +1,7 @@
 /**
  * ChatGPT Agent Manager — main admin panel for Excel-based content drafts.
  */
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -15,7 +15,7 @@ import { Progress } from '@/components/ui/progress';
 import { supabase } from '@/integrations/supabase/client';
 import {
   Upload, Search, Sparkles, Loader2, Copy, ChevronDown,
-  Send, AlertTriangle, Link2Off, Link2, RefreshCw, Wand2,
+  Send, AlertTriangle, Link2Off, Link2, RefreshCw, Wand2, StopCircle,
 } from 'lucide-react';
 import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSelector';
 import { useAdminMessages } from '@/hooks/useAdminMessages';
@@ -69,6 +69,21 @@ export function ChatGptAgentManager() {
   // Pipeline state
   const [pipelineProgress, setPipelineProgress] = useState<{ draftIndex: number; totalDrafts: number; currentStep: string; stepIndex: number; draftId: string } | null>(null);
   const [draftRuns, setDraftRuns] = useState<Record<string, PipelineRun[]>>({});
+  const stopRequestedRef = useRef(false);
+  const [stopping, setStopping] = useState(false);
+
+  // A draft is "AI Fixed" when latest validate run is ok and no step has latest status 'error'.
+  const isAiFixed = useCallback((runs?: PipelineRun[]): boolean => {
+    if (!runs || runs.length === 0) return false;
+    const latest: Record<string, PipelineRun> = {};
+    for (const r of runs) {
+      if (!latest[r.step] || new Date(r.created_at) > new Date(latest[r.step].created_at)) {
+        latest[r.step] = r;
+      }
+    }
+    if (!latest['validate'] || latest['validate'].status !== 'ok') return false;
+    return !Object.values(latest).some(r => r.status === 'error');
+  }, []);
 
   // Section counts
   const [sectionCounts, setSectionCounts] = useState<Record<string, number>>({});
@@ -311,25 +326,48 @@ export function ChatGptAgentManager() {
   const runFullPipeline = async (ids: string[]) => {
     if (ids.length === 0) { addMessage('info', 'Select drafts first'); return; }
     setAiProcessing(true);
+    stopRequestedRef.current = false;
+    setStopping(false);
     addMessage('info', `✨ Pipeline started`, `Processing ${ids.length} draft(s) sequentially with model ${aiModel}…`);
+
+    const draftMap = new Map(drafts.map(d => [d.id, d]));
+    const titleOf = (id: string) => {
+      const d = draftMap.get(id);
+      return (d?.normalized_title || d?.raw_title || id.slice(0, 8)) as string;
+    };
+
+    const succeeded: string[] = [];
+    const failed: { id: string; title: string; step: string; error: string }[] = [];
+    const skipped: { id: string; title: string }[] = [];
+    let stoppedEarly = false;
+
     try {
       const { data: { session } } = await supabase.auth.getSession();
       for (let i = 0; i < ids.length; i++) {
+        if (stopRequestedRef.current) {
+          stoppedEarly = true;
+          for (let k = i; k < ids.length; k++) skipped.push({ id: ids[k], title: titleOf(ids[k]) });
+          break;
+        }
         const draftId = ids[i];
         setProcessingChunkIds(new Set([draftId]));
         let safety = 0;
         let lastStep = '';
+        let draftFailed = false;
         while (safety++ < 10) {
+          if (stopRequestedRef.current) break;
           const res = await supabase.functions.invoke('intake-ai-pipeline', {
             body: { draft_id: draftId, aiModel, step: 'auto' },
             headers: { Authorization: `Bearer ${session?.access_token}` },
           });
           if (res.error) {
-            addMessage('error', `Draft ${i + 1}/${ids.length} failed`, res.error.message || String(res.error));
+            failed.push({ id: draftId, title: titleOf(draftId), step: lastStep || '?', error: res.error.message || String(res.error) });
+            draftFailed = true;
             break;
           }
           if (res.data?.error) {
-            addMessage('error', `Draft ${i + 1}/${ids.length} step ${res.data.ran_step || '?'} failed`, res.data.error);
+            failed.push({ id: draftId, title: titleOf(draftId), step: res.data.ran_step || lastStep || '?', error: res.data.error });
+            draftFailed = true;
             break;
           }
           lastStep = res.data?.ran_step || lastStep;
@@ -339,15 +377,47 @@ export function ChatGptAgentManager() {
           });
           if (!res.data?.next_step) break;
         }
+        if (stopRequestedRef.current && !draftFailed && !succeeded.includes(draftId)) {
+          // current draft was interrupted between steps — count as skipped (partial)
+          skipped.push({ id: draftId, title: titleOf(draftId) });
+          stoppedEarly = true;
+          await fetchRunsForDrafts([draftId]);
+          for (let k = i + 1; k < ids.length; k++) skipped.push({ id: ids[k], title: titleOf(ids[k]) });
+          break;
+        }
+        if (!draftFailed) succeeded.push(draftId);
         await fetchRunsForDrafts([draftId]);
       }
-      addMessage('success', `Pipeline complete`, `Processed ${ids.length} draft(s).`);
+
+      // Final summary
+      const total = ids.length;
+      const okCount = succeeded.length;
+      const failCount = failed.length;
+      const skipCount = skipped.length;
+      const fmtList = (items: string[], max = 8) =>
+        items.slice(0, max).map(s => `• ${s}`).join('\n') +
+        (items.length > max ? `\n… and ${items.length - max} more` : '');
+      const failLines = failed.map(f => `• ${f.title}: ${f.step} — ${f.error}`);
+      const skipLines = skipped.map(s => `• ${s.title}`);
+      const descParts: string[] = [];
+      if (failLines.length) descParts.push(`Failed:\n${fmtList(failLines)}`);
+      if (skipLines.length) descParts.push(`Skipped:\n${fmtList(skipLines)}`);
+      if (!descParts.length) descParts.push(`All ${okCount} draft(s) processed successfully.`);
+      const type = failCount > 0 ? 'error' : (stoppedEarly ? 'warning' : 'success');
+      const titleIcon = stoppedEarly ? '⏹ Pipeline stopped' : 'Pipeline finished';
+      addMessage(
+        type,
+        `${titleIcon} — ✅ ${okCount} succeeded · ❌ ${failCount} failed · ⏭ ${skipCount} skipped (of ${total})`,
+        descParts.join('\n\n'),
+      );
     } catch (err: any) {
       addMessage('error', 'Pipeline error', err?.message || 'Unknown error');
     }
     setAiProcessing(false);
     setPipelineProgress(null);
     setProcessingChunkIds(new Set());
+    stopRequestedRef.current = false;
+    setStopping(false);
     setSelected(new Set());
     fetchDrafts();
   };
@@ -414,6 +484,21 @@ export function ChatGptAgentManager() {
               {aiProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
               Run All Needed Fixes{selected.size > 0 ? ` (${selected.size})` : ''}
             </Button>
+
+            {/* Stop button — visible only while pipeline is running */}
+            {aiProcessing && pipelineProgress && (
+              <Button
+                size="sm"
+                variant="destructive"
+                disabled={stopping}
+                onClick={() => { stopRequestedRef.current = true; setStopping(true); }}
+                className="gap-1"
+                title="Finish current step, then stop"
+              >
+                {stopping ? <Loader2 className="h-4 w-4 animate-spin" /> : <StopCircle className="h-4 w-4" />}
+                {stopping ? 'Stopping…' : 'Stop'}
+              </Button>
+            )}
 
             {/* Advanced (manual) — legacy single-action dropdown */}
             <DropdownMenu>
@@ -563,8 +648,14 @@ export function ChatGptAgentManager() {
                                   <Checkbox checked={selected.has(d.id)} onCheckedChange={() => toggleSelect(d.id)} />
                                 </TableCell>
                                 <TableCell>
-                                  <div className="flex items-start gap-1.5">
+                                  <div className="flex items-start gap-1.5 flex-wrap">
                                     <span className="text-sm font-medium line-clamp-2">{d.normalized_title || d.raw_title}</span>
+                                    {isAiFixed(draftRuns[d.id]) && (
+                                      <Badge variant="outline" className="text-[10px] gap-1 border-green-500 text-green-700 bg-green-50 dark:bg-green-950/30 dark:text-green-400 shrink-0">
+                                        <Sparkles className="h-2.5 w-2.5" />
+                                        AI Fixed
+                                      </Badge>
+                                    )}
                                     {processingChunkIds.has(d.id) && (
                                       <Badge variant="outline" className="text-[10px] gap-1 border-blue-500 text-blue-600 shrink-0">
                                         <Loader2 className="h-2.5 w-2.5 animate-spin" />

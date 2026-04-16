@@ -238,24 +238,23 @@ export function ChatGptAgentManager() {
     addMessage('info', `⏳ AI ${action} started`, `Processing ${ids.length} draft(s) with model ${aiModel}…`);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      // Keep chunks small: each draft takes ~15-20s with DeepSeek; edge timeout is 150s.
-      const CHUNK = 5;
+      // Process drafts one-by-one to avoid edge timeouts and provide accurate per-row progress.
       const allResults: any[] = [];
       let invokeError: string | null = null;
-      const totalBatches = Math.ceil(ids.length / CHUNK);
-      for (let i = 0; i < ids.length; i += CHUNK) {
-        const chunk = ids.slice(i, i + CHUNK);
-        const batchIndex = Math.floor(i / CHUNK) + 1;
-        setProcessingChunkIds(new Set(chunk));
+      const totalBatches = ids.length;
+      for (let i = 0; i < ids.length; i++) {
+        const singleId = ids[i];
+        const batchIndex = i + 1;
+        setProcessingChunkIds(new Set([singleId]));
         setAiProgress({ action, current: i, total: ids.length, batchIndex, totalBatches });
         const res = await supabase.functions.invoke('intake-ai-classify', {
-          body: { draft_ids: chunk, aiModel, action },
+          body: { draft_ids: [singleId], aiModel, action },
           headers: { Authorization: `Bearer ${session?.access_token}` },
         });
-        if (res.error) { invokeError = res.error.message; break; }
+        if (res.error) { invokeError = res.error.message || String(res.error); break; }
         if (res.data?.error) { invokeError = res.data.error; break; }
         allResults.push(...(res.data?.results || []));
-        setAiProgress({ action, current: i + chunk.length, total: ids.length, batchIndex, totalBatches });
+        setAiProgress({ action, current: i + 1, total: ids.length, batchIndex, totalBatches });
       }
       if (invokeError) {
         addMessage('error', `AI ${action} failed`, invokeError);

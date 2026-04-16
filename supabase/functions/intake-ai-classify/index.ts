@@ -526,8 +526,9 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const draftIds = body.draft_ids as string[];
     const aiModel = (body.aiModel as string) || '';
+    const action = (body.action as string) || '';
     const retryEnhanced = body.retry_enhanced === true;
-    const fillEmptyOnly = body.fill_empty_only === true;
+    const fillEmptyOnly = body.fill_empty_only === true || action === 'enrich';
 
     if (!draftIds || !Array.isArray(draftIds) || draftIds.length === 0) {
       return json({ error: 'Missing draft_ids array' }, 400);
@@ -537,6 +538,103 @@ Deno.serve(async (req) => {
     }
 
     const client = createClient(supabaseUrl, serviceRoleKey);
+
+    // ─── Targeted Action Modes ──────────────────────────────────────────────
+    const TARGETED_ACTIONS: Record<string, { prompt: string; fields: string[] }> = {
+      seo_fix: {
+        prompt: 'Generate SEO-optimized fields for this Indian government recruitment record. seo_title must be under 60 chars, meta_description under 160 chars, slug must be lowercase kebab-case. Do NOT invent facts.',
+        fields: ['seo_title', 'slug', 'meta_description', 'summary'],
+      },
+      improve_title: {
+        prompt: 'Improve the title for this Indian government recruitment record. normalized_title should be a clean, accurate title. seo_title must be under 60 chars and SEO-optimized. Do NOT invent facts.',
+        fields: ['normalized_title', 'seo_title'],
+      },
+      improve_summary: {
+        prompt: 'Write a concise, accurate summary and meta description for this Indian government recruitment record. meta_description must be under 160 chars. Do NOT invent facts.',
+        fields: ['summary', 'meta_description'],
+      },
+      generate_slug: {
+        prompt: 'Generate a clean, SEO-friendly slug for this Indian government recruitment record. Must be lowercase kebab-case, 3-70 chars, no special characters. Do NOT invent facts.',
+        fields: ['slug'],
+      },
+      normalize_fields: {
+        prompt: 'Clean and normalize these fields for an Indian government recruitment record. Fix casing, remove extra whitespace, standardize formats. Do NOT invent or change factual content.',
+        fields: ['organisation_name', 'post_name', 'exam_name', 'qualification_text', 'age_limit_text', 'salary_text'],
+      },
+    };
+
+    if (action && TARGETED_ACTIONS[action]) {
+      const targetedDef = TARGETED_ACTIONS[action];
+      const targetedResults: { id: string; status: string; fields_updated?: string[]; error?: string }[] = [];
+
+      for (const draftId of draftIds) {
+        try {
+          const { data: draft, error: fetchErr } = await client
+            .from('intake_drafts').select('*').eq('id', draftId).single();
+          if (fetchErr || !draft) {
+            targetedResults.push({ id: draftId, status: 'error', error: 'Draft not found' });
+            continue;
+          }
+
+          // Build minimal evidence
+          const evidence = [
+            draft.raw_title ? `Title: ${draft.raw_title}` : '',
+            (draft as any).normalized_title ? `Current Normalized Title: ${(draft as any).normalized_title}` : '',
+            (draft as any).organisation_name ? `Organisation: ${(draft as any).organisation_name}` : '',
+            (draft as any).post_name ? `Post: ${(draft as any).post_name}` : '',
+            (draft as any).exam_name ? `Exam: ${(draft as any).exam_name}` : '',
+            draft.source_url ? `Source URL: ${draft.source_url}` : '',
+            draft.raw_text ? `Content:\n${(draft.raw_text as string).slice(0, 3000)}` : '',
+          ].filter(Boolean).join('\n\n');
+
+          // Build targeted tool schema
+          const props: Record<string, any> = {};
+          for (const f of targetedDef.fields) {
+            const original = (CLASSIFICATION_TOOL.parameters.properties as any)[f];
+            props[f] = original ? { ...original } : { type: 'string' };
+          }
+          const targetedTool = {
+            name: `targeted_${action}`,
+            description: targetedDef.prompt,
+            parameters: { type: 'object', properties: props, required: targetedDef.fields },
+          };
+
+          const aiResult = await callAI(lovableKey, targetedDef.prompt, `Apply to this record:\n\n${evidence}`, targetedTool, aiModel);
+
+          // Only update fields that AI returned non-empty values for
+          const updates: Record<string, any> = {};
+          const updatedFields: string[] = [];
+          for (const f of targetedDef.fields) {
+            const val = aiResult[f];
+            if (val !== undefined && val !== null && val !== '') {
+              updates[f] = val;
+              updatedFields.push(f);
+            }
+          }
+
+          if (updatedFields.length > 0) {
+            const { error: updateErr } = await client.from('intake_drafts').update(updates as any).eq('id', draftId);
+            if (updateErr) {
+              targetedResults.push({ id: draftId, status: 'error', error: updateErr.message });
+            } else {
+              targetedResults.push({ id: draftId, status: 'ok', fields_updated: updatedFields });
+            }
+          } else {
+            targetedResults.push({ id: draftId, status: 'ok', fields_updated: [] });
+          }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : 'Unknown error';
+          console.error(`[intake-ai-classify] Targeted ${action} error for ${draftId}:`, msg);
+          targetedResults.push({ id: draftId, status: 'error', error: msg });
+        }
+
+        if (draftIds.indexOf(draftId) < draftIds.length - 1) {
+          await sleep(2000);
+        }
+      }
+
+      return json({ results: targetedResults });
+    }
 
     // ─── Fill Empty Only Mode ───────────────────────────────────────────────
     if (fillEmptyOnly) {

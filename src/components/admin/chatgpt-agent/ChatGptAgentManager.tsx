@@ -404,12 +404,23 @@ export function ChatGptAgentManager() {
               allowedValues={[...ALLOWED_MODELS]}
             />
 
-            {/* AI Actions */}
+            {/* Primary: Run All Needed Fixes (sequential per-draft pipeline) */}
+            <Button
+              size="sm"
+              disabled={selected.size === 0 || aiProcessing}
+              onClick={() => runFullPipeline(Array.from(selected))}
+              className="gap-1"
+            >
+              {aiProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+              Run All Needed Fixes{selected.size > 0 ? ` (${selected.size})` : ''}
+            </Button>
+
+            {/* Advanced (manual) — legacy single-action dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm" disabled={selected.size === 0 || aiProcessing}>
                   {aiProcessing ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Sparkles className="h-4 w-4 mr-1" />}
-                  AI Actions <ChevronDown className="h-3 w-3 ml-1" />
+                  Advanced (manual) <ChevronDown className="h-3 w-3 ml-1" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent>

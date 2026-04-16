@@ -1,29 +1,30 @@
 
 
-## Add visible processing indicator for AI actions
+## Fix: drafts table only shows ~8 of 20 rows per page
 
-**File:** `src/components/admin/chatgpt-agent/ChatGptAgentManager.tsx`
+**Root cause:** All 20 rows ARE rendered, but the table is wrapped in `<ScrollArea className="max-h-[600px]">` (line 433). At the user's viewport, only ~8 rows fit; the remaining 12 are hidden inside an inner scroll container that's easy to miss (especially since the page already scrolls).
 
-### Changes
+**File:** `src/components/admin/chatgpt-agent/ChatGptAgentManager.tsx` (line 432-433, 528-529)
 
-1. **Progress state**
-   - `aiProgress: { action, current, total, batchIndex, totalBatches } | null`
-   - `processingChunkIds: Set<string>`
-   - Update inside the existing chunk loop in `handleAiAction` — set before each batch, clear on completion
+### Change
 
-2. **Sticky processing banner** (below `<AdminMessageLog>`)
-   - Visible only when `aiProcessing === true`
-   - Shows: spinner + "AI {action} in progress" + "Batch X of Y · N of M drafts" + selected model name
-   - Determinate `<Progress>` bar (`current / total * 100`)
-   - Amber/blue accent border matching existing message log aesthetic
+Remove the inner `ScrollArea` wrapper so all 20 rows render in normal page flow and the user scrolls the page (not a nested container) to see them. Keep the bordered container and horizontal overflow for wide tables.
 
-3. **Per-row "Processing…" badge**
-   - In the drafts table, when a row's id is in `processingChunkIds`, render a small badge with spinner next to the title
+```tsx
+// Before
+<div className="border rounded-lg overflow-hidden">
+  <ScrollArea className="max-h-[600px]">
+    <Table>...</Table>
+  </ScrollArea>
+</div>
 
-4. **Keep existing**: button spinner + start/finish admin messages (complementary, not replaced)
+// After
+<div className="border rounded-lg overflow-x-auto">
+  <Table>...</Table>
+</div>
+```
 
-### Result
-User sees a live banner ("Batch 2 of 5 · 10 of 25 drafts"), a filling progress bar, and per-row "Processing…" badges on drafts in the current batch.
+Also remove the now-unused `ScrollArea` import.
 
-~30 lines added, 1 file changed.
+**Result:** All 20 paginated drafts visible per page; user clicks "Next" / page 2 to see the rest. ~3 lines changed.
 

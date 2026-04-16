@@ -225,19 +225,25 @@ export function ChatGptAgentManager() {
     addMessage('info', `⏳ AI ${action} started`, `Processing ${ids.length} draft(s) with model ${aiModel}…`);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      const res = await supabase.functions.invoke('intake-ai-classify', {
-        body: { draft_ids: ids, aiModel, action },
-        headers: { Authorization: `Bearer ${session?.access_token}` },
-      });
-      if (res.error) {
-        addMessage('error', `AI ${action} failed`, res.error.message);
-      } else if (res.data?.error) {
-        addMessage('error', `AI ${action} failed`, res.data.error);
+      const CHUNK = 20;
+      const allResults: any[] = [];
+      let invokeError: string | null = null;
+      for (let i = 0; i < ids.length; i += CHUNK) {
+        const chunk = ids.slice(i, i + CHUNK);
+        const res = await supabase.functions.invoke('intake-ai-classify', {
+          body: { draft_ids: chunk, aiModel, action },
+          headers: { Authorization: `Bearer ${session?.access_token}` },
+        });
+        if (res.error) { invokeError = res.error.message; break; }
+        if (res.data?.error) { invokeError = res.data.error; break; }
+        allResults.push(...(res.data?.results || []));
+      }
+      if (invokeError) {
+        addMessage('error', `AI ${action} failed`, invokeError);
       } else {
-        const results = res.data?.results || [];
-        const ok = results.filter((r: any) => r.status === 'ok').length;
-        const fail = results.filter((r: any) => r.status === 'error').length;
-        const errors = results.filter((r: any) => r.error).map((r: any) => `${r.id.slice(0, 8)}: ${r.error}`).join('\n');
+        const ok = allResults.filter((r: any) => r.status === 'ok').length;
+        const fail = allResults.filter((r: any) => r.status === 'error').length;
+        const errors = allResults.filter((r: any) => r.error).map((r: any) => `${r.id.slice(0, 8)}: ${r.error}`).join('\n');
         addMessage(
           fail > 0 ? 'warning' : 'success',
           `AI ${action}: ${ok} done, ${fail} failed`,

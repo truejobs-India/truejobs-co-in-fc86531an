@@ -14,11 +14,11 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import {
-  Upload, Search, Sparkles, Loader2, ExternalLink, Copy, ChevronDown,
+  Upload, Search, Sparkles, Loader2, Copy, ChevronDown,
   Send, AlertTriangle, Link2Off, Link2, RefreshCw,
 } from 'lucide-react';
 import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSelector';
-import { parseExcelWorkbook, SECTION_BUCKET_LABELS, SECTION_CONTENT_TYPE, SECTION_PUBLISH_TARGET, type ParseResult, type ParsedRow, type SectionBucket } from './chatgptAgentExcelParser';
+import { parseExcelWorkbook, SECTION_BUCKET_LABELS, type ParseResult, type ParsedRow, type SectionBucket } from './chatgptAgentExcelParser';
 import { ChatGptAgentDraftEditor } from './ChatGptAgentDraftEditor';
 import { ChatGptAgentDuplicateFinder } from './ChatGptAgentDuplicateFinder';
 

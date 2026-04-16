@@ -326,25 +326,48 @@ export function ChatGptAgentManager() {
   const runFullPipeline = async (ids: string[]) => {
     if (ids.length === 0) { addMessage('info', 'Select drafts first'); return; }
     setAiProcessing(true);
+    stopRequestedRef.current = false;
+    setStopping(false);
     addMessage('info', `✨ Pipeline started`, `Processing ${ids.length} draft(s) sequentially with model ${aiModel}…`);
+
+    const draftMap = new Map(drafts.map(d => [d.id, d]));
+    const titleOf = (id: string) => {
+      const d = draftMap.get(id);
+      return (d?.normalized_title || d?.raw_title || id.slice(0, 8)) as string;
+    };
+
+    const succeeded: string[] = [];
+    const failed: { id: string; title: string; step: string; error: string }[] = [];
+    const skipped: { id: string; title: string }[] = [];
+    let stoppedEarly = false;
+
     try {
       const { data: { session } } = await supabase.auth.getSession();
       for (let i = 0; i < ids.length; i++) {
+        if (stopRequestedRef.current) {
+          stoppedEarly = true;
+          for (let k = i; k < ids.length; k++) skipped.push({ id: ids[k], title: titleOf(ids[k]) });
+          break;
+        }
         const draftId = ids[i];
         setProcessingChunkIds(new Set([draftId]));
         let safety = 0;
         let lastStep = '';
+        let draftFailed = false;
         while (safety++ < 10) {
+          if (stopRequestedRef.current) break;
           const res = await supabase.functions.invoke('intake-ai-pipeline', {
             body: { draft_id: draftId, aiModel, step: 'auto' },
             headers: { Authorization: `Bearer ${session?.access_token}` },
           });
           if (res.error) {
-            addMessage('error', `Draft ${i + 1}/${ids.length} failed`, res.error.message || String(res.error));
+            failed.push({ id: draftId, title: titleOf(draftId), step: lastStep || '?', error: res.error.message || String(res.error) });
+            draftFailed = true;
             break;
           }
           if (res.data?.error) {
-            addMessage('error', `Draft ${i + 1}/${ids.length} step ${res.data.ran_step || '?'} failed`, res.data.error);
+            failed.push({ id: draftId, title: titleOf(draftId), step: res.data.ran_step || lastStep || '?', error: res.data.error });
+            draftFailed = true;
             break;
           }
           lastStep = res.data?.ran_step || lastStep;
@@ -354,15 +377,47 @@ export function ChatGptAgentManager() {
           });
           if (!res.data?.next_step) break;
         }
+        if (stopRequestedRef.current && !draftFailed && !succeeded.includes(draftId)) {
+          // current draft was interrupted between steps — count as skipped (partial)
+          skipped.push({ id: draftId, title: titleOf(draftId) });
+          stoppedEarly = true;
+          await fetchRunsForDrafts([draftId]);
+          for (let k = i + 1; k < ids.length; k++) skipped.push({ id: ids[k], title: titleOf(ids[k]) });
+          break;
+        }
+        if (!draftFailed) succeeded.push(draftId);
         await fetchRunsForDrafts([draftId]);
       }
-      addMessage('success', `Pipeline complete`, `Processed ${ids.length} draft(s).`);
+
+      // Final summary
+      const total = ids.length;
+      const okCount = succeeded.length;
+      const failCount = failed.length;
+      const skipCount = skipped.length;
+      const fmtList = (items: string[], max = 8) =>
+        items.slice(0, max).map(s => `• ${s}`).join('\n') +
+        (items.length > max ? `\n… and ${items.length - max} more` : '');
+      const failLines = failed.map(f => `• ${f.title}: ${f.step} — ${f.error}`);
+      const skipLines = skipped.map(s => `• ${s.title}`);
+      const descParts: string[] = [];
+      if (failLines.length) descParts.push(`Failed:\n${fmtList(failLines)}`);
+      if (skipLines.length) descParts.push(`Skipped:\n${fmtList(skipLines)}`);
+      if (!descParts.length) descParts.push(`All ${okCount} draft(s) processed successfully.`);
+      const type = failCount > 0 ? 'error' : (stoppedEarly ? 'warning' : 'success');
+      const titleIcon = stoppedEarly ? '⏹ Pipeline stopped' : 'Pipeline finished';
+      addMessage(
+        type,
+        `${titleIcon} — ✅ ${okCount} succeeded · ❌ ${failCount} failed · ⏭ ${skipCount} skipped (of ${total})`,
+        descParts.join('\n\n'),
+      );
     } catch (err: any) {
       addMessage('error', 'Pipeline error', err?.message || 'Unknown error');
     }
     setAiProcessing(false);
     setPipelineProgress(null);
     setProcessingChunkIds(new Set());
+    stopRequestedRef.current = false;
+    setStopping(false);
     setSelected(new Set());
     fetchDrafts();
   };

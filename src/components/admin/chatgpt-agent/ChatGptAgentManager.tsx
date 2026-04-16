@@ -219,8 +219,10 @@ export function ChatGptAgentManager() {
     let fail = 0;
     for (const id of ids) {
       try {
+        const { data: { session } } = await supabase.auth.getSession();
         const res = await supabase.functions.invoke('intake-ai-classify', {
-          body: { draft_id: id, model: aiModel, action },
+          body: { draft_ids: [id], aiModel, action },
+          headers: { Authorization: `Bearer ${session?.access_token}` },
         });
         if (res.error || res.data?.error) { fail++; } else { ok++; }
       } catch { fail++; }

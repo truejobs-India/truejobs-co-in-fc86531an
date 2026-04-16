@@ -66,6 +66,10 @@ export function ChatGptAgentManager() {
   const [aiProgress, setAiProgress] = useState<{ action: string; current: number; total: number; batchIndex: number; totalBatches: number } | null>(null);
   const [processingChunkIds, setProcessingChunkIds] = useState<Set<string>>(new Set());
 
+  // Pipeline state
+  const [pipelineProgress, setPipelineProgress] = useState<{ draftIndex: number; totalDrafts: number; currentStep: string; stepIndex: number; draftId: string } | null>(null);
+  const [draftRuns, setDraftRuns] = useState<Record<string, PipelineRun[]>>({});
+
   // Section counts
   const [sectionCounts, setSectionCounts] = useState<Record<string, number>>({});
 

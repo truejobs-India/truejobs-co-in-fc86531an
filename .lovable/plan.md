@@ -1,30 +1,27 @@
 
 
-## Fix: drafts table only shows ~8 of 20 rows per page
+## Switch ChatGPT Agent AI actions from batched to one-by-one processing
 
-**Root cause:** All 20 rows ARE rendered, but the table is wrapped in `<ScrollArea className="max-h-[600px]">` (line 433). At the user's viewport, only ~8 rows fit; the remaining 12 are hidden inside an inner scroll container that's easy to miss (especially since the page already scrolls).
-
-**File:** `src/components/admin/chatgpt-agent/ChatGptAgentManager.tsx` (line 432-433, 528-529)
+**File:** `src/components/admin/chatgpt-agent/ChatGptAgentManager.tsx`
 
 ### Change
 
-Remove the inner `ScrollArea` wrapper so all 20 rows render in normal page flow and the user scrolls the page (not a nested container) to see them. Keep the bordered container and horizontal overflow for wide tables.
+In `handleAiAction`, replace the `CHUNK = 5` batching loop with a sequential `for` loop that sends **one draft per request**.
 
-```tsx
-// Before
-<div className="border rounded-lg overflow-hidden">
-  <ScrollArea className="max-h-[600px]">
-    <Table>...</Table>
-  </ScrollArea>
-</div>
+### Logic
+- Loop through selected `ids` one at a time
+- For each id: invoke the edge function with `ids: [singleId]`, update progress, mark that single id as "Processing…"
+- `totalBatches` becomes `ids.length` (each draft = its own batch)
+- Keep existing stop/error handling, progress banner, per-row badge, and start/finish messages — they already work per-iteration
 
-// After
-<div className="border rounded-lg overflow-x-auto">
-  <Table>...</Table>
-</div>
-```
+### Why
+- Avoids 504 IDLE_TIMEOUT entirely (each request = ~15–20s, well under 150s)
+- Per-row "Processing…" badge becomes accurate (one row at a time)
+- Progress banner updates after every single draft instead of every 5
+- Simpler mental model; failures isolated to one draft
 
-Also remove the now-unused `ScrollArea` import.
+### Tradeoff
+- Slightly more total wall-clock time (no parallelism within edge function), but reliability + visibility outweigh this for admin tooling.
 
-**Result:** All 20 paginated drafts visible per page; user clicks "Next" / page 2 to see the rest. ~3 lines changed.
+**~10 lines changed in one function, no new state, no UI changes.**
 

@@ -368,6 +368,27 @@ export function ChatGptAgentManager() {
             onToggleExpand={toggleExpand}
           />
 
+          {/* AI Processing Banner */}
+          {aiProcessing && aiProgress && (
+            <div className="mb-4 p-3 rounded-md border border-l-4 border-l-blue-500 bg-blue-50 dark:bg-blue-950/30">
+              <div className="flex items-center gap-2.5 mb-2">
+                <Loader2 className="h-4 w-4 animate-spin text-blue-600 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground">
+                    AI {aiProgress.action} in progress
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Batch {aiProgress.batchIndex} of {aiProgress.totalBatches} · Processing {aiProgress.current} of {aiProgress.total} drafts · Model: {aiModel}
+                  </p>
+                </div>
+                <span className="text-xs font-medium text-blue-600 shrink-0">
+                  {Math.round((aiProgress.current / aiProgress.total) * 100)}%
+                </span>
+              </div>
+              <Progress value={(aiProgress.current / aiProgress.total) * 100} className="h-1.5" />
+            </div>
+          )}
+
           {/* Section Tabs */}
           <Tabs value={activeSection} onValueChange={v => { setActiveSection(v as SectionBucket); setSelected(new Set()); setLinkFilter('all'); }}>
             <TabsList className="flex flex-wrap !h-auto gap-1 p-2 mb-3">

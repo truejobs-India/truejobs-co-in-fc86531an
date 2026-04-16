@@ -28,6 +28,7 @@ import {
   Rss,
   Search,
   Bug,
+  Bot,
   Bell,
 } from 'lucide-react';
 import { RssIntakeManager } from '@/components/admin/rss-intake/RssIntakeManager';
@@ -64,6 +65,7 @@ import { SitewideSeoAudit } from '@/components/admin/SitewideSeoAudit';
 import { FirecrawlDraftsManager } from '@/components/admin/firecrawl/FirecrawlDraftsManager';
 import { IntakeDraftsManager } from '@/components/admin/intake/IntakeDraftsManager';
 import { NotificationCentre } from '@/components/admin/notifications/NotificationCentre';
+import { ChatGptAgentManager } from '@/components/admin/chatgpt-agent/ChatGptAgentManager';
 import { useNavigate } from 'react-router-dom';
 
 type DrilldownView = 
@@ -338,6 +340,10 @@ function AdminDashboardInner() {
                   <Bell className="h-4 w-4" />
                   <span className="hidden sm:inline">Notifications</span>
                 </TabsTrigger>
+                <TabsTrigger value="chatgpt-agent" className="flex items-center gap-2">
+                  <Bot className="h-4 w-4" />
+                  <span className="hidden sm:inline">ChatGPT Agent</span>
+                </TabsTrigger>
               </TabsList>
 
               <TabsContent value="users">
@@ -440,6 +446,10 @@ function AdminDashboardInner() {
 
               <TabsContent value="notifications">
                 <NotificationCentre />
+              </TabsContent>
+
+              <TabsContent value="chatgpt-agent" className="w-full max-w-none">
+                <ChatGptAgentManager />
               </TabsContent>
             </Tabs>
           </>

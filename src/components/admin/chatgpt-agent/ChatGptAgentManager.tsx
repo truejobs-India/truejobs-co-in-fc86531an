@@ -15,7 +15,7 @@ import { Progress } from '@/components/ui/progress';
 import { supabase } from '@/integrations/supabase/client';
 import {
   Upload, Search, Sparkles, Loader2, Copy, ChevronDown,
-  Send, AlertTriangle, Link2Off, Link2, RefreshCw, Wand2, StopCircle, CheckCircle2,
+  Send, AlertTriangle, Link2Off, Link2, RefreshCw, Wand2, StopCircle,
 } from 'lucide-react';
 import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSelector';
 import { useAdminMessages } from '@/hooks/useAdminMessages';
@@ -485,6 +485,21 @@ export function ChatGptAgentManager() {
               Run All Needed Fixes{selected.size > 0 ? ` (${selected.size})` : ''}
             </Button>
 
+            {/* Stop button — visible only while pipeline is running */}
+            {aiProcessing && pipelineProgress && (
+              <Button
+                size="sm"
+                variant="destructive"
+                disabled={stopping}
+                onClick={() => { stopRequestedRef.current = true; setStopping(true); }}
+                className="gap-1"
+                title="Finish current step, then stop"
+              >
+                {stopping ? <Loader2 className="h-4 w-4 animate-spin" /> : <StopCircle className="h-4 w-4" />}
+                {stopping ? 'Stopping…' : 'Stop'}
+              </Button>
+            )}
+
             {/* Advanced (manual) — legacy single-action dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -633,8 +648,14 @@ export function ChatGptAgentManager() {
                                   <Checkbox checked={selected.has(d.id)} onCheckedChange={() => toggleSelect(d.id)} />
                                 </TableCell>
                                 <TableCell>
-                                  <div className="flex items-start gap-1.5">
+                                  <div className="flex items-start gap-1.5 flex-wrap">
                                     <span className="text-sm font-medium line-clamp-2">{d.normalized_title || d.raw_title}</span>
+                                    {isAiFixed(draftRuns[d.id]) && (
+                                      <Badge variant="outline" className="text-[10px] gap-1 border-green-500 text-green-700 bg-green-50 dark:bg-green-950/30 dark:text-green-400 shrink-0">
+                                        <Sparkles className="h-2.5 w-2.5" />
+                                        AI Fixed
+                                      </Badge>
+                                    )}
                                     {processingChunkIds.has(d.id) && (
                                       <Badge variant="outline" className="text-[10px] gap-1 border-blue-500 text-blue-600 shrink-0">
                                         <Loader2 className="h-2.5 w-2.5 animate-spin" />

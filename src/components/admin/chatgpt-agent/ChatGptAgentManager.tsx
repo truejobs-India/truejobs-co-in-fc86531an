@@ -241,8 +241,12 @@ export function ChatGptAgentManager() {
       const CHUNK = 5;
       const allResults: any[] = [];
       let invokeError: string | null = null;
+      const totalBatches = Math.ceil(ids.length / CHUNK);
       for (let i = 0; i < ids.length; i += CHUNK) {
         const chunk = ids.slice(i, i + CHUNK);
+        const batchIndex = Math.floor(i / CHUNK) + 1;
+        setProcessingChunkIds(new Set(chunk));
+        setAiProgress({ action, current: i, total: ids.length, batchIndex, totalBatches });
         const res = await supabase.functions.invoke('intake-ai-classify', {
           body: { draft_ids: chunk, aiModel, action },
           headers: { Authorization: `Bearer ${session?.access_token}` },
@@ -250,6 +254,7 @@ export function ChatGptAgentManager() {
         if (res.error) { invokeError = res.error.message; break; }
         if (res.data?.error) { invokeError = res.data.error; break; }
         allResults.push(...(res.data?.results || []));
+        setAiProgress({ action, current: i + chunk.length, total: ids.length, batchIndex, totalBatches });
       }
       if (invokeError) {
         addMessage('error', `AI ${action} failed`, invokeError);
@@ -267,6 +272,8 @@ export function ChatGptAgentManager() {
       addMessage('error', `AI ${action} error`, err?.message || 'Unknown error');
     }
     setAiProcessing(false);
+    setAiProgress(null);
+    setProcessingChunkIds(new Set());
     setSelected(new Set());
     fetchDrafts();
   };

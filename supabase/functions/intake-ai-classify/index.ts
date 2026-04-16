@@ -23,8 +23,8 @@ const GATEWAY_MODEL_MAP: Record<string, string> = {
   'lovable-gemini': 'google/gemini-3-flash-preview',
 };
 
-const VERTEX_MODEL_MAP: Record<string, { vertexModel: string; timeoutMs: number }> = {
-  'vertex-flash': { vertexModel: 'gemini-2.5-flash', timeoutMs: 90_000 },
+const GEMINI_DIRECT_MODEL_MAP: Record<string, { geminiModel: string; timeoutMs: number }> = {
+  'vertex-flash': { geminiModel: 'gemini-2.5-flash', timeoutMs: 90_000 },
   'vertex-pro': { vertexModel: 'gemini-2.5-pro', timeoutMs: 120_000 },
   'vertex-3.1-pro': { vertexModel: 'gemini-3.1-pro-preview', timeoutMs: 120_000 },
   'vertex-3-flash': { vertexModel: 'gemini-3-flash-preview', timeoutMs: 90_000 },

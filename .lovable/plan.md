@@ -1,73 +1,60 @@
 
 
-# ChatGPT Agent v1 — Implementation Plan (Final)
+# ChatGPT Agent — Audit Fixes + Persistent Messages (Combined)
 
-## Database Migration (1 migration, 4 columns)
+## 4 items, 2 files to change
 
-```sql
-ALTER TABLE intake_drafts ADD COLUMN IF NOT EXISTS source_channel text DEFAULT 'intake';
-ALTER TABLE intake_drafts ADD COLUMN IF NOT EXISTS section_bucket text;
-ALTER TABLE intake_drafts ADD COLUMN IF NOT EXISTS import_source_sheet text;
-ALTER TABLE intake_drafts ADD COLUMN IF NOT EXISTS import_row_number integer;
+### 1. Wire `action` parameter in edge function (Critical)
+
+**File:** `supabase/functions/intake-ai-classify/index.ts`
+
+Read `action` from the request body. Route to targeted behavior:
+
+- `fix` / `classify` / empty → existing full classification (no change)
+- `enrich` → set `fill_empty_only = true`, fall through to existing fill logic
+- `seo_fix` → targeted prompt updating only `seo_title`, `slug`, `meta_description`, `summary`
+- `improve_title` → targeted prompt for `normalized_title` and `seo_title` only
+- `improve_summary` → targeted prompt for `summary` and `meta_description` only
+- `generate_slug` → targeted prompt for `slug` only
+- `normalize_fields` → targeted prompt to clean `organisation_name`, `post_name`, `exam_name`, `qualification_text`, `age_limit_text`, `salary_text`
+
+~80 lines added via a switch block before the existing classification logic.
+
+### 2. Restrict model selector to routable models (Critical)
+
+**File:** `src/components/admin/chatgpt-agent/ChatGptAgentManager.tsx`
+
+Add an `allowedValues` array of only the models the edge function can actually route, and pass it to `AiModelSelector`. This prevents silent fallback for `groq`, `claude-sonnet`, `sarvam-30b`, `sarvam-105b`.
+
+```typescript
+const ALLOWED_MODELS = [
+  'gemini-flash', 'gemini-pro', 'gpt5', 'gpt5-mini', 'lovable-gemini',
+  'vertex-flash', 'vertex-pro', 'vertex-3.1-pro', 'vertex-3-flash', 'vertex-3.1-flash-lite',
+  'nova-pro', 'nova-premier', 'mistral', 'nemotron-120b',
+  'azure-gpt4o-mini', 'azure-gpt41-mini', 'azure-gpt5-mini',
+  'azure-deepseek-v3', 'azure-deepseek-r1',
+];
 ```
 
-No trigger changes needed — `source_type = 'manual'` is already valid.
+### 3. Batch AI action calls (Minor)
 
-## Edge Function Change
+**File:** `src/components/admin/chatgpt-agent/ChatGptAgentManager.tsx`
 
-**`supabase/functions/intake-publish/index.ts`**: Add `'scholarships'` case (same as `notifications` but with `job_category: 'Scholarship'`), before the `default` case (~15 lines).
+Replace the per-ID loop with a single `supabase.functions.invoke` call sending all selected IDs in one `draft_ids` array.
 
-## Files to Create
+### 4. Replace toasts with persistent admin messages
 
-### 1. `src/components/admin/chatgpt-agent/chatgptAgentExcelParser.ts` (~200 lines)
-Pure parser utility. Parses and returns normalized rows (no DB inserts).
-- Reads sheets, skips Summary/ReadMe
-- Imports from Master_List only; falls back to category sheets if Master_List is missing/empty
-- Tolerant column mapping (trim, lowercase)
-- Routes rows to 8 section_buckets via Category → Subcategory → Suggested Content Type
-- Marks rows Needs Review when: missing title, missing official link, from Needs_Verification, uncertain routing
-- Within-batch dedup by normalized title + org
-- Returns `{ rows, summary }` — caller handles DB insert
+**File:** `src/components/admin/chatgpt-agent/ChatGptAgentManager.tsx`
 
-### 2. `src/components/admin/chatgpt-agent/ChatGptAgentManager.tsx` (~600 lines)
-Main component with:
-- 8 tabs, top bar (Upload Excel, AI Model Selector, Find Duplicates)
-- Table columns: Checkbox, Title, Organization, Status, Official Link (clickable/truncated/copy/"Missing" badge), Last Date, Priority, Duplicate Status, Created Date
-- "With Official Link" / "Missing Official Link" filter toggle per tab
-- Upload Excel inline dialog: parse → preview → confirm → insert into `intake_drafts`
-- AI actions dropdown (Fix, Enrich, SEO Fix, Improve Title, Improve Summary, Generate Slug, Normalize Fields) via `intake-ai-classify`
-- Publish button per draft (calls `intake-publish`)
-- Row click opens editor
+- Replace `useToast` with `useAdminMessages('chatgpt-agent')`
+- Convert all ~12 `toast()` calls to `addMessage(type, title, description)`
+- Render `<AdminMessageLog>` at the top of the card content
+- Messages persist until manually dismissed or cleared via "Clear All Messages" button
 
-### 3. `src/components/admin/chatgpt-agent/ChatGptAgentDraftEditor.tsx` (~250 lines)
-Editor drawer reusing IntakeDraftDetailDialog patterns:
-- Editable fields: title, summary, slug, meta_description, seo_title, official links, dates, notes, org, post_name
-- Diagnostics tab: import source sheet, row number, routing reason, official link presence
-- Save / Delete / Publish buttons
+## Files changed
 
-### 4. `src/components/admin/chatgpt-agent/ChatGptAgentDuplicateFinder.tsx` (~150 lines)
-Per-section duplicate finder dialog:
-- Exact official_notification_link match
-- Exact normalized title match
-- Same org + post_name combo
-- Checks against other chatgpt_agent drafts + `employment_news_jobs` + `blog_posts`
-- Shows match reason, select + delete duplicates (drafts only)
-
-## Files to Modify
-
-### `src/pages/admin/AdminDashboard.tsx`
-Add `Bot` icon import, tab trigger `"chatgpt-agent"`, and `<TabsContent>` with `<ChatGptAgentManager />`.
-
-## Content Type & Publish Mapping
-
-| Section Bucket | content_type | publish_target | Destination |
-|---|---|---|---|
-| job_postings | job | jobs | employment_news_jobs |
-| admit_cards | admit_card | admit_cards | govt_admit_cards |
-| results | result | results | govt_results |
-| answer_keys | answer_key | answer_keys | govt_answer_keys |
-| exam_dates | exam | exams | govt_exams |
-| admissions | notification | notifications | employment_news_jobs |
-| scholarships | scholarship | scholarships | employment_news_jobs |
-| other_updates | notification | notifications | employment_news_jobs |
+| File | Changes |
+|---|---|
+| `supabase/functions/intake-ai-classify/index.ts` | Read `action`, add switch block with targeted prompts per action type |
+| `src/components/admin/chatgpt-agent/ChatGptAgentManager.tsx` | Allowed models filter, batch calls, replace toasts with `AdminMessageLog` |
 

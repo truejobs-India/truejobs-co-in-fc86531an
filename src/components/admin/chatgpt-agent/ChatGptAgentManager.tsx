@@ -342,7 +342,6 @@ export function ChatGptAgentManager() {
     let stoppedEarly = false;
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
       for (let i = 0; i < ids.length; i++) {
         if (stopRequestedRef.current) {
           stoppedEarly = true;
@@ -356,9 +355,11 @@ export function ChatGptAgentManager() {
         let draftFailed = false;
         while (safety++ < 10) {
           if (stopRequestedRef.current) break;
+          // Refresh session before each step — long Gemini calls can expire the JWT mid-run
+          const { data: { session: freshSession } } = await supabase.auth.getSession();
           const res = await supabase.functions.invoke('intake-ai-pipeline', {
             body: { draft_id: draftId, aiModel, step: 'auto' },
-            headers: { Authorization: `Bearer ${session?.access_token}` },
+            headers: { Authorization: `Bearer ${freshSession?.access_token}` },
           });
           if (res.error) {
             failed.push({ id: draftId, title: titleOf(draftId), step: lastStep || '?', error: res.error.message || String(res.error) });

@@ -415,7 +415,7 @@ export function ChatGptAgentManager() {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {filteredDrafts.map(d => {
+                          {paginatedDrafts.map(d => {
                             const sd = d.structured_data_json as any || {};
                             return (
                               <TableRow

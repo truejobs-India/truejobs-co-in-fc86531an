@@ -190,9 +190,9 @@ async function callAI(
 ): Promise<any> {
   const modelKey = aiModel || '';
 
-  const vertexDef = VERTEX_MODEL_MAP[modelKey];
-  if (vertexDef) {
-    console.log(`[intake-ai-classify] routing to Vertex AI: ${vertexDef.vertexModel}`);
+  const geminiDef = GEMINI_DIRECT_MODEL_MAP[modelKey];
+  if (geminiDef) {
+    console.log(`[intake-ai-classify] routing to Gemini Direct API: ${geminiDef.geminiModel}`);
     const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
     const fullPrompt = `${systemPrompt}\n\n${userPrompt}\n\nReturn valid JSON matching this schema:\n${JSON.stringify(toolDef.parameters, null, 2)}`;
     const text = await callGeminiDirect(vertexDef.vertexModel, fullPrompt, vertexDef.timeoutMs);

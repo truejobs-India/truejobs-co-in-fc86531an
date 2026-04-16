@@ -572,6 +572,13 @@ export function ChatGptAgentManager() {
                                       </Badge>
                                     )}
                                   </div>
+                                  <div className="mt-1">
+                                    <PipelineStepBadges
+                                      runs={draftRuns[d.id] || []}
+                                      currentStep={pipelineProgress?.draftId === d.id ? pipelineProgress.currentStep : null}
+                                      isProcessing={pipelineProgress?.draftId === d.id}
+                                    />
+                                  </div>
                                 </TableCell>
                                 <TableCell className="text-xs text-muted-foreground">{d.organisation_name || '—'}</TableCell>
                                 <TableCell>

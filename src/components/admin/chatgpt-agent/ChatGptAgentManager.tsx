@@ -108,6 +108,14 @@ export function ChatGptAgentManager() {
     );
   }, [drafts, linkFilter]);
 
+  const totalPages = Math.max(1, Math.ceil(filteredDrafts.length / PAGE_SIZE));
+  const paginatedDrafts = useMemo(
+    () => filteredDrafts.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
+    [filteredDrafts, currentPage],
+  );
+
+  useEffect(() => { setCurrentPage(1); }, [linkFilter, activeSection, drafts.length]);
+
   // ── Upload Excel ──
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { ScrollArea } from '@/components/ui/scroll-area';
+
 import { Progress } from '@/components/ui/progress';
 import { supabase } from '@/integrations/supabase/client';
 import {
@@ -429,8 +429,7 @@ export function ChatGptAgentManager() {
                     {linkFilter !== 'all' && ' (try changing filter)'}
                   </div>
                 ) : (
-                  <div className="border rounded-lg overflow-hidden">
-                    <ScrollArea className="max-h-[600px]">
+                  <div className="border rounded-lg overflow-x-auto">
                       <Table>
                         <TableHeader>
                           <TableRow>
@@ -525,7 +524,6 @@ export function ChatGptAgentManager() {
                           })}
                         </TableBody>
                       </Table>
-                    </ScrollArea>
                   </div>
                 )}
                 {!loading && filteredDrafts.length > PAGE_SIZE && (

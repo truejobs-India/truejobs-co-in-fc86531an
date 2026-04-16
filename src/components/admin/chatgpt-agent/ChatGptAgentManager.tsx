@@ -459,7 +459,15 @@ export function ChatGptAgentManager() {
                                   <Checkbox checked={selected.has(d.id)} onCheckedChange={() => toggleSelect(d.id)} />
                                 </TableCell>
                                 <TableCell>
-                                  <span className="text-sm font-medium line-clamp-2">{d.normalized_title || d.raw_title}</span>
+                                  <div className="flex items-start gap-1.5">
+                                    <span className="text-sm font-medium line-clamp-2">{d.normalized_title || d.raw_title}</span>
+                                    {processingChunkIds.has(d.id) && (
+                                      <Badge variant="outline" className="text-[10px] gap-1 border-blue-500 text-blue-600 shrink-0">
+                                        <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                                        Processing…
+                                      </Badge>
+                                    )}
+                                  </div>
                                 </TableCell>
                                 <TableCell className="text-xs text-muted-foreground">{d.organisation_name || '—'}</TableCell>
                                 <TableCell>

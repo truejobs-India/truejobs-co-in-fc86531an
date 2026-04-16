@@ -882,7 +882,8 @@ Deno.serve(async (req) => {
         const update: Record<string, any> = {
           content_type: aiResult.content_type,
           primary_status: aiResult.primary_status,
-          publish_target: aiResult.publish_target,
+          publish_target: (aiResult.publish_target === 'certificates' || aiResult.publish_target === 'marksheets')
+            ? 'scholarships' : aiResult.publish_target,
           confidence_score: aiResult.confidence_score,
           classification_reason: aiResult.classification_reason,
           secondary_tags: mergedTags,

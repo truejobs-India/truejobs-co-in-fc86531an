@@ -110,6 +110,8 @@ function validateForPublish(draft: any): string | null {
       }
       break;
     case 'scholarships':
+      if (!draft.organisation_name) return 'Scholarships need organisation_name';
+      break;
     case 'certificates':
     case 'marksheets':
       return `Publish target "${target}" has no safe live destination — keep in manual review`;
@@ -558,6 +560,38 @@ Deno.serve(async (req) => {
           if (insErr) throw new Error(`Insert into govt_answer_keys failed: ${insErr.message}`);
           publishedId = inserted.id;
           publishedTable = 'govt_answer_keys';
+          break;
+        }
+
+        case 'scholarships': {
+          const resolvedSlug = await resolveSlug(client, slug, 'employment_news_jobs');
+          const { data: inserted, error: insErr } = await client
+            .from('employment_news_jobs')
+            .insert({
+              enriched_title: title,
+              org_name: draft.organisation_name,
+              post: draft.post_name || title,
+              slug: resolvedSlug,
+              meta_title: draft.seo_title || title,
+              meta_description: draft.meta_description,
+              enriched_description: draft.draft_content_html || draft.summary,
+              description: draft.draft_content_text || draft.summary,
+              location: draft.job_location,
+              qualification: draft.qualification_text,
+              last_date: normalizeDate(draft.closing_date),
+              apply_link: draft.official_apply_link || draft.official_notification_link,
+              application_mode: draft.application_mode,
+              job_category: 'Scholarship',
+              status: 'published',
+              source: 'intake_pipeline',
+              published_at: new Date().toISOString(),
+              faq_html: draft.faq_json ? JSON.stringify(draft.faq_json) : null,
+            })
+            .select('id')
+            .single();
+          if (insErr) throw new Error(`Insert into employment_news_jobs failed: ${insErr.message}`);
+          publishedId = inserted.id;
+          publishedTable = 'employment_news_jobs';
           break;
         }
 

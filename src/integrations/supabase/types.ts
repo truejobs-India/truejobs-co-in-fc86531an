@@ -2824,6 +2824,13 @@ export type Database = {
           official_website_link: string | null
           opening_date: string | null
           organisation_name: string | null
+          pipeline_current_step: string | null
+          pipeline_finished_at: string | null
+          pipeline_last_error: string | null
+          pipeline_lock_expires_at: string | null
+          pipeline_lock_token: string | null
+          pipeline_started_at: string | null
+          pipeline_status: string | null
           post_name: string | null
           primary_status: string | null
           processing_status: string
@@ -2905,6 +2912,13 @@ export type Database = {
           official_website_link?: string | null
           opening_date?: string | null
           organisation_name?: string | null
+          pipeline_current_step?: string | null
+          pipeline_finished_at?: string | null
+          pipeline_last_error?: string | null
+          pipeline_lock_expires_at?: string | null
+          pipeline_lock_token?: string | null
+          pipeline_started_at?: string | null
+          pipeline_status?: string | null
           post_name?: string | null
           primary_status?: string | null
           processing_status?: string
@@ -2986,6 +3000,13 @@ export type Database = {
           official_website_link?: string | null
           opening_date?: string | null
           organisation_name?: string | null
+          pipeline_current_step?: string | null
+          pipeline_finished_at?: string | null
+          pipeline_last_error?: string | null
+          pipeline_lock_expires_at?: string | null
+          pipeline_lock_token?: string | null
+          pipeline_started_at?: string | null
+          pipeline_status?: string | null
           post_name?: string | null
           primary_status?: string | null
           processing_status?: string
@@ -3026,6 +3047,50 @@ export type Database = {
           vacancy_count?: number | null
         }
         Relationships: []
+      }
+      intake_pipeline_runs: {
+        Row: {
+          ai_model: string | null
+          created_at: string
+          draft_id: string
+          duration_ms: number | null
+          fields_updated: string[]
+          id: string
+          reason: string | null
+          status: string
+          step: string
+        }
+        Insert: {
+          ai_model?: string | null
+          created_at?: string
+          draft_id: string
+          duration_ms?: number | null
+          fields_updated?: string[]
+          id?: string
+          reason?: string | null
+          status: string
+          step: string
+        }
+        Update: {
+          ai_model?: string | null
+          created_at?: string
+          draft_id?: string
+          duration_ms?: number | null
+          fields_updated?: string[]
+          id?: string
+          reason?: string | null
+          status?: string
+          step?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "intake_pipeline_runs_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "intake_drafts"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       job_posting_drafts: {
         Row: {

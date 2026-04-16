@@ -15,7 +15,7 @@ import { Progress } from '@/components/ui/progress';
 import { supabase } from '@/integrations/supabase/client';
 import {
   Upload, Search, Sparkles, Loader2, Copy, ChevronDown,
-  Send, AlertTriangle, Link2Off, Link2, RefreshCw,
+  Send, AlertTriangle, Link2Off, Link2, RefreshCw, Wand2,
 } from 'lucide-react';
 import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSelector';
 import { useAdminMessages } from '@/hooks/useAdminMessages';
@@ -23,6 +23,7 @@ import { AdminMessageLog } from '@/components/admin/AdminMessageLog';
 import { parseExcelWorkbook, SECTION_BUCKET_LABELS, type ParseResult, type ParsedRow, type SectionBucket } from './chatgptAgentExcelParser';
 import { ChatGptAgentDraftEditor } from './ChatGptAgentDraftEditor';
 import { ChatGptAgentDuplicateFinder } from './ChatGptAgentDuplicateFinder';
+import { PipelineStepBadges, type PipelineRun } from './PipelineStepBadges';
 
 const ALL_SECTIONS: SectionBucket[] = [
   'job_postings', 'admit_cards', 'results', 'answer_keys',
@@ -65,6 +66,10 @@ export function ChatGptAgentManager() {
   const [aiProgress, setAiProgress] = useState<{ action: string; current: number; total: number; batchIndex: number; totalBatches: number } | null>(null);
   const [processingChunkIds, setProcessingChunkIds] = useState<Set<string>>(new Set());
 
+  // Pipeline state
+  const [pipelineProgress, setPipelineProgress] = useState<{ draftIndex: number; totalDrafts: number; currentStep: string; stepIndex: number; draftId: string } | null>(null);
+  const [draftRuns, setDraftRuns] = useState<Record<string, PipelineRun[]>>({});
+
   // Section counts
   const [sectionCounts, setSectionCounts] = useState<Record<string, number>>({});
 
@@ -101,8 +106,32 @@ export function ChatGptAgentManager() {
     setSectionCounts(counts);
   }, []);
 
+  const fetchRunsForDrafts = useCallback(async (ids: string[]) => {
+    if (ids.length === 0) return;
+    try {
+      const { data } = await (supabase as any)
+        .from('intake_pipeline_runs')
+        .select('draft_id, step, status, reason, created_at')
+        .in('draft_id', ids)
+        .order('created_at', { ascending: false })
+        .limit(ids.length * 16);
+      const map: Record<string, PipelineRun[]> = {};
+      (data || []).forEach((r: any) => {
+        if (!map[r.draft_id]) map[r.draft_id] = [];
+        map[r.draft_id].push({ step: r.step, status: r.status, reason: r.reason, created_at: r.created_at });
+      });
+      setDraftRuns(prev => ({ ...prev, ...map }));
+    } catch (err) {
+      console.error('fetch runs error:', err);
+    }
+  }, []);
+
   useEffect(() => { fetchDrafts(); }, [fetchDrafts]);
   useEffect(() => { fetchCounts(); }, [fetchCounts]);
+  useEffect(() => {
+    const ids = drafts.map(d => d.id);
+    if (ids.length > 0) fetchRunsForDrafts(ids);
+  }, [drafts, fetchRunsForDrafts]);
 
   const filteredDrafts = useMemo(() => {
     if (linkFilter === 'all') return drafts;
@@ -273,6 +302,51 @@ export function ChatGptAgentManager() {
     }
     setAiProcessing(false);
     setAiProgress(null);
+    setProcessingChunkIds(new Set());
+    setSelected(new Set());
+    fetchDrafts();
+  };
+
+  // ── Pipeline (Run All Needed Fixes) ──
+  const runFullPipeline = async (ids: string[]) => {
+    if (ids.length === 0) { addMessage('info', 'Select drafts first'); return; }
+    setAiProcessing(true);
+    addMessage('info', `✨ Pipeline started`, `Processing ${ids.length} draft(s) sequentially with model ${aiModel}…`);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      for (let i = 0; i < ids.length; i++) {
+        const draftId = ids[i];
+        setProcessingChunkIds(new Set([draftId]));
+        let safety = 0;
+        let lastStep = '';
+        while (safety++ < 10) {
+          const res = await supabase.functions.invoke('intake-ai-pipeline', {
+            body: { draft_id: draftId, aiModel, step: 'auto' },
+            headers: { Authorization: `Bearer ${session?.access_token}` },
+          });
+          if (res.error) {
+            addMessage('error', `Draft ${i + 1}/${ids.length} failed`, res.error.message || String(res.error));
+            break;
+          }
+          if (res.data?.error) {
+            addMessage('error', `Draft ${i + 1}/${ids.length} step ${res.data.ran_step || '?'} failed`, res.data.error);
+            break;
+          }
+          lastStep = res.data?.ran_step || lastStep;
+          setPipelineProgress({
+            draftIndex: i + 1, totalDrafts: ids.length,
+            currentStep: lastStep, stepIndex: safety, draftId,
+          });
+          if (!res.data?.next_step) break;
+        }
+        await fetchRunsForDrafts([draftId]);
+      }
+      addMessage('success', `Pipeline complete`, `Processed ${ids.length} draft(s).`);
+    } catch (err: any) {
+      addMessage('error', 'Pipeline error', err?.message || 'Unknown error');
+    }
+    setAiProcessing(false);
+    setPipelineProgress(null);
     setProcessingChunkIds(new Set());
     setSelected(new Set());
     fetchDrafts();

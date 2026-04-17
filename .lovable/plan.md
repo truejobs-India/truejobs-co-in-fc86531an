@@ -1,66 +1,67 @@
 
+The user is asking whether the audit covered all job drafts, not just the 2 in the screenshot.
 
-## Root cause
+From my prior DB checks I already verified:
+- Total intake-pipeline-published rows in `employment_news_jobs`: **14**
+- Of those, **2** have `apply_link IS NULL` (Federal Bank + NGEL — both visible in screenshot scope)
+- Other **12** intake rows already have `apply_link` populated
 
-Two bugs in `buildLiveUrl` inside `src/components/admin/chatgpt-agent/ChatGptAgentManager.tsx`:
+But the user's concern is broader: "every draft must have the orange Apply button." So I need to also confirm:
+1. All `intake_drafts` with `processing_status='published'` and `published_table_name='employment_news_jobs'` → check the resulting row's `apply_link`
+2. Confirm the source draft actually had a link to recover (otherwise nothing to backfill)
 
-1. **Wrong origin** — `window.open('/jobs/...')` uses the current preview origin (`...lovableproject.com`), not production. Live site is `https://truejobs.co.in`.
-2. **Wrong path** — the map says `jobs → /jobs/{slug}`, but `intake-publish` actually inserts `publish_target='jobs'` rows into the **`employment_news_jobs`** table, whose public route is `/jobs/employment-news/:slug`. So `/jobs/{slug}` 404s even on production.
+I'll add this verification step explicitly to the plan and keep the same fix.
 
-### Verification (already done)
+## Plan: Fix missing Apply button across ALL ChatGPT Agent job drafts
 
-- Both published drafts exist in `employment_news_jobs` with `status='published'`.
-- `https://truejobs.co.in/jobs/employment-news/federal-bank-sales-professionals-recruitment-2026` → **HTTP 200**, `<title>Federal Bank Sales Professionals Recruitment 2026 | TrueJobs</title>` ✅
-- `https://truejobs.co.in/jobs/employment-news/ngel-deputy-general-manager-asst-manager-recruitment-2026` → **HTTP 200** ✅
-- `https://truejobs.co.in/jobs/{slug}` (current broken behavior) → **HTTP 404** ✗
+### Audit (will run in implementation)
+Single query before the fix to enumerate every affected row:
+```sql
+SELECT en.id, en.slug, en.apply_link,
+       d.official_apply_link, d.official_notification_link, d.official_website_link
+FROM employment_news_jobs en
+JOIN intake_drafts d ON d.published_record_id::uuid = en.id
+WHERE d.published_table_name = 'employment_news_jobs'
+  AND en.apply_link IS NULL;
+```
+Current count from prior check: **2 rows** (Federal Bank, NGEL). The audit will be re-run at fix time to catch anything new.
 
-## Fix
+### Fix (3 changes, same as before)
 
-Single file: `src/components/admin/chatgpt-agent/ChatGptAgentManager.tsx`
-
-1. Add a constant `LIVE_SITE_ORIGIN = 'https://truejobs.co.in'`.
-2. Drive the URL off **`published_table_name`** (set by `intake-publish`), not the loosely-named `publish_target`. This is the source of truth for where the row actually landed. Fall back to `publish_target` only when `published_table_name` is missing.
-3. Correct mapping based on real routes in `src/App.tsx`:
-
-   | published_table_name | path prefix |
-   |---|---|
-   | `employment_news_jobs` | `/jobs/employment-news` |
-   | `govt_exams` | `/sarkari-jobs` |
-   | `govt_results` | `/sarkari-jobs` |
-   | `govt_admit_cards` | `/sarkari-jobs` |
-   | `govt_answer_keys` | `/sarkari-jobs` |
-
-   (All `govt_*` content is rendered via `/sarkari-jobs/:slug` → `GovtExamDetail`, which is the existing live convention.)
-
-4. Build the absolute URL: `${LIVE_SITE_ORIGIN}${prefix}/${slug}`.
-5. Keep the icon button visible only when `processing_status === 'published'` and the URL resolves.
-
+**1. `supabase/functions/intake-publish/index.ts` (line ~399)** — add fallback chain so future publishes never lose the link:
 ```ts
-const LIVE_SITE_ORIGIN = 'https://truejobs.co.in';
-const TABLE_TO_PATH: Record<string, string> = {
-  employment_news_jobs: '/jobs/employment-news',
-  govt_exams: '/sarkari-jobs',
-  govt_results: '/sarkari-jobs',
-  govt_admit_cards: '/sarkari-jobs',
-  govt_answer_keys: '/sarkari-jobs',
-};
-const buildLiveUrl = (d: any): string | null => {
-  if (!d?.slug) return null;
-  const prefix = TABLE_TO_PATH[d.published_table_name];
-  if (!prefix) return null;
-  return `${LIVE_SITE_ORIGIN}${prefix}/${d.slug}`;
-};
+apply_link: draft.official_apply_link 
+         || draft.official_notification_link 
+         || draft.official_website_link,
 ```
 
-6. Ensure `fetchDrafts` selects `published_table_name` (audit the existing select; if missing, add it).
+**2. Backfill migration** — repairs every existing affected row, not just the 2:
+```sql
+UPDATE employment_news_jobs en
+SET apply_link = COALESCE(d.official_apply_link, d.official_notification_link, d.official_website_link)
+FROM intake_drafts d
+WHERE d.published_record_id::uuid = en.id
+  AND d.published_table_name = 'employment_news_jobs'
+  AND en.apply_link IS NULL
+  AND COALESCE(d.official_apply_link, d.official_notification_link, d.official_website_link) IS NOT NULL;
+```
+This is set-based — covers all rows in one shot, not row-by-row.
 
-## Out of scope / not changed
+**3. `src/pages/jobs/EmploymentNewsJobDetail.tsx`** — make the CTA button orange + relabel:
+```tsx
+<Button size="lg" className="bg-orange-600 hover:bg-orange-700 text-white font-semibold">
+  <ExternalLink className="h-4 w-4 mr-2" />
+  {job.job_category === 'Notification' ? 'View Official Notice' : 'Apply Now on Official Site'}
+</Button>
+```
+Applied to both the primary `apply_link` button and the `official_website` fallback button.
 
-- `intake-publish` edge function, DB schema, RLS — untouched.
-- Preview/edit dialogs — untouched.
-- Filter chips and section count badges — untouched.
+### Verification after fix
+Re-run the audit query — expected result: **0 rows** with NULL `apply_link` from intake pipeline. Spot-check Federal Bank + NGEL live URLs to confirm the orange button renders.
 
-## Risk
+### Out of scope
+- Pre-existing legacy `employment_news_jobs` rows (non-intake source) with NULL `apply_link` — different ingestion path, separate concern.
+- Edge function logic, RLS, schema otherwise untouched.
 
-None. Pure UI correction. If `published_table_name` is unmapped (rare), the live-link icon is simply hidden — no broken link is shown.
-
+### Risk
+None. Fallback only activates when primary field is NULL. Backfill only touches NULL rows where a recoverable link exists in the draft.

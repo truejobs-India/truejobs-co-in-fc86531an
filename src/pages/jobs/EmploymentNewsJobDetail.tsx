@@ -228,16 +228,16 @@ export default function EmploymentNewsJobDetail() {
               <div className="mt-8 flex flex-wrap gap-3">
                 {job.apply_link && (
                   <a href={job.apply_link} target="_blank" rel="noopener noreferrer">
-                    <Button size="lg">
+                    <Button size="lg" className="bg-orange-600 hover:bg-orange-700 text-white font-semibold">
                       <ExternalLink className="h-4 w-4 mr-2" />
-                      {job.job_category === 'Notification' ? 'View Official Notice' : 'Apply Now'}
+                      {job.job_category === 'Notification' ? 'View Official Notice' : 'Apply Now on Official Site'}
                     </Button>
                   </a>
                 )}
                 {!job.apply_link && (job as any).official_website && (
                   <a href={(job as any).official_website} target="_blank" rel="noopener noreferrer">
-                    <Button size="lg" variant="outline">
-                      <ExternalLink className="h-4 w-4 mr-2" /> Visit Official Website
+                    <Button size="lg" className="bg-orange-600 hover:bg-orange-700 text-white font-semibold">
+                      <ExternalLink className="h-4 w-4 mr-2" /> Apply Now on Official Site
                     </Button>
                   </a>
                 )}

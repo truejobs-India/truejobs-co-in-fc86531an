@@ -15,7 +15,7 @@ import { Progress } from '@/components/ui/progress';
 import { supabase } from '@/integrations/supabase/client';
 import {
   Upload, Search, Sparkles, Loader2, Copy, ChevronDown,
-  Send, AlertTriangle, Link2Off, Link2, RefreshCw, Wand2, StopCircle, Eye,
+  Send, AlertTriangle, Link2Off, Link2, RefreshCw, Wand2, StopCircle, Eye, EyeOff,
 } from 'lucide-react';
 import { IntakeDraftPreviewDialog } from '@/components/admin/intake/IntakeDraftPreviewDialog';
 import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSelector';

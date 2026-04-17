@@ -747,16 +747,27 @@ export function ChatGptAgentManager() {
                                     >
                                       <Eye className="h-3.5 w-3.5" />
                                     </Button>
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      className="h-7 text-xs"
-                                      title="Publish"
-                                      disabled={d.processing_status === 'published'}
-                                      onClick={() => handlePublish(d.id)}
-                                    >
-                                      <Send className="h-3 w-3" />
-                                    </Button>
+                                    {d.processing_status === 'published' ? (
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-7 w-7 p-0"
+                                        title="Unpublish"
+                                        onClick={() => handleUnpublish(d)}
+                                      >
+                                        <EyeOff className="h-3.5 w-3.5" />
+                                      </Button>
+                                    ) : (
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-7 w-7 p-0"
+                                        title="Publish"
+                                        onClick={() => handlePublish(d.id)}
+                                      >
+                                        <Send className="h-3.5 w-3.5" />
+                                      </Button>
+                                    )}
                                   </div>
                                 </TableCell>
                               </TableRow>

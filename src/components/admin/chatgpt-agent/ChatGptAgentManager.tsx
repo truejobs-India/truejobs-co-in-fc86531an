@@ -263,7 +263,29 @@ export function ChatGptAgentManager() {
     }
   };
 
-  // ── AI Actions ──
+  // ── Unpublish (mirrors Blog "EyeOff" toggle) ──
+  const handleUnpublish = async (draft: any) => {
+    try {
+      const table = draft.published_table_name as string | null;
+      const recordId = draft.published_record_id as string | null;
+      if (table && recordId) {
+        // Most intake-published targets use a `status` column; set to 'draft' to hide from public.
+        const { error: tErr } = await (supabase as any).from(table).update({ status: 'draft' }).eq('id', recordId);
+        if (tErr) throw tErr;
+      }
+      const { error } = await (supabase.from('intake_drafts').update({
+        processing_status: 'reviewed',
+        published_at: null,
+        review_status: 'pending',
+      } as any) as any).eq('id', draft.id);
+      if (error) throw error;
+      addMessage('success', 'Unpublished', draft.normalized_title || draft.raw_title || draft.id);
+      fetchDrafts();
+      fetchCounts();
+    } catch (err: any) {
+      addMessage('error', 'Unpublish failed', err?.message || 'Unknown error');
+    }
+  };
   const AI_ACTIONS = [
     { label: 'Fix', action: 'fix' },
     { label: 'Enrich', action: 'enrich' },

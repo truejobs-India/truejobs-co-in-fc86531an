@@ -1,50 +1,68 @@
 
 
-## Plan: Preview + Edit per draft row in ChatGpt Agent
+## Plan: Keep published drafts visible + add live-page link icon
 
-### What
-Add per-row **Preview** and **Edit** capability in `ChatGptAgentManager.tsx` so admins can:
-1. View each draft exactly as users will see it (Jobs / Exam / Fallback layout)
-2. Manually edit fields and content, save changes back to `intake_drafts`
+### Diagnosis
+Verified in DB: the 2 published drafts (Federal Bank, NGEL) still exist in `intake_drafts` with `source_channel='chatgpt_agent'`, `section_bucket='job_postings'`, `processing_status='published'`. The `fetchDrafts` query has NO filter that excludes published rows, and the row renderer already has a "Published" badge branch (line 706).
 
-### Reuse existing components
-- **Preview**: `IntakeDraftPreviewDialog` (already at `src/components/admin/intake/IntakeDraftPreviewDialog.tsx`) renders the WYSIWYG view based on `publish_target`. Zero new code.
-- **Edit**: Check if an existing intake draft editor exists (e.g. `IntakeDraftEditor` / `IntakeDraftEditDialog`). If yes — reuse. If not — build a new lean dialog `ChatGptAgentEditDialog.tsx` with form fields for the editable columns and a rich text area for `draft_content_html`.
+So the disappearance is almost certainly because the user is looking at a different section tab (e.g. "Results" / "Exams") while both published rows live in the **Job Postings** bucket. We'll keep current behavior (published rows already persist) but make this discoverability issue impossible by:
 
-### Changes
+1. Adding a small **"Show published"** filter chip alongside the existing All / With Link / Missing Link chips, defaulting to ON, with a count like `Published (2)`. Clicking it filters to only published rows in the current section. This makes published drafts findable in one click regardless of which tab they're in.
+2. Adding a tab-level published-count badge so each section tab shows e.g. `Job Postings (24 · 2 published)`.
 
-**1. `src/components/admin/chatgpt-agent/ChatGptAgentManager.tsx`**
-- Add imports: `IntakeDraftPreviewDialog`, edit dialog component, `Eye` + `Pencil` icons
-- Add state:
-  ```ts
-  const [previewDraftId, setPreviewDraftId] = useState<string | null>(null);
-  const [editDraftId, setEditDraftId] = useState<string | null>(null);
-  ```
-- In each row's actions cell, add two ghost icon buttons:
-  ```tsx
-  <Button size="sm" variant="ghost" onClick={() => setPreviewDraftId(d.id)} title="Preview">
-    <Eye className="h-4 w-4" />
+### Add live page hyperlink icon
+For every row where `processing_status === 'published'`, render a new icon button (`ExternalLink` from lucide-react) in the actions cell that opens the live URL in a new tab.
+
+URL resolution by `publish_target` + `slug` (using existing values already on the row):
+- `jobs` → `/jobs/{slug}`
+- `results` → `/results/{slug}`
+- `admit_cards` → `/admit-cards/{slug}`
+- `answer_keys` → `/answer-keys/{slug}`
+- `exams` → `/exams/{slug}`
+- `notifications` → `/notifications/{slug}`
+- `scholarships` → `/scholarships/{slug}`
+- `certificates` → `/certificates/{slug}`
+- `marksheets` → `/marksheets/{slug}`
+
+Helper:
+```ts
+const buildLiveUrl = (d: any): string | null => {
+  if (!d?.slug || !d?.publish_target || d.publish_target === 'none') return null;
+  const map: Record<string,string> = {
+    jobs:'/jobs', results:'/results', admit_cards:'/admit-cards',
+    answer_keys:'/answer-keys', exams:'/exams', notifications:'/notifications',
+    scholarships:'/scholarships', certificates:'/certificates', marksheets:'/marksheets',
+  };
+  const base = map[d.publish_target];
+  return base ? `${base}/${d.slug}` : null;
+};
+```
+
+Button (only shown when `processing_status === 'published'` AND URL resolves):
+```tsx
+{d.processing_status === 'published' && buildLiveUrl(d) && (
+  <Button size="sm" variant="ghost" title="Open live page"
+    onClick={() => window.open(buildLiveUrl(d)!, '_blank', 'noopener,noreferrer')}>
+    <ExternalLink className="h-3.5 w-3.5 text-blue-600" />
   </Button>
-  <Button size="sm" variant="ghost" onClick={() => setEditDraftId(d.id)} title="Edit">
-    <Pencil className="h-4 w-4" />
-  </Button>
-  ```
-- Render both dialogs at the bottom; on edit save → refresh the row via existing `fetchDrafts()`.
+)}
+```
 
-**2. `src/components/admin/chatgpt-agent/ChatGptAgentEditDialog.tsx`** (new, only if no editor exists to reuse)
-- Loads draft by id.
-- Editable fields: `normalized_title`, `summary`, `seo_title`, `meta_description`, `slug`, `organisation_name`, `post_name`, `vacancy_count`, `salary_text`, `qualification_text`, `age_limit_text`, `application_mode`, `job_location`, `opening_date`, `closing_date`, `exam_name`, `official_apply_link`, `official_notification_link`, and `draft_content_html` (textarea — same trust model as existing intake admin).
-- Save → `supabase.from('intake_drafts').update({...}).eq('id', draftId)` then close + call parent `onSaved()`.
-- Includes a "Preview" button inside edit dialog that opens `IntakeDraftPreviewDialog` for live verification.
-
-### Exploration step (during implementation, before writing edit dialog)
-Search `src/components/admin/intake/` for any existing edit dialog to avoid duplication. Build new only if none exists.
+### Files touched (1 file)
+- `src/components/admin/chatgpt-agent/ChatGptAgentManager.tsx`
+  - Add `ExternalLink` to lucide imports.
+  - Add `buildLiveUrl` helper.
+  - Extend `LinkFilter` type with `'published'` and add the published filter chip with count.
+  - Update `filteredDrafts` to honor the new chip.
+  - Add the live-link icon button in row actions.
+  - Optional: append `· N published` to each section tab label using `sectionCounts` (a second lightweight count query per section for `processing_status='published'`).
 
 ### Deliberately not changed
-- `IntakeDraftPreviewDialog` — used as-is.
-- Pipeline logic, edge functions, DB schema — untouched.
-- Row layout — only two icon buttons added to existing actions cell.
+- `fetchDrafts` query — already correct (no published exclusion).
+- `intake-publish` edge function — DB state is already correct.
+- DB schema, RLS, edge functions.
+- Existing publish/unpublish flow.
 
 ### Risk
-None. Read + scoped update on `intake_drafts` (already permitted by existing admin RLS).
+None. Pure additive UI.
 

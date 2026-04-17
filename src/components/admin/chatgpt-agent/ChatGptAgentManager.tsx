@@ -15,7 +15,7 @@ import { Progress } from '@/components/ui/progress';
 import { supabase } from '@/integrations/supabase/client';
 import {
   Upload, Search, Sparkles, Loader2, Copy, ChevronDown,
-  Send, AlertTriangle, Link2Off, Link2, RefreshCw, Wand2, StopCircle, Eye,
+  Send, AlertTriangle, Link2Off, Link2, RefreshCw, Wand2, StopCircle, Eye, EyeOff,
 } from 'lucide-react';
 import { IntakeDraftPreviewDialog } from '@/components/admin/intake/IntakeDraftPreviewDialog';
 import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSelector';
@@ -263,7 +263,29 @@ export function ChatGptAgentManager() {
     }
   };
 
-  // ── AI Actions ──
+  // ── Unpublish (mirrors Blog "EyeOff" toggle) ──
+  const handleUnpublish = async (draft: any) => {
+    try {
+      const table = draft.published_table_name as string | null;
+      const recordId = draft.published_record_id as string | null;
+      if (table && recordId) {
+        // Most intake-published targets use a `status` column; set to 'draft' to hide from public.
+        const { error: tErr } = await (supabase as any).from(table).update({ status: 'draft' }).eq('id', recordId);
+        if (tErr) throw tErr;
+      }
+      const { error } = await (supabase.from('intake_drafts').update({
+        processing_status: 'reviewed',
+        published_at: null,
+        review_status: 'pending',
+      } as any) as any).eq('id', draft.id);
+      if (error) throw error;
+      addMessage('success', 'Unpublished', draft.normalized_title || draft.raw_title || draft.id);
+      fetchDrafts();
+      fetchCounts();
+    } catch (err: any) {
+      addMessage('error', 'Unpublish failed', err?.message || 'Unknown error');
+    }
+  };
   const AI_ACTIONS = [
     { label: 'Fix', action: 'fix' },
     { label: 'Enrich', action: 'enrich' },
@@ -725,16 +747,27 @@ export function ChatGptAgentManager() {
                                     >
                                       <Eye className="h-3.5 w-3.5" />
                                     </Button>
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      className="h-7 text-xs"
-                                      title="Publish"
-                                      disabled={d.processing_status === 'published'}
-                                      onClick={() => handlePublish(d.id)}
-                                    >
-                                      <Send className="h-3 w-3" />
-                                    </Button>
+                                    {d.processing_status === 'published' ? (
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-7 w-7 p-0"
+                                        title="Unpublish"
+                                        onClick={() => handleUnpublish(d)}
+                                      >
+                                        <EyeOff className="h-3.5 w-3.5" />
+                                      </Button>
+                                    ) : (
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-7 w-7 p-0"
+                                        title="Publish"
+                                        onClick={() => handlePublish(d.id)}
+                                      >
+                                        <Send className="h-3.5 w-3.5" />
+                                      </Button>
+                                    )}
                                   </div>
                                 </TableCell>
                               </TableRow>

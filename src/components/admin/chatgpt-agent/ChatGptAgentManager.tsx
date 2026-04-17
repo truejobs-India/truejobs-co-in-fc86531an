@@ -642,6 +642,9 @@ export function ChatGptAgentManager() {
               <Button size="sm" variant={linkFilter === 'missing_link' ? 'default' : 'ghost'} onClick={() => setLinkFilter('missing_link')} className="text-xs h-7">
                 <Link2Off className="h-3 w-3 mr-1" />Missing Link ({drafts.filter(d => !d.official_notification_link).length})
               </Button>
+              <Button size="sm" variant={linkFilter === 'published' ? 'default' : 'ghost'} onClick={() => setLinkFilter('published')} className="text-xs h-7">
+                <ExternalLink className="h-3 w-3 mr-1" />Published ({publishedCount})
+              </Button>
               {selected.size > 0 && (
                 <Badge variant="outline" className="ml-auto">{selected.size} selected</Badge>
               )}
@@ -761,6 +764,17 @@ export function ChatGptAgentManager() {
                                     >
                                       <Eye className="h-3.5 w-3.5" />
                                     </Button>
+                                    {d.processing_status === 'published' && buildLiveUrl(d) && (
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-7 w-7 p-0"
+                                        title="Open live page"
+                                        onClick={() => window.open(buildLiveUrl(d)!, '_blank', 'noopener,noreferrer')}
+                                      >
+                                        <ExternalLink className="h-3.5 w-3.5 text-primary" />
+                                      </Button>
+                                    )}
                                     {d.processing_status === 'published' ? (
                                       <Button
                                         size="sm"

@@ -18,15 +18,19 @@ import {
   Send, AlertTriangle, Link2Off, Link2, RefreshCw, Wand2, StopCircle, Eye, EyeOff, ExternalLink,
 } from 'lucide-react';
 
-const LIVE_URL_MAP: Record<string, string> = {
-  jobs: '/jobs', results: '/results', admit_cards: '/admit-cards',
-  answer_keys: '/answer-keys', exams: '/exams', notifications: '/notifications',
-  scholarships: '/scholarships', certificates: '/certificates', marksheets: '/marksheets',
+const LIVE_SITE_ORIGIN = 'https://truejobs.co.in';
+const TABLE_TO_PATH: Record<string, string> = {
+  employment_news_jobs: '/jobs/employment-news',
+  govt_exams: '/sarkari-jobs',
+  govt_results: '/sarkari-jobs',
+  govt_admit_cards: '/sarkari-jobs',
+  govt_answer_keys: '/sarkari-jobs',
 };
 const buildLiveUrl = (d: any): string | null => {
-  if (!d?.slug || !d?.publish_target || d.publish_target === 'none') return null;
-  const base = LIVE_URL_MAP[d.publish_target];
-  return base ? `${base}/${d.slug}` : null;
+  if (!d?.slug) return null;
+  const prefix = TABLE_TO_PATH[d.published_table_name as string];
+  if (!prefix) return null;
+  return `${LIVE_SITE_ORIGIN}${prefix}/${d.slug}`;
 };
 import { IntakeDraftPreviewDialog } from '@/components/admin/intake/IntakeDraftPreviewDialog';
 import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSelector';

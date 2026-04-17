@@ -15,8 +15,19 @@ import { Progress } from '@/components/ui/progress';
 import { supabase } from '@/integrations/supabase/client';
 import {
   Upload, Search, Sparkles, Loader2, Copy, ChevronDown,
-  Send, AlertTriangle, Link2Off, Link2, RefreshCw, Wand2, StopCircle, Eye, EyeOff,
+  Send, AlertTriangle, Link2Off, Link2, RefreshCw, Wand2, StopCircle, Eye, EyeOff, ExternalLink,
 } from 'lucide-react';
+
+const LIVE_URL_MAP: Record<string, string> = {
+  jobs: '/jobs', results: '/results', admit_cards: '/admit-cards',
+  answer_keys: '/answer-keys', exams: '/exams', notifications: '/notifications',
+  scholarships: '/scholarships', certificates: '/certificates', marksheets: '/marksheets',
+};
+const buildLiveUrl = (d: any): string | null => {
+  if (!d?.slug || !d?.publish_target || d.publish_target === 'none') return null;
+  const base = LIVE_URL_MAP[d.publish_target];
+  return base ? `${base}/${d.slug}` : null;
+};
 import { IntakeDraftPreviewDialog } from '@/components/admin/intake/IntakeDraftPreviewDialog';
 import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSelector';
 import { useAdminMessages } from '@/hooks/useAdminMessages';
@@ -31,7 +42,7 @@ const ALL_SECTIONS: SectionBucket[] = [
   'exam_dates', 'admissions', 'scholarships', 'other_updates',
 ];
 
-type LinkFilter = 'all' | 'with_link' | 'missing_link';
+type LinkFilter = 'all' | 'with_link' | 'missing_link' | 'published';
 
 /** Only models that the intake-ai-classify edge function can actually route */
 const ALLOWED_MODELS = [
@@ -152,10 +163,13 @@ export function ChatGptAgentManager() {
 
   const filteredDrafts = useMemo(() => {
     if (linkFilter === 'all') return drafts;
+    if (linkFilter === 'published') return drafts.filter(d => d.processing_status === 'published');
     return drafts.filter(d =>
       linkFilter === 'with_link' ? !!d.official_notification_link : !d.official_notification_link
     );
   }, [drafts, linkFilter]);
+
+  const publishedCount = useMemo(() => drafts.filter(d => d.processing_status === 'published').length, [drafts]);
 
   const totalPages = Math.max(1, Math.ceil(filteredDrafts.length / PAGE_SIZE));
   const paginatedDrafts = useMemo(
@@ -628,6 +642,9 @@ export function ChatGptAgentManager() {
               <Button size="sm" variant={linkFilter === 'missing_link' ? 'default' : 'ghost'} onClick={() => setLinkFilter('missing_link')} className="text-xs h-7">
                 <Link2Off className="h-3 w-3 mr-1" />Missing Link ({drafts.filter(d => !d.official_notification_link).length})
               </Button>
+              <Button size="sm" variant={linkFilter === 'published' ? 'default' : 'ghost'} onClick={() => setLinkFilter('published')} className="text-xs h-7">
+                <ExternalLink className="h-3 w-3 mr-1" />Published ({publishedCount})
+              </Button>
               {selected.size > 0 && (
                 <Badge variant="outline" className="ml-auto">{selected.size} selected</Badge>
               )}
@@ -747,6 +764,17 @@ export function ChatGptAgentManager() {
                                     >
                                       <Eye className="h-3.5 w-3.5" />
                                     </Button>
+                                    {d.processing_status === 'published' && buildLiveUrl(d) && (
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-7 w-7 p-0"
+                                        title="Open live page"
+                                        onClick={() => window.open(buildLiveUrl(d)!, '_blank', 'noopener,noreferrer')}
+                                      >
+                                        <ExternalLink className="h-3.5 w-3.5 text-primary" />
+                                      </Button>
+                                    )}
                                     {d.processing_status === 'published' ? (
                                       <Button
                                         size="sm"

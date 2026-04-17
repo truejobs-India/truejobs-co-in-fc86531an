@@ -1,68 +1,66 @@
 
 
-## Plan: Keep published drafts visible + add live-page link icon
+## Root cause
 
-### Diagnosis
-Verified in DB: the 2 published drafts (Federal Bank, NGEL) still exist in `intake_drafts` with `source_channel='chatgpt_agent'`, `section_bucket='job_postings'`, `processing_status='published'`. The `fetchDrafts` query has NO filter that excludes published rows, and the row renderer already has a "Published" badge branch (line 706).
+Two bugs in `buildLiveUrl` inside `src/components/admin/chatgpt-agent/ChatGptAgentManager.tsx`:
 
-So the disappearance is almost certainly because the user is looking at a different section tab (e.g. "Results" / "Exams") while both published rows live in the **Job Postings** bucket. We'll keep current behavior (published rows already persist) but make this discoverability issue impossible by:
+1. **Wrong origin** — `window.open('/jobs/...')` uses the current preview origin (`...lovableproject.com`), not production. Live site is `https://truejobs.co.in`.
+2. **Wrong path** — the map says `jobs → /jobs/{slug}`, but `intake-publish` actually inserts `publish_target='jobs'` rows into the **`employment_news_jobs`** table, whose public route is `/jobs/employment-news/:slug`. So `/jobs/{slug}` 404s even on production.
 
-1. Adding a small **"Show published"** filter chip alongside the existing All / With Link / Missing Link chips, defaulting to ON, with a count like `Published (2)`. Clicking it filters to only published rows in the current section. This makes published drafts findable in one click regardless of which tab they're in.
-2. Adding a tab-level published-count badge so each section tab shows e.g. `Job Postings (24 · 2 published)`.
+### Verification (already done)
 
-### Add live page hyperlink icon
-For every row where `processing_status === 'published'`, render a new icon button (`ExternalLink` from lucide-react) in the actions cell that opens the live URL in a new tab.
+- Both published drafts exist in `employment_news_jobs` with `status='published'`.
+- `https://truejobs.co.in/jobs/employment-news/federal-bank-sales-professionals-recruitment-2026` → **HTTP 200**, `<title>Federal Bank Sales Professionals Recruitment 2026 | TrueJobs</title>` ✅
+- `https://truejobs.co.in/jobs/employment-news/ngel-deputy-general-manager-asst-manager-recruitment-2026` → **HTTP 200** ✅
+- `https://truejobs.co.in/jobs/{slug}` (current broken behavior) → **HTTP 404** ✗
 
-URL resolution by `publish_target` + `slug` (using existing values already on the row):
-- `jobs` → `/jobs/{slug}`
-- `results` → `/results/{slug}`
-- `admit_cards` → `/admit-cards/{slug}`
-- `answer_keys` → `/answer-keys/{slug}`
-- `exams` → `/exams/{slug}`
-- `notifications` → `/notifications/{slug}`
-- `scholarships` → `/scholarships/{slug}`
-- `certificates` → `/certificates/{slug}`
-- `marksheets` → `/marksheets/{slug}`
+## Fix
 
-Helper:
+Single file: `src/components/admin/chatgpt-agent/ChatGptAgentManager.tsx`
+
+1. Add a constant `LIVE_SITE_ORIGIN = 'https://truejobs.co.in'`.
+2. Drive the URL off **`published_table_name`** (set by `intake-publish`), not the loosely-named `publish_target`. This is the source of truth for where the row actually landed. Fall back to `publish_target` only when `published_table_name` is missing.
+3. Correct mapping based on real routes in `src/App.tsx`:
+
+   | published_table_name | path prefix |
+   |---|---|
+   | `employment_news_jobs` | `/jobs/employment-news` |
+   | `govt_exams` | `/sarkari-jobs` |
+   | `govt_results` | `/sarkari-jobs` |
+   | `govt_admit_cards` | `/sarkari-jobs` |
+   | `govt_answer_keys` | `/sarkari-jobs` |
+
+   (All `govt_*` content is rendered via `/sarkari-jobs/:slug` → `GovtExamDetail`, which is the existing live convention.)
+
+4. Build the absolute URL: `${LIVE_SITE_ORIGIN}${prefix}/${slug}`.
+5. Keep the icon button visible only when `processing_status === 'published'` and the URL resolves.
+
 ```ts
+const LIVE_SITE_ORIGIN = 'https://truejobs.co.in';
+const TABLE_TO_PATH: Record<string, string> = {
+  employment_news_jobs: '/jobs/employment-news',
+  govt_exams: '/sarkari-jobs',
+  govt_results: '/sarkari-jobs',
+  govt_admit_cards: '/sarkari-jobs',
+  govt_answer_keys: '/sarkari-jobs',
+};
 const buildLiveUrl = (d: any): string | null => {
-  if (!d?.slug || !d?.publish_target || d.publish_target === 'none') return null;
-  const map: Record<string,string> = {
-    jobs:'/jobs', results:'/results', admit_cards:'/admit-cards',
-    answer_keys:'/answer-keys', exams:'/exams', notifications:'/notifications',
-    scholarships:'/scholarships', certificates:'/certificates', marksheets:'/marksheets',
-  };
-  const base = map[d.publish_target];
-  return base ? `${base}/${d.slug}` : null;
+  if (!d?.slug) return null;
+  const prefix = TABLE_TO_PATH[d.published_table_name];
+  if (!prefix) return null;
+  return `${LIVE_SITE_ORIGIN}${prefix}/${d.slug}`;
 };
 ```
 
-Button (only shown when `processing_status === 'published'` AND URL resolves):
-```tsx
-{d.processing_status === 'published' && buildLiveUrl(d) && (
-  <Button size="sm" variant="ghost" title="Open live page"
-    onClick={() => window.open(buildLiveUrl(d)!, '_blank', 'noopener,noreferrer')}>
-    <ExternalLink className="h-3.5 w-3.5 text-blue-600" />
-  </Button>
-)}
-```
+6. Ensure `fetchDrafts` selects `published_table_name` (audit the existing select; if missing, add it).
 
-### Files touched (1 file)
-- `src/components/admin/chatgpt-agent/ChatGptAgentManager.tsx`
-  - Add `ExternalLink` to lucide imports.
-  - Add `buildLiveUrl` helper.
-  - Extend `LinkFilter` type with `'published'` and add the published filter chip with count.
-  - Update `filteredDrafts` to honor the new chip.
-  - Add the live-link icon button in row actions.
-  - Optional: append `· N published` to each section tab label using `sectionCounts` (a second lightweight count query per section for `processing_status='published'`).
+## Out of scope / not changed
 
-### Deliberately not changed
-- `fetchDrafts` query — already correct (no published exclusion).
-- `intake-publish` edge function — DB state is already correct.
-- DB schema, RLS, edge functions.
-- Existing publish/unpublish flow.
+- `intake-publish` edge function, DB schema, RLS — untouched.
+- Preview/edit dialogs — untouched.
+- Filter chips and section count badges — untouched.
 
-### Risk
-None. Pure additive UI.
+## Risk
+
+None. Pure UI correction. If `published_table_name` is unmapped (rare), the live-link icon is simply hidden — no broken link is shown.
 

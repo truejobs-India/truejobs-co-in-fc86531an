@@ -1,96 +1,114 @@
 
-Goal: verify the real model used for the jobs currently stuck in Emp News enrichment, and outline the permanent fix.
+## Refined fix plan (incorporates your refinements)
 
-What I verified
-- I checked the actual `employment_news_jobs` rows in the database.
-- Current blocked set = `33` jobs total:
-  - `30` with status `pending`
-  - `3` with status `enrichment_failed`
-- For the blocked rows, the stored `enrichment_error` shows the real model/provider that last failed.
-- Every currently blocked row I inspected points to the same model family:
-  - `Azure OpenAI gpt-5-mini returned empty response`
-  - `Azure OpenAI gpt-5-mini timeout after 60s`
-- I also checked the code path:
-  - `src/components/admin/EmploymentNewsManager.tsx` sends `aiModel: enrichAiModel`
-  - that value is loaded from shared local storage via `getLastUsedModel('text', 'gemini-flash')`
-  - `supabase/functions/enrich-employment-news/index.ts` maps that model to the actual provider call
-- I checked whether there is any durable per-attempt model history in the database. There is not.
-  - `employment_news_jobs` has `enrichment_error` and `enrichment_attempts`
-  - it does not have `last_enrichment_model`, `last_provider`, or an attempt-history table
-- I also checked for dedicated enrich-function analytics/edge request history; there was no useful retained log output there for this function.
+### Root cause (confirmed)
+1. **Retry whitelist bug** — first-call dispatcher supports `azure-deepseek-r1`; retry path uses hardcoded `if (model === 'mistral' || ...)` that excludes it → throws `JSON parse retry not supported for model: azure-deepseek-r1`.
+2. **Audit writes bypassed on failure** — audit insert + `last_enrichment_*` stamping live downstream of the throw, so failures never log.
+3. Combination of #1 and #2.
 
-Conclusion
-- For the jobs that are blocked right now, the real last attempted model was `azure-gpt5-mini`, not Gemini Flash or DeepSeek.
-- I cannot truthfully prove older Gemini/DeepSeek failures for past attempts because the app does not persist enrichment attempt history; it only keeps the latest error string on the job row.
-- So your pushback was valid: the system currently lacks proper observability for cross-model verification.
+### A. Refactor `supabase/functions/enrich-employment-news/index.ts`
 
-Root cause
-1. Current stuck jobs
-- The blocked jobs are failing on `azure-gpt5-mini`.
-- The failure signatures are exactly:
-  - empty response
-  - timeout at 60s
+**Single shared raw caller** (one source of truth for model dispatch):
+```ts
+async function callRawAI(model, prompt, opts: { maxTokens; systemPrompt? }): Promise<string>
+```
+Used identically by attempt 1 and attempt 2. **Whitelist deleted.**
 
-2. Why the UI may not match what you remember
-- The Emp News enrichment model is loaded from shared text-model local storage.
-- That means the job enrichment flow can silently use whatever text model was last selected in admin, unless changed again before running.
+**Cleanup + strict parser (per your refinement #2 and #3):**
+```ts
+function cleanJsonText(raw: string): string {
+  // strip BOM, trim, strip ```json / ``` fences only
+}
 
-3. Why this was hard to verify
-- There is no persistent model-attempt audit trail for enrichment jobs.
-- The latest error overwrites the previous one, so older Gemini/DeepSeek attempts are not reconstructable from DB.
+function tryParseJson(raw: string): unknown | null {
+  // 1. direct JSON.parse on cleaned text → return result on success
+  // 2. on failure: scan for top-level balanced {...} or [...] blocks
+  //    - if exactly ONE clear candidate → parse it
+  //    - if zero or multiple competing candidates → return null (fail clean, no guessing)
+  // 3. always return null on any parse failure (never undefined, never throw)
+}
+```
 
-Implementation plan
-1. Fix the active `azure-gpt5-mini` failure path
-- Update token-budget logic so `azure-gpt5-mini` gets the same high output budget as other GPT-5 style models.
-- Increase the GPT-5 Azure wrapper timeout from 60s to 120s.
-- This addresses the two real current failure signatures.
+**Two-attempt flow with strict null check (per refinement #2):**
+```ts
+let raw = await callRawAI(model, prompt, opts);
+let parsed = tryParseJson(cleanJsonText(raw));
+if (parsed === null) {
+  const stricter = prompt + '\n\nReturn ONLY valid JSON matching the required schema. No markdown fences. No explanation.';
+  raw = await callRawAI(model, stricter, opts);
+  parsed = tryParseJson(cleanJsonText(raw));
+}
+if (parsed === null) throw new Error(`JSON parse failed after 2 attempts on model=${model}`);
+```
 
-2. Add permanent enrichment audit tracking
-- Create a dedicated table such as `employment_news_enrichment_runs` with one row per attempt:
-  - job_id
-  - selected_model_id
-  - provider
-  - api_model
-  - max_tokens
-  - status
-  - error_message
-  - duration_ms
-  - attempted_at
-- Write to this table on every enrichment attempt, success or failure.
-- This will make future “which model actually failed?” questions fully answerable.
+### B. Guaranteed audit/status writes (per refinement #1)
 
-3. Store last-attempt metadata on the job row too
-- Add lightweight columns on `employment_news_jobs`:
-  - `last_enrichment_model`
-  - `last_enrichment_provider`
-  - `last_enrichment_api_model`
-  - `last_enrichment_at`
-- This gives fast visibility in the admin list without needing to open history.
+```ts
+const t0 = Date.now();
+let outcome = { status: 'failed', error: null as string | null, apiModel, provider, maxTokens };
+try {
+  // ... enrichment logic; on completion: outcome.status = 'success'
+} catch (e) {
+  outcome.error = String(e?.message || e);
+} finally {
+  const durationMs = Date.now() - t0;
+  try {
+    await supabase.from('employment_news_enrichment_runs').insert({
+      job_id, selected_model_id: model, provider: outcome.provider,
+      api_model: outcome.apiModel, max_tokens: outcome.maxTokens,
+      status: outcome.status, error_message: outcome.error,
+      duration_ms: durationMs, attempted_at: new Date().toISOString()
+    });
+    const stamp: Record<string, unknown> = {
+      last_enrichment_model: model,
+      last_enrichment_provider: outcome.provider,
+      last_enrichment_api_model: outcome.apiModel,
+      last_enrichment_at: new Date().toISOString(),
+      // refinement #1: clear stale error on success, set real error on failure
+      enrichment_error: outcome.status === 'success' ? null : outcome.error,
+    };
+    // do NOT touch status here — main success path owns status transitions
+    await supabase.from('employment_news_jobs').update(stamp).eq('id', job_id);
+  } catch (auditErr) {
+    console.error('[audit-write-failed]', auditErr); // never masks real error
+  }
+}
+```
 
-4. Make the admin UI explicit
-- In the Emp News drafts table, show the last attempted model and latest error.
-- In the enrichment action area, show the currently selected model clearly before run.
-- This reduces confusion caused by shared persisted model selection.
+### C. Out of scope
+No new providers, no model fallback, no third repair stage, no token-budget changes, no unrelated flows touched.
 
-5. Recover the currently stuck jobs
-- After the shared fixes are applied, reset the blocked rows for retry.
-- Re-run only the `33` blocked jobs.
-- Verify that the blocked count drops and new audit rows show the actual model/provider per job.
+### D. One-time SQL repair (per refinement #5 — not a migration)
 
-Technical details
-- Verified code path:
-  - `src/components/admin/EmploymentNewsManager.tsx`
-  - `src/components/admin/AiModelSelector.tsx`
-  - `supabase/functions/enrich-employment-news/index.ts`
-  - `supabase/functions/_shared/word-count-enforcement.ts`
-  - `supabase/functions/_shared/azure-openai.ts`
-- Verified DB fact:
-  - current blocked jobs all carry `azure-gpt5-mini` error strings
-- Verified observability gap:
-  - no persistent enrichment model history exists today
-  - so older Gemini/DeepSeek attempts cannot be conclusively reconstructed after being overwritten
+Run as a one-time scoped query (not a permanent migration):
+```sql
+UPDATE public.employment_news_jobs
+SET enrichment_error = NULL,
+    enrichment_attempts = 0
+WHERE status = 'pending'
+  AND enrichment_error LIKE '%JSON parse retry not supported%';
+```
+Touches only the ~30 poisoned rows.
 
-Expected result after implementation
-- The current stuck jobs stop failing due to the GPT-5 Azure config issue.
-- Future enrichments will always record exactly which model/provider/api-model was used.
-- You will be able to verify, from the database itself, whether a failure came from Gemini Flash, DeepSeek, GPT-5 Mini, or anything else.
+### E. Deploy + verify (per refinement #4 — concrete row sample)
+
+1. Deploy `enrich-employment-news`.
+2. Re-run a few stuck jobs with `azure-deepseek-r1`.
+3. Collect evidence:
+   - **Counts:** `pending` count before vs after; count of fresh rows in `employment_news_enrichment_runs` from last 10 min.
+   - **Edge logs:** must NOT contain `JSON parse retry not supported`.
+   - **One concrete sample row** from `employment_news_jobs` (any recently retried job) showing all populated:
+     - `last_enrichment_model`
+     - `last_enrichment_provider`
+     - `last_enrichment_api_model`
+     - `last_enrichment_at`
+   - **Matching audit row** in `employment_news_enrichment_runs` for that same `job_id` with matching model/provider/timestamp.
+   - On any remaining failure: real cause now visible in DB row + audit row.
+
+### Files touched
+- `supabase/functions/enrich-employment-news/index.ts` — single refactor
+- One-time SQL repair (not a migration)
+- Deploy `enrich-employment-news`
+
+### Risk: low
+Dispatcher consolidation is mechanical. Parser only relaxes input acceptance and fails clean on ambiguity. Final-block stamp does not touch `status` — success path unchanged. Repair filtered by exact known error string.

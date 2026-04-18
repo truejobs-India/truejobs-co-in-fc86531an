@@ -391,10 +391,20 @@ export function ChatGptAgentManager() {
           failed,
         };
         setProductionImportSummary(summary);
+        // Per-upload section breakdown (this run only — never mixed with totals)
+        const perBucket: Record<string, number> = {};
+        for (const r of productionResult.rows) {
+          const k = r.section_bucket || 'unknown';
+          perBucket[k] = (perBucket[k] || 0) + 1;
+        }
+        const breakdown = Object.entries(perBucket)
+          .sort((a, b) => b[1] - a[1])
+          .map(([k, v]) => `${SECTION_BUCKET_LABELS[k as SectionBucket] || k} ${v}`)
+          .join(' · ');
         addMessage(
           failed.length === 0 ? 'success' : 'warning',
-          `Imported ${rows.length - failed.length} of ${rows.length} production rows`,
-          `New: ${summary.inserted_new} · Updated: ${summary.updated_existing} · Skipped empty: ${summary.skipped_empty} · Failed: ${failed.length}`,
+          `Imported this run: ${rows.length - failed.length} of ${rows.length}`,
+          `New: ${summary.inserted_new} · Updated: ${summary.updated_existing} · Skipped: ${summary.skipped_empty} · Failed: ${failed.length}\nThis upload by section → ${breakdown}`,
         );
         fetchDrafts();
         fetchCounts();

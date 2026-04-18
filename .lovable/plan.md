@@ -1,69 +1,61 @@
 
-## Approved final plan (with `date` token refinement)
+## Approved plan — proceed in this order
 
-### 1. Parser — `chatgptAgentExcelParser.ts`
+### Step 1: Prove the exact cause of 108 (read-only, no code changes)
 
-**a) Classifier with explicit priority + safer `date` handling.**
+Run two diagnostics:
 
-Tokenize via `/[a-z0-9]+/g` lowercased. Try `update_type` first; on no match, try `category_family`. First match in this order wins:
+1. SQL: `SELECT section_bucket, COUNT(*) FROM intake_drafts WHERE source_channel='chatgpt_agent' GROUP BY 1 ORDER BY 2 DESC` — confirms total per bucket (production_v1 + legacy combined).
+2. Read `ChatGptAgentManager.tsx` — confirm default `activeSection` value, the fetch query's WHERE clauses, and any default secondary filter state.
 
-| # | Trigger | section_bucket | content_type | publish_target |
-|---|---|---|---|---|
-| 1 | `answer` token | `answer_keys` | `answer_key` | `answer_keys` |
-| 2 | `admit` token | `admit_cards` | `admit_card` | `admit_cards` |
-| 3 | `result` token | `results` | `result` | `results` |
-| 4 | `scholarship` token | `scholarships` | `scholarship` | `scholarships` |
-| 5 | `job` / `recruit` / `recruitment` / `vacancy` / `hiring` token | `job_postings` | `job` | `jobs` |
-| 6 | **Exam (refined):** `exam` / `schedule` / `calendar` / `datesheet` token, OR adjacent pair `date`+`sheet`, OR adjacent pair `exam`+`date`, OR adjacent pair `exam`+`schedule`. **Standalone `date` token alone does NOT trigger this family** | `exam_dates` | `exam` | `exams` |
-| 7 | `admission` token | `admissions` | `notification` | `notifications` (enum-safe — no `admission` enum exists) |
-| 8 | `notification` / `notice` token | `other_updates` | `notification` | `notifications` |
-| 9 | No match → retry whole table on `category_family` | — | — | — |
-| 10 | Still no match | `other_updates` | `null` | `none` |
+Expected proof: default tab = `job_postings`; 108 = all chatgpt_agent rows in `job_postings` (43 new production_v1 + 65 pre-existing legacy). Will report exact numbers before touching code.
 
-Adjacent-pair check: tokens `i` and `i+1` in the token array.
+### Step 2: Implement 4 additive UI changes
 
-**Validation cases asserted in harness:**
-- `Update` → other_updates / null / none (proves substring bug dead)
-- `Recruitment Update` → job_postings
-- `Exam Update` → exam_dates
-- `Notification Update` → other_updates / notification / notifications
-- `Vacancy Notice` → job_postings (job > notice)
-- `Result Notification` → results (result > notification)
-- `Admit Card Notice` → admit_cards
-- `Answer Key Notice` → answer_keys
-- `Date Sheet` → exam_dates (paired)
-- `Exam Date` → exam_dates (paired)
-- `Last Date Notification` → other_updates / notification / notifications (standalone `date` does NOT route to exam)
-- `Due Date Notice` → other_updates / notification / notifications
-- `Admission Notice` → admissions / notification / notifications
-- `Scholarship` → scholarships
+Single file: `src/components/admin/chatgpt-agent/ChatGptAgentManager.tsx`. No DB, no parser, no schema.
 
-**b) Inline Excel-serial date conversion (no `XLSX.SSF`).**
-```ts
-function excelSerialToISO(n: number): string | null {
-  if (!Number.isFinite(n) || n < 1 || n > 2958465) return null;
-  const ms = Math.round((n - 25569) * 86400 * 1000);
-  const d = new Date(ms);
-  return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
-}
+**2a. Per-upload toast (this-run scope only)**
+After import, group just-imported rows by `section_bucket` in memory:
 ```
-Accept numbers and numeric strings. Always preserve original raw text in `source_verified_on`. Populate `source_verified_on_date` when serial-parseable OR when text matches a recognizable date format (`YYYY-MM-DD`, `DD-MMM-YYYY`, `DD/MM/YYYY`); unparseable text → date column null, original text preserved.
+Imported this run: 144 · 0 skipped · 0 failed
+Jobs 43 · Admit Cards 27 · Results 26 · Other 23 · Answer Keys 20 · Exam Dates 5
+```
+Numbers come only from current upload payload — never mixed with totals.
 
-### 2. Importer — `ChatGptAgentManager.tsx`
+**2b. Section tab badges (all-drafts scope)**
+One lightweight query on mount + after each import:
+`select section_bucket, count(*) from intake_drafts where source_channel='chatgpt_agent' group by 1`
 
-- **Search input** — verify a visible `<Input>` exists above the listing; if missing, add one. Predicate is case-insensitive `includes` across: `publish_title`, `normalized_title`, `organization_authority`, `organisation_name`, `record_id`, `official_source_used`, `production_notes`, `official_website_url`, `official_reference_url`, `primary_cta_url`.
-- **Filter row** — 5 `Select` dropdowns (Publish Status, Category Family, Update Type, Verification Status, Verification Confidence). Options from distinct non-null values in current `drafts`. Each has "All" reset option. Combined with search in single memoized pipeline.
-- **Listing columns** — audit current table; add any missing of: Publish Title, Category Family, Update Type, Org/Authority, Verification Status, Verification Confidence, Source Verified On, Primary CTA (label + clickable URL `target="_blank" rel="noopener"`).
-- **Count math fix** — `total = inserted_new + updated_existing + skipped_empty + failed`. Pre-classify each attempted row as insert/update against pre-fetched identity Set; subtract its failure from the bucket it was classified into.
+Render count as `<Badge variant="secondary">` next to each tab label. Reflects ALL chatgpt_agent drafts in DB, not just latest upload.
 
-### 3. Verification
+**2c. "All Sections" tab**
+Add `'__all__'` as the first tab. When active:
+- fetch query drops the `section_bucket` filter
+- table gains a "Section" column
+- search + 5 filter dropdowns remain applied identically
 
-- **Parser harness** in `/tmp/verify_parser.mjs`: assert all 14 classifier cases above, date conversion (`45000`→`2023-03-15`, `1`→valid ISO, text preserved, null safe), URL sanitation, identity rules, empty-row skip, legacy mirror, sheet detection.
-- **DB-level proof** via `supabase--read_query`: column existence, identity uniqueness, sample row inspection.
-- **UI upload (clarification #4)** — I cannot click the upload button. Final report will explicitly state:
-  > Code + parser + DB are directly verified. The browser upload-button flow was NOT exercised by the AI. **Verdict: code/parser/DB verified — fully production ready only after one real upload-button-based workbook test by the user.**
+**Scope clarity line (above table, All Sections only):**
+```
+Viewing all ChatGPT Agent drafts: 298 total
+108 visible after filters
+```
+Always visible in All Sections view; the second line only appears when filters/search reduce the visible count below total.
 
-### Files
-- `src/components/admin/chatgpt-agent/chatgptAgentExcelParser.ts` — new `classifyRow()` + refined exam pairing + `excelSerialToISO()`
-- `src/components/admin/chatgpt-agent/ChatGptAgentManager.tsx` — search input verify/add, 5 filter selects, columns audit, count math fix
-- `/tmp/verify_parser.mjs` — verification harness (not committed)
+**2d. Honest "Select all visible (N)" label**
+Rename current "Select All" to `Select all visible (N)` where `N = filteredDrafts.length` (after section + status + search + filter dropdowns). Same behavior, truthful label. Works identically on per-section tabs and All Sections tab.
+
+### Step 3: Post-implementation verification report
+
+Will report:
+- exact cause of 108 with SQL + code evidence
+- exact counts: latest upload (per-bucket) vs all drafts (per-bucket)
+- confirmation toast shows per-run counts only (never mixed with totals)
+- confirmation badges show all-drafts counts with clear labeling
+- confirmation `Select all visible (N)` matches the actual visible row count under all filter/search/tab combinations
+- confirmation All Sections scope line renders correctly with and without active filters
+
+### Files changed
+- `src/components/admin/chatgpt-agent/ChatGptAgentManager.tsx` (only)
+
+### Risk
+Very low. Additive UI only. No DB writes, no parser changes, no schema. One file.

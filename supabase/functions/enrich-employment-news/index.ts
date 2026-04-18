@@ -773,6 +773,30 @@ serve(async (req) => {
       const batch = jobIds.slice(i, i + 1);
 
       const batchPromises = batch.map(async (jobId: string) => {
+        const attemptStartedAt = Date.now();
+        const providerInfo = (() => {
+          try { return resolveProviderInfo(useModel); }
+          catch { return { provider: 'unknown', apiModel: useModel }; }
+        })();
+        let attemptMaxTokens: number | null = null;
+
+        const writeAuditRow = async (status: string, errorMessage: string | null) => {
+          try {
+            await serviceClient.from('employment_news_enrichment_runs').insert({
+              job_id: jobId,
+              selected_model_id: useModel,
+              provider: providerInfo.provider,
+              api_model: providerInfo.apiModel,
+              max_tokens: attemptMaxTokens,
+              status,
+              error_message: errorMessage,
+              duration_ms: Date.now() - attemptStartedAt,
+            });
+          } catch (auditErr) {
+            console.error(`[enrich] Failed to write audit row for ${jobId}:`, auditErr);
+          }
+        };
+
         try {
           const { data: job, error: fetchErr } = await serviceClient
             .from("employment_news_jobs")
@@ -781,14 +805,21 @@ serve(async (req) => {
             .single();
 
           if (fetchErr || !job) {
+            await writeAuditRow('error', 'Job not found');
             return { id: jobId, success: false, error: "Job not found" };
           }
 
-          // Increment enrichment_attempts
+          // Increment enrichment_attempts + stamp last-attempt metadata
           const currentAttempts = (job.enrichment_attempts || 0) + 1;
           await serviceClient
             .from("employment_news_jobs")
-            .update({ enrichment_attempts: currentAttempts })
+            .update({
+              enrichment_attempts: currentAttempts,
+              last_enrichment_model: useModel,
+              last_enrichment_provider: providerInfo.provider,
+              last_enrichment_api_model: providerInfo.apiModel,
+              last_enrichment_at: new Date().toISOString(),
+            })
             .eq("id", jobId);
 
           let batchUploadedAt: string | null = null;
@@ -841,6 +872,7 @@ OUTPUT LANGUAGE: ${detectedLang}`;
           // Combine master prompt with user data
           const enrichTargetWords = 1200;
           const enrichMaxTokens = computeMaxTokens(enrichTargetWords, useModel);
+          attemptMaxTokens = enrichMaxTokens;
           const wcInstruction = buildWordCountInstruction(enrichTargetWords, useModel);
           const combinedPrompt = MASTER_ENRICH_PROMPT + "\n\n" + wcInstruction + "\n\n" + userDataPrompt;
 
@@ -911,13 +943,14 @@ OUTPUT LANGUAGE: ${detectedLang}`;
             .eq("id", jobId);
 
           if (updateErr) {
+            await writeAuditRow('error', updateErr.message);
             return { id: jobId, success: false, error: updateErr.message };
           }
 
           const wcValidation = enriched.enriched_description
             ? validateWordCount(enriched.enriched_description, enrichTargetWords, enrichMaxTokens)
             : null;
-          const providerInfo = resolveProviderInfo(useModel);
+          await writeAuditRow('success', null);
           return {
             id: jobId, success: true,
             selectedModelId: useModel,
@@ -957,14 +990,14 @@ OUTPUT LANGUAGE: ${detectedLang}`;
             console.error(`Failed to update failure status for ${jobId}:`, dbErr);
           }
 
-          const errProviderInfo = resolveProviderInfo(useModel);
+          await writeAuditRow('error', errorMsg);
           return {
             id: jobId,
             success: false,
             error: errorMsg,
             selectedModelId: useModel,
-            actualProviderUsed: errProviderInfo.provider,
-            actualModelUsed: errProviderInfo.apiModel,
+            actualProviderUsed: providerInfo.provider,
+            actualModelUsed: providerInfo.apiModel,
             wordCountValidation: null,
           };
         }

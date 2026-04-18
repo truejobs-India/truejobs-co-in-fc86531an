@@ -2852,6 +2852,7 @@ export type Database = {
           answer_key_link: string | null
           application_fee_text: string | null
           application_mode: string | null
+          category_family: string | null
           classification_reason: string | null
           closing_date: string | null
           confidence_score: number | null
@@ -2868,6 +2869,7 @@ export type Database = {
           faq_json: Json | null
           how_to_apply_text: string | null
           id: string
+          import_identity: string
           import_row_number: number | null
           import_source_sheet: string | null
           important_dates_json: Json | null
@@ -2880,9 +2882,13 @@ export type Database = {
           notification_date: string | null
           official_apply_link: string | null
           official_notification_link: string | null
+          official_reference_url: string | null
+          official_source_used: string | null
           official_website_link: string | null
+          official_website_url: string | null
           opening_date: string | null
           organisation_name: string | null
+          organization_authority: string | null
           pipeline_current_step: string | null
           pipeline_finished_at: string | null
           pipeline_last_error: string | null
@@ -2891,11 +2897,16 @@ export type Database = {
           pipeline_started_at: string | null
           pipeline_status: string | null
           post_name: string | null
+          primary_cta_label: string | null
+          primary_cta_url: string | null
           primary_status: string | null
           processing_status: string
+          production_notes: string | null
           publish_blockers: Json | null
           publish_error: string | null
+          publish_status: string | null
           publish_target: string | null
+          publish_title: string | null
           published_at: string | null
           published_record_id: string | null
           published_table_name: string | null
@@ -2905,6 +2916,7 @@ export type Database = {
           raw_html: string | null
           raw_text: string | null
           raw_title: string | null
+          record_id: string | null
           reference_no: string | null
           result_date: string | null
           result_link: string | null
@@ -2914,6 +2926,7 @@ export type Database = {
           reviewed_by: string | null
           salary_text: string | null
           scrape_run_id: string | null
+          secondary_official_url: string | null
           secondary_tags: Json | null
           section_bucket: string | null
           selection_process_text: string | null
@@ -2922,12 +2935,18 @@ export type Database = {
           source_channel: string | null
           source_domain: string | null
           source_name: string | null
+          source_row_json: Json | null
           source_type: string
           source_url: string | null
+          source_verified_on: string | null
+          source_verified_on_date: string | null
           structured_data_json: Json | null
           summary: string | null
+          update_type: string | null
           updated_at: string
           vacancy_count: number | null
+          verification_confidence: string | null
+          verification_status: string | null
         }
         Insert: {
           admit_card_date?: string | null
@@ -2940,6 +2959,7 @@ export type Database = {
           answer_key_link?: string | null
           application_fee_text?: string | null
           application_mode?: string | null
+          category_family?: string | null
           classification_reason?: string | null
           closing_date?: string | null
           confidence_score?: number | null
@@ -2956,6 +2976,7 @@ export type Database = {
           faq_json?: Json | null
           how_to_apply_text?: string | null
           id?: string
+          import_identity: string
           import_row_number?: number | null
           import_source_sheet?: string | null
           important_dates_json?: Json | null
@@ -2968,9 +2989,13 @@ export type Database = {
           notification_date?: string | null
           official_apply_link?: string | null
           official_notification_link?: string | null
+          official_reference_url?: string | null
+          official_source_used?: string | null
           official_website_link?: string | null
+          official_website_url?: string | null
           opening_date?: string | null
           organisation_name?: string | null
+          organization_authority?: string | null
           pipeline_current_step?: string | null
           pipeline_finished_at?: string | null
           pipeline_last_error?: string | null
@@ -2979,11 +3004,16 @@ export type Database = {
           pipeline_started_at?: string | null
           pipeline_status?: string | null
           post_name?: string | null
+          primary_cta_label?: string | null
+          primary_cta_url?: string | null
           primary_status?: string | null
           processing_status?: string
+          production_notes?: string | null
           publish_blockers?: Json | null
           publish_error?: string | null
+          publish_status?: string | null
           publish_target?: string | null
+          publish_title?: string | null
           published_at?: string | null
           published_record_id?: string | null
           published_table_name?: string | null
@@ -2993,6 +3023,7 @@ export type Database = {
           raw_html?: string | null
           raw_text?: string | null
           raw_title?: string | null
+          record_id?: string | null
           reference_no?: string | null
           result_date?: string | null
           result_link?: string | null
@@ -3002,6 +3033,7 @@ export type Database = {
           reviewed_by?: string | null
           salary_text?: string | null
           scrape_run_id?: string | null
+          secondary_official_url?: string | null
           secondary_tags?: Json | null
           section_bucket?: string | null
           selection_process_text?: string | null
@@ -3010,12 +3042,18 @@ export type Database = {
           source_channel?: string | null
           source_domain?: string | null
           source_name?: string | null
+          source_row_json?: Json | null
           source_type?: string
           source_url?: string | null
+          source_verified_on?: string | null
+          source_verified_on_date?: string | null
           structured_data_json?: Json | null
           summary?: string | null
+          update_type?: string | null
           updated_at?: string
           vacancy_count?: number | null
+          verification_confidence?: string | null
+          verification_status?: string | null
         }
         Update: {
           admit_card_date?: string | null
@@ -3028,6 +3066,7 @@ export type Database = {
           answer_key_link?: string | null
           application_fee_text?: string | null
           application_mode?: string | null
+          category_family?: string | null
           classification_reason?: string | null
           closing_date?: string | null
           confidence_score?: number | null
@@ -3044,6 +3083,7 @@ export type Database = {
           faq_json?: Json | null
           how_to_apply_text?: string | null
           id?: string
+          import_identity?: string
           import_row_number?: number | null
           import_source_sheet?: string | null
           important_dates_json?: Json | null
@@ -3056,9 +3096,13 @@ export type Database = {
           notification_date?: string | null
           official_apply_link?: string | null
           official_notification_link?: string | null
+          official_reference_url?: string | null
+          official_source_used?: string | null
           official_website_link?: string | null
+          official_website_url?: string | null
           opening_date?: string | null
           organisation_name?: string | null
+          organization_authority?: string | null
           pipeline_current_step?: string | null
           pipeline_finished_at?: string | null
           pipeline_last_error?: string | null
@@ -3067,11 +3111,16 @@ export type Database = {
           pipeline_started_at?: string | null
           pipeline_status?: string | null
           post_name?: string | null
+          primary_cta_label?: string | null
+          primary_cta_url?: string | null
           primary_status?: string | null
           processing_status?: string
+          production_notes?: string | null
           publish_blockers?: Json | null
           publish_error?: string | null
+          publish_status?: string | null
           publish_target?: string | null
+          publish_title?: string | null
           published_at?: string | null
           published_record_id?: string | null
           published_table_name?: string | null
@@ -3081,6 +3130,7 @@ export type Database = {
           raw_html?: string | null
           raw_text?: string | null
           raw_title?: string | null
+          record_id?: string | null
           reference_no?: string | null
           result_date?: string | null
           result_link?: string | null
@@ -3090,6 +3140,7 @@ export type Database = {
           reviewed_by?: string | null
           salary_text?: string | null
           scrape_run_id?: string | null
+          secondary_official_url?: string | null
           secondary_tags?: Json | null
           section_bucket?: string | null
           selection_process_text?: string | null
@@ -3098,12 +3149,18 @@ export type Database = {
           source_channel?: string | null
           source_domain?: string | null
           source_name?: string | null
+          source_row_json?: Json | null
           source_type?: string
           source_url?: string | null
+          source_verified_on?: string | null
+          source_verified_on_date?: string | null
           structured_data_json?: Json | null
           summary?: string | null
+          update_type?: string | null
           updated_at?: string
           vacancy_count?: number | null
+          verification_confidence?: string | null
+          verification_status?: string | null
         }
         Relationships: []
       }

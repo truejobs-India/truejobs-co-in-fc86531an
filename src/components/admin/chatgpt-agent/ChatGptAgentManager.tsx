@@ -36,7 +36,17 @@ import { IntakeDraftPreviewDialog } from '@/components/admin/intake/IntakeDraftP
 import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSelector';
 import { useAdminMessages } from '@/hooks/useAdminMessages';
 import { AdminMessageLog } from '@/components/admin/AdminMessageLog';
-import { parseExcelWorkbook, SECTION_BUCKET_LABELS, type ParseResult, type ParsedRow, type SectionBucket } from './chatgptAgentExcelParser';
+import {
+  parseExcelWorkbook,
+  parseProductionExcelWorkbook,
+  detectProductionFormat,
+  SECTION_BUCKET_LABELS,
+  type ParseResult,
+  type ParsedRow,
+  type ProductionParseResult,
+  type ProductionParsedRow,
+  type SectionBucket,
+} from './chatgptAgentExcelParser';
 import { ChatGptAgentDraftEditor } from './ChatGptAgentDraftEditor';
 import { ChatGptAgentDuplicateFinder } from './ChatGptAgentDuplicateFinder';
 import { PipelineStepBadges, type PipelineRun } from './PipelineStepBadges';
@@ -68,9 +78,12 @@ export function ChatGptAgentManager() {
   const PAGE_SIZE = 20;
   const [aiModel, setAiModel] = useState(() => getLastUsedModel('text', 'gemini-flash', [...ALLOWED_MODELS]));
 
-  // Upload state
+  // Upload state — supports BOTH legacy and new production format
   const [uploadOpen, setUploadOpen] = useState(false);
   const [parseResult, setParseResult] = useState<ParseResult | null>(null);
+  const [productionResult, setProductionResult] = useState<ProductionParseResult | null>(null);
+  const [productionPreClassify, setProductionPreClassify] = useState<{ insert: number; update: number } | null>(null);
+  const [productionImportSummary, setProductionImportSummary] = useState<{ total: number; inserted_new: number; updated_existing: number; skipped_empty: number; failed: { row: number; reason: string }[] } | null>(null);
   const [importing, setImporting] = useState(false);
 
   // Editor & dedup
@@ -189,9 +202,50 @@ export function ChatGptAgentManager() {
     if (!file) return;
     try {
       const buffer = await file.arrayBuffer();
-      const result = parseExcelWorkbook(buffer);
-      setParseResult(result);
-      setUploadOpen(true);
+
+      // Format detection: try production format first (16-header signature)
+      const isProduction = detectProductionFormat(buffer);
+
+      if (isProduction) {
+        const prod = await parseProductionExcelWorkbook(buffer);
+        if (prod.ok !== true) {
+          addMessage('error', `Production format detected but invalid`,
+            `Sheet "${prod.sheetUsed ?? '?'}" — ${prod.reason} Missing headers: ${prod.missing.join(', ')}`);
+          e.target.value = '';
+          return;
+        }
+        setProductionResult(prod);
+        setParseResult(null);
+
+        // Pre-classify each row as insert vs update by checking existing import_identity values
+        const identities = prod.rows.map(r => r.import_identity);
+        const existing = new Set<string>();
+        // paginate to avoid 1000-row default limit
+        const PAGE = 1000;
+        for (let i = 0; i < identities.length; i += PAGE) {
+          const chunk = identities.slice(i, i + PAGE);
+          const { data, error } = await (supabase
+            .from('intake_drafts') as any)
+            .select('import_identity')
+            .eq('source_channel', 'chatgpt_agent')
+            .in('import_identity', chunk);
+          if (error) throw error;
+          for (const row of (data || [])) existing.add(row.import_identity);
+        }
+        const update = prod.rows.filter(r => existing.has(r.import_identity)).length;
+        const insert = prod.rows.length - update;
+        setProductionPreClassify({ insert, update });
+        setProductionImportSummary(null);
+        setUploadOpen(true);
+      } else {
+        // Legacy path — unchanged
+        const result = parseExcelWorkbook(buffer);
+        setParseResult(result);
+        setProductionResult(null);
+        setProductionPreClassify(null);
+        setProductionImportSummary(null);
+        setUploadOpen(true);
+      }
     } catch (err) {
       addMessage('error', 'Failed to parse Excel file', err instanceof Error ? err.message : 'Unknown error');
     }
@@ -199,9 +253,86 @@ export function ChatGptAgentManager() {
   };
 
   const handleImportConfirm = async () => {
-    if (!parseResult) return;
     setImporting(true);
     try {
+      // ── PRODUCTION FORMAT PATH ──
+      if (productionResult) {
+        const rows = productionResult.rows.map((r: ProductionParsedRow) => ({
+          // status stamps (verified against validate_intake_drafts_fields trigger)
+          source_type: 'manual' as const,
+          source_channel: 'chatgpt_agent',
+          raw_file_type: 'unknown' as const,
+          processing_status: 'imported' as const,
+          review_status: 'pending' as const,
+          primary_status: r.primary_status,
+          // identity + lossless backup
+          import_identity: r.import_identity,
+          source_row_json: r.source_row_json as any,
+          // 16 production fields
+          record_id: r.record_id,
+          publish_status: r.publish_status,
+          category_family: r.category_family,
+          update_type: r.update_type,
+          organization_authority: r.organization_authority,
+          publish_title: r.publish_title,
+          official_website_url: r.official_website_url,
+          official_reference_url: r.official_reference_url,
+          primary_cta_label: r.primary_cta_label,
+          primary_cta_url: r.primary_cta_url,
+          secondary_official_url: r.secondary_official_url,
+          verification_status: r.verification_status,
+          verification_confidence: r.verification_confidence,
+          official_source_used: r.official_source_used,
+          source_verified_on: r.source_verified_on,
+          source_verified_on_date: r.source_verified_on_date,
+          production_notes: r.production_notes,
+          // legacy mirrors
+          raw_title: r.raw_title,
+          normalized_title: r.normalized_title,
+          organisation_name: r.organisation_name,
+          official_notification_link: r.official_notification_link,
+          structured_data_json: r.structured_data_json as any,
+          section_bucket: r.section_bucket,
+          content_type: r.content_type,
+          publish_target: r.publish_target,
+          import_source_sheet: r.import_source_sheet,
+          import_row_number: r.import_row_number,
+        }));
+
+        const failed: { row: number; reason: string }[] = [];
+        for (let i = 0; i < rows.length; i += 50) {
+          const batch = rows.slice(i, i + 50);
+          const { error } = await (supabase.from('intake_drafts') as any).upsert(batch, {
+            onConflict: 'source_channel,import_identity',
+            ignoreDuplicates: false,
+          });
+          if (error) {
+            // record entire batch as failed with the first row number for diagnostics
+            for (const b of batch) failed.push({ row: b.import_row_number, reason: error.message });
+          }
+        }
+        const inserted_new = productionPreClassify?.insert ?? 0;
+        const updated_existing = productionPreClassify?.update ?? 0;
+        const summary = {
+          total: productionResult.summary.total,
+          inserted_new: inserted_new - failed.length > 0 ? inserted_new : Math.max(0, rows.length - updated_existing - failed.length),
+          updated_existing,
+          skipped_empty: productionResult.summary.skipped_empty,
+          failed,
+        };
+        setProductionImportSummary(summary);
+        addMessage(
+          failed.length === 0 ? 'success' : 'warning',
+          `Imported ${rows.length - failed.length} of ${rows.length} production rows`,
+          `New: ${summary.inserted_new} · Updated: ${summary.updated_existing} · Skipped empty: ${summary.skipped_empty} · Failed: ${failed.length}`,
+        );
+        fetchDrafts();
+        fetchCounts();
+        return;
+      }
+
+      // ── LEGACY PATH ──
+      if (!parseResult) return;
       const rows = parseResult.rows.map((r: ParsedRow) => ({
         source_type: 'manual' as const,
         source_channel: 'chatgpt_agent',
@@ -864,12 +995,79 @@ export function ChatGptAgentManager() {
         </CardContent>
       </Card>
 
-      {/* Upload Preview Dialog */}
-      <Dialog open={uploadOpen} onOpenChange={v => { if (!v) { setUploadOpen(false); setParseResult(null); } }}>
+      {/* Upload Preview Dialog — handles BOTH legacy and production formats */}
+      <Dialog open={uploadOpen} onOpenChange={v => {
+        if (!v) {
+          setUploadOpen(false);
+          setParseResult(null);
+          setProductionResult(null);
+          setProductionPreClassify(null);
+          setProductionImportSummary(null);
+        }
+      }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Import Preview</DialogTitle>
+            <DialogTitle>
+              {productionResult ? 'Import Preview — Production Format (16-column)' : 'Import Preview'}
+            </DialogTitle>
           </DialogHeader>
+
+          {/* ── PRODUCTION FORMAT PREVIEW ── */}
+          {productionResult && !productionImportSummary && (
+            <div className="space-y-3 text-sm">
+              <div className="grid grid-cols-2 gap-2">
+                <div className="text-muted-foreground">Sheet used</div>
+                <div className="font-medium font-mono text-xs">{productionResult.sheetUsed}</div>
+                <div className="text-muted-foreground">Total rows scanned</div>
+                <div>{productionResult.summary.total}</div>
+                <div className="text-muted-foreground">To import</div>
+                <div className="font-medium text-primary">{productionResult.summary.parsed}</div>
+                <div className="text-muted-foreground">Skipped (empty rows)</div>
+                <div>{productionResult.summary.skipped_empty}</div>
+                {productionPreClassify && (
+                  <>
+                    <div className="text-muted-foreground">→ New (insert)</div>
+                    <div className="font-medium text-primary">{productionPreClassify.insert}</div>
+                    <div className="text-muted-foreground">→ Updates (existing)</div>
+                    <div>{productionPreClassify.update}</div>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ── PRODUCTION FORMAT POST-IMPORT SUMMARY ── */}
+          {productionImportSummary && (
+            <div className="space-y-3 text-sm">
+              <div className="grid grid-cols-2 gap-2">
+                <div className="text-muted-foreground">Total rows</div>
+                <div>{productionImportSummary.total}</div>
+                <div className="text-muted-foreground">Inserted (new)</div>
+                <div className="font-medium text-primary">{productionImportSummary.inserted_new}</div>
+                <div className="text-muted-foreground">Updated (existing)</div>
+                <div>{productionImportSummary.updated_existing}</div>
+                <div className="text-muted-foreground">Skipped empty</div>
+                <div>{productionImportSummary.skipped_empty}</div>
+                <div className="text-muted-foreground">Failed</div>
+                <div className={productionImportSummary.failed.length > 0 ? 'text-destructive font-medium' : ''}>
+                  {productionImportSummary.failed.length}
+                </div>
+              </div>
+              {productionImportSummary.failed.length > 0 && (
+                <div className="border-t pt-2 max-h-48 overflow-y-auto">
+                  <p className="font-medium mb-1 text-xs text-destructive">Failed rows</p>
+                  {productionImportSummary.failed.map((f, idx) => (
+                    <div key={idx} className="text-xs flex gap-2">
+                      <span className="text-muted-foreground font-mono shrink-0">Row {f.row}:</span>
+                      <span className="break-all">{f.reason}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── LEGACY FORMAT PREVIEW ── */}
           {parseResult && (
             <div className="space-y-3 text-sm">
               <div className="grid grid-cols-2 gap-2">
@@ -905,12 +1103,23 @@ export function ChatGptAgentManager() {
               )}
             </div>
           )}
+
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setUploadOpen(false); setParseResult(null); }}>Cancel</Button>
-            <Button onClick={handleImportConfirm} disabled={importing || !parseResult?.summary.imported}>
-              {importing ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
-              Import {parseResult?.summary.imported || 0} Rows
+            <Button variant="outline" onClick={() => {
+              setUploadOpen(false);
+              setParseResult(null);
+              setProductionResult(null);
+              setProductionPreClassify(null);
+              setProductionImportSummary(null);
+            }}>
+              {productionImportSummary ? 'Close' : 'Cancel'}
             </Button>
+            {!productionImportSummary && (
+              <Button onClick={handleImportConfirm} disabled={importing || (!parseResult?.summary.imported && !productionResult?.summary.parsed)}>
+                {importing ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+                Import {productionResult?.summary.parsed ?? parseResult?.summary.imported ?? 0} Rows
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

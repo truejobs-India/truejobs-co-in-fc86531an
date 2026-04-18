@@ -202,9 +202,50 @@ export function ChatGptAgentManager() {
     if (!file) return;
     try {
       const buffer = await file.arrayBuffer();
-      const result = parseExcelWorkbook(buffer);
-      setParseResult(result);
-      setUploadOpen(true);
+
+      // Format detection: try production format first (16-header signature)
+      const isProduction = detectProductionFormat(buffer);
+
+      if (isProduction) {
+        const prod = await parseProductionExcelWorkbook(buffer);
+        if (!prod.ok) {
+          addMessage('error', `Production format detected but invalid`,
+            `Sheet "${prod.sheetUsed}" missing headers: ${prod.missing.join(', ')}`);
+          e.target.value = '';
+          return;
+        }
+        setProductionResult(prod);
+        setParseResult(null);
+
+        // Pre-classify each row as insert vs update by checking existing import_identity values
+        const identities = prod.rows.map(r => r.import_identity);
+        const existing = new Set<string>();
+        // paginate to avoid 1000-row default limit
+        const PAGE = 1000;
+        for (let i = 0; i < identities.length; i += PAGE) {
+          const chunk = identities.slice(i, i + PAGE);
+          const { data, error } = await (supabase
+            .from('intake_drafts') as any)
+            .select('import_identity')
+            .eq('source_channel', 'chatgpt_agent')
+            .in('import_identity', chunk);
+          if (error) throw error;
+          for (const row of (data || [])) existing.add(row.import_identity);
+        }
+        const update = prod.rows.filter(r => existing.has(r.import_identity)).length;
+        const insert = prod.rows.length - update;
+        setProductionPreClassify({ insert, update });
+        setProductionImportSummary(null);
+        setUploadOpen(true);
+      } else {
+        // Legacy path — unchanged
+        const result = parseExcelWorkbook(buffer);
+        setParseResult(result);
+        setProductionResult(null);
+        setProductionPreClassify(null);
+        setProductionImportSummary(null);
+        setUploadOpen(true);
+      }
     } catch (err) {
       addMessage('error', 'Failed to parse Excel file', err instanceof Error ? err.message : 'Unknown error');
     }
@@ -212,9 +253,86 @@ export function ChatGptAgentManager() {
   };
 
   const handleImportConfirm = async () => {
-    if (!parseResult) return;
     setImporting(true);
     try {
+      // ── PRODUCTION FORMAT PATH ──
+      if (productionResult) {
+        const rows = productionResult.rows.map((r: ProductionParsedRow) => ({
+          // status stamps (verified against validate_intake_drafts_fields trigger)
+          source_type: 'manual' as const,
+          source_channel: 'chatgpt_agent',
+          raw_file_type: 'unknown' as const,
+          processing_status: 'imported' as const,
+          review_status: 'pending' as const,
+          primary_status: r.primary_status,
+          // identity + lossless backup
+          import_identity: r.import_identity,
+          source_row_json: r.source_row_json as any,
+          // 16 production fields
+          record_id: r.record_id,
+          publish_status: r.publish_status,
+          category_family: r.category_family,
+          update_type: r.update_type,
+          organization_authority: r.organization_authority,
+          publish_title: r.publish_title,
+          official_website_url: r.official_website_url,
+          official_reference_url: r.official_reference_url,
+          primary_cta_label: r.primary_cta_label,
+          primary_cta_url: r.primary_cta_url,
+          secondary_official_url: r.secondary_official_url,
+          verification_status: r.verification_status,
+          verification_confidence: r.verification_confidence,
+          official_source_used: r.official_source_used,
+          source_verified_on: r.source_verified_on,
+          source_verified_on_date: r.source_verified_on_date,
+          production_notes: r.production_notes,
+          // legacy mirrors
+          raw_title: r.raw_title,
+          normalized_title: r.normalized_title,
+          organisation_name: r.organisation_name,
+          official_notification_link: r.official_notification_link,
+          structured_data_json: r.structured_data_json as any,
+          section_bucket: r.section_bucket,
+          content_type: r.content_type,
+          publish_target: r.publish_target,
+          import_source_sheet: r.import_source_sheet,
+          import_row_number: r.import_row_number,
+        }));
+
+        const failed: { row: number; reason: string }[] = [];
+        for (let i = 0; i < rows.length; i += 50) {
+          const batch = rows.slice(i, i + 50);
+          const { error } = await (supabase.from('intake_drafts') as any).upsert(batch, {
+            onConflict: 'source_channel,import_identity',
+            ignoreDuplicates: false,
+          });
+          if (error) {
+            // record entire batch as failed with the first row number for diagnostics
+            for (const b of batch) failed.push({ row: b.import_row_number, reason: error.message });
+          }
+        }
+        const inserted_new = productionPreClassify?.insert ?? 0;
+        const updated_existing = productionPreClassify?.update ?? 0;
+        const summary = {
+          total: productionResult.summary.total,
+          inserted_new: inserted_new - failed.length > 0 ? inserted_new : Math.max(0, rows.length - updated_existing - failed.length),
+          updated_existing,
+          skipped_empty: productionResult.summary.skipped_empty,
+          failed,
+        };
+        setProductionImportSummary(summary);
+        addMessage(
+          failed.length === 0 ? 'success' : 'warning',
+          `Imported ${rows.length - failed.length} of ${rows.length} production rows`,
+          `New: ${summary.inserted_new} · Updated: ${summary.updated_existing} · Skipped empty: ${summary.skipped_empty} · Failed: ${failed.length}`,
+        );
+        fetchDrafts();
+        fetchCounts();
+        return;
+      }
+
+      // ── LEGACY PATH ──
+      if (!parseResult) return;
       const rows = parseResult.rows.map((r: ParsedRow) => ({
         source_type: 'manual' as const,
         source_channel: 'chatgpt_agent',

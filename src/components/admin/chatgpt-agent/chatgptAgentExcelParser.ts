@@ -528,30 +528,129 @@ async function sha256HexAsync(input: string): Promise<string> {
   return h.toString(16).padStart(16, '0').repeat(4).slice(0, 64);
 }
 
-/** Section bucket from update_type first, then category_family fallback. */
-function deriveSectionBucket(updateType: string | null, categoryFamily: string | null): SectionBucket {
-  const test = (s: string | null, kw: string) => !!s && s.toLowerCase().includes(kw);
-  for (const src of [updateType, categoryFamily]) {
-    if (test(src, 'result')) return 'results';
-    if (test(src, 'admit')) return 'admit_cards';
-    if (test(src, 'answer key')) return 'answer_keys';
-    if (test(src, 'exam') || test(src, 'date')) return 'exam_dates';
-    if (test(src, 'admission')) return 'admissions';
-    if (test(src, 'scholarship') || test(src, 'fellowship') || test(src, 'certificate')) return 'scholarships';
-    if (test(src, 'job') || test(src, 'recruit') || test(src, 'vacancy')) return 'job_postings';
+/**
+ * Word-boundary classifier with fixed priority order.
+ *
+ * Priority (first match wins, so generic notification/notice never beats specifics):
+ *   1. answer        → answer_keys
+ *   2. admit         → admit_cards
+ *   3. result        → results
+ *   4. scholarship/fellowship/certificate → scholarships
+ *   5. job/recruit/recruitment/vacancy/hiring → job_postings
+ *   6. exam/schedule/calendar/datesheet OR pair (date+sheet | exam+date | exam+schedule)
+ *      → exam_dates  (standalone `date` token alone does NOT trigger)
+ *   7. admission     → admissions
+ *   8. notification/notice → other_updates (mapped to notification/notifications enums)
+ *   9. else          → null bucket (caller falls back to category_family, then other_updates)
+ *
+ * Returns null when no family matches, so the caller can retry with the fallback string.
+ */
+function classifyOne(src: string | null): SectionBucket | null {
+  if (!src) return null;
+  const tokens = (src.toLowerCase().match(/[a-z0-9]+/g) || []);
+  if (tokens.length === 0) return null;
+  const has = (t: string) => tokens.includes(t);
+  const hasAny = (...ts: string[]) => ts.some(t => tokens.includes(t));
+  const adjacentPair = (a: string, b: string): boolean => {
+    for (let i = 0; i < tokens.length - 1; i++) {
+      if (tokens[i] === a && tokens[i + 1] === b) return true;
+    }
+    return false;
+  };
+
+  if (has('answer')) return 'answer_keys';
+  if (has('admit')) return 'admit_cards';
+  if (has('result')) return 'results';
+  if (hasAny('scholarship', 'fellowship', 'certificate')) return 'scholarships';
+  if (hasAny('job', 'jobs', 'recruit', 'recruitment', 'vacancy', 'vacancies', 'hiring')) return 'job_postings';
+  // Exam family — direct signals OR explicit exam-context pairs only. Standalone `date` is excluded.
+  if (hasAny('exam', 'schedule', 'calendar', 'datesheet')) return 'exam_dates';
+  if (adjacentPair('date', 'sheet') || adjacentPair('exam', 'date') || adjacentPair('exam', 'schedule')) {
+    return 'exam_dates';
   }
-  return 'other_updates';
+  if (has('admission')) return 'admissions';
+  if (hasAny('notification', 'notice')) return 'other_updates';
+  return null;
 }
 
-/** Excel date serial → YYYY-MM-DD (or null if not a clean serial). */
+/** Section bucket from update_type first, then category_family fallback, else other_updates. */
+function deriveSectionBucket(updateType: string | null, categoryFamily: string | null): SectionBucket {
+  return classifyOne(updateType) ?? classifyOne(categoryFamily) ?? 'other_updates';
+}
+
+/**
+ * Excel date serial → YYYY-MM-DD (or null if not a clean serial).
+ * Inline conversion (no XLSX.SSF dependency).
+ * Excel epoch is 1899-12-30 to account for the Lotus 1900 leap-year bug.
+ * Valid serial range: 1 (1899-12-31) .. 2958465 (9999-12-31).
+ */
+function excelSerialToISO(n: number): string | null {
+  if (!Number.isFinite(n) || n < 1 || n > 2958465) return null;
+  const ms = Math.round((n - 25569) * 86400 * 1000);
+  const d = new Date(ms);
+  if (isNaN(d.getTime())) return null;
+  return d.toISOString().slice(0, 10);
+}
+
+/** Parse a textual date string into YYYY-MM-DD. Accepts common formats; returns null if unparseable. */
+function parseTextDateToISO(s: string): string | null {
+  const t = s.trim();
+  if (!t) return null;
+  // Already ISO YYYY-MM-DD
+  let m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (m) {
+    const iso = `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+    return isNaN(new Date(iso).getTime()) ? null : iso;
+  }
+  // DD-MMM-YYYY or DD MMM YYYY  (e.g. 15-Mar-2023)
+  m = t.match(/^(\d{1,2})[-\s]([A-Za-z]{3,})[-\s](\d{4})$/);
+  if (m) {
+    const months: Record<string, number> = { jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,sept:9,oct:10,nov:11,dec:12 };
+    const mo = months[m[2].slice(0,3).toLowerCase()];
+    if (mo) {
+      const iso = `${m[3]}-${String(mo).padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+      return isNaN(new Date(iso).getTime()) ? null : iso;
+    }
+  }
+  // DD/MM/YYYY or DD-MM-YYYY
+  m = t.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (m) {
+    const iso = `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+    return isNaN(new Date(iso).getTime()) ? null : iso;
+  }
+  // YYYY/MM/DD
+  m = t.match(/^(\d{4})[\/](\d{1,2})[\/](\d{1,2})$/);
+  if (m) {
+    const iso = `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
+    return isNaN(new Date(iso).getTime()) ? null : iso;
+  }
+  return null;
+}
+
+/**
+ * Resolve the date column. Returns:
+ *   - source_verified_on: original raw text preserved verbatim (number → string of number)
+ *   - source_verified_on_date: ISO YYYY-MM-DD if serial- or text-parseable, else null
+ */
+function resolveSourceVerifiedOn(rawDate: any): { text: string | null; iso: string | null } {
+  if (rawDate == null) return { text: null, iso: null };
+  if (typeof rawDate === 'number') {
+    return { text: String(rawDate), iso: excelSerialToISO(rawDate) };
+  }
+  const s = String(rawDate).trim();
+  if (!s) return { text: null, iso: null };
+  // Try numeric-string-as-serial (e.g. "45000")
+  if (/^\d+(\.\d+)?$/.test(s)) {
+    const n = Number(s);
+    const iso = excelSerialToISO(n);
+    if (iso) return { text: s, iso };
+  }
+  return { text: s, iso: parseTextDateToISO(s) };
+}
+
+// Back-compat shim — kept for any external import; routes to the new resolver.
 function excelSerialToDate(v: any): string | null {
-  if (typeof v !== 'number' || !isFinite(v)) return null;
-  const parsed = (XLSX as any).SSF?.parse_date_code?.(v);
-  if (!parsed || !parsed.y) return null;
-  const yyyy = String(parsed.y).padStart(4, '0');
-  const mm = String(parsed.m).padStart(2, '0');
-  const dd = String(parsed.d).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
+  return resolveSourceVerifiedOn(v).iso;
 }
 
 /**

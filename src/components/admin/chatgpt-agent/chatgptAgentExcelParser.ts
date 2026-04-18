@@ -741,9 +741,11 @@ export async function parseProductionExcelWorkbook(
     const production_notes = cleanText(get(raw, 'Production Notes'));
 
     // Date: preserve original text, also try parse Excel serial → YYYY-MM-DD
+    // Date: preserve original text verbatim, parse Excel serial OR text formats → YYYY-MM-DD
     const rawDate = get(raw, 'Source Verified On');
-    const source_verified_on = rawDate == null ? null : (typeof rawDate === 'number' ? String(rawDate) : String(rawDate).trim() || null);
-    const source_verified_on_date = excelSerialToDate(rawDate);
+    const _dateResolved = resolveSourceVerifiedOn(rawDate);
+    const source_verified_on = _dateResolved.text;
+    const source_verified_on_date = _dateResolved.iso;
 
     // Empty-row skip
     const allBlank = !publish_title && !organization_authority && !category_family && !update_type

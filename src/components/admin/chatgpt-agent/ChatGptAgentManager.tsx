@@ -187,13 +187,61 @@ export function ChatGptAgentManager() {
     if (ids.length > 0) fetchRunsForDrafts(ids);
   }, [drafts, fetchRunsForDrafts]);
 
+  // Distinct values for filter dropdowns (built from current section's drafts)
+  const distinct = useCallback((key: string): string[] => {
+    const set = new Set<string>();
+    for (const d of drafts) {
+      const v = d?.[key];
+      if (v != null && String(v).trim() !== '') set.add(String(v).trim());
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [drafts]);
+
+  const distinctPublishStatus = useMemo(() => distinct('publish_status'), [distinct]);
+  const distinctCategoryFamily = useMemo(() => distinct('category_family'), [distinct]);
+  const distinctUpdateType = useMemo(() => distinct('update_type'), [distinct]);
+  const distinctVerificationStatus = useMemo(() => distinct('verification_status'), [distinct]);
+  const distinctVerificationConfidence = useMemo(() => distinct('verification_confidence'), [distinct]);
+
+  const SEARCH_FIELDS = [
+    'publish_title', 'normalized_title', 'organization_authority', 'organisation_name',
+    'record_id', 'official_source_used', 'production_notes',
+    'official_website_url', 'official_reference_url', 'primary_cta_url',
+  ] as const;
+
   const filteredDrafts = useMemo(() => {
-    if (linkFilter === 'all') return drafts;
-    if (linkFilter === 'published') return drafts.filter(d => d.processing_status === 'published');
-    return drafts.filter(d =>
-      linkFilter === 'with_link' ? !!d.official_notification_link : !d.official_notification_link
-    );
-  }, [drafts, linkFilter]);
+    let out = drafts;
+    if (linkFilter === 'published') out = out.filter(d => d.processing_status === 'published');
+    else if (linkFilter === 'with_link') out = out.filter(d => !!d.official_notification_link);
+    else if (linkFilter === 'missing_link') out = out.filter(d => !d.official_notification_link);
+
+    if (filterPublishStatus !== '__all__') out = out.filter(d => d.publish_status === filterPublishStatus);
+    if (filterCategoryFamily !== '__all__') out = out.filter(d => d.category_family === filterCategoryFamily);
+    if (filterUpdateType !== '__all__') out = out.filter(d => d.update_type === filterUpdateType);
+    if (filterVerificationStatus !== '__all__') out = out.filter(d => d.verification_status === filterVerificationStatus);
+    if (filterVerificationConfidence !== '__all__') out = out.filter(d => d.verification_confidence === filterVerificationConfidence);
+
+    const q = searchQuery.trim().toLowerCase();
+    if (q) {
+      out = out.filter(d => SEARCH_FIELDS.some(f => {
+        const v = d?.[f];
+        return v != null && String(v).toLowerCase().includes(q);
+      }));
+    }
+    return out;
+  }, [
+    drafts, linkFilter, searchQuery,
+    filterPublishStatus, filterCategoryFamily, filterUpdateType,
+    filterVerificationStatus, filterVerificationConfidence,
+  ]);
+
+  const publishedCount = useMemo(() => drafts.filter(d => d.processing_status === 'published').length, [drafts]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredDrafts.length / PAGE_SIZE));
+  const paginatedDrafts = useMemo(
+    () => filteredDrafts.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
+    [filteredDrafts, currentPage],
+  );
 
   const publishedCount = useMemo(() => drafts.filter(d => d.processing_status === 'published').length, [drafts]);
 

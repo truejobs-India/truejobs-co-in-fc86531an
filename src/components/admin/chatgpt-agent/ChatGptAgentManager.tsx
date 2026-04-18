@@ -834,8 +834,14 @@ export function ChatGptAgentManager() {
           )}
 
           {/* Section Tabs */}
-          <Tabs value={activeSection} onValueChange={v => { setActiveSection(v as SectionBucket); setSelected(new Set()); setLinkFilter('all'); }}>
+          <Tabs value={activeSection} onValueChange={v => { setActiveSection(v as ActiveSection); setSelected(new Set()); setLinkFilter('all'); }}>
             <TabsList className="flex flex-wrap !h-auto gap-1 p-2 mb-3">
+              <TabsTrigger value={ALL_SECTIONS_VALUE} className="text-xs gap-1.5">
+                All Sections
+                <Badge variant="secondary" className="text-[10px] px-1 py-0 h-4">
+                  {Object.values(sectionCounts).reduce((a, b) => a + (b || 0), 0)}
+                </Badge>
+              </TabsTrigger>
               {ALL_SECTIONS.map(s => (
                 <TabsTrigger key={s} value={s} className="text-xs gap-1.5">
                   {SECTION_BUCKET_LABELS[s]}
@@ -845,6 +851,20 @@ export function ChatGptAgentManager() {
                 </TabsTrigger>
               ))}
             </TabsList>
+
+            {/* Scope clarity (All Sections only) */}
+            {activeSection === ALL_SECTIONS_VALUE && (
+              <div className="mb-3 px-3 py-2 rounded-md border bg-muted/40 text-xs">
+                <div className="text-foreground font-medium">
+                  Viewing all ChatGPT Agent drafts: {Object.values(sectionCounts).reduce((a, b) => a + (b || 0), 0)} total
+                </div>
+                {filteredDrafts.length !== drafts.length && (
+                  <div className="text-muted-foreground mt-0.5">
+                    {filteredDrafts.length} visible after filters
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Search box (production fields) */}
             <div className="mb-3">
@@ -920,14 +940,34 @@ export function ChatGptAgentManager() {
               )}
             </div>
 
+            {/* Select-all-visible labeled control */}
+            <div className="flex items-center gap-2 mb-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs"
+                onClick={toggleSelectAll}
+                disabled={filteredDrafts.length === 0}
+              >
+                {selected.size === filteredDrafts.length && filteredDrafts.length > 0
+                  ? `Clear selection (${selected.size})`
+                  : `Select all visible (${filteredDrafts.length})`}
+              </Button>
+              {activeSection === ALL_SECTIONS_VALUE && (
+                <span className="text-[11px] text-muted-foreground">
+                  Across all sections
+                </span>
+              )}
+            </div>
+
             {/* Shared table content for all tabs */}
-            {ALL_SECTIONS.map(s => (
+            {[ALL_SECTIONS_VALUE, ...ALL_SECTIONS].map(s => (
               <TabsContent key={s} value={s} className="mt-0">
                 {loading ? (
                   <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin" /></div>
                 ) : filteredDrafts.length === 0 ? (
                   <div className="text-center py-12 text-muted-foreground text-sm">
-                    No drafts in {SECTION_BUCKET_LABELS[s]}
+                    {s === ALL_SECTIONS_VALUE ? 'No drafts' : `No drafts in ${SECTION_BUCKET_LABELS[s as SectionBucket]}`}
                     {linkFilter !== 'all' && ' (try changing filter)'}
                   </div>
                 ) : (
@@ -938,6 +978,7 @@ export function ChatGptAgentManager() {
                             <TableHead className="w-10">
                               <Checkbox checked={selected.size === filteredDrafts.length && filteredDrafts.length > 0} onCheckedChange={toggleSelectAll} />
                             </TableHead>
+                            {s === ALL_SECTIONS_VALUE && <TableHead>Section</TableHead>}
                             <TableHead className="min-w-[220px]">Publish Title</TableHead>
                             <TableHead className="min-w-[160px]">Org / Board / Authority</TableHead>
                             <TableHead>Category Family</TableHead>

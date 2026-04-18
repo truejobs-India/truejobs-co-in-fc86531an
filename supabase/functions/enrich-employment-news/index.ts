@@ -807,21 +807,13 @@ serve(async (req) => {
         })();
         let attemptMaxTokens: number | null = null;
 
-        const writeAuditRow = async (status: string, errorMessage: string | null) => {
-          try {
-            await serviceClient.from('employment_news_enrichment_runs').insert({
-              job_id: jobId,
-              selected_model_id: useModel,
-              provider: providerInfo.provider,
-              api_model: providerInfo.apiModel,
-              max_tokens: attemptMaxTokens,
-              status,
-              error_message: errorMessage,
-              duration_ms: Date.now() - attemptStartedAt,
-            });
-          } catch (auditErr) {
-            console.error(`[enrich] Failed to write audit row for ${jobId}:`, auditErr);
-          }
+        // Outcome accumulator — drives the guaranteed final audit/status write.
+        const outcome: { status: 'success' | 'error'; errorMessage: string | null } = {
+          status: 'error',
+          errorMessage: null,
+        };
+        let resultPayload: { id: string; success: boolean; error?: string; selectedModelId?: string; actualProviderUsed?: string; actualModelUsed?: string; wordCountValidation?: any } = {
+          id: jobId, success: false, error: 'no result recorded',
         };
 
         try {

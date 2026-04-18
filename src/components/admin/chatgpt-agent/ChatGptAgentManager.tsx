@@ -243,15 +243,11 @@ export function ChatGptAgentManager() {
     [filteredDrafts, currentPage],
   );
 
-  const publishedCount = useMemo(() => drafts.filter(d => d.processing_status === 'published').length, [drafts]);
-
-  const totalPages = Math.max(1, Math.ceil(filteredDrafts.length / PAGE_SIZE));
-  const paginatedDrafts = useMemo(
-    () => filteredDrafts.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
-    [filteredDrafts, currentPage],
-  );
-
-  useEffect(() => { setCurrentPage(1); }, [linkFilter, activeSection, drafts.length]);
+  useEffect(() => { setCurrentPage(1); }, [
+    linkFilter, activeSection, drafts.length, searchQuery,
+    filterPublishStatus, filterCategoryFamily, filterUpdateType,
+    filterVerificationStatus, filterVerificationConfidence,
+  ]);
 
   // ── Upload Excel ──
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {

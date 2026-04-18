@@ -364,12 +364,21 @@ export function ChatGptAgentManager() {
             for (const b of batch) failed.push({ row: b.import_row_number, reason: error.message });
           }
         }
-        const inserted_new = productionPreClassify?.insert ?? 0;
-        const updated_existing = productionPreClassify?.update ?? 0;
+        // Reconcile counts: classify each row attempted vs failed.
+        // total = inserted_new + updated_existing + skipped_empty + failed
+        const wasUpdate = (r: any) => existingIdentitiesAttempted.has(r.import_identity);
+        const failedIdentities = new Set(failed.map(f => f.row));
+        let updated_existing_final = 0;
+        let inserted_new_final = 0;
+        for (const r of rows) {
+          if (failedIdentities.has(r.import_row_number)) continue;
+          if (wasUpdate(r)) updated_existing_final++;
+          else inserted_new_final++;
+        }
         const summary = {
           total: productionResult.summary.total,
-          inserted_new: inserted_new - failed.length > 0 ? inserted_new : Math.max(0, rows.length - updated_existing - failed.length),
-          updated_existing,
+          inserted_new: inserted_new_final,
+          updated_existing: updated_existing_final,
           skipped_empty: productionResult.summary.skipped_empty,
           failed,
         };
@@ -940,7 +949,7 @@ export function ChatGptAgentManager() {
                                 </TableCell>
                                 <TableCell>
                                   <div className="flex items-start gap-1.5 flex-wrap">
-                                    <span className="text-sm font-medium line-clamp-2">{d.normalized_title || d.raw_title}</span>
+                                    <span className="text-sm font-medium line-clamp-2">{d.publish_title || d.normalized_title || d.raw_title}</span>
                                     {isAiFixed(draftRuns[d.id]) && (
                                       <Badge variant="outline" className="text-[10px] gap-1 border-green-500 text-green-700 bg-green-50 dark:bg-green-950/30 dark:text-green-400 shrink-0">
                                         <Sparkles className="h-2.5 w-2.5" />
@@ -962,7 +971,30 @@ export function ChatGptAgentManager() {
                                     />
                                   </div>
                                 </TableCell>
-                                <TableCell className="text-xs text-muted-foreground">{d.organisation_name || '—'}</TableCell>
+                                <TableCell className="text-xs text-muted-foreground">{d.organization_authority || d.organisation_name || '—'}</TableCell>
+                                <TableCell className="text-xs">{d.category_family || '—'}</TableCell>
+                                <TableCell className="text-xs">{d.update_type || '—'}</TableCell>
+                                <TableCell className="text-xs">
+                                  {d.verification_status ? (
+                                    <Badge variant="outline" className="text-[10px]">{d.verification_status}</Badge>
+                                  ) : '—'}
+                                </TableCell>
+                                <TableCell className="text-xs">{d.verification_confidence || '—'}</TableCell>
+                                <TableCell className="text-xs whitespace-nowrap">{d.source_verified_on_date || d.source_verified_on || '—'}</TableCell>
+                                <TableCell onClick={e => e.stopPropagation()}>
+                                  {d.primary_cta_url ? (
+                                    <a
+                                      href={d.primary_cta_url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-xs text-primary hover:underline inline-flex items-center gap-1"
+                                      title={d.primary_cta_url}
+                                    >
+                                      {d.primary_cta_label || 'Open'}
+                                      <ExternalLink className="h-3 w-3" />
+                                    </a>
+                                  ) : (d.primary_cta_label || '—')}
+                                </TableCell>
                                 <TableCell>
                                   <Badge variant={
                                     d.processing_status === 'published' ? 'default' :

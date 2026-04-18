@@ -524,8 +524,8 @@ export function EmploymentNewsManager() {
   const bulkEnrich = async (ids: string[]) => {
     setEnrichProgress({ current: 0, total: ids.length });
 
-    // Process in batches of 3 to avoid edge function timeouts
-    const batchSize = 3;
+    // Process one job per invocation — each AI call can take up to 120s and the edge function idle timeout is 150s.
+    const batchSize = 1;
     let successTotal = 0;
     let failTotal = 0;
 

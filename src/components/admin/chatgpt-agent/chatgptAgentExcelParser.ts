@@ -547,10 +547,10 @@ async function sha256HexAsync(input: string): Promise<string> {
  */
 function classifyOne(src: string | null): SectionBucket | null {
   if (!src) return null;
-  const tokens = (src.toLowerCase().match(/[a-z0-9]+/g) || []);
+  const tokens: string[] = (src.toLowerCase().match(/[a-z0-9]+/g) || []);
   if (tokens.length === 0) return null;
-  const has = (t: string) => tokens.includes(t);
-  const hasAny = (...ts: string[]) => ts.some(t => tokens.includes(t));
+  const has = (t: string): boolean => tokens.indexOf(t) >= 0;
+  const hasAny = (...ts: string[]): boolean => ts.some(t => tokens.indexOf(t) >= 0);
   const adjacentPair = (a: string, b: string): boolean => {
     for (let i = 0; i < tokens.length - 1; i++) {
       if (tokens[i] === a && tokens[i + 1] === b) return true;

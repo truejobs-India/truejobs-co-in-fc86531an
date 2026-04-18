@@ -149,6 +149,8 @@ export async function callAzureGPT5Mini(
   const gpt5ApiKey = Deno.env.get('AZURE_DEEPSEEK_API_KEY');
   if (!gpt5ApiKey) throw new Error('AZURE_DEEPSEEK_API_KEY not configured');
   return callAzureOpenAI(prompt, {
+    // GPT-5 is a reasoning model — needs more wall time than the 60s default
+    timeoutMs: 120_000,
     ...options,
     deploymentName: GPT5_MINI_DEPLOYMENT,
     endpoint: GPT5_MINI_ENDPOINT,

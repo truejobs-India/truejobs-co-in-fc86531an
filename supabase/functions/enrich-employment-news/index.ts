@@ -824,11 +824,13 @@ serve(async (req) => {
             .single();
 
           if (fetchErr || !job) {
-            await writeAuditRow('error', 'Job not found');
-            return { id: jobId, success: false, error: "Job not found" };
+            outcome.status = 'error';
+            outcome.errorMessage = 'Job not found';
+            resultPayload = { id: jobId, success: false, error: "Job not found" };
+            return resultPayload;
           }
 
-          // Increment enrichment_attempts + stamp last-attempt metadata
+          // Increment enrichment_attempts + stamp last-attempt metadata up-front
           const currentAttempts = (job.enrichment_attempts || 0) + 1;
           await serviceClient
             .from("employment_news_jobs")
@@ -906,12 +908,10 @@ OUTPUT LANGUAGE: ${detectedLang}`;
             }
           }
 
-          // If critical fields (title + description) are missing, fail hard
           if (missingCritical.length > 0) {
             throw new Error(`AI returned incomplete data — missing critical fields: ${missingCritical.join(', ')}`);
           }
 
-          // Auto-fill non-critical missing fields
           const autoFilled = autoFillMissingFields(enriched, job);
           if (autoFilled.length > 0) {
             console.log(`[enrich] Auto-filled for ${jobId}: ${autoFilled.join(', ')}`);
@@ -932,14 +932,9 @@ OUTPUT LANGUAGE: ${detectedLang}`;
 
           // Schema date overrides
           let schemaMarkup = enriched.schema_markup || {};
-          if (batchUploadedAt) {
-            schemaMarkup.datePosted = batchUploadedAt;
-          }
-          if (job.last_date_resolved) {
-            schemaMarkup.validThrough = job.last_date_resolved;
-          } else {
-            delete schemaMarkup.validThrough;
-          }
+          if (batchUploadedAt) schemaMarkup.datePosted = batchUploadedAt;
+          if (job.last_date_resolved) schemaMarkup.validThrough = job.last_date_resolved;
+          else delete schemaMarkup.validThrough;
           schemaMarkup = deepCleanNulls(schemaMarkup) || {};
 
           const keywords = Array.isArray(enriched.keywords) ? enriched.keywords : [];
@@ -962,55 +957,29 @@ OUTPUT LANGUAGE: ${detectedLang}`;
             .eq("id", jobId);
 
           if (updateErr) {
-            await writeAuditRow('error', updateErr.message);
-            return { id: jobId, success: false, error: updateErr.message };
+            throw new Error(`DB update failed: ${updateErr.message}`);
           }
 
           const wcValidation = enriched.enriched_description
             ? validateWordCount(enriched.enriched_description, enrichTargetWords, enrichMaxTokens)
             : null;
-          await writeAuditRow('success', null);
-          return {
+
+          outcome.status = 'success';
+          outcome.errorMessage = null;
+          resultPayload = {
             id: jobId, success: true,
             selectedModelId: useModel,
             actualProviderUsed: providerInfo.provider,
             actualModelUsed: providerInfo.apiModel,
             wordCountValidation: wcValidation,
           };
+          return resultPayload;
         } catch (err) {
           const errorMsg = err instanceof Error ? err.message : "Unknown error";
-          console.error(`Enrich error for ${jobId}:`, errorMsg);
-
-          // Update failure status in database
-          try {
-            // Read current attempts count
-            const { data: currentJob } = await serviceClient
-              .from("employment_news_jobs")
-              .select("enrichment_attempts")
-              .eq("id", jobId)
-              .single();
-
-            const attempts = currentJob?.enrichment_attempts || 1;
-            const maxRetries = 3;
-
-            // If attempts >= max, mark as enrichment_failed; otherwise keep pending for retry
-            const newStatus = attempts >= maxRetries ? 'enrichment_failed' : 'pending';
-
-            await serviceClient
-              .from("employment_news_jobs")
-              .update({
-                enrichment_error: errorMsg,
-                status: newStatus,
-              })
-              .eq("id", jobId);
-
-            console.log(`[enrich] Job ${jobId}: attempt ${attempts}/${maxRetries}, status → ${newStatus}`);
-          } catch (dbErr) {
-            console.error(`Failed to update failure status for ${jobId}:`, dbErr);
-          }
-
-          await writeAuditRow('error', errorMsg);
-          return {
+          console.error(`[enrich] Error for ${jobId}:`, errorMsg);
+          outcome.status = 'error';
+          outcome.errorMessage = errorMsg;
+          resultPayload = {
             id: jobId,
             success: false,
             error: errorMsg,
@@ -1019,6 +988,60 @@ OUTPUT LANGUAGE: ${detectedLang}`;
             actualModelUsed: providerInfo.apiModel,
             wordCountValidation: null,
           };
+          return resultPayload;
+        } finally {
+          // ─── Guaranteed final write block ───
+          // Audit row (always) + last_enrichment_* stamp + enrichment_error (clear on success, set on failure)
+          // + status transition on failure (success status was already set inside the try).
+          // Wrapped in its own try/catch so audit failure NEVER masks the real enrichment error.
+          try {
+            await serviceClient.from('employment_news_enrichment_runs').insert({
+              job_id: jobId,
+              selected_model_id: useModel,
+              provider: providerInfo.provider,
+              api_model: providerInfo.apiModel,
+              max_tokens: attemptMaxTokens,
+              status: outcome.status,
+              error_message: outcome.errorMessage,
+              duration_ms: Date.now() - attemptStartedAt,
+            });
+          } catch (auditErr) {
+            console.error(`[enrich] [audit-write-failed] ${jobId}:`, auditErr);
+          }
+
+          try {
+            const stamp: Record<string, unknown> = {
+              last_enrichment_model: useModel,
+              last_enrichment_provider: providerInfo.provider,
+              last_enrichment_api_model: providerInfo.apiModel,
+              last_enrichment_at: new Date().toISOString(),
+              enrichment_error: outcome.status === 'success' ? null : outcome.errorMessage,
+            };
+
+            // On failure only: also transition status (success path already wrote status='enriched')
+            if (outcome.status === 'error') {
+              try {
+                const { data: currentJob } = await serviceClient
+                  .from("employment_news_jobs")
+                  .select("enrichment_attempts")
+                  .eq("id", jobId)
+                  .single();
+                const attempts = currentJob?.enrichment_attempts || 1;
+                const maxRetries = 3;
+                stamp.status = attempts >= maxRetries ? 'enrichment_failed' : 'pending';
+                console.log(`[enrich] Job ${jobId}: attempt ${attempts}/${maxRetries}, status → ${stamp.status}`);
+              } catch (readErr) {
+                console.error(`[enrich] Failed to read attempts for ${jobId}:`, readErr);
+              }
+            }
+
+            await serviceClient
+              .from("employment_news_jobs")
+              .update(stamp)
+              .eq("id", jobId);
+          } catch (stampErr) {
+            console.error(`[enrich] [stamp-write-failed] ${jobId}:`, stampErr);
+          }
         }
       });
 

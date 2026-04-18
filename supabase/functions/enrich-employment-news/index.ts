@@ -286,49 +286,79 @@ function detectLanguage(fields: Record<string, string | null | undefined>): stri
 
 // ═══════════════════════════════════════════════════════════════
 
-function tryParseJSON(text: string): any {
-  // Attempt 1: direct parse
-  try {
-    return JSON.parse(text);
-  } catch { /* fall through */ }
+// ───────────────────────────────────────────────────────────────
+// Lightweight JSON cleanup + strict parser
+// Allowed transforms only: BOM strip, trim, ```json / ``` fence strip,
+// <think>...</think> removal (DeepSeek-R1 / Gemini reasoning blocks).
+// On failure: try ONE conservative top-level {…} or […] extraction.
+// If ambiguous (zero or multiple competing candidates) → return null.
+// Never throws. Never guesses.
+// ───────────────────────────────────────────────────────────────
+function cleanJsonText(raw: string): string {
+  if (!raw) return '';
+  let s = raw;
+  if (s.charCodeAt(0) === 0xFEFF) s = s.slice(1);            // BOM
+  s = s.replace(/<think>[\s\S]*?<\/think>/gi, '');           // reasoning blocks
+  s = s.replace(/```json\s*/gi, '').replace(/```/g, '');     // fences
+  return s.trim();
+}
 
-  // Attempt 1b: strip <think>...</think> reasoning blocks (Gemini 2.5+)
-  let cleaned = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
-  // Also strip markdown fences
-  cleaned = cleaned.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-  try {
-    return JSON.parse(cleaned);
-  } catch { /* fall through */ }
-
-  // Attempt 2: extract JSON between first { and last }
-  const firstBrace = cleaned.indexOf('{');
-  const lastBrace = cleaned.lastIndexOf('}');
-  if (firstBrace >= 0 && lastBrace > firstBrace) {
-    const extracted = cleaned.substring(firstBrace, lastBrace + 1);
-    try {
-      return JSON.parse(extracted);
-    } catch { /* fall through */ }
-
-    // Attempt 2b: remove control characters and try again
-    const sanitized = extracted.replace(/[\x00-\x1F\x7F]/g, (ch) => ch === '\n' || ch === '\r' || ch === '\t' ? ch : '');
-    try {
-      return JSON.parse(sanitized);
-    } catch { /* fall through */ }
-  }
-
-  // Attempt 3: truncate at last valid } and try progressively
-  if (firstBrace >= 0) {
-    const jsonCandidate = cleaned.substring(firstBrace);
-    let pos = jsonCandidate.lastIndexOf('}');
-    while (pos > 0) {
-      try {
-        return JSON.parse(jsonCandidate.substring(0, pos + 1));
-      } catch { /* try shorter */ }
-      pos = jsonCandidate.lastIndexOf('}', pos - 1);
+/**
+ * Find all top-level balanced JSON blocks of a given pair of brackets.
+ * Respects strings + escapes. Returns array of {start,end} index pairs.
+ */
+function findTopLevelBlocks(text: string, open: string, close: string): Array<{ start: number; end: number }> {
+  const blocks: Array<{ start: number; end: number }> = [];
+  let depth = 0, start = -1, inStr = false, esc = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inStr) {
+      if (esc) { esc = false; continue; }
+      if (c === '\\') { esc = true; continue; }
+      if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') { inStr = true; continue; }
+    if (c === open) {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (c === close) {
+      depth--;
+      if (depth === 0 && start >= 0) {
+        blocks.push({ start, end: i });
+        start = -1;
+      } else if (depth < 0) {
+        depth = 0;
+      }
     }
   }
+  return blocks;
+}
 
-  throw new Error(`JSON parse failed after all recovery attempts (response length: ${text.length} chars, first 200: ${text.substring(0, 200)})`);
+function tryParseJson(raw: string): unknown | null {
+  const cleaned = cleanJsonText(raw);
+  if (!cleaned) return null;
+
+  // 1. Direct parse on cleaned text
+  try { return JSON.parse(cleaned); } catch { /* fall through */ }
+
+  // 2. Conservative extraction: look for top-level balanced blocks.
+  //    If exactly ONE candidate (object OR array) parses cleanly → use it.
+  //    Otherwise fail clean (do not guess between competing candidates).
+  const candidates: string[] = [];
+  for (const { start, end } of findTopLevelBlocks(cleaned, '{', '}')) {
+    candidates.push(cleaned.substring(start, end + 1));
+  }
+  for (const { start, end } of findTopLevelBlocks(cleaned, '[', ']')) {
+    candidates.push(cleaned.substring(start, end + 1));
+  }
+  const parsedCandidates: unknown[] = [];
+  for (const c of candidates) {
+    try { parsedCandidates.push(JSON.parse(c)); } catch { /* ignore */ }
+  }
+  if (parsedCandidates.length === 1) return parsedCandidates[0];
+
+  return null;
 }
 
 // Smart field auto-generation for missing non-critical fields
@@ -545,174 +575,171 @@ function resolveProviderInfo(model: string): { provider: string; apiModel: strin
   }
 }
 
-async function callAI(model: string, prompt: string, maxTokensParam?: number): Promise<any> {
-  let rawText: string;
+// ═══════════════════════════════════════════════════════════════
+// Single source of truth for model dispatch.
+// Returns RAW text. Used identically by attempt 1 and attempt 2.
+// No whitelist. Any model added here automatically supports retry.
+// ═══════════════════════════════════════════════════════════════
+async function callRawAI(
+  model: string,
+  prompt: string,
+  opts: { maxTokens?: number; systemPrompt?: string } = {},
+): Promise<string> {
+  const maxTokens = opts.maxTokens;
 
   switch (model) {
-    case 'mistral': {
-      rawText = await callMistralRaw(prompt, maxTokensParam);
-      break;
-    }
+    case 'mistral':
+      return await callMistralRaw(prompt, maxTokens);
+
+    case 'claude':
     case 'claude-sonnet':
-    case 'claude': {
-      rawText = await callClaudeRaw(prompt, maxTokensParam);
-      break;
+      return await callClaudeRaw(prompt, maxTokens);
+
+    case 'lovable-gemini':
+      return await callLovableGeminiRaw(prompt, maxTokens);
+
+    case 'gemini':
+    case 'gemini-flash':
+    case 'gemini-pro': {
+      const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
+      const apiModel = model === 'gemini-pro' ? 'gemini-2.5-pro' : 'gemini-2.5-flash';
+      return await callGeminiDirect(apiModel, prompt, 90_000, {
+        responseMimeType: 'application/json',
+        temperature: 0.5,
+        maxOutputTokens: maxTokens || 16384,
+      });
     }
-    case 'lovable-gemini': {
-      rawText = await callLovableGeminiRaw(prompt, maxTokensParam);
-      break;
-    }
+
     case 'vertex-flash': {
       const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
-      rawText = await callGeminiDirect('gemini-2.5-flash', prompt, 60_000, { maxOutputTokens: maxTokensParam || 16384 });
-      break;
+      return await callGeminiDirect('gemini-2.5-flash', prompt, 60_000, { maxOutputTokens: maxTokens || 16384 });
     }
     case 'vertex-pro': {
       const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
-      rawText = await callGeminiDirect('gemini-2.5-pro', prompt, 120_000, { maxOutputTokens: maxTokensParam || 16384 });
-      break;
+      return await callGeminiDirect('gemini-2.5-pro', prompt, 120_000, { maxOutputTokens: maxTokens || 16384 });
     }
     case 'vertex-3.1-pro': {
       const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
-      rawText = await callGeminiDirect('gemini-3.1-pro-preview', prompt, 120_000, { maxOutputTokens: maxTokensParam || 16384 });
-      break;
+      return await callGeminiDirect('gemini-3.1-pro-preview', prompt, 120_000, { maxOutputTokens: maxTokens || 16384 });
     }
     case 'vertex-3-flash': {
       const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
-      rawText = await callGeminiDirect('gemini-3-flash-preview', prompt, 90_000, { maxOutputTokens: maxTokensParam || 16384 });
-      break;
+      return await callGeminiDirect('gemini-3-flash-preview', prompt, 90_000, { maxOutputTokens: maxTokens || 16384 });
     }
     case 'vertex-3.1-flash-lite': {
       const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
-      rawText = await callGeminiDirect('gemini-3.1-flash-lite-preview', prompt, 60_000, { maxOutputTokens: maxTokensParam || 16384 });
-      break;
+      return await callGeminiDirect('gemini-3.1-flash-lite-preview', prompt, 60_000, { maxOutputTokens: maxTokens || 16384 });
     }
+
     case 'nova-pro':
     case 'nova-premier': {
       const { callBedrockNova } = await import('../_shared/bedrock-nova.ts');
-      rawText = await callBedrockNova(model, prompt, { maxTokens: maxTokensParam || 16384, temperature: 0.5 });
-      break;
+      return await callBedrockNova(model, prompt, { maxTokens: maxTokens || 16384, temperature: 0.5 });
     }
+
     case 'azure-gpt4o-mini': {
       const { callAzureOpenAI } = await import('../_shared/azure-openai.ts');
-      rawText = await callAzureOpenAI(prompt, { maxTokens: maxTokensParam || 8192, temperature: 0.5 });
-      break;
+      return await callAzureOpenAI(prompt, { maxTokens: maxTokens || 8192, temperature: 0.5 });
     }
     case 'azure-gpt41-mini': {
       const { callAzureGPT41Mini } = await import('../_shared/azure-openai.ts');
-      rawText = await callAzureGPT41Mini(prompt, { maxTokens: maxTokensParam || 8192, temperature: 0.5 });
-      break;
+      return await callAzureGPT41Mini(prompt, { maxTokens: maxTokens || 8192, temperature: 0.5 });
     }
     case 'azure-gpt5-mini': {
       const { callAzureGPT5Mini } = await import('../_shared/azure-openai.ts');
-      rawText = await callAzureGPT5Mini(prompt, { maxTokens: maxTokensParam || 8192, temperature: 0.5 });
-      break;
+      return await callAzureGPT5Mini(prompt, { maxTokens: maxTokens || 8192, temperature: 0.5 });
     }
+
     case 'azure-deepseek-v3':
     case 'azure-deepseek-r1': {
       const { callAzureDeepSeek } = await import('../_shared/azure-deepseek.ts');
-      rawText = await callAzureDeepSeek(prompt, { model: model === 'azure-deepseek-r1' ? 'DeepSeek-R1' : 'DeepSeek-V3.1', maxTokens: maxTokensParam || 4096, temperature: 0.5 });
-      break;
+      return await callAzureDeepSeek(prompt, {
+        model: model === 'azure-deepseek-r1' ? 'DeepSeek-R1' : 'DeepSeek-V3.1',
+        maxTokens: maxTokens || 4096,
+        temperature: 0.5,
+        systemPrompt: opts.systemPrompt,
+      });
     }
+
     case 'nemotron-120b': {
       const lovKey = Deno.env.get('LOVABLE_API_KEY');
       if (!lovKey) throw new Error('LOVABLE_API_KEY not configured');
-      const nemResp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      const r = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
         method: 'POST',
         headers: { Authorization: `Bearer ${lovKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: 'nvidia/llama-3.3-nemotron-super-49b-v1', messages: [{ role: 'user', content: prompt }], max_tokens: maxTokensParam || 8192, temperature: 0.5 }),
+        body: JSON.stringify({ model: 'nvidia/llama-3.3-nemotron-super-49b-v1', messages: [{ role: 'user', content: prompt }], max_tokens: maxTokens || 8192, temperature: 0.5 }),
       });
-      if (!nemResp.ok) throw new Error(`Nemotron error: ${nemResp.status}`);
-      rawText = (await nemResp.json())?.choices?.[0]?.message?.content || '';
-      break;
+      if (!r.ok) throw new Error(`Nemotron error: ${r.status}`);
+      return (await r.json())?.choices?.[0]?.message?.content || '';
     }
+
     case 'sarvam-30b':
     case 'sarvam-105b': {
       const { callSarvamChat } = await import('../_shared/sarvam.ts');
-      rawText = await callSarvamChat(prompt, { model: model === 'sarvam-105b' ? 'sarvam-105b' : 'sarvam-30b', maxTokens: maxTokensParam || 4096 });
-      break;
+      return await callSarvamChat(prompt, { model: model === 'sarvam-105b' ? 'sarvam-105b' : 'sarvam-30b', maxTokens: maxTokens || 4096 });
     }
+
     case 'groq': {
       const groqKey = Deno.env.get('GROQ_API_KEY');
       if (!groqKey) throw new Error('GROQ_API_KEY not configured');
-      const groqResp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
         headers: { Authorization: `Bearer ${groqKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], max_tokens: maxTokensParam || 8192, temperature: 0.5 }),
+        body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], max_tokens: maxTokens || 8192, temperature: 0.5 }),
       });
-      if (!groqResp.ok) throw new Error(`Groq API error: ${groqResp.status}`);
-      const groqData = await groqResp.json();
-      rawText = groqData?.choices?.[0]?.message?.content || '';
-      break;
+      if (!r.ok) throw new Error(`Groq API error: ${r.status}`);
+      return (await r.json())?.choices?.[0]?.message?.content || '';
     }
+
     case 'gpt5':
     case 'gpt5-mini':
     case 'openai': {
       const lovKey = Deno.env.get('LOVABLE_API_KEY');
       if (!lovKey) throw new Error('LOVABLE_API_KEY not configured');
       const gwModel = model === 'gpt5-mini' ? 'openai/gpt-5-mini' : 'openai/gpt-5';
-      const gwResp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      const r = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
         method: 'POST',
         headers: { Authorization: `Bearer ${lovKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: gwModel, messages: [{ role: 'user', content: prompt }], max_tokens: maxTokensParam || 8192, temperature: 0.5 }),
+        body: JSON.stringify({ model: gwModel, messages: [{ role: 'user', content: prompt }], max_tokens: maxTokens || 8192, temperature: 0.5 }),
       });
-      if (!gwResp.ok) throw new Error(`Lovable AI error: ${gwResp.status}`);
-      const gwData = await gwResp.json();
-      rawText = gwData?.choices?.[0]?.message?.content || '';
-      break;
+      if (!r.ok) throw new Error(`Lovable AI error: ${r.status}`);
+      return (await r.json())?.choices?.[0]?.message?.content || '';
     }
-    case 'gemini-flash':
-    case 'gemini-pro':
-    case 'gemini': {
-      const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
-      const vertexModel = model === 'gemini-pro' ? 'gemini-2.5-pro' : 'gemini-2.5-flash';
-      const geminiOpts = { responseMimeType: 'application/json', temperature: 0.5, maxOutputTokens: maxTokensParam || 16384 };
-      const text = await callGeminiDirect(vertexModel, prompt, 90_000, geminiOpts);
-      try {
-        return tryParseJSON(text);
-      } catch (e1) {
-        console.warn("Vertex Gemini JSON parse failed, retrying...", (e1 as Error).message);
-        await delay(2000);
-        const text2 = await callGeminiDirect(vertexModel, prompt, 90_000, geminiOpts);
-        return tryParseJSON(text2);
-      }
-    }
+
     default:
       throw new Error(`Unsupported AI model: "${model}". No fallback allowed.`);
   }
+}
 
-  // For non-Gemini models, strip markdown fences and parse
-  rawText = rawText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-  try {
-    return tryParseJSON(rawText);
-  } catch (e1) {
-    console.warn(`${model} JSON parse failed, retrying...`, (e1 as Error).message);
-    await delay(2000);
-    // Retry the call
-    let retryText: string;
-    if (model === 'mistral') retryText = await callMistralRaw(prompt);
-    else if (model === 'claude' || model === 'claude-sonnet') retryText = await callClaudeRaw(prompt);
-    else if (model === 'lovable-gemini') retryText = await callLovableGeminiRaw(prompt);
-    else if (model === 'groq') {
-      const groqKey = Deno.env.get('GROQ_API_KEY');
-      if (!groqKey) throw new Error('GROQ_API_KEY not configured');
-      const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST', headers: { Authorization: `Bearer ${groqKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], max_tokens: 8192, temperature: 0.5 }),
-      });
-      if (!r.ok) throw new Error(`Groq retry error: ${r.status}`);
-      retryText = (await r.json())?.choices?.[0]?.message?.content || '';
-    } else if (model === 'vertex-flash') {
-      const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
-      retryText = await callGeminiDirect('gemini-2.5-flash', prompt, 60_000);
-    } else if (model === 'vertex-pro') {
-      const { callGeminiDirect } = await import('../_shared/gemini-direct.ts');
-      retryText = await callGeminiDirect('gemini-2.5-pro', prompt, 120_000);
-    }
-    else throw new Error(`JSON parse retry not supported for model: ${model}. Re-select and try again.`);
-    retryText = retryText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    return tryParseJSON(retryText);
-  }
+const STRICT_JSON_SUFFIX = '\n\nReturn ONLY valid JSON matching the required schema. No markdown fences. No explanation.';
+
+/**
+ * Two-attempt JSON enrichment.
+ * Attempt 1: normal prompt → clean → parse.
+ * If parse fails: Attempt 2 with same model + stricter instruction → clean → parse.
+ * If still fails: throw a clear error (no third stage, no fallback model).
+ */
+async function callAI(model: string, prompt: string, maxTokensParam?: number): Promise<any> {
+  const opts = { maxTokens: maxTokensParam };
+
+  // Attempt 1
+  const raw1 = await callRawAI(model, prompt, opts);
+  const parsed1 = tryParseJson(raw1);
+  if (parsed1 !== null) return parsed1;
+
+  console.warn(`[enrich-employment-news] JSON parse failed on attempt 1 for model=${model}, retrying with stricter prompt`);
+  await delay(1500);
+
+  // Attempt 2 — same model, stricter instruction
+  const raw2 = await callRawAI(model, prompt + STRICT_JSON_SUFFIX, opts);
+  const parsed2 = tryParseJson(raw2);
+  if (parsed2 !== null) return parsed2;
+
+  throw new Error(
+    `JSON parse failed after 2 attempts on model=${model} ` +
+    `(raw1_len=${raw1?.length ?? 0}, raw2_len=${raw2?.length ?? 0}, ` +
+    `raw2_head=${(raw2 || '').substring(0, 200).replace(/\s+/g, ' ')})`
+  );
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -780,21 +807,13 @@ serve(async (req) => {
         })();
         let attemptMaxTokens: number | null = null;
 
-        const writeAuditRow = async (status: string, errorMessage: string | null) => {
-          try {
-            await serviceClient.from('employment_news_enrichment_runs').insert({
-              job_id: jobId,
-              selected_model_id: useModel,
-              provider: providerInfo.provider,
-              api_model: providerInfo.apiModel,
-              max_tokens: attemptMaxTokens,
-              status,
-              error_message: errorMessage,
-              duration_ms: Date.now() - attemptStartedAt,
-            });
-          } catch (auditErr) {
-            console.error(`[enrich] Failed to write audit row for ${jobId}:`, auditErr);
-          }
+        // Outcome accumulator — drives the guaranteed final audit/status write.
+        const outcome: { status: 'success' | 'error'; errorMessage: string | null } = {
+          status: 'error',
+          errorMessage: null,
+        };
+        let resultPayload: { id: string; success: boolean; error?: string; selectedModelId?: string; actualProviderUsed?: string; actualModelUsed?: string; wordCountValidation?: any } = {
+          id: jobId, success: false, error: 'no result recorded',
         };
 
         try {
@@ -805,11 +824,13 @@ serve(async (req) => {
             .single();
 
           if (fetchErr || !job) {
-            await writeAuditRow('error', 'Job not found');
-            return { id: jobId, success: false, error: "Job not found" };
+            outcome.status = 'error';
+            outcome.errorMessage = 'Job not found';
+            resultPayload = { id: jobId, success: false, error: "Job not found" };
+            return resultPayload;
           }
 
-          // Increment enrichment_attempts + stamp last-attempt metadata
+          // Increment enrichment_attempts + stamp last-attempt metadata up-front
           const currentAttempts = (job.enrichment_attempts || 0) + 1;
           await serviceClient
             .from("employment_news_jobs")
@@ -887,12 +908,10 @@ OUTPUT LANGUAGE: ${detectedLang}`;
             }
           }
 
-          // If critical fields (title + description) are missing, fail hard
           if (missingCritical.length > 0) {
             throw new Error(`AI returned incomplete data — missing critical fields: ${missingCritical.join(', ')}`);
           }
 
-          // Auto-fill non-critical missing fields
           const autoFilled = autoFillMissingFields(enriched, job);
           if (autoFilled.length > 0) {
             console.log(`[enrich] Auto-filled for ${jobId}: ${autoFilled.join(', ')}`);
@@ -913,14 +932,9 @@ OUTPUT LANGUAGE: ${detectedLang}`;
 
           // Schema date overrides
           let schemaMarkup = enriched.schema_markup || {};
-          if (batchUploadedAt) {
-            schemaMarkup.datePosted = batchUploadedAt;
-          }
-          if (job.last_date_resolved) {
-            schemaMarkup.validThrough = job.last_date_resolved;
-          } else {
-            delete schemaMarkup.validThrough;
-          }
+          if (batchUploadedAt) schemaMarkup.datePosted = batchUploadedAt;
+          if (job.last_date_resolved) schemaMarkup.validThrough = job.last_date_resolved;
+          else delete schemaMarkup.validThrough;
           schemaMarkup = deepCleanNulls(schemaMarkup) || {};
 
           const keywords = Array.isArray(enriched.keywords) ? enriched.keywords : [];
@@ -943,55 +957,29 @@ OUTPUT LANGUAGE: ${detectedLang}`;
             .eq("id", jobId);
 
           if (updateErr) {
-            await writeAuditRow('error', updateErr.message);
-            return { id: jobId, success: false, error: updateErr.message };
+            throw new Error(`DB update failed: ${updateErr.message}`);
           }
 
           const wcValidation = enriched.enriched_description
             ? validateWordCount(enriched.enriched_description, enrichTargetWords, enrichMaxTokens)
             : null;
-          await writeAuditRow('success', null);
-          return {
+
+          outcome.status = 'success';
+          outcome.errorMessage = null;
+          resultPayload = {
             id: jobId, success: true,
             selectedModelId: useModel,
             actualProviderUsed: providerInfo.provider,
             actualModelUsed: providerInfo.apiModel,
             wordCountValidation: wcValidation,
           };
+          return resultPayload;
         } catch (err) {
           const errorMsg = err instanceof Error ? err.message : "Unknown error";
-          console.error(`Enrich error for ${jobId}:`, errorMsg);
-
-          // Update failure status in database
-          try {
-            // Read current attempts count
-            const { data: currentJob } = await serviceClient
-              .from("employment_news_jobs")
-              .select("enrichment_attempts")
-              .eq("id", jobId)
-              .single();
-
-            const attempts = currentJob?.enrichment_attempts || 1;
-            const maxRetries = 3;
-
-            // If attempts >= max, mark as enrichment_failed; otherwise keep pending for retry
-            const newStatus = attempts >= maxRetries ? 'enrichment_failed' : 'pending';
-
-            await serviceClient
-              .from("employment_news_jobs")
-              .update({
-                enrichment_error: errorMsg,
-                status: newStatus,
-              })
-              .eq("id", jobId);
-
-            console.log(`[enrich] Job ${jobId}: attempt ${attempts}/${maxRetries}, status → ${newStatus}`);
-          } catch (dbErr) {
-            console.error(`Failed to update failure status for ${jobId}:`, dbErr);
-          }
-
-          await writeAuditRow('error', errorMsg);
-          return {
+          console.error(`[enrich] Error for ${jobId}:`, errorMsg);
+          outcome.status = 'error';
+          outcome.errorMessage = errorMsg;
+          resultPayload = {
             id: jobId,
             success: false,
             error: errorMsg,
@@ -1000,6 +988,60 @@ OUTPUT LANGUAGE: ${detectedLang}`;
             actualModelUsed: providerInfo.apiModel,
             wordCountValidation: null,
           };
+          return resultPayload;
+        } finally {
+          // ─── Guaranteed final write block ───
+          // Audit row (always) + last_enrichment_* stamp + enrichment_error (clear on success, set on failure)
+          // + status transition on failure (success status was already set inside the try).
+          // Wrapped in its own try/catch so audit failure NEVER masks the real enrichment error.
+          try {
+            await serviceClient.from('employment_news_enrichment_runs').insert({
+              job_id: jobId,
+              selected_model_id: useModel,
+              provider: providerInfo.provider,
+              api_model: providerInfo.apiModel,
+              max_tokens: attemptMaxTokens,
+              status: outcome.status,
+              error_message: outcome.errorMessage,
+              duration_ms: Date.now() - attemptStartedAt,
+            });
+          } catch (auditErr) {
+            console.error(`[enrich] [audit-write-failed] ${jobId}:`, auditErr);
+          }
+
+          try {
+            const stamp: Record<string, unknown> = {
+              last_enrichment_model: useModel,
+              last_enrichment_provider: providerInfo.provider,
+              last_enrichment_api_model: providerInfo.apiModel,
+              last_enrichment_at: new Date().toISOString(),
+              enrichment_error: outcome.status === 'success' ? null : outcome.errorMessage,
+            };
+
+            // On failure only: also transition status (success path already wrote status='enriched')
+            if (outcome.status === 'error') {
+              try {
+                const { data: currentJob } = await serviceClient
+                  .from("employment_news_jobs")
+                  .select("enrichment_attempts")
+                  .eq("id", jobId)
+                  .single();
+                const attempts = currentJob?.enrichment_attempts || 1;
+                const maxRetries = 3;
+                stamp.status = attempts >= maxRetries ? 'enrichment_failed' : 'pending';
+                console.log(`[enrich] Job ${jobId}: attempt ${attempts}/${maxRetries}, status → ${stamp.status}`);
+              } catch (readErr) {
+                console.error(`[enrich] Failed to read attempts for ${jobId}:`, readErr);
+              }
+            }
+
+            await serviceClient
+              .from("employment_news_jobs")
+              .update(stamp)
+              .eq("id", jobId);
+          } catch (stampErr) {
+            console.error(`[enrich] [stamp-write-failed] ${jobId}:`, stampErr);
+          }
         }
       });
 

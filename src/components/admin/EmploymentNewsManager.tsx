@@ -64,6 +64,10 @@ type EmpNewsJob = {
   state: string | null;
   enrichment_error: string | null;
   enrichment_attempts: number;
+  last_enrichment_model?: string | null;
+  last_enrichment_provider?: string | null;
+  last_enrichment_api_model?: string | null;
+  last_enrichment_at?: string | null;
 };
 
 type UploadBatch = {
@@ -1141,16 +1145,28 @@ export function EmploymentNewsManager() {
                         {job.status === 'enrichment_failed' && job.enrichment_error && (
                           <Tooltip>
                             <TooltipTrigger asChild>
-                              <AlertCircle className="h-3.5 w-3.5 text-orange-500 cursor-help" />
+                              <button type="button" className="text-destructive hover:opacity-70" aria-label="View error">⚠</button>
                             </TooltipTrigger>
                             <TooltipContent className="max-w-xs">
                               <p className="text-xs font-medium">Attempt {job.enrichment_attempts}/3</p>
+                              {job.last_enrichment_model && (
+                                <p className="text-[10px] text-muted-foreground mt-0.5">
+                                  Model: {job.last_enrichment_model}
+                                  {job.last_enrichment_api_model ? ` (${job.last_enrichment_api_model})` : ''}
+                                </p>
+                              )}
                               <p className="text-xs text-muted-foreground mt-1">{job.enrichment_error}</p>
                             </TooltipContent>
                           </Tooltip>
                         )}
                         {job.status === 'pending' && job.enrichment_attempts > 0 && (
-                          <span className="text-[10px] text-muted-foreground">#{job.enrichment_attempts}</span>
+                          <span
+                            className="text-[10px] text-muted-foreground"
+                            title={job.last_enrichment_model ? `Last model: ${job.last_enrichment_model}` : undefined}
+                          >
+                            #{job.enrichment_attempts}
+                            {job.last_enrichment_model ? ` · ${job.last_enrichment_model}` : ''}
+                          </span>
                         )}
                       </div>
                     </TableCell>

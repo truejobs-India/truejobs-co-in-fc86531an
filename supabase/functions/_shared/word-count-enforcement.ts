@@ -120,6 +120,7 @@ export function computeMaxTokens(targetWordCount: number, modelId: string): numb
     case 'openai':
     case 'azure-gpt4o-mini':
     case 'azure-gpt41-mini':
+    case 'azure-gpt5-mini':
     case 'azure-deepseek-v3':
     case 'azure-deepseek-r1':
       return Math.min(Math.ceil(target * 2), 16384);
@@ -208,7 +209,7 @@ const CONTINUATION_ELIGIBLE_MODELS = new Set([
   'gemini-flash', 'gemini-pro', 'vertex-flash', 'vertex-pro',
   'vertex-3.1-pro', 'vertex-3-flash',
   'claude-sonnet', 'claude', 'gpt5', 'gpt5-mini', 'lovable-gemini', 'mistral',
-  'nova-pro', 'nova-premier', 'nemotron-120b', 'azure-gpt4o-mini', 'azure-gpt41-mini', 'azure-deepseek-v3', 'azure-deepseek-r1',
+  'nova-pro', 'nova-premier', 'nemotron-120b', 'azure-gpt4o-mini', 'azure-gpt41-mini', 'azure-gpt5-mini', 'azure-deepseek-v3', 'azure-deepseek-r1',
 ]);
 
 /** Models where continuation is NOT useful — they stop early by design */

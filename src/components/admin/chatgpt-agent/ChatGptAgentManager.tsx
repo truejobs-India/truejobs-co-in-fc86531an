@@ -1006,6 +1006,13 @@ export function ChatGptAgentManager() {
                                 <TableCell onClick={e => e.stopPropagation()}>
                                   <Checkbox checked={selected.has(d.id)} onCheckedChange={() => toggleSelect(d.id)} />
                                 </TableCell>
+                                {s === ALL_SECTIONS_VALUE && (
+                                  <TableCell className="text-xs">
+                                    <Badge variant="outline" className="text-[10px]">
+                                      {SECTION_BUCKET_LABELS[d.section_bucket as SectionBucket] || d.section_bucket || '—'}
+                                    </Badge>
+                                  </TableCell>
+                                )}
                                 <TableCell>
                                   <div className="flex items-start gap-1.5 flex-wrap">
                                     <span className="text-sm font-medium line-clamp-2">{d.publish_title || d.normalized_title || d.raw_title}</span>

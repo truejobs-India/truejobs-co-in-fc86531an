@@ -286,49 +286,79 @@ function detectLanguage(fields: Record<string, string | null | undefined>): stri
 
 // ═══════════════════════════════════════════════════════════════
 
-function tryParseJSON(text: string): any {
-  // Attempt 1: direct parse
-  try {
-    return JSON.parse(text);
-  } catch { /* fall through */ }
+// ───────────────────────────────────────────────────────────────
+// Lightweight JSON cleanup + strict parser
+// Allowed transforms only: BOM strip, trim, ```json / ``` fence strip,
+// <think>...</think> removal (DeepSeek-R1 / Gemini reasoning blocks).
+// On failure: try ONE conservative top-level {…} or […] extraction.
+// If ambiguous (zero or multiple competing candidates) → return null.
+// Never throws. Never guesses.
+// ───────────────────────────────────────────────────────────────
+function cleanJsonText(raw: string): string {
+  if (!raw) return '';
+  let s = raw;
+  if (s.charCodeAt(0) === 0xFEFF) s = s.slice(1);            // BOM
+  s = s.replace(/<think>[\s\S]*?<\/think>/gi, '');           // reasoning blocks
+  s = s.replace(/```json\s*/gi, '').replace(/```/g, '');     // fences
+  return s.trim();
+}
 
-  // Attempt 1b: strip <think>...</think> reasoning blocks (Gemini 2.5+)
-  let cleaned = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
-  // Also strip markdown fences
-  cleaned = cleaned.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-  try {
-    return JSON.parse(cleaned);
-  } catch { /* fall through */ }
-
-  // Attempt 2: extract JSON between first { and last }
-  const firstBrace = cleaned.indexOf('{');
-  const lastBrace = cleaned.lastIndexOf('}');
-  if (firstBrace >= 0 && lastBrace > firstBrace) {
-    const extracted = cleaned.substring(firstBrace, lastBrace + 1);
-    try {
-      return JSON.parse(extracted);
-    } catch { /* fall through */ }
-
-    // Attempt 2b: remove control characters and try again
-    const sanitized = extracted.replace(/[\x00-\x1F\x7F]/g, (ch) => ch === '\n' || ch === '\r' || ch === '\t' ? ch : '');
-    try {
-      return JSON.parse(sanitized);
-    } catch { /* fall through */ }
-  }
-
-  // Attempt 3: truncate at last valid } and try progressively
-  if (firstBrace >= 0) {
-    const jsonCandidate = cleaned.substring(firstBrace);
-    let pos = jsonCandidate.lastIndexOf('}');
-    while (pos > 0) {
-      try {
-        return JSON.parse(jsonCandidate.substring(0, pos + 1));
-      } catch { /* try shorter */ }
-      pos = jsonCandidate.lastIndexOf('}', pos - 1);
+/**
+ * Find all top-level balanced JSON blocks of a given pair of brackets.
+ * Respects strings + escapes. Returns array of {start,end} index pairs.
+ */
+function findTopLevelBlocks(text: string, open: string, close: string): Array<{ start: number; end: number }> {
+  const blocks: Array<{ start: number; end: number }> = [];
+  let depth = 0, start = -1, inStr = false, esc = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inStr) {
+      if (esc) { esc = false; continue; }
+      if (c === '\\') { esc = true; continue; }
+      if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') { inStr = true; continue; }
+    if (c === open) {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (c === close) {
+      depth--;
+      if (depth === 0 && start >= 0) {
+        blocks.push({ start, end: i });
+        start = -1;
+      } else if (depth < 0) {
+        depth = 0;
+      }
     }
   }
+  return blocks;
+}
 
-  throw new Error(`JSON parse failed after all recovery attempts (response length: ${text.length} chars, first 200: ${text.substring(0, 200)})`);
+function tryParseJson(raw: string): unknown | null {
+  const cleaned = cleanJsonText(raw);
+  if (!cleaned) return null;
+
+  // 1. Direct parse on cleaned text
+  try { return JSON.parse(cleaned); } catch { /* fall through */ }
+
+  // 2. Conservative extraction: look for top-level balanced blocks.
+  //    If exactly ONE candidate (object OR array) parses cleanly → use it.
+  //    Otherwise fail clean (do not guess between competing candidates).
+  const candidates: string[] = [];
+  for (const { start, end } of findTopLevelBlocks(cleaned, '{', '}')) {
+    candidates.push(cleaned.substring(start, end + 1));
+  }
+  for (const { start, end } of findTopLevelBlocks(cleaned, '[', ']')) {
+    candidates.push(cleaned.substring(start, end + 1));
+  }
+  const parsedCandidates: unknown[] = [];
+  for (const c of candidates) {
+    try { parsedCandidates.push(JSON.parse(c)); } catch { /* ignore */ }
+  }
+  if (parsedCandidates.length === 1) return parsedCandidates[0];
+
+  return null;
 }
 
 // Smart field auto-generation for missing non-critical fields

@@ -85,6 +85,7 @@ export function ChatGptAgentManager() {
   const [parseResult, setParseResult] = useState<ParseResult | null>(null);
   const [productionResult, setProductionResult] = useState<ProductionParseResult | null>(null);
   const [productionPreClassify, setProductionPreClassify] = useState<{ insert: number; update: number } | null>(null);
+  const [existingIdentitiesAttempted, setExistingIdentitiesAttempted] = useState<Set<string>>(new Set());
   const [productionImportSummary, setProductionImportSummary] = useState<{ total: number; inserted_new: number; updated_existing: number; skipped_empty: number; failed: { row: number; reason: string }[] } | null>(null);
   const [importing, setImporting] = useState(false);
 
@@ -288,6 +289,7 @@ export function ChatGptAgentManager() {
         const update = prod.rows.filter(r => existing.has(r.import_identity)).length;
         const insert = prod.rows.length - update;
         setProductionPreClassify({ insert, update });
+        setExistingIdentitiesAttempted(existing);
         setProductionImportSummary(null);
         setUploadOpen(true);
       } else {

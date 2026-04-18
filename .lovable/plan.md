@@ -1,76 +1,69 @@
 
-## Final approved plan (with 2 last adjustments)
+## Approved final plan (with `date` token refinement)
 
-### Adjustments applied
-1. **Migration backfill**: backfill `import_identity = id::text` for **all** existing rows in `public.intake_drafts` where `import_identity IS NULL` (not scoped to `chatgpt_agent`) → then `SET NOT NULL` → then create unique index on `(source_channel, import_identity)`.
-2. **Classification fallback**: derive `content_type` and `publish_target` from `update_type` first, then fall back to `category_family` if no clean match.
+### 1. Parser — `chatgptAgentExcelParser.ts`
 
-### A. DB migration (single file)
-Add to `public.intake_drafts` (all nullable):
-- 16 production columns: `record_id`, `publish_status`, `category_family`, `update_type`, `organization_authority`, `publish_title`, `official_website_url`, `official_reference_url`, `primary_cta_label`, `primary_cta_url`, `secondary_official_url`, `verification_status`, `verification_confidence`, `official_source_used`, `source_verified_on`, `production_notes`
-- `source_row_json jsonb`, `source_verified_on_date date`
-- `import_identity text` nullable
+**a) Classifier with explicit priority + safer `date` handling.**
 
-Then:
-```sql
-UPDATE public.intake_drafts SET import_identity = id::text WHERE import_identity IS NULL;
-ALTER TABLE public.intake_drafts ALTER COLUMN import_identity SET NOT NULL;
-CREATE UNIQUE INDEX intake_drafts_source_identity_uidx
-  ON public.intake_drafts (source_channel, import_identity);
+Tokenize via `/[a-z0-9]+/g` lowercased. Try `update_type` first; on no match, try `category_family`. First match in this order wins:
+
+| # | Trigger | section_bucket | content_type | publish_target |
+|---|---|---|---|---|
+| 1 | `answer` token | `answer_keys` | `answer_key` | `answer_keys` |
+| 2 | `admit` token | `admit_cards` | `admit_card` | `admit_cards` |
+| 3 | `result` token | `results` | `result` | `results` |
+| 4 | `scholarship` token | `scholarships` | `scholarship` | `scholarships` |
+| 5 | `job` / `recruit` / `recruitment` / `vacancy` / `hiring` token | `job_postings` | `job` | `jobs` |
+| 6 | **Exam (refined):** `exam` / `schedule` / `calendar` / `datesheet` token, OR adjacent pair `date`+`sheet`, OR adjacent pair `exam`+`date`, OR adjacent pair `exam`+`schedule`. **Standalone `date` token alone does NOT trigger this family** | `exam_dates` | `exam` | `exams` |
+| 7 | `admission` token | `admissions` | `notification` | `notifications` (enum-safe — no `admission` enum exists) |
+| 8 | `notification` / `notice` token | `other_updates` | `notification` | `notifications` |
+| 9 | No match → retry whole table on `category_family` | — | — | — |
+| 10 | Still no match | `other_updates` | `null` | `none` |
+
+Adjacent-pair check: tokens `i` and `i+1` in the token array.
+
+**Validation cases asserted in harness:**
+- `Update` → other_updates / null / none (proves substring bug dead)
+- `Recruitment Update` → job_postings
+- `Exam Update` → exam_dates
+- `Notification Update` → other_updates / notification / notifications
+- `Vacancy Notice` → job_postings (job > notice)
+- `Result Notification` → results (result > notification)
+- `Admit Card Notice` → admit_cards
+- `Answer Key Notice` → answer_keys
+- `Date Sheet` → exam_dates (paired)
+- `Exam Date` → exam_dates (paired)
+- `Last Date Notification` → other_updates / notification / notifications (standalone `date` does NOT route to exam)
+- `Due Date Notice` → other_updates / notification / notifications
+- `Admission Notice` → admissions / notification / notifications
+- `Scholarship` → scholarships
+
+**b) Inline Excel-serial date conversion (no `XLSX.SSF`).**
+```ts
+function excelSerialToISO(n: number): string | null {
+  if (!Number.isFinite(n) || n < 1 || n > 2958465) return null;
+  const ms = Math.round((n - 25569) * 86400 * 1000);
+  const d = new Date(ms);
+  return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+}
 ```
+Accept numbers and numeric strings. Always preserve original raw text in `source_verified_on`. Populate `source_verified_on_date` when serial-parseable OR when text matches a recognizable date format (`YYYY-MM-DD`, `DD-MMM-YYYY`, `DD/MM/YYYY`); unparseable text → date column null, original text preserved.
 
-### B. Parser — `parseProductionExcelWorkbook()` in `chatgptAgentExcelParser.ts`
-- Sheet detection (3-step): exact `master_publish_ready_verified` → scan all sheets for the full 16-header signature → fallback to first non-empty sheet.
-- Strict header validation; missing → `{ ok:false, missing, detected, sheetUsed }`.
-- `cleanUrl()` trims and nulls `''`/`N/A`/`-`/`na`/`none`.
-- Excel serial date → `YYYY-MM-DD` into `source_verified_on_date`; original text in `source_verified_on`.
-- Empty-row skip if all of `publish_title`, `organization_authority`, `category_family`, `update_type`, all 4 URLs blank.
-- `import_identity`: `record_id` if present, else `'fb:' + sha256(url||title||org||type||cat).slice(0,32)` where URL precedence is `official_reference_url` → `primary_cta_url` → `official_website_url`.
-- `source_row_json` = full original row.
-- Legacy mirror: `raw_title` ← `publish_title`; `normalized_title` ← `publish_title`; `organisation_name` ← `organization_authority`; `official_notification_link` ← reference→cta→website (post-sanitize); `structured_data_json` ← `{...source_row_json, _format:'production_v1'}`.
-- **`content_type` / `publish_target`**: derive from `update_type` first; if no match, fall back to `category_family`. `content_type` may be null; `publish_target` defaults to `'none'`.
-- Status stamps (verified valid): `source_type='manual'`, `raw_file_type='unknown'`, `processing_status='imported'`, `review_status='pending'`, `primary_status` = `publish_ready` if verified+ready else `reject` if reject/discard else `manual_check`.
-- Section bucket from same keyword map → `job_postings`/`results`/`admit_cards`/`answer_keys`/`exam_dates`/`admissions`/`scholarships`/`other_updates`.
+### 2. Importer — `ChatGptAgentManager.tsx`
 
-### C. Importer (`ChatGptAgentManager.tsx`)
-- Format detection by header signature → new parser path or existing legacy parser path.
-- Pre-fetch existing `import_identity` set for `source_channel='chatgpt_agent'` (paginated) → classify each row as insert vs update.
-- Single upsert: `.upsert(rows, { onConflict: 'source_channel,import_identity' })` in batches of 50.
-- Summary: `{ total, inserted_new, updated_existing, skipped_empty, failed:[{row,reason}] }` shown in upload dialog.
+- **Search input** — verify a visible `<Input>` exists above the listing; if missing, add one. Predicate is case-insensitive `includes` across: `publish_title`, `normalized_title`, `organization_authority`, `organisation_name`, `record_id`, `official_source_used`, `production_notes`, `official_website_url`, `official_reference_url`, `primary_cta_url`.
+- **Filter row** — 5 `Select` dropdowns (Publish Status, Category Family, Update Type, Verification Status, Verification Confidence). Options from distinct non-null values in current `drafts`. Each has "All" reset option. Combined with search in single memoized pipeline.
+- **Listing columns** — audit current table; add any missing of: Publish Title, Category Family, Update Type, Org/Authority, Verification Status, Verification Confidence, Source Verified On, Primary CTA (label + clickable URL `target="_blank" rel="noopener"`).
+- **Count math fix** — `total = inserted_new + updated_existing + skipped_empty + failed`. Pre-classify each attempted row as insert/update against pre-fetched identity Set; subtract its failure from the bucket it was classified into.
 
-### D. Draft UI
-- **Listing**: title uses `publish_title || normalized_title || raw_title`. New cols: Category Family, Update Type, Org/Board/Authority, Verification Status, Verification Confidence, Source Verified On, Primary CTA (label + clickable URL).
-- **Filters**: Publish Status, Category Family, Update Type, Verification Status, Verification Confidence (built from distinct values).
-- **Search**: `publish_title`, `normalized_title`, `organization_authority`, `organisation_name`, `record_id`, `official_source_used`, `production_notes`, `official_website_url`, `official_reference_url`, `primary_cta_url`.
-- **Editor — new "Production Format" tab**: all 16 fields editable (incl. `official_source_used`, `source_verified_on`); `record_id` read-only; URL fields editable + open-in-new-tab icon; notes textarea wraps; three URL types stay separate.
-- **Non-destructive mirror on save**:
-  ```ts
-  function safeMirror(newVal, legacyVal, userTouched) {
-    if (newVal && newVal.trim()) return newVal.trim();
-    if (userTouched) return null;
-    return legacyVal;
-  }
-  ```
-  Applied to `normalized_title`, `raw_title`, `organisation_name`, `official_notification_link`. `userTouched` derived from edits-state key presence.
+### 3. Verification
 
-### E. Verification (performed by me before declaring done)
-1. Build a sandbox `.xlsx` matching all 16 headers, including: row with blank `record_id`, an empty row, an Excel-serial date, an `N/A` URL, an ambiguous row with only `category_family`. Run a Node script that imports the parser and asserts: correct sheet picked, 16 headers detected, empty row skipped, identity = record_id when present and URL-prefixed hash otherwise, date converted, legacy fields mirrored, `content_type`/`publish_target` correctly fall back to `category_family`.
-2. Build an old-format `.xlsx`; assert backward-compat path triggers and old parser is used.
-3. After deploy, run:
-   ```sql
-   SELECT count(*), count(import_identity), count(source_row_json),
-          count(*) FILTER (WHERE publish_title IS NOT NULL)
-   FROM intake_drafts
-   WHERE source_channel='chatgpt_agent'
-     AND structured_data_json->>'_format'='production_v1';
-   ```
-   Inspect one full row → all 16 + legacy fields populated. Re-run same payload → 0 inserts / N updates.
+- **Parser harness** in `/tmp/verify_parser.mjs`: assert all 14 classifier cases above, date conversion (`45000`→`2023-03-15`, `1`→valid ISO, text preserved, null safe), URL sanitation, identity rules, empty-row skip, legacy mirror, sheet detection.
+- **DB-level proof** via `supabase--read_query`: column existence, identity uniqueness, sample row inspection.
+- **UI upload (clarification #4)** — I cannot click the upload button. Final report will explicitly state:
+  > Code + parser + DB are directly verified. The browser upload-button flow was NOT exercised by the AI. **Verdict: code/parser/DB verified — fully production ready only after one real upload-button-based workbook test by the user.**
 
 ### Files
-- `supabase/migrations/<new>.sql` — 16 cols + `source_row_json` + `source_verified_on_date` + `import_identity` (add → backfill all → NOT NULL → unique index).
-- `src/components/admin/chatgpt-agent/chatgptAgentExcelParser.ts` — add `parseProductionExcelWorkbook` + helpers; existing parser untouched.
-- `src/components/admin/chatgpt-agent/ChatGptAgentManager.tsx` — detection, classify, upsert, columns/filters/search, summary dialog.
-- `src/components/admin/chatgpt-agent/ChatGptAgentDraftEditor.tsx` — new "Production Format" tab + non-destructive mirror.
-
-### Risk: low
-Migration adds nullable cols + 1 plain unique index after global backfill. Parser additive; legacy parser untouched. Status enums verified against live trigger. Mirror non-destructive. URL sanitation conservative. Classification falls back to `category_family` for ambiguous rows.
+- `src/components/admin/chatgpt-agent/chatgptAgentExcelParser.ts` — new `classifyRow()` + refined exam pairing + `excelSerialToISO()`
+- `src/components/admin/chatgpt-agent/ChatGptAgentManager.tsx` — search input verify/add, 5 filter selects, columns audit, count math fix
+- `/tmp/verify_parser.mjs` — verification harness (not committed)

@@ -120,6 +120,13 @@ export function ChatGptAgentManager() {
   // Section counts
   const [sectionCounts, setSectionCounts] = useState<Record<string, number>>({});
 
+  // Search + production-format filters
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterPublishStatus, setFilterPublishStatus] = useState<string>('__all__');
+  const [filterCategoryFamily, setFilterCategoryFamily] = useState<string>('__all__');
+  const [filterUpdateType, setFilterUpdateType] = useState<string>('__all__');
+  const [filterVerificationStatus, setFilterVerificationStatus] = useState<string>('__all__');
+  const [filterVerificationConfidence, setFilterVerificationConfidence] = useState<string>('__all__');
   const fetchDrafts = useCallback(async () => {
     setLoading(true);
     try {

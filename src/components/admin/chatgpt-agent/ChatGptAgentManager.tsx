@@ -208,9 +208,9 @@ export function ChatGptAgentManager() {
 
       if (isProduction) {
         const prod = await parseProductionExcelWorkbook(buffer);
-        if (!prod.ok) {
+        if (prod.ok !== true) {
           addMessage('error', `Production format detected but invalid`,
-            `Sheet "${prod.sheetUsed}" missing headers: ${prod.missing.join(', ')}`);
+            `Sheet "${prod.sheetUsed ?? '?'}" — ${prod.reason} Missing headers: ${prod.missing.join(', ')}`);
           e.target.value = '';
           return;
         }

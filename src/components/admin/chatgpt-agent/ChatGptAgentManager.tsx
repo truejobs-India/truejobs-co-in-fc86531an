@@ -78,9 +78,12 @@ export function ChatGptAgentManager() {
   const PAGE_SIZE = 20;
   const [aiModel, setAiModel] = useState(() => getLastUsedModel('text', 'gemini-flash', [...ALLOWED_MODELS]));
 
-  // Upload state
+  // Upload state — supports BOTH legacy and new production format
   const [uploadOpen, setUploadOpen] = useState(false);
   const [parseResult, setParseResult] = useState<ParseResult | null>(null);
+  const [productionResult, setProductionResult] = useState<ProductionParseResult | null>(null);
+  const [productionPreClassify, setProductionPreClassify] = useState<{ insert: number; update: number } | null>(null);
+  const [productionImportSummary, setProductionImportSummary] = useState<{ total: number; inserted_new: number; updated_existing: number; skipped_empty: number; failed: { row: number; reason: string }[] } | null>(null);
   const [importing, setImporting] = useState(false);
 
   // Editor & dedup

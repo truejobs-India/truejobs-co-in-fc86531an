@@ -911,8 +911,14 @@ export function ChatGptAgentManager() {
                             <TableHead className="w-10">
                               <Checkbox checked={selected.size === filteredDrafts.length && filteredDrafts.length > 0} onCheckedChange={toggleSelectAll} />
                             </TableHead>
-                            <TableHead className="min-w-[200px]">Title</TableHead>
-                            <TableHead>Organization</TableHead>
+                            <TableHead className="min-w-[220px]">Publish Title</TableHead>
+                            <TableHead className="min-w-[160px]">Org / Board / Authority</TableHead>
+                            <TableHead>Category Family</TableHead>
+                            <TableHead>Update Type</TableHead>
+                            <TableHead>Verification Status</TableHead>
+                            <TableHead>Verification Confidence</TableHead>
+                            <TableHead>Source Verified On</TableHead>
+                            <TableHead className="min-w-[160px]">Primary CTA</TableHead>
                             <TableHead>Status</TableHead>
                             <TableHead className="min-w-[180px]">Official Link</TableHead>
                             <TableHead>Last Date</TableHead>

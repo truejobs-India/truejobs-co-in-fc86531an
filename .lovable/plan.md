@@ -1,67 +1,96 @@
 
-The user is asking whether the audit covered all job drafts, not just the 2 in the screenshot.
+Goal: verify the real model used for the jobs currently stuck in Emp News enrichment, and outline the permanent fix.
 
-From my prior DB checks I already verified:
-- Total intake-pipeline-published rows in `employment_news_jobs`: **14**
-- Of those, **2** have `apply_link IS NULL` (Federal Bank + NGEL — both visible in screenshot scope)
-- Other **12** intake rows already have `apply_link` populated
+What I verified
+- I checked the actual `employment_news_jobs` rows in the database.
+- Current blocked set = `33` jobs total:
+  - `30` with status `pending`
+  - `3` with status `enrichment_failed`
+- For the blocked rows, the stored `enrichment_error` shows the real model/provider that last failed.
+- Every currently blocked row I inspected points to the same model family:
+  - `Azure OpenAI gpt-5-mini returned empty response`
+  - `Azure OpenAI gpt-5-mini timeout after 60s`
+- I also checked the code path:
+  - `src/components/admin/EmploymentNewsManager.tsx` sends `aiModel: enrichAiModel`
+  - that value is loaded from shared local storage via `getLastUsedModel('text', 'gemini-flash')`
+  - `supabase/functions/enrich-employment-news/index.ts` maps that model to the actual provider call
+- I checked whether there is any durable per-attempt model history in the database. There is not.
+  - `employment_news_jobs` has `enrichment_error` and `enrichment_attempts`
+  - it does not have `last_enrichment_model`, `last_provider`, or an attempt-history table
+- I also checked for dedicated enrich-function analytics/edge request history; there was no useful retained log output there for this function.
 
-But the user's concern is broader: "every draft must have the orange Apply button." So I need to also confirm:
-1. All `intake_drafts` with `processing_status='published'` and `published_table_name='employment_news_jobs'` → check the resulting row's `apply_link`
-2. Confirm the source draft actually had a link to recover (otherwise nothing to backfill)
+Conclusion
+- For the jobs that are blocked right now, the real last attempted model was `azure-gpt5-mini`, not Gemini Flash or DeepSeek.
+- I cannot truthfully prove older Gemini/DeepSeek failures for past attempts because the app does not persist enrichment attempt history; it only keeps the latest error string on the job row.
+- So your pushback was valid: the system currently lacks proper observability for cross-model verification.
 
-I'll add this verification step explicitly to the plan and keep the same fix.
+Root cause
+1. Current stuck jobs
+- The blocked jobs are failing on `azure-gpt5-mini`.
+- The failure signatures are exactly:
+  - empty response
+  - timeout at 60s
 
-## Plan: Fix missing Apply button across ALL ChatGPT Agent job drafts
+2. Why the UI may not match what you remember
+- The Emp News enrichment model is loaded from shared text-model local storage.
+- That means the job enrichment flow can silently use whatever text model was last selected in admin, unless changed again before running.
 
-### Audit (will run in implementation)
-Single query before the fix to enumerate every affected row:
-```sql
-SELECT en.id, en.slug, en.apply_link,
-       d.official_apply_link, d.official_notification_link, d.official_website_link
-FROM employment_news_jobs en
-JOIN intake_drafts d ON d.published_record_id::uuid = en.id
-WHERE d.published_table_name = 'employment_news_jobs'
-  AND en.apply_link IS NULL;
-```
-Current count from prior check: **2 rows** (Federal Bank, NGEL). The audit will be re-run at fix time to catch anything new.
+3. Why this was hard to verify
+- There is no persistent model-attempt audit trail for enrichment jobs.
+- The latest error overwrites the previous one, so older Gemini/DeepSeek attempts are not reconstructable from DB.
 
-### Fix (3 changes, same as before)
+Implementation plan
+1. Fix the active `azure-gpt5-mini` failure path
+- Update token-budget logic so `azure-gpt5-mini` gets the same high output budget as other GPT-5 style models.
+- Increase the GPT-5 Azure wrapper timeout from 60s to 120s.
+- This addresses the two real current failure signatures.
 
-**1. `supabase/functions/intake-publish/index.ts` (line ~399)** — add fallback chain so future publishes never lose the link:
-```ts
-apply_link: draft.official_apply_link 
-         || draft.official_notification_link 
-         || draft.official_website_link,
-```
+2. Add permanent enrichment audit tracking
+- Create a dedicated table such as `employment_news_enrichment_runs` with one row per attempt:
+  - job_id
+  - selected_model_id
+  - provider
+  - api_model
+  - max_tokens
+  - status
+  - error_message
+  - duration_ms
+  - attempted_at
+- Write to this table on every enrichment attempt, success or failure.
+- This will make future “which model actually failed?” questions fully answerable.
 
-**2. Backfill migration** — repairs every existing affected row, not just the 2:
-```sql
-UPDATE employment_news_jobs en
-SET apply_link = COALESCE(d.official_apply_link, d.official_notification_link, d.official_website_link)
-FROM intake_drafts d
-WHERE d.published_record_id::uuid = en.id
-  AND d.published_table_name = 'employment_news_jobs'
-  AND en.apply_link IS NULL
-  AND COALESCE(d.official_apply_link, d.official_notification_link, d.official_website_link) IS NOT NULL;
-```
-This is set-based — covers all rows in one shot, not row-by-row.
+3. Store last-attempt metadata on the job row too
+- Add lightweight columns on `employment_news_jobs`:
+  - `last_enrichment_model`
+  - `last_enrichment_provider`
+  - `last_enrichment_api_model`
+  - `last_enrichment_at`
+- This gives fast visibility in the admin list without needing to open history.
 
-**3. `src/pages/jobs/EmploymentNewsJobDetail.tsx`** — make the CTA button orange + relabel:
-```tsx
-<Button size="lg" className="bg-orange-600 hover:bg-orange-700 text-white font-semibold">
-  <ExternalLink className="h-4 w-4 mr-2" />
-  {job.job_category === 'Notification' ? 'View Official Notice' : 'Apply Now on Official Site'}
-</Button>
-```
-Applied to both the primary `apply_link` button and the `official_website` fallback button.
+4. Make the admin UI explicit
+- In the Emp News drafts table, show the last attempted model and latest error.
+- In the enrichment action area, show the currently selected model clearly before run.
+- This reduces confusion caused by shared persisted model selection.
 
-### Verification after fix
-Re-run the audit query — expected result: **0 rows** with NULL `apply_link` from intake pipeline. Spot-check Federal Bank + NGEL live URLs to confirm the orange button renders.
+5. Recover the currently stuck jobs
+- After the shared fixes are applied, reset the blocked rows for retry.
+- Re-run only the `33` blocked jobs.
+- Verify that the blocked count drops and new audit rows show the actual model/provider per job.
 
-### Out of scope
-- Pre-existing legacy `employment_news_jobs` rows (non-intake source) with NULL `apply_link` — different ingestion path, separate concern.
-- Edge function logic, RLS, schema otherwise untouched.
+Technical details
+- Verified code path:
+  - `src/components/admin/EmploymentNewsManager.tsx`
+  - `src/components/admin/AiModelSelector.tsx`
+  - `supabase/functions/enrich-employment-news/index.ts`
+  - `supabase/functions/_shared/word-count-enforcement.ts`
+  - `supabase/functions/_shared/azure-openai.ts`
+- Verified DB fact:
+  - current blocked jobs all carry `azure-gpt5-mini` error strings
+- Verified observability gap:
+  - no persistent enrichment model history exists today
+  - so older Gemini/DeepSeek attempts cannot be conclusively reconstructed after being overwritten
 
-### Risk
-None. Fallback only activates when primary field is NULL. Backfill only touches NULL rows where a recoverable link exists in the draft.
+Expected result after implementation
+- The current stuck jobs stop failing due to the GPT-5 Azure config issue.
+- Future enrichments will always record exactly which model/provider/api-model was used.
+- You will be able to verify, from the database itself, whether a failure came from Gemini Flash, DeepSeek, GPT-5 Mini, or anything else.

@@ -819,6 +819,61 @@ export function ChatGptAgentManager() {
               ))}
             </TabsList>
 
+            {/* Search box (production fields) */}
+            <div className="mb-3">
+              <div className="relative">
+                <Search className="h-4 w-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                <Input
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  placeholder="Search title, organization, record ID, source, notes, URL…"
+                  className="pl-8 h-8 text-sm"
+                />
+              </div>
+            </div>
+
+            {/* Production-format filter row (5 dropdowns) */}
+            <div className="flex flex-wrap gap-2 mb-3">
+              {[
+                { label: 'Publish Status', value: filterPublishStatus, onChange: setFilterPublishStatus, options: distinctPublishStatus },
+                { label: 'Category Family', value: filterCategoryFamily, onChange: setFilterCategoryFamily, options: distinctCategoryFamily },
+                { label: 'Update Type', value: filterUpdateType, onChange: setFilterUpdateType, options: distinctUpdateType },
+                { label: 'Verification Status', value: filterVerificationStatus, onChange: setFilterVerificationStatus, options: distinctVerificationStatus },
+                { label: 'Verification Confidence', value: filterVerificationConfidence, onChange: setFilterVerificationConfidence, options: distinctVerificationConfidence },
+              ].map(f => (
+                <Select key={f.label} value={f.value} onValueChange={f.onChange}>
+                  <SelectTrigger className="h-7 text-xs w-auto min-w-[160px]">
+                    <SelectValue placeholder={f.label} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">{f.label}: All</SelectItem>
+                    {f.options.map(opt => (
+                      <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ))}
+              {(searchQuery || filterPublishStatus !== '__all__' || filterCategoryFamily !== '__all__' ||
+                filterUpdateType !== '__all__' || filterVerificationStatus !== '__all__' ||
+                filterVerificationConfidence !== '__all__') && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 text-xs"
+                  onClick={() => {
+                    setSearchQuery('');
+                    setFilterPublishStatus('__all__');
+                    setFilterCategoryFamily('__all__');
+                    setFilterUpdateType('__all__');
+                    setFilterVerificationStatus('__all__');
+                    setFilterVerificationConfidence('__all__');
+                  }}
+                >
+                  Clear filters
+                </Button>
+              )}
+            </div>
+
             {/* Link filter */}
             <div className="flex gap-2 mb-3">
               <Button size="sm" variant={linkFilter === 'all' ? 'default' : 'ghost'} onClick={() => setLinkFilter('all')} className="text-xs h-7">

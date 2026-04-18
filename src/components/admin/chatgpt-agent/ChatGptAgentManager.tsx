@@ -74,7 +74,7 @@ const ALLOWED_MODELS = [
 
 export function ChatGptAgentManager() {
   const { messages, addMessage, dismissMessage, clearAll, toggleExpand } = useAdminMessages('chatgpt-agent');
-  const [activeSection, setActiveSection] = useState<SectionBucket>('job_postings');
+  const [activeSection, setActiveSection] = useState<ActiveSection>('job_postings');
   const [drafts, setDrafts] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -134,13 +134,16 @@ export function ChatGptAgentManager() {
   const fetchDrafts = useCallback(async () => {
     setLoading(true);
     try {
-      const { data, error } = await (supabase
+      let q = (supabase
         .from('intake_drafts')
         .select('*') as any)
-        .eq('source_channel', 'chatgpt_agent')
-        .eq('section_bucket', activeSection)
+        .eq('source_channel', 'chatgpt_agent');
+      if (activeSection !== ALL_SECTIONS_VALUE) {
+        q = q.eq('section_bucket', activeSection);
+      }
+      const { data, error } = await q
         .order('created_at', { ascending: false })
-        .limit(500);
+        .limit(activeSection === ALL_SECTIONS_VALUE ? 2000 : 500);
       if (error) throw error;
       setDrafts(data || []);
     } catch (err) {

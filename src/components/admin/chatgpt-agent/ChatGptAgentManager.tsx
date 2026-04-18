@@ -995,12 +995,79 @@ export function ChatGptAgentManager() {
         </CardContent>
       </Card>
 
-      {/* Upload Preview Dialog */}
-      <Dialog open={uploadOpen} onOpenChange={v => { if (!v) { setUploadOpen(false); setParseResult(null); } }}>
+      {/* Upload Preview Dialog — handles BOTH legacy and production formats */}
+      <Dialog open={uploadOpen} onOpenChange={v => {
+        if (!v) {
+          setUploadOpen(false);
+          setParseResult(null);
+          setProductionResult(null);
+          setProductionPreClassify(null);
+          setProductionImportSummary(null);
+        }
+      }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Import Preview</DialogTitle>
+            <DialogTitle>
+              {productionResult ? 'Import Preview — Production Format (16-column)' : 'Import Preview'}
+            </DialogTitle>
           </DialogHeader>
+
+          {/* ── PRODUCTION FORMAT PREVIEW ── */}
+          {productionResult && !productionImportSummary && (
+            <div className="space-y-3 text-sm">
+              <div className="grid grid-cols-2 gap-2">
+                <div className="text-muted-foreground">Sheet used</div>
+                <div className="font-medium font-mono text-xs">{productionResult.sheetUsed}</div>
+                <div className="text-muted-foreground">Total rows scanned</div>
+                <div>{productionResult.summary.total}</div>
+                <div className="text-muted-foreground">To import</div>
+                <div className="font-medium text-primary">{productionResult.summary.parsed}</div>
+                <div className="text-muted-foreground">Skipped (empty rows)</div>
+                <div>{productionResult.summary.skipped_empty}</div>
+                {productionPreClassify && (
+                  <>
+                    <div className="text-muted-foreground">→ New (insert)</div>
+                    <div className="font-medium text-primary">{productionPreClassify.insert}</div>
+                    <div className="text-muted-foreground">→ Updates (existing)</div>
+                    <div>{productionPreClassify.update}</div>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ── PRODUCTION FORMAT POST-IMPORT SUMMARY ── */}
+          {productionImportSummary && (
+            <div className="space-y-3 text-sm">
+              <div className="grid grid-cols-2 gap-2">
+                <div className="text-muted-foreground">Total rows</div>
+                <div>{productionImportSummary.total}</div>
+                <div className="text-muted-foreground">Inserted (new)</div>
+                <div className="font-medium text-primary">{productionImportSummary.inserted_new}</div>
+                <div className="text-muted-foreground">Updated (existing)</div>
+                <div>{productionImportSummary.updated_existing}</div>
+                <div className="text-muted-foreground">Skipped empty</div>
+                <div>{productionImportSummary.skipped_empty}</div>
+                <div className="text-muted-foreground">Failed</div>
+                <div className={productionImportSummary.failed.length > 0 ? 'text-destructive font-medium' : ''}>
+                  {productionImportSummary.failed.length}
+                </div>
+              </div>
+              {productionImportSummary.failed.length > 0 && (
+                <div className="border-t pt-2 max-h-48 overflow-y-auto">
+                  <p className="font-medium mb-1 text-xs text-destructive">Failed rows</p>
+                  {productionImportSummary.failed.map((f, idx) => (
+                    <div key={idx} className="text-xs flex gap-2">
+                      <span className="text-muted-foreground font-mono shrink-0">Row {f.row}:</span>
+                      <span className="break-all">{f.reason}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── LEGACY FORMAT PREVIEW ── */}
           {parseResult && (
             <div className="space-y-3 text-sm">
               <div className="grid grid-cols-2 gap-2">
@@ -1036,12 +1103,23 @@ export function ChatGptAgentManager() {
               )}
             </div>
           )}
+
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setUploadOpen(false); setParseResult(null); }}>Cancel</Button>
-            <Button onClick={handleImportConfirm} disabled={importing || !parseResult?.summary.imported}>
-              {importing ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
-              Import {parseResult?.summary.imported || 0} Rows
+            <Button variant="outline" onClick={() => {
+              setUploadOpen(false);
+              setParseResult(null);
+              setProductionResult(null);
+              setProductionPreClassify(null);
+              setProductionImportSummary(null);
+            }}>
+              {productionImportSummary ? 'Close' : 'Cancel'}
             </Button>
+            {!productionImportSummary && (
+              <Button onClick={handleImportConfirm} disabled={importing || (!parseResult?.summary.imported && !productionResult?.summary.parsed)}>
+                {importing ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+                Import {productionResult?.summary.parsed ?? parseResult?.summary.imported ?? 0} Rows
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

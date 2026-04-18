@@ -10,6 +10,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 import { Progress } from '@/components/ui/progress';
 import { supabase } from '@/integrations/supabase/client';
@@ -83,6 +85,7 @@ export function ChatGptAgentManager() {
   const [parseResult, setParseResult] = useState<ParseResult | null>(null);
   const [productionResult, setProductionResult] = useState<ProductionParseResult | null>(null);
   const [productionPreClassify, setProductionPreClassify] = useState<{ insert: number; update: number } | null>(null);
+  const [existingIdentitiesAttempted, setExistingIdentitiesAttempted] = useState<Set<string>>(new Set());
   const [productionImportSummary, setProductionImportSummary] = useState<{ total: number; inserted_new: number; updated_existing: number; skipped_empty: number; failed: { row: number; reason: string }[] } | null>(null);
   const [importing, setImporting] = useState(false);
 
@@ -118,6 +121,13 @@ export function ChatGptAgentManager() {
   // Section counts
   const [sectionCounts, setSectionCounts] = useState<Record<string, number>>({});
 
+  // Search + production-format filters
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterPublishStatus, setFilterPublishStatus] = useState<string>('__all__');
+  const [filterCategoryFamily, setFilterCategoryFamily] = useState<string>('__all__');
+  const [filterUpdateType, setFilterUpdateType] = useState<string>('__all__');
+  const [filterVerificationStatus, setFilterVerificationStatus] = useState<string>('__all__');
+  const [filterVerificationConfidence, setFilterVerificationConfidence] = useState<string>('__all__');
   const fetchDrafts = useCallback(async () => {
     setLoading(true);
     try {
@@ -178,13 +188,53 @@ export function ChatGptAgentManager() {
     if (ids.length > 0) fetchRunsForDrafts(ids);
   }, [drafts, fetchRunsForDrafts]);
 
+  // Distinct values for filter dropdowns (built from current section's drafts)
+  const distinct = useCallback((key: string): string[] => {
+    const set = new Set<string>();
+    for (const d of drafts) {
+      const v = d?.[key];
+      if (v != null && String(v).trim() !== '') set.add(String(v).trim());
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [drafts]);
+
+  const distinctPublishStatus = useMemo(() => distinct('publish_status'), [distinct]);
+  const distinctCategoryFamily = useMemo(() => distinct('category_family'), [distinct]);
+  const distinctUpdateType = useMemo(() => distinct('update_type'), [distinct]);
+  const distinctVerificationStatus = useMemo(() => distinct('verification_status'), [distinct]);
+  const distinctVerificationConfidence = useMemo(() => distinct('verification_confidence'), [distinct]);
+
+  const SEARCH_FIELDS = [
+    'publish_title', 'normalized_title', 'organization_authority', 'organisation_name',
+    'record_id', 'official_source_used', 'production_notes',
+    'official_website_url', 'official_reference_url', 'primary_cta_url',
+  ] as const;
+
   const filteredDrafts = useMemo(() => {
-    if (linkFilter === 'all') return drafts;
-    if (linkFilter === 'published') return drafts.filter(d => d.processing_status === 'published');
-    return drafts.filter(d =>
-      linkFilter === 'with_link' ? !!d.official_notification_link : !d.official_notification_link
-    );
-  }, [drafts, linkFilter]);
+    let out = drafts;
+    if (linkFilter === 'published') out = out.filter(d => d.processing_status === 'published');
+    else if (linkFilter === 'with_link') out = out.filter(d => !!d.official_notification_link);
+    else if (linkFilter === 'missing_link') out = out.filter(d => !d.official_notification_link);
+
+    if (filterPublishStatus !== '__all__') out = out.filter(d => d.publish_status === filterPublishStatus);
+    if (filterCategoryFamily !== '__all__') out = out.filter(d => d.category_family === filterCategoryFamily);
+    if (filterUpdateType !== '__all__') out = out.filter(d => d.update_type === filterUpdateType);
+    if (filterVerificationStatus !== '__all__') out = out.filter(d => d.verification_status === filterVerificationStatus);
+    if (filterVerificationConfidence !== '__all__') out = out.filter(d => d.verification_confidence === filterVerificationConfidence);
+
+    const q = searchQuery.trim().toLowerCase();
+    if (q) {
+      out = out.filter(d => SEARCH_FIELDS.some(f => {
+        const v = d?.[f];
+        return v != null && String(v).toLowerCase().includes(q);
+      }));
+    }
+    return out;
+  }, [
+    drafts, linkFilter, searchQuery,
+    filterPublishStatus, filterCategoryFamily, filterUpdateType,
+    filterVerificationStatus, filterVerificationConfidence,
+  ]);
 
   const publishedCount = useMemo(() => drafts.filter(d => d.processing_status === 'published').length, [drafts]);
 
@@ -194,7 +244,11 @@ export function ChatGptAgentManager() {
     [filteredDrafts, currentPage],
   );
 
-  useEffect(() => { setCurrentPage(1); }, [linkFilter, activeSection, drafts.length]);
+  useEffect(() => { setCurrentPage(1); }, [
+    linkFilter, activeSection, drafts.length, searchQuery,
+    filterPublishStatus, filterCategoryFamily, filterUpdateType,
+    filterVerificationStatus, filterVerificationConfidence,
+  ]);
 
   // ── Upload Excel ──
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -235,6 +289,7 @@ export function ChatGptAgentManager() {
         const update = prod.rows.filter(r => existing.has(r.import_identity)).length;
         const insert = prod.rows.length - update;
         setProductionPreClassify({ insert, update });
+        setExistingIdentitiesAttempted(existing);
         setProductionImportSummary(null);
         setUploadOpen(true);
       } else {
@@ -311,12 +366,21 @@ export function ChatGptAgentManager() {
             for (const b of batch) failed.push({ row: b.import_row_number, reason: error.message });
           }
         }
-        const inserted_new = productionPreClassify?.insert ?? 0;
-        const updated_existing = productionPreClassify?.update ?? 0;
+        // Reconcile counts: classify each row attempted vs failed.
+        // total = inserted_new + updated_existing + skipped_empty + failed
+        const wasUpdate = (r: any) => existingIdentitiesAttempted.has(r.import_identity);
+        const failedIdentities = new Set(failed.map(f => f.row));
+        let updated_existing_final = 0;
+        let inserted_new_final = 0;
+        for (const r of rows) {
+          if (failedIdentities.has(r.import_row_number)) continue;
+          if (wasUpdate(r)) updated_existing_final++;
+          else inserted_new_final++;
+        }
         const summary = {
           total: productionResult.summary.total,
-          inserted_new: inserted_new - failed.length > 0 ? inserted_new : Math.max(0, rows.length - updated_existing - failed.length),
-          updated_existing,
+          inserted_new: inserted_new_final,
+          updated_existing: updated_existing_final,
           skipped_empty: productionResult.summary.skipped_empty,
           failed,
         };
@@ -766,6 +830,61 @@ export function ChatGptAgentManager() {
               ))}
             </TabsList>
 
+            {/* Search box (production fields) */}
+            <div className="mb-3">
+              <div className="relative">
+                <Search className="h-4 w-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                <Input
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  placeholder="Search title, organization, record ID, source, notes, URL…"
+                  className="pl-8 h-8 text-sm"
+                />
+              </div>
+            </div>
+
+            {/* Production-format filter row (5 dropdowns) */}
+            <div className="flex flex-wrap gap-2 mb-3">
+              {[
+                { label: 'Publish Status', value: filterPublishStatus, onChange: setFilterPublishStatus, options: distinctPublishStatus },
+                { label: 'Category Family', value: filterCategoryFamily, onChange: setFilterCategoryFamily, options: distinctCategoryFamily },
+                { label: 'Update Type', value: filterUpdateType, onChange: setFilterUpdateType, options: distinctUpdateType },
+                { label: 'Verification Status', value: filterVerificationStatus, onChange: setFilterVerificationStatus, options: distinctVerificationStatus },
+                { label: 'Verification Confidence', value: filterVerificationConfidence, onChange: setFilterVerificationConfidence, options: distinctVerificationConfidence },
+              ].map(f => (
+                <Select key={f.label} value={f.value} onValueChange={f.onChange}>
+                  <SelectTrigger className="h-7 text-xs w-auto min-w-[160px]">
+                    <SelectValue placeholder={f.label} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">{f.label}: All</SelectItem>
+                    {f.options.map(opt => (
+                      <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ))}
+              {(searchQuery || filterPublishStatus !== '__all__' || filterCategoryFamily !== '__all__' ||
+                filterUpdateType !== '__all__' || filterVerificationStatus !== '__all__' ||
+                filterVerificationConfidence !== '__all__') && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 text-xs"
+                  onClick={() => {
+                    setSearchQuery('');
+                    setFilterPublishStatus('__all__');
+                    setFilterCategoryFamily('__all__');
+                    setFilterUpdateType('__all__');
+                    setFilterVerificationStatus('__all__');
+                    setFilterVerificationConfidence('__all__');
+                  }}
+                >
+                  Clear filters
+                </Button>
+              )}
+            </div>
+
             {/* Link filter */}
             <div className="flex gap-2 mb-3">
               <Button size="sm" variant={linkFilter === 'all' ? 'default' : 'ghost'} onClick={() => setLinkFilter('all')} className="text-xs h-7">
@@ -803,8 +922,14 @@ export function ChatGptAgentManager() {
                             <TableHead className="w-10">
                               <Checkbox checked={selected.size === filteredDrafts.length && filteredDrafts.length > 0} onCheckedChange={toggleSelectAll} />
                             </TableHead>
-                            <TableHead className="min-w-[200px]">Title</TableHead>
-                            <TableHead>Organization</TableHead>
+                            <TableHead className="min-w-[220px]">Publish Title</TableHead>
+                            <TableHead className="min-w-[160px]">Org / Board / Authority</TableHead>
+                            <TableHead>Category Family</TableHead>
+                            <TableHead>Update Type</TableHead>
+                            <TableHead>Verification Status</TableHead>
+                            <TableHead>Verification Confidence</TableHead>
+                            <TableHead>Source Verified On</TableHead>
+                            <TableHead className="min-w-[160px]">Primary CTA</TableHead>
                             <TableHead>Status</TableHead>
                             <TableHead className="min-w-[180px]">Official Link</TableHead>
                             <TableHead>Last Date</TableHead>
@@ -826,7 +951,7 @@ export function ChatGptAgentManager() {
                                 </TableCell>
                                 <TableCell>
                                   <div className="flex items-start gap-1.5 flex-wrap">
-                                    <span className="text-sm font-medium line-clamp-2">{d.normalized_title || d.raw_title}</span>
+                                    <span className="text-sm font-medium line-clamp-2">{d.publish_title || d.normalized_title || d.raw_title}</span>
                                     {isAiFixed(draftRuns[d.id]) && (
                                       <Badge variant="outline" className="text-[10px] gap-1 border-green-500 text-green-700 bg-green-50 dark:bg-green-950/30 dark:text-green-400 shrink-0">
                                         <Sparkles className="h-2.5 w-2.5" />
@@ -848,7 +973,30 @@ export function ChatGptAgentManager() {
                                     />
                                   </div>
                                 </TableCell>
-                                <TableCell className="text-xs text-muted-foreground">{d.organisation_name || '—'}</TableCell>
+                                <TableCell className="text-xs text-muted-foreground">{d.organization_authority || d.organisation_name || '—'}</TableCell>
+                                <TableCell className="text-xs">{d.category_family || '—'}</TableCell>
+                                <TableCell className="text-xs">{d.update_type || '—'}</TableCell>
+                                <TableCell className="text-xs">
+                                  {d.verification_status ? (
+                                    <Badge variant="outline" className="text-[10px]">{d.verification_status}</Badge>
+                                  ) : '—'}
+                                </TableCell>
+                                <TableCell className="text-xs">{d.verification_confidence || '—'}</TableCell>
+                                <TableCell className="text-xs whitespace-nowrap">{d.source_verified_on_date || d.source_verified_on || '—'}</TableCell>
+                                <TableCell onClick={e => e.stopPropagation()}>
+                                  {d.primary_cta_url ? (
+                                    <a
+                                      href={d.primary_cta_url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-xs text-primary hover:underline inline-flex items-center gap-1"
+                                      title={d.primary_cta_url}
+                                    >
+                                      {d.primary_cta_label || 'Open'}
+                                      <ExternalLink className="h-3 w-3" />
+                                    </a>
+                                  ) : (d.primary_cta_label || '—')}
+                                </TableCell>
                                 <TableCell>
                                   <Badge variant={
                                     d.processing_status === 'published' ? 'default' :

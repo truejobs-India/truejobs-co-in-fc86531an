@@ -613,13 +613,13 @@ function parseTextDateToISO(s: string): string | null {
     }
   }
   // DD/MM/YYYY or DD-MM-YYYY
-  m = t.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  m = t.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
   if (m) {
     const iso = `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
     return isNaN(new Date(iso).getTime()) ? null : iso;
   }
   // YYYY/MM/DD
-  m = t.match(/^(\d{4})[\/](\d{1,2})[\/](\d{1,2})$/);
+  m = t.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
   if (m) {
     const iso = `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
     return isNaN(new Date(iso).getTime()) ? null : iso;

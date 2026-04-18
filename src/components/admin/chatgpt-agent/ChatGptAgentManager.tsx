@@ -58,6 +58,9 @@ const ALL_SECTIONS: SectionBucket[] = [
   'exam_dates', 'admissions', 'scholarships', 'other_updates',
 ];
 
+const ALL_SECTIONS_VALUE = '__all__' as const;
+type ActiveSection = SectionBucket | typeof ALL_SECTIONS_VALUE;
+
 type LinkFilter = 'all' | 'with_link' | 'missing_link' | 'published';
 
 /** Only models that the intake-ai-classify edge function can actually route */

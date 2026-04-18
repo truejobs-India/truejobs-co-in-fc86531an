@@ -1677,6 +1677,53 @@ export type Database = {
         }
         Relationships: []
       }
+      employment_news_enrichment_runs: {
+        Row: {
+          api_model: string | null
+          attempted_at: string
+          duration_ms: number | null
+          error_message: string | null
+          id: string
+          job_id: string
+          max_tokens: number | null
+          provider: string | null
+          selected_model_id: string
+          status: string
+        }
+        Insert: {
+          api_model?: string | null
+          attempted_at?: string
+          duration_ms?: number | null
+          error_message?: string | null
+          id?: string
+          job_id: string
+          max_tokens?: number | null
+          provider?: string | null
+          selected_model_id: string
+          status: string
+        }
+        Update: {
+          api_model?: string | null
+          attempted_at?: string
+          duration_ms?: number | null
+          error_message?: string | null
+          id?: string
+          job_id?: string
+          max_tokens?: number | null
+          provider?: string | null
+          selected_model_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employment_news_enrichment_runs_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "employment_news_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       employment_news_jobs: {
         Row: {
           advertisement_number: string | null
@@ -1699,6 +1746,10 @@ export type Database = {
           last_date: string | null
           last_date_raw: string | null
           last_date_resolved: string | null
+          last_enrichment_api_model: string | null
+          last_enrichment_at: string | null
+          last_enrichment_model: string | null
+          last_enrichment_provider: string | null
           location: string | null
           meta_description: string | null
           meta_title: string | null
@@ -1737,6 +1788,10 @@ export type Database = {
           last_date?: string | null
           last_date_raw?: string | null
           last_date_resolved?: string | null
+          last_enrichment_api_model?: string | null
+          last_enrichment_at?: string | null
+          last_enrichment_model?: string | null
+          last_enrichment_provider?: string | null
           location?: string | null
           meta_description?: string | null
           meta_title?: string | null
@@ -1775,6 +1830,10 @@ export type Database = {
           last_date?: string | null
           last_date_raw?: string | null
           last_date_resolved?: string | null
+          last_enrichment_api_model?: string | null
+          last_enrichment_at?: string | null
+          last_enrichment_model?: string | null
+          last_enrichment_provider?: string | null
           location?: string | null
           meta_description?: string | null
           meta_title?: string | null

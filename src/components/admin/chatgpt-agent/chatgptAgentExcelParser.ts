@@ -1,6 +1,11 @@
 /**
  * ChatGPT Agent Excel Parser — Pure utility, no DB operations.
  * Parses uploaded Excel workbook and returns normalized rows with section routing.
+ *
+ * Two parsers live here:
+ *   1. parseExcelWorkbook            — legacy/old-format master_list workbook (untouched)
+ *   2. parseProductionExcelWorkbook  — NEW production workbook, sheet "master_publish_ready_verified"
+ *      with the strict 16-column header signature documented below.
  */
 import * as XLSX from 'xlsx';
 

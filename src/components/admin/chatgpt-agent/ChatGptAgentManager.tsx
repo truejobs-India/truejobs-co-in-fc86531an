@@ -36,7 +36,17 @@ import { IntakeDraftPreviewDialog } from '@/components/admin/intake/IntakeDraftP
 import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSelector';
 import { useAdminMessages } from '@/hooks/useAdminMessages';
 import { AdminMessageLog } from '@/components/admin/AdminMessageLog';
-import { parseExcelWorkbook, SECTION_BUCKET_LABELS, type ParseResult, type ParsedRow, type SectionBucket } from './chatgptAgentExcelParser';
+import {
+  parseExcelWorkbook,
+  parseProductionExcelWorkbook,
+  detectProductionFormat,
+  SECTION_BUCKET_LABELS,
+  type ParseResult,
+  type ParsedRow,
+  type ProductionParseResult,
+  type ProductionParsedRow,
+  type SectionBucket,
+} from './chatgptAgentExcelParser';
 import { ChatGptAgentDraftEditor } from './ChatGptAgentDraftEditor';
 import { ChatGptAgentDuplicateFinder } from './ChatGptAgentDuplicateFinder';
 import { PipelineStepBadges, type PipelineRun } from './PipelineStepBadges';

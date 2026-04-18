@@ -58,6 +58,9 @@ const ALL_SECTIONS: SectionBucket[] = [
   'exam_dates', 'admissions', 'scholarships', 'other_updates',
 ];
 
+const ALL_SECTIONS_VALUE = '__all__' as const;
+type ActiveSection = SectionBucket | typeof ALL_SECTIONS_VALUE;
+
 type LinkFilter = 'all' | 'with_link' | 'missing_link' | 'published';
 
 /** Only models that the intake-ai-classify edge function can actually route */
@@ -71,7 +74,7 @@ const ALLOWED_MODELS = [
 
 export function ChatGptAgentManager() {
   const { messages, addMessage, dismissMessage, clearAll, toggleExpand } = useAdminMessages('chatgpt-agent');
-  const [activeSection, setActiveSection] = useState<SectionBucket>('job_postings');
+  const [activeSection, setActiveSection] = useState<ActiveSection>('job_postings');
   const [drafts, setDrafts] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -131,13 +134,16 @@ export function ChatGptAgentManager() {
   const fetchDrafts = useCallback(async () => {
     setLoading(true);
     try {
-      const { data, error } = await (supabase
+      let q = (supabase
         .from('intake_drafts')
         .select('*') as any)
-        .eq('source_channel', 'chatgpt_agent')
-        .eq('section_bucket', activeSection)
+        .eq('source_channel', 'chatgpt_agent');
+      if (activeSection !== ALL_SECTIONS_VALUE) {
+        q = q.eq('section_bucket', activeSection);
+      }
+      const { data, error } = await q
         .order('created_at', { ascending: false })
-        .limit(500);
+        .limit(activeSection === ALL_SECTIONS_VALUE ? 2000 : 500);
       if (error) throw error;
       setDrafts(data || []);
     } catch (err) {
@@ -385,10 +391,20 @@ export function ChatGptAgentManager() {
           failed,
         };
         setProductionImportSummary(summary);
+        // Per-upload section breakdown (this run only — never mixed with totals)
+        const perBucket: Record<string, number> = {};
+        for (const r of productionResult.rows) {
+          const k = r.section_bucket || 'unknown';
+          perBucket[k] = (perBucket[k] || 0) + 1;
+        }
+        const breakdown = Object.entries(perBucket)
+          .sort((a, b) => b[1] - a[1])
+          .map(([k, v]) => `${SECTION_BUCKET_LABELS[k as SectionBucket] || k} ${v}`)
+          .join(' · ');
         addMessage(
           failed.length === 0 ? 'success' : 'warning',
-          `Imported ${rows.length - failed.length} of ${rows.length} production rows`,
-          `New: ${summary.inserted_new} · Updated: ${summary.updated_existing} · Skipped empty: ${summary.skipped_empty} · Failed: ${failed.length}`,
+          `Imported this run: ${rows.length - failed.length} of ${rows.length}`,
+          `New: ${summary.inserted_new} · Updated: ${summary.updated_existing} · Skipped: ${summary.skipped_empty} · Failed: ${failed.length}\nThis upload by section → ${breakdown}`,
         );
         fetchDrafts();
         fetchCounts();
@@ -818,8 +834,14 @@ export function ChatGptAgentManager() {
           )}
 
           {/* Section Tabs */}
-          <Tabs value={activeSection} onValueChange={v => { setActiveSection(v as SectionBucket); setSelected(new Set()); setLinkFilter('all'); }}>
+          <Tabs value={activeSection} onValueChange={v => { setActiveSection(v as ActiveSection); setSelected(new Set()); setLinkFilter('all'); }}>
             <TabsList className="flex flex-wrap !h-auto gap-1 p-2 mb-3">
+              <TabsTrigger value={ALL_SECTIONS_VALUE} className="text-xs gap-1.5">
+                All Sections
+                <Badge variant="secondary" className="text-[10px] px-1 py-0 h-4">
+                  {Object.values(sectionCounts).reduce((a, b) => a + (b || 0), 0)}
+                </Badge>
+              </TabsTrigger>
               {ALL_SECTIONS.map(s => (
                 <TabsTrigger key={s} value={s} className="text-xs gap-1.5">
                   {SECTION_BUCKET_LABELS[s]}
@@ -829,6 +851,20 @@ export function ChatGptAgentManager() {
                 </TabsTrigger>
               ))}
             </TabsList>
+
+            {/* Scope clarity (All Sections only) */}
+            {activeSection === ALL_SECTIONS_VALUE && (
+              <div className="mb-3 px-3 py-2 rounded-md border bg-muted/40 text-xs">
+                <div className="text-foreground font-medium">
+                  Viewing all ChatGPT Agent drafts: {Object.values(sectionCounts).reduce((a, b) => a + (b || 0), 0)} total
+                </div>
+                {filteredDrafts.length !== drafts.length && (
+                  <div className="text-muted-foreground mt-0.5">
+                    {filteredDrafts.length} visible after filters
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Search box (production fields) */}
             <div className="mb-3">
@@ -904,14 +940,34 @@ export function ChatGptAgentManager() {
               )}
             </div>
 
+            {/* Select-all-visible labeled control */}
+            <div className="flex items-center gap-2 mb-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs"
+                onClick={toggleSelectAll}
+                disabled={filteredDrafts.length === 0}
+              >
+                {selected.size === filteredDrafts.length && filteredDrafts.length > 0
+                  ? `Clear selection (${selected.size})`
+                  : `Select all visible (${filteredDrafts.length})`}
+              </Button>
+              {activeSection === ALL_SECTIONS_VALUE && (
+                <span className="text-[11px] text-muted-foreground">
+                  Across all sections
+                </span>
+              )}
+            </div>
+
             {/* Shared table content for all tabs */}
-            {ALL_SECTIONS.map(s => (
+            {[ALL_SECTIONS_VALUE, ...ALL_SECTIONS].map(s => (
               <TabsContent key={s} value={s} className="mt-0">
                 {loading ? (
                   <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin" /></div>
                 ) : filteredDrafts.length === 0 ? (
                   <div className="text-center py-12 text-muted-foreground text-sm">
-                    No drafts in {SECTION_BUCKET_LABELS[s]}
+                    {s === ALL_SECTIONS_VALUE ? 'No drafts' : `No drafts in ${SECTION_BUCKET_LABELS[s as SectionBucket]}`}
                     {linkFilter !== 'all' && ' (try changing filter)'}
                   </div>
                 ) : (
@@ -922,6 +978,7 @@ export function ChatGptAgentManager() {
                             <TableHead className="w-10">
                               <Checkbox checked={selected.size === filteredDrafts.length && filteredDrafts.length > 0} onCheckedChange={toggleSelectAll} />
                             </TableHead>
+                            {s === ALL_SECTIONS_VALUE && <TableHead>Section</TableHead>}
                             <TableHead className="min-w-[220px]">Publish Title</TableHead>
                             <TableHead className="min-w-[160px]">Org / Board / Authority</TableHead>
                             <TableHead>Category Family</TableHead>
@@ -949,6 +1006,13 @@ export function ChatGptAgentManager() {
                                 <TableCell onClick={e => e.stopPropagation()}>
                                   <Checkbox checked={selected.has(d.id)} onCheckedChange={() => toggleSelect(d.id)} />
                                 </TableCell>
+                                {s === ALL_SECTIONS_VALUE && (
+                                  <TableCell className="text-xs">
+                                    <Badge variant="outline" className="text-[10px]">
+                                      {SECTION_BUCKET_LABELS[d.section_bucket as SectionBucket] || d.section_bucket || '—'}
+                                    </Badge>
+                                  </TableCell>
+                                )}
                                 <TableCell>
                                   <div className="flex items-start gap-1.5 flex-wrap">
                                     <span className="text-sm font-medium line-clamp-2">{d.publish_title || d.normalized_title || d.raw_title}</span>

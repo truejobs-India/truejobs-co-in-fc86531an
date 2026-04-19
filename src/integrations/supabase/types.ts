@@ -2861,10 +2861,17 @@ export type Database = {
           created_at: string
           department_name: string | null
           discovered_at: string | null
+          discovered_official_url: string | null
+          discovery_confidence: string | null
+          discovery_evidence: Json | null
+          discovery_status: string | null
           draft_content_html: string | null
           draft_content_text: string | null
+          enrichment_completeness: number | null
+          enrichment_grade: string | null
           enrichment_reason: string | null
           enrichment_result: string | null
+          enrichment_source_trace: Json | null
           exam_date: string | null
           exam_name: string | null
           faq_json: Json | null
@@ -2974,10 +2981,17 @@ export type Database = {
           created_at?: string
           department_name?: string | null
           discovered_at?: string | null
+          discovered_official_url?: string | null
+          discovery_confidence?: string | null
+          discovery_evidence?: Json | null
+          discovery_status?: string | null
           draft_content_html?: string | null
           draft_content_text?: string | null
+          enrichment_completeness?: number | null
+          enrichment_grade?: string | null
           enrichment_reason?: string | null
           enrichment_result?: string | null
+          enrichment_source_trace?: Json | null
           exam_date?: string | null
           exam_name?: string | null
           faq_json?: Json | null
@@ -3087,10 +3101,17 @@ export type Database = {
           created_at?: string
           department_name?: string | null
           discovered_at?: string | null
+          discovered_official_url?: string | null
+          discovery_confidence?: string | null
+          discovery_evidence?: Json | null
+          discovery_status?: string | null
           draft_content_html?: string | null
           draft_content_text?: string | null
+          enrichment_completeness?: number | null
+          enrichment_grade?: string | null
           enrichment_reason?: string | null
           enrichment_result?: string | null
+          enrichment_source_trace?: Json | null
           exam_date?: string | null
           exam_name?: string | null
           faq_json?: Json | null

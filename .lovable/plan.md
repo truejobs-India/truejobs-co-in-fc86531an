@@ -1,42 +1,48 @@
 
-## Plan: Lock draft row order so enrichment doesn't reshuffle
+## Issue
+Pipeline step `improve_title` failed with "Failed to send a request to the Edge Function" — a network/transport error before the function executed (not an in-function error). Likely causes: function crash on boot, deploy issue, timeout on cold start, or CORS preflight failure.
 
-### Root cause (confirmed via earlier analysis)
-`fetchDrafts` in `ChatGptAgentManager.tsx` orders rows by `updated_at DESC`. Enrichment writes to the row → `updated_at` bumps → row jumps position on the next refetch. User saw "UKMSSB ANM Health Worker Online Form" move from row 1 → row 13 after enrichment.
+## Investigation (read-only)
+1. Identify which edge function handles `improve_title` (likely `intake-ai-pipeline` based on logs showing DeepSeek calls).
+2. Check `supabase/functions/intake-ai-pipeline/index.ts` for the `improve_title` step and how it's invoked from the client.
+3. Check edge function logs for `intake-ai-pipeline` around the failure — look for boot errors, crashes, timeouts.
+4. Check the client caller (likely in `ChatGptAgentManager.tsx` or a related pipeline file) for how it invokes the function and handles errors.
+5. Confirm whether `improve_title` is a separate function or a sub-step inside `intake-ai-pipeline`.
 
-### Fix (single file, minimal change)
-**File:** `src/components/admin/chatgpt-agent/ChatGptAgentManager.tsx`
-**Change:** In the `fetchDrafts` query, replace the existing `.order('updated_at', { ascending: false })` with:
-```
-.order('created_at', { ascending: false })
-.order('id', { ascending: false })
-```
+## Likely root causes (rank-ordered)
+1. **Cold-start timeout** — `improve_title` calls Azure DeepSeek, which can take 30+ s. If the function boots cold AND the AI call is slow, the supabase-js client may abort with "Failed to send a request" before the function returns.
+2. **Function crash on boot** — recent edit broke the function; check logs for boot errors.
+3. **Per-step network blip** — single transient failure; retry would succeed.
 
-- `created_at` is set once at INSERT and never mutated by enrichment, AI processing, edits, or status changes → row position is frozen at import time.
-- `id` tiebreaker prevents flicker for rows sharing the same `created_at` (bulk imports).
+## Fix plan
 
-### Strict scope guard
-Touch ONLY the `.order(...)` line(s) in `fetchDrafts`. Do not modify:
-- filter logic, fetch WHERE clauses, badges, tabs, toast, "Select all visible", scope banner, Section column
-- enrichment edge function, schema, RLS, any other component
-- any sort logic in other admin views
+**Step 1: Diagnose first (no code changes)**
+- Read the relevant edge function source.
+- Read recent logs filtered for `improve_title` or the failed row's title.
+- Confirm whether the function booted, ran, and crashed — OR never received the request.
 
-### Deep verification report (after change)
+**Step 2: Apply targeted fix based on diagnosis**
 
-I will:
-1. **Code audit** — read the modified `fetchDrafts` and confirm the only diff is the `.order()` line; diff against original to prove zero collateral edits elsewhere in the file.
-2. **DB sanity** — SQL query the top 15 `chatgpt_agent` job_postings rows by `created_at DESC, id DESC` and list them. This is the order the UI must now show.
-3. **Live preview check** — open the admin Drafts view, capture the top 15 rows in `job_postings`, confirm they match the SQL list exactly.
-4. **Enrichment stability test** — pick the row currently at position #1 (e.g. "UKMSSB ANM Health Worker Online Form" if still top), trigger enrichment, refetch, confirm it remains at position #1. Capture before/after.
-5. **Cross-tab spot check** — repeat row-order check on `admit_cards` and `All Sections` tabs to confirm consistent ordering everywhere `fetchDrafts` is used.
-6. **Untouched-area regression** — confirm badges (108/55/46/35/24/8/1/1/278), filter dropdowns, "Select all visible (N)", scope banner, and import toast all still function identically (no value or label changed).
+- **If cold-start/timeout:** Add per-step retry (1 retry with 2 s backoff) on the client side for transient `Failed to send a request` errors. Single file: the pipeline caller.
+- **If function crash:** Fix the specific bug in `intake-ai-pipeline/index.ts`.
+- **If transient:** Add the same retry-once safety net so a single network blip doesn't fail the whole row.
 
-### Report format
-A single summary will list:
-- exact line(s) changed (before → after)
-- SQL-derived expected top-15 vs UI-observed top-15 (match/mismatch per row)
-- enrichment stability result (row stayed at #1: yes/no)
-- regression check results for each untouched feature
+**Step 3: Improve error visibility**
+- In the failure toast, distinguish "transport error (will retry)" vs "function returned error" so future debugging is clearer.
 
-### Risk
-Minimal. One ordering change. No DB writes, no schema, no edge functions, no other UI.
+## Strict scope guard
+- Touch ONLY the failing step's caller and/or the edge function itself.
+- Do NOT modify: row ordering (just fixed), filters, badges, tabs, scope banner, "Select all visible", or any other pipeline step.
+
+## Verification after fix
+1. Re-run pipeline on the same NHPC row → confirm it succeeds.
+2. Run pipeline on 5 mixed rows → confirm no transport errors and no regressions in other steps.
+3. Confirm row ordering still locked (the just-shipped fix).
+4. Confirm filter/badge/tab UI untouched.
+
+## Files likely changed (TBD after diagnosis)
+- `supabase/functions/intake-ai-pipeline/index.ts` (only if function bug found), OR
+- The client pipeline caller (only if adding retry-once safety net)
+
+## Risk
+Low. Minimal targeted change after evidence-based diagnosis.

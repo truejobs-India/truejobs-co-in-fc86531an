@@ -109,18 +109,46 @@ export function ChatGptAgentManager() {
   const stopRequestedRef = useRef(false);
   const [stopping, setStopping] = useState(false);
 
-  // A draft is "AI Fixed" when latest validate run is ok and no step has latest status 'error'.
-  const isAiFixed = useCallback((runs?: PipelineRun[]): boolean => {
-    if (!runs || runs.length === 0) return false;
+  // ── Three-state terminal model (single source of truth) ──
+  // Reads `enrichment_result` directly from the draft row. Falls back to runs-based
+  // inference only when the new column hasn't been written yet (legacy rows).
+  type TerminalState = 'enriched' | 'no_grounded_evidence' | 'tech_error' | 'pending';
+  const terminalStateOf = useCallback((d: any, runs?: PipelineRun[]): TerminalState => {
+    const er = d?.enrichment_result;
+    if (er === 'enriched') return 'enriched';
+    if (er === 'not_enriched_no_grounded_evidence') return 'no_grounded_evidence';
+    if (er === 'not_enriched_tech_error') return 'tech_error';
+    // Legacy fallback: derive from pipeline runs only if new column missing
+    if (!runs || runs.length === 0) return 'pending';
     const latest: Record<string, PipelineRun> = {};
     for (const r of runs) {
       if (!latest[r.step] || new Date(r.created_at) > new Date(latest[r.step].created_at)) {
         latest[r.step] = r;
       }
     }
-    if (!latest['validate'] || latest['validate'].status !== 'ok') return false;
-    return !Object.values(latest).some(r => r.status === 'error');
+    const enrichLatest = latest['enrich'];
+    if (enrichLatest?.status === 'error') return 'tech_error';
+    if (latest['validate']?.status === 'ok' && !Object.values(latest).some(r => r.status === 'error')) {
+      return 'enriched';
+    }
+    return 'pending';
   }, []);
+
+  // A draft is considered "fixed" when its terminal state is enriched OR honest no-evidence.
+  // Tech errors and pending rows are unfixed (retryable).
+  const isAiFixed = useCallback((runsOrDraft?: PipelineRun[] | any, maybeRuns?: PipelineRun[]): boolean => {
+    // Backward-compatible signature: isAiFixed(runs) OR isAiFixed(draft, runs)
+    let draft: any = null;
+    let runs: PipelineRun[] | undefined;
+    if (Array.isArray(runsOrDraft)) {
+      runs = runsOrDraft;
+    } else {
+      draft = runsOrDraft;
+      runs = maybeRuns;
+    }
+    const state = terminalStateOf(draft, runs);
+    return state === 'enriched' || state === 'no_grounded_evidence';
+  }, [terminalStateOf]);
 
   // Cross-section unfixed scan state
   const [scanning, setScanning] = useState(false);

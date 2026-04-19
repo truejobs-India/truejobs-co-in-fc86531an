@@ -183,6 +183,12 @@ Deno.serve(async (req) => {
       return json({ error: 'locked', message: 'Draft is being processed by another worker' }, 409);
     }
 
+    // ── Background execution wrapper ──
+    // Firecrawl PDF/HTML fetches + 180s DeepSeek calls easily exceed the
+    // 150s edge idle timeout. Run the actual step in the background and
+    // return immediately so the client (which polls draft status) never
+    // hits a 504. The lock + final status write happen inside the bg task.
+    const runStep = async () => {
     const nextLockToken = crypto.randomUUID();
     let lockQuery = (client as any)
       .from('intake_drafts')
@@ -205,9 +211,12 @@ Deno.serve(async (req) => {
 
     if (lockErr) {
       console.error('[pipeline] lock error:', lockErr);
-      return json({ error: `Lock error: ${lockErr.message}` }, 500);
+      return;
     }
-    if (!lockRow) return json({ error: 'locked', message: 'Draft is being processed by another worker' }, 409);
+    if (!lockRow) {
+      console.warn('[pipeline] lock lost mid-flight for', draftId);
+      return;
+    }
 
     const releaseLock = async (extra: Record<string, any> = {}) => {
       try {
@@ -224,7 +233,7 @@ Deno.serve(async (req) => {
     const { data: draft } = await client.from('intake_drafts').select('*').eq('id', draftId).single();
     if (!draft) {
       await releaseLock({ pipeline_status: 'failed', pipeline_last_error: 'draft vanished' });
-      return json({ error: 'Draft not found post-lock' }, 404);
+      return;
     }
 
     const t0 = Date.now();
@@ -464,27 +473,33 @@ Deno.serve(async (req) => {
     const { error: writeErr } = await (client as any).from('intake_drafts').update(update).eq('id', draftId);
     if (writeErr) {
       console.error('[pipeline] write error:', writeErr);
-      // Honest terminal status on write failure — release lock + mark failed.
       await releaseLock({
         pipeline_status: 'failed',
         pipeline_last_error: `write: ${writeErr.message}`,
         pipeline_finished_at: new Date().toISOString(),
       });
       await logRun(client, draftId, chosenStep, 'error', `write: ${writeErr.message}`, [], aiModel, duration);
-      return json({ error: writeErr.message, ran_step: chosenStep }, 500);
+      return;
     }
 
     await logRun(client, draftId, chosenStep, stepStatus, stepReason || stepError, fieldsUpdated, aiModel, duration);
+    console.log(`[pipeline] bg done draft=${draftId} step=${chosenStep} status=${stepStatus} next=${nextStep} dur=${duration}ms`);
+    };
+    // Fire-and-forget. EdgeRuntime keeps the worker alive past the response.
+    // @ts-ignore — EdgeRuntime is a Deno Deploy / Supabase Edge global
+    if (typeof EdgeRuntime !== 'undefined' && (EdgeRuntime as any).waitUntil) {
+      // @ts-ignore
+      EdgeRuntime.waitUntil(runStep().catch(e => console.error('[pipeline] bg fatal:', e)));
+    } else {
+      runStep().catch(e => console.error('[pipeline] bg fatal (no EdgeRuntime):', e));
+    }
 
     return json({
+      accepted: true,
       ran_step: chosenStep,
-      status: stepStatus,
-      reason: stepReason,
-      error: stepError,
-      fields_updated: fieldsUpdated,
-      next_step: nextStep,
-      duration_ms: duration,
-    });
+      next_step: null, // unknown until bg completes; client should poll draft row
+      message: 'step running in background; poll intake_drafts.pipeline_status',
+    }, 202);
   } catch (e) {
     console.error('[intake-ai-pipeline] fatal:', e);
     return json({ error: e instanceof Error ? e.message : 'Internal error' }, 500);

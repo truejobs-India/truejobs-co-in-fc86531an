@@ -1,90 +1,67 @@
 
-## Final plan: Full-fidelity Excel export of ChatGPT Agent drafts
+## Audit findings
 
-### 1. Shared filter (single source of truth)
-**New** `src/components/admin/chatgpt-agent/filter.ts`:
-```ts
-export const CHATGPT_AGENT_FILTER = {
-  description: "<exact predicate read from ChatGptAgentManager.tsx at implementation time>",
-  apply: (qb) => /* same chain the manager uses today */,
-};
+| Question | Answer (verified) |
+|---|---|
+| Can admin delete from `intake_drafts` directly? | Yes — RLS policy `Admin delete intake_drafts USING has_role(auth.uid(),'admin')` is already in place. No edge function needed. |
+| What rows depend on a draft id? | Only `intake_pipeline_runs.draft_id` (FK with `ON DELETE CASCADE`). No other tables reference draft ids. |
+| Does deleting a draft affect the public live record? | **No.** `published_record_id` + `published_table_name` are stored values, not FKs. The live row in `employment_news_jobs` / `govt_exams` / `govt_results` / `govt_admit_cards` / `govt_answer_keys` is fully independent. Deleting the draft leaves the public page live and intact. |
+| Existing unpublish behavior | `handleUnpublish` sets the live row's `status='draft'` (hides it) and clears `published_at` + `review_status` on the draft. It does NOT delete the live row. |
+| What "Published" means in this UI | `processing_status === 'published'` (matches the existing Published tab filter). |
+| Current totals | 278 chatgpt_agent drafts: 2 published, 276 unpublished. |
+
+## Safest delete design (decision)
+
+1. **Delete unpublished drafts** → permanent `DELETE FROM intake_drafts` for rows where `source_channel='chatgpt_agent' AND processing_status<>'published'`. Pipeline runs cascade-clean. Public site untouched. Safe.
+2. **Delete selected drafts** → permanent delete of exactly the selected ids, scoped to `source_channel='chatgpt_agent'` as a defensive guard. If the selection contains any `processing_status='published'` rows, the confirm dialog flags them with a separate count and forces a second checkbox before proceeding.
+3. **Delete published drafts** → split into two clearly-labeled actions, only the safe one enabled by default:
+   - **"Delete published drafts (keep public pages live)"** — deletes only the draft row. Public live record stays published. This is the safe, recommended path.
+   - We do **NOT** ship a "delete draft + public record" bulk action. The live tables are shared with non-chatgpt-agent content and have their own admin views. The existing per-row Unpublish toggle remains the one true way to take a public page down.
+
+## Scope rule (always full DB, never visible-only)
+
+All three bulk actions operate on the **full chatgpt_agent dataset across all sections**, not the current tab/filter. This is the safest reading of "all published / all unpublished" because the manager paginates and a hidden filter could otherwise silently exclude rows. The confirm dialog states scope explicitly: "This will delete N drafts across all sections (ignoring current filters)."
+
+"Delete selected" uses exactly `Array.from(selected)` ids — no filter coupling.
+
+## Implementation (smallest correct)
+
+**One file edited**: `src/components/admin/chatgpt-agent/ChatGptAgentManager.tsx`
+
+Add a small destructive zone in the toolbar (right side, separated, red-tinted dropdown):
+
 ```
-Refactor `ChatGptAgentManager.tsx` list query to call `CHATGPT_AGENT_FILTER.apply(qb)`. Export reuses it. Metadata sheet's `filter_predicate` cell reads from `CHATGPT_AGENT_FILTER.description` — guaranteed identical to what was fetched.
-
-### 2. Schema RPC — plpgsql with internal admin gate
-**New SQL migration**:
-```sql
-CREATE OR REPLACE FUNCTION public.get_intake_drafts_columns()
-RETURNS TABLE(column_name text, data_type text, ordinal_position int)
-LANGUAGE plpgsql
-STABLE
-SECURITY DEFINER
-SET search_path = public, information_schema
-AS $$
-BEGIN
-  IF auth.uid() IS NULL THEN
-    RAISE EXCEPTION 'Authentication required';
-  END IF;
-  IF NOT public.has_role(auth.uid(), 'admin') THEN
-    RAISE EXCEPTION 'Admin role required';
-  END IF;
-
-  RETURN QUERY
-  SELECT c.column_name::text, c.data_type::text, c.ordinal_position::int
-  FROM information_schema.columns c
-  WHERE c.table_schema = 'public' AND c.table_name = 'intake_drafts'
-  ORDER BY c.ordinal_position;
-END;
-$$;
-
-REVOKE ALL ON FUNCTION public.get_intake_drafts_columns() FROM public, anon;
-GRANT EXECUTE ON FUNCTION public.get_intake_drafts_columns() TO authenticated;
+[ Trash2 ▾ Delete ]
+  ├── Delete selected drafts (N)
+  ├── ─────────
+  ├── Delete all unpublished drafts (276)
+  └── Delete all published drafts — drafts only, public pages stay live (2)
 ```
-Canonical column list. NULL-only columns still appear. Admin-gated server-side.
 
-### 3. Globally deterministic split-part headers
-Three-pass build:
-- **Pass A (measure):** for every row × every schema column, serialize and record `partsNeeded = ceil(len/32000)`. Track `maxParts[column]` across all rows.
-- **Pass B (header):** in `ordinal_position` order emit `column`, then if `maxParts[column] >= 2` emit `column__part_2 … column__part_N` immediately after. Any row-key not in schema → appended at tail as `__unexpected__<key>` and flagged in metadata.
-- **Pass C (write):** every row writes to the exact same global header set. Empty parts → blank cell.
+Each item opens an `AlertDialog` with:
+- Exact resolved count (re-queried at click time via `count: 'exact', head: true` using `CHATGPT_AGENT_FILTER`)
+- Scope statement ("across all sections" / "exactly the N selected ids")
+- Explicit warning for the published action: "Public live pages will remain published. Use per-row Unpublish to take pages down."
+- Type-to-confirm `DELETE` for any bulk action affecting >50 rows
+- Hard `Confirm delete` button
 
-Identical regardless of row order or fetch batching.
+On confirm:
+- Chunked `DELETE` in batches of 500 ids using `.in('id', chunk)` with the safety guard `.eq('source_channel','chatgpt_agent')` always present
+- Track `deleted` and `failed` counts; surface real Postgres errors via `addMessage('error', ...)`
+- After completion: clear `selected`, clear `crossSectionScope`, call `fetchDrafts()` + `fetchCounts()`
+- Toast summary: `Deleted X of Y drafts. Z failed.`
 
-### 4. Force-string for byte-exact preservation (never mutate values)
-Rules in `cellFor(value)`:
-- `null/undefined` → blank cell, no type
-- `boolean` → `{ t:'b', v }`
-- `number` finite & safe (`Number.isSafeInteger(v)` or `|v|<1e15`) → `{ t:'n', v }`
-- everything else (strings — including UUIDs, slugs, URLs, ISO timestamps, long numeric IDs, and **values starting with `=`, `+`, `-`, `@`**) → `{ t:'s', v: stringValue }`
-- `object/array` → `{ t:'s', v: JSON.stringify(value) }`
+**Reuses**: `CHATGPT_AGENT_FILTER` (single source of truth), existing `addMessage`, existing `fetchDrafts`/`fetchCounts`, existing `Dialog`/`AlertDialog` primitives.
 
-**Critical:** formula-like values (`=SUM(...)`, `+1`, `-2`, `@cmd`) are NOT mutated, NOT prefixed with apostrophe, NOT zero-width-escaped. They are written with explicit `t:'s'` so SheetJS stores them as inline strings (`<is>` element), not formulas (`<f>`). Round-trip is byte-exact. The Export_Metadata sheet documents this so reviewers know cells displaying `=SUM(...)` are literal text from the DB, not Excel formulas.
+**No new files. No new RPC. No edge function.** Pure additive client-side delete under the existing admin RLS policy.
 
-### 5. Workbook structure
-- **Sheet 1 `Drafts`** — header row frozen + bold, col widths capped at 60, one row per draft, all schema columns + split parts + any `__unexpected__*`.
-- **Sheet 2 `Export_Metadata`** — `exported_at`, `exported_by`, `source_table=public.intake_drafts`, `filter_predicate` (from `CHATGPT_AGENT_FILTER.description`), `total_rows_in_db` (via `count:'exact', head:true`), `total_rows_exported`, `rows_match` (TRUE else hard-abort), `total_columns_from_schema`, `total_columns_written`, `unexpected_columns`, `formula_like_values_preserved_as_strings: TRUE`, `split_fields_count`, then a table `row_id | column | original_length | parts | data_type` for every split, then the reconstruction rule + 6-line Python snippet.
+## Files changed
+- `src/components/admin/chatgpt-agent/ChatGptAgentManager.tsx` — add delete dropdown, three confirm dialogs, one shared `executeDelete(ids, label)` helper.
 
-### 6. Files
-- **New** `supabase/migrations/<ts>_get_intake_drafts_columns.sql`
-- **New** `src/components/admin/chatgpt-agent/filter.ts`
-- **New** `src/components/admin/chatgpt-agent/exportDrafts.ts` — paginated `.range()` 1000-row fetch (per project policy) → schema RPC → 3-pass workbook → browser download
-- **Edit** `src/components/admin/chatgpt-agent/ChatGptAgentManager.tsx` — refactor list query to use shared filter; add toolbar button "⬇ Download all drafts as Excel" with progress toast and hard-fail on row-count mismatch
-- **Dep**: ensure `xlsx` (SheetJS) is in `package.json`; add if missing
-
-### 7. Hard-fail contract
-If `count(*)` from DB ≠ rows fetched → abort, no download, real error toast. No silent partial export.
-
-### 8. Verification after build
-1. `total_rows_exported == SELECT count(*) FROM intake_drafts WHERE <filter>` — equality required
-2. `total_columns_written == schema_columns + Σ(maxParts[c]-1) + unexpected_count` — arithmetic check
-3. `unexpected_columns` empty
-4. Spot-check 5 random rows by id: every schema column header present; values byte-equal to DB
-5. Longest `enrichment_source_trace` / raw HTML row → reconstruct from parts, byte-equal to DB
-6. UTF-8 / Devanagari row preserved
-7. URL with query string preserved exactly
-8. Long numeric ID rendered as text (no `1.23E+18`)
-9. Synthetic spot-check: a value `=SUM(A1:A10)` in DB → cell in xlsx displays `=SUM(A1:A10)` as literal text, not evaluated as formula
-10. `published_at`, `null`, `boolean`, `number` types preserved correctly
-
-### Risk
-Low. Read-only export, additive plpgsql RPC with admin gate inside, additive UI button, hard-fail on row-count mismatch. Fully reversible.
+## Verification I will run after implementation
+1. Pre/post counts of `intake_drafts WHERE source_channel='chatgpt_agent'` for each action.
+2. Confirm `intake_pipeline_runs` for deleted ids is auto-cleaned (FK cascade).
+3. Confirm a published draft's `published_record_id` row in the live table still exists with `status='published'` after "delete drafts only".
+4. Confirm no rows outside `source_channel='chatgpt_agent'` were touched (count of other channels unchanged).
+5. Confirm filters/tabs/selection/counters/export/pipeline still work (manual click-through).
+6. Confirm error path: simulate failure (e.g., bad id format) → toast surfaces real error, no silent partial delete claim.

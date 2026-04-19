@@ -53,6 +53,9 @@ import {
 import { ChatGptAgentDraftEditor } from './ChatGptAgentDraftEditor';
 import { ChatGptAgentDuplicateFinder } from './ChatGptAgentDuplicateFinder';
 import { PipelineStepBadges, type PipelineRun } from './PipelineStepBadges';
+import { CHATGPT_AGENT_FILTER } from './filter';
+import { exportChatGptAgentDraftsToExcel } from './exportDrafts';
+import { Download } from 'lucide-react';
 
 const ALL_SECTIONS: SectionBucket[] = [
   'job_postings', 'admit_cards', 'results', 'answer_keys',
@@ -267,10 +270,8 @@ export function ChatGptAgentManager() {
   const fetchDrafts = useCallback(async () => {
     setLoading(true);
     try {
-      let q = (supabase
-        .from('intake_drafts')
-        .select('*') as any)
-        .eq('source_channel', 'chatgpt_agent');
+      let q: any = (supabase.from('intake_drafts') as any).select('*');
+      q = CHATGPT_AGENT_FILTER.apply(q);
       if (activeSection !== ALL_SECTIONS_VALUE) {
         q = q.eq('section_bucket', activeSection);
       }

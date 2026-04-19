@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 
 import { Progress } from '@/components/ui/progress';
 import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 import {
   Upload, Search, Sparkles, Loader2, Copy, ChevronDown,
   Send, AlertTriangle, Link2Off, Link2, RefreshCw, Wand2, StopCircle, Eye, EyeOff, ExternalLink,

@@ -92,11 +92,22 @@ export interface BuildOptions {
   persistFetch?: (patch: Record<string, unknown>) => Promise<void>;
 }
 
+export interface DiscoveryResult {
+  /** Best candidate URL discovered (may also be rejected). */
+  candidateUrl?: string;
+  /** strong | medium | weak | rejected | none */
+  confidence: 'strong' | 'medium' | 'weak' | 'rejected' | 'none';
+  /** none | candidate | validated | promoted | rejected */
+  status: 'none' | 'candidate' | 'validated' | 'promoted' | 'rejected';
+  /** Tokens, fetched title, signals, error reason */
+  evidence: Record<string, unknown>;
+}
+
 export interface EnrichmentEvidenceResult {
   bundle: string;
   /** Counts of meaningful structured fields the AI can immediately fill from. */
   groundedFieldCount: number;
-  /** True when the 4-step gate determined this row genuinely has no enrichable data. */
+  /** True when the staged retrieval (Stages 1–3) found NO trustworthy evidence. */
   noDataDecision: boolean;
   /** Human-readable reason that always travels with the row. */
   reason: string;
@@ -110,6 +121,19 @@ export interface EnrichmentEvidenceResult {
     pdfError?: string;
     htmlError?: string;
     cachedAt?: string;
+  };
+  /** Stage-3 discovery outcome (always returned, even when no candidates). */
+  discovery: DiscoveryResult;
+  /**
+   * Per-source-trace: which sources are externally grounded + reachable.
+   * The pipeline uses this to decide grade/completeness AFTER the AI step.
+   */
+  groundedSources: {
+    rowFields: string[];          // structured row field names with non-empty values
+    structuredJsonFields: string[];
+    officialPdfFetched: boolean;
+    officialHtmlFetched: boolean;
+    discoveryPromoted: boolean;
   };
 }
 

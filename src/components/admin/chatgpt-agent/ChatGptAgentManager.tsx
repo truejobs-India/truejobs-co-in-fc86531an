@@ -1864,6 +1864,90 @@ export function ChatGptAgentManager() {
         sectionLabel={SECTION_BUCKET_LABELS[activeSection]}
         onDeleted={() => { fetchDrafts(); fetchCounts(); }}
       />
+
+      {/* ── Delete confirmation dialog ───────────────────────────────────── */}
+      <AlertDialog
+        open={!!deleteMode}
+        onOpenChange={(open) => { if (!open && !deleting) { setDeleteMode(null); setDeleteConfirmText(''); } }}
+      >
+        <AlertDialogContent>
+          {deleteMode && (() => {
+            const totalCount =
+              deleteMode.kind === 'selected' ? deleteMode.ids.length :
+              deleteMode.kind === 'all_unpublished' ? deleteMode.count :
+              deleteMode.count;
+            const requiresType = totalCount > 50;
+            const hasPublishedRisk =
+              deleteMode.kind === 'all_published' ||
+              (deleteMode.kind === 'selected' && deleteMode.publishedInSelection > 0);
+            const confirmReady = !requiresType || deleteConfirmText === 'DELETE';
+            const titleText =
+              deleteMode.kind === 'selected' ? `Delete ${totalCount} selected draft${totalCount === 1 ? '' : 's'}?` :
+              deleteMode.kind === 'all_unpublished' ? `Delete all ${totalCount} unpublished draft${totalCount === 1 ? '' : 's'}?` :
+              `Delete all ${totalCount} published draft${totalCount === 1 ? '' : 's'}?`;
+            const scopeText =
+              deleteMode.kind === 'selected'
+                ? `Will delete exactly the ${totalCount} selected id${totalCount === 1 ? '' : 's'} from intake_drafts.`
+                : `Will delete ${totalCount} draft${totalCount === 1 ? '' : 's'} across all sections (ignoring current tab/filter).`;
+            return (
+              <>
+                <AlertDialogHeader>
+                  <AlertDialogTitle className="flex items-center gap-2">
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                    {titleText}
+                  </AlertDialogTitle>
+                  <AlertDialogDescription asChild>
+                    <div className="space-y-2 text-sm">
+                      <p>{scopeText}</p>
+                      <p className="text-muted-foreground">
+                        Scope guard: <code>source_channel = 'chatgpt_agent'</code>. No other intake rows can be touched.
+                        Pipeline run history will cascade-clean automatically.
+                      </p>
+                      {hasPublishedRisk && (
+                        <div className="rounded border border-amber-500/40 bg-amber-500/10 p-2 text-foreground">
+                          <div className="font-medium flex items-center gap-1">
+                            <AlertTriangle className="h-3.5 w-3.5" />
+                            {deleteMode.kind === 'selected'
+                              ? `${deleteMode.publishedInSelection} of the selected drafts are published.`
+                              : 'These drafts are currently marked published.'}
+                          </div>
+                          <div className="mt-1 text-xs">
+                            Public live pages will <strong>remain published</strong>. Only the admin draft row is removed.
+                            Use the per-row <em>Unpublish</em> action to take a public page down.
+                          </div>
+                        </div>
+                      )}
+                      {requiresType && (
+                        <div className="space-y-1 pt-1">
+                          <div className="text-xs">Type <code>DELETE</code> to confirm:</div>
+                          <Input
+                            value={deleteConfirmText}
+                            onChange={(e) => setDeleteConfirmText(e.target.value)}
+                            placeholder="DELETE"
+                            autoFocus
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    disabled={!confirmReady || deleting}
+                    onClick={(e) => { e.preventDefault(); executeDelete(); }}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  >
+                    {deleting
+                      ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" />Deleting…</>
+                      : `Confirm delete (${totalCount})`}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </>
+            );
+          })()}
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -173,12 +173,12 @@ export async function callAI(
     const { callGeminiDirect } = await import('./gemini-direct.ts');
     const fullPrompt = `${systemPrompt}\n\n${userPrompt}\n\nReturn valid JSON matching this schema:\n${JSON.stringify(toolDef.parameters, null, 2)}`;
     const text = await callGeminiDirect(geminiDef.geminiModel, fullPrompt, geminiDef.timeoutMs);
-    const m = text.match(/\{[\s\S]*\}/);
-    if (m) return JSON.parse(m[0]);
-    throw new Error('Gemini Direct API did not return valid JSON');
+    const { extractJsonObject } = await import('./intake-evidence.ts');
+    return extractJsonObject(text);
   }
 
   if (BEDROCK_MODELS.has(modelKey)) {
+    const { extractJsonObject } = await import('./intake-evidence.ts');
     const fullPrompt = `${systemPrompt}\n\n${userPrompt}\n\nReturn valid JSON matching this schema:\n${JSON.stringify(toolDef.parameters, null, 2)}`;
     if (modelKey === 'mistral') {
       const { awsSigV4Fetch } = await import('./bedrock-nova.ts');
@@ -192,49 +192,42 @@ export async function callAI(
       if (!resp.ok) throw new Error(`Mistral error ${resp.status}`);
       const data = await resp.json();
       const resultText = data?.output?.message?.content?.[0]?.text || '';
-      const m = resultText.match(/\{[\s\S]*\}/);
-      if (m) return JSON.parse(m[0]);
-      throw new Error('Mistral did not return valid JSON');
+      return extractJsonObject(resultText);
     } else {
       const { callBedrockNova } = await import('./bedrock-nova.ts');
       const text = await callBedrockNova(modelKey, fullPrompt, { maxTokens: 8192, temperature: 0.3 });
-      const m = text.match(/\{[\s\S]*\}/);
-      if (m) return JSON.parse(m[0]);
-      throw new Error('Nova did not return valid JSON');
+      return extractJsonObject(text);
     }
   }
 
   if (AZURE_OPENAI_MODELS.has(modelKey)) {
+    const { extractJsonObject } = await import('./intake-evidence.ts');
     const fullPrompt = `${systemPrompt}\n\n${userPrompt}\n\nReturn valid JSON matching this schema:\n${JSON.stringify(toolDef.parameters, null, 2)}`;
     if (modelKey === 'azure-gpt41-mini') {
       const { callAzureGPT41Mini } = await import('./azure-openai.ts');
       const text = await callAzureGPT41Mini(fullPrompt, { maxTokens: 8192, temperature: 0.3 });
-      const m = text.match(/\{[\s\S]*\}/);
-      if (m) return JSON.parse(m[0]);
-      throw new Error('Azure GPT-4.1 Mini did not return valid JSON');
+      return extractJsonObject(text);
     }
     if (modelKey === 'azure-gpt5-mini') {
       const { callAzureGPT5Mini } = await import('./azure-openai.ts');
       const text = await callAzureGPT5Mini(fullPrompt, { maxTokens: 8192, temperature: 0.3 });
-      const m = text.match(/\{[\s\S]*\}/);
-      if (m) return JSON.parse(m[0]);
-      throw new Error('Azure GPT-5 Mini did not return valid JSON');
+      return extractJsonObject(text);
     }
     const { callAzureOpenAI } = await import('./azure-openai.ts');
     const text = await callAzureOpenAI(fullPrompt, { maxTokens: 8192, temperature: 0.3 });
-    const m = text.match(/\{[\s\S]*\}/);
-    if (m) return JSON.parse(m[0]);
-    throw new Error('Azure OpenAI did not return valid JSON');
+    return extractJsonObject(text);
   }
 
   if (AZURE_DEEPSEEK_MODELS.has(modelKey)) {
+    const { extractJsonObject } = await import('./intake-evidence.ts');
     const fullPrompt = `${systemPrompt}\n\n${userPrompt}\n\nReturn valid JSON matching this schema:\n${JSON.stringify(toolDef.parameters, null, 2)}`;
     const { callAzureDeepSeek } = await import('./azure-deepseek.ts');
-    const dsModel = modelKey === 'azure-deepseek-r1' ? 'DeepSeek-R1' as const : 'DeepSeek-V3.1' as const;
-    const text = await callAzureDeepSeek(fullPrompt, { model: dsModel, maxTokens: 8192, temperature: 0.3 });
-    const m = text.match(/\{[\s\S]*\}/);
-    if (m) return JSON.parse(m[0]);
-    throw new Error('Azure DeepSeek did not return valid JSON');
+    const isR1 = modelKey === 'azure-deepseek-r1';
+    const dsModel = isR1 ? 'DeepSeek-R1' as const : 'DeepSeek-V3.1' as const;
+    // R1 reasoning needs longer; V3.1 keeps the previous limit.
+    const dsTimeout = isR1 ? 180_000 : 90_000;
+    const text = await callAzureDeepSeek(fullPrompt, { model: dsModel, maxTokens: 8192, temperature: 0.3, timeoutMs: dsTimeout });
+    return extractJsonObject(text);
   }
 
   const gatewayModelId = GATEWAY_MODEL_MAP[modelKey] || DEFAULT_MODEL;

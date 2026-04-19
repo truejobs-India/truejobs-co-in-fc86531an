@@ -260,12 +260,15 @@ export async function callAI(
   if (!data) throw new Error('AI returned no data');
 
   const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
-  if (toolCall?.function?.arguments) return JSON.parse(toolCall.function.arguments);
+  if (toolCall?.function?.arguments) {
+    const { extractJsonObject } = await import('./intake-evidence.ts');
+    try { return extractJsonObject(toolCall.function.arguments); }
+    catch { return JSON.parse(toolCall.function.arguments); }
+  }
 
   const content = data.choices?.[0]?.message?.content || '';
-  const m = content.match(/\{[\s\S]*\}/);
-  if (m) return JSON.parse(m[0]);
-  throw new Error('AI did not return structured output');
+  const { extractJsonObject } = await import('./intake-evidence.ts');
+  return extractJsonObject(content);
 }
 
 // ─── Schemas & Prompts (verbatim) ───────────────────────────────────────────

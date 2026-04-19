@@ -22,6 +22,7 @@ import {
   hasSubstantialEvidence, decideNextStep, shouldOverwrite,
   PIPELINE_STEPS, type PipelineStep,
 } from '../_shared/intake-ai.ts';
+import { buildEnrichmentEvidence } from '../_shared/intake-evidence.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',

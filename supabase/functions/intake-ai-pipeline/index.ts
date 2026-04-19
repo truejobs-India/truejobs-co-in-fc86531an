@@ -541,6 +541,22 @@ Deno.serve(async (req) => {
     // running rows can never get stuck).
     update.pipeline_lock_token = null;
 
+    // ── PRE-COMMIT ASSERTION: prevent NULL-result completed rows by construction ──
+    // If the enrich step is the one we ran, enrichment_result MUST be one of the
+    // three terminal states. If it's somehow missing, mark as tech_error so the
+    // runner retries instead of silently writing a NULL-result completed row.
+    if (chosenStep === 'enrich' && update.pipeline_status === 'completed') {
+      const allowed = new Set(['enriched', 'not_enriched_no_grounded_evidence', 'not_enriched_tech_error']);
+      const finalResult = (update.enrichment_result ?? draft.enrichment_result) as string | null | undefined;
+      if (!finalResult || !allowed.has(finalResult)) {
+        console.error('[pipeline] terminal-write contract violated for', draftId, 'result=', finalResult);
+        update.pipeline_status = 'failed';
+        update.pipeline_last_error = `enrich: terminal contract violated (result=${finalResult ?? 'null'})`;
+        update.enrichment_result = 'not_enriched_tech_error';
+        update.enrichment_reason = `terminal_contract_violated: result was ${finalResult ?? 'null'}`;
+      }
+    }
+
     const { error: writeErr } = await (client as any).from('intake_drafts').update(update).eq('id', draftId);
     if (writeErr) {
       console.error('[pipeline] write error:', writeErr);

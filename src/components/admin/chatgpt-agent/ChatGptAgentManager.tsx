@@ -120,6 +120,7 @@ export function ChatGptAgentManager() {
     }
     if (!latest['validate'] || latest['validate'].status !== 'ok') return false;
     return !Object.values(latest).some(r => r.status === 'error');
+  }, []);
 
   // Cross-section unfixed scan state
   const [scanning, setScanning] = useState(false);

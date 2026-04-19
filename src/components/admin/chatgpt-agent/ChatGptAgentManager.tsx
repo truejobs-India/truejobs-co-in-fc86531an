@@ -109,18 +109,46 @@ export function ChatGptAgentManager() {
   const stopRequestedRef = useRef(false);
   const [stopping, setStopping] = useState(false);
 
-  // A draft is "AI Fixed" when latest validate run is ok and no step has latest status 'error'.
-  const isAiFixed = useCallback((runs?: PipelineRun[]): boolean => {
-    if (!runs || runs.length === 0) return false;
+  // ── Three-state terminal model (single source of truth) ──
+  // Reads `enrichment_result` directly from the draft row. Falls back to runs-based
+  // inference only when the new column hasn't been written yet (legacy rows).
+  type TerminalState = 'enriched' | 'no_grounded_evidence' | 'tech_error' | 'pending';
+  const terminalStateOf = useCallback((d: any, runs?: PipelineRun[]): TerminalState => {
+    const er = d?.enrichment_result;
+    if (er === 'enriched') return 'enriched';
+    if (er === 'not_enriched_no_grounded_evidence') return 'no_grounded_evidence';
+    if (er === 'not_enriched_tech_error') return 'tech_error';
+    // Legacy fallback: derive from pipeline runs only if new column missing
+    if (!runs || runs.length === 0) return 'pending';
     const latest: Record<string, PipelineRun> = {};
     for (const r of runs) {
       if (!latest[r.step] || new Date(r.created_at) > new Date(latest[r.step].created_at)) {
         latest[r.step] = r;
       }
     }
-    if (!latest['validate'] || latest['validate'].status !== 'ok') return false;
-    return !Object.values(latest).some(r => r.status === 'error');
+    const enrichLatest = latest['enrich'];
+    if (enrichLatest?.status === 'error') return 'tech_error';
+    if (latest['validate']?.status === 'ok' && !Object.values(latest).some(r => r.status === 'error')) {
+      return 'enriched';
+    }
+    return 'pending';
   }, []);
+
+  // A draft is considered "fixed" when its terminal state is enriched OR honest no-evidence.
+  // Tech errors and pending rows are unfixed (retryable).
+  const isAiFixed = useCallback((runsOrDraft?: PipelineRun[] | any, maybeRuns?: PipelineRun[]): boolean => {
+    // Backward-compatible signature: isAiFixed(runs) OR isAiFixed(draft, runs)
+    let draft: any = null;
+    let runs: PipelineRun[] | undefined;
+    if (Array.isArray(runsOrDraft)) {
+      runs = runsOrDraft;
+    } else {
+      draft = runsOrDraft;
+      runs = maybeRuns;
+    }
+    const state = terminalStateOf(draft, runs);
+    return state === 'enriched' || state === 'no_grounded_evidence';
+  }, [terminalStateOf]);
 
   // Cross-section unfixed scan state
   const [scanning, setScanning] = useState(false);
@@ -134,19 +162,19 @@ export function ChatGptAgentManager() {
     matchedIds: string[];
     bySection: Record<string, number>;
   }> => {
-    // 1) Paginate all chatgpt_agent drafts (id + section_bucket only)
+    // 1) Paginate all chatgpt_agent drafts (id + section_bucket + enrichment_result)
     const PAGE = 1000;
-    const allDrafts: { id: string; section_bucket: string | null }[] = [];
+    const allDrafts: { id: string; section_bucket: string | null; enrichment_result: string | null }[] = [];
     let from = 0;
     while (true) {
       const { data, error } = await (supabase
         .from('intake_drafts')
-        .select('id, section_bucket') as any)
+        .select('id, section_bucket, enrichment_result') as any)
         .eq('source_channel', 'chatgpt_agent')
         .order('id', { ascending: true })
         .range(from, from + PAGE - 1);
       if (error) throw error;
-      const rows = (data || []) as { id: string; section_bucket: string | null }[];
+      const rows = (data || []) as { id: string; section_bucket: string | null; enrichment_result: string | null }[];
       allDrafts.push(...rows);
       if (rows.length < PAGE) break;
       from += PAGE;
@@ -154,43 +182,56 @@ export function ChatGptAgentManager() {
 
     if (allDrafts.length === 0) return { matchedIds: [], bySection: {} };
 
-    // 2) Fetch pipeline runs for those ids in chunks of 500, paginated
-    const runsMap = new Map<string, PipelineRun[]>();
-    const ids = allDrafts.map(d => d.id);
-    const CHUNK = 500;
-    for (let i = 0; i < ids.length; i += CHUNK) {
-      const chunk = ids.slice(i, i + CHUNK);
-      let rFrom = 0;
-      while (true) {
-        const { data, error } = await (supabase as any)
-          .from('intake_pipeline_runs')
-          .select('draft_id, step, status, reason, created_at')
-          .in('draft_id', chunk)
-          .order('created_at', { ascending: false })
-          .range(rFrom, rFrom + PAGE - 1);
-        if (error) throw error;
-        const rows = (data || []) as any[];
-        for (const r of rows) {
-          const arr = runsMap.get(r.draft_id) || [];
-          arr.push({ step: r.step, status: r.status, reason: r.reason, created_at: r.created_at });
-          runsMap.set(r.draft_id, arr);
+    // 2) Partition by enrichment_result FIRST (authoritative).
+    // - 'enriched' or 'not_enriched_no_grounded_evidence' → fixed (excluded)
+    // - 'not_enriched_tech_error' → unfixed (included)
+    // - NULL → legacy row, fall back to runs-based predicate
+    const matchedIds: string[] = [];
+    const bySection: Record<string, number> = {};
+    const addUnfixed = (d: { id: string; section_bucket: string | null }) => {
+      matchedIds.push(d.id);
+      const key = d.section_bucket || 'unknown';
+      bySection[key] = (bySection[key] || 0) + 1;
+    };
+
+    const legacyDrafts = allDrafts.filter(d => d.enrichment_result == null);
+    for (const d of allDrafts) {
+      if (d.enrichment_result === 'not_enriched_tech_error') addUnfixed(d);
+      // 'enriched' & 'not_enriched_no_grounded_evidence' are skipped (terminal/fixed)
+    }
+
+    // 3) For legacy NULL rows only, fetch runs and apply old predicate
+    if (legacyDrafts.length > 0) {
+      const runsMap = new Map<string, PipelineRun[]>();
+      const ids = legacyDrafts.map(d => d.id);
+      const CHUNK = 500;
+      for (let i = 0; i < ids.length; i += CHUNK) {
+        const chunk = ids.slice(i, i + CHUNK);
+        let rFrom = 0;
+        while (true) {
+          const { data, error } = await (supabase as any)
+            .from('intake_pipeline_runs')
+            .select('draft_id, step, status, reason, created_at')
+            .in('draft_id', chunk)
+            .order('created_at', { ascending: false })
+            .range(rFrom, rFrom + PAGE - 1);
+          if (error) throw error;
+          const rows = (data || []) as any[];
+          for (const r of rows) {
+            const arr = runsMap.get(r.draft_id) || [];
+            arr.push({ step: r.step, status: r.status, reason: r.reason, created_at: r.created_at });
+            runsMap.set(r.draft_id, arr);
+          }
+          if (rows.length < PAGE) break;
+          rFrom += PAGE;
         }
-        if (rows.length < PAGE) break;
-        rFrom += PAGE;
+      }
+      for (const d of legacyDrafts) {
+        const runs = runsMap.get(d.id);
+        if (!isAiFixed(d, runs)) addUnfixed(d);
       }
     }
 
-    // 3) Apply existing predicate (verbatim)
-    const matchedIds: string[] = [];
-    const bySection: Record<string, number> = {};
-    for (const d of allDrafts) {
-      const runs = runsMap.get(d.id);
-      if (!isAiFixed(runs)) {
-        matchedIds.push(d.id);
-        const key = d.section_bucket || 'unknown';
-        bySection[key] = (bySection[key] || 0) + 1;
-      }
-    }
     return { matchedIds, bySection };
   }, [isAiFixed]);
 
@@ -336,6 +377,19 @@ export function ChatGptAgentManager() {
   ]);
 
   const publishedCount = useMemo(() => drafts.filter(d => d.processing_status === 'published').length, [drafts]);
+
+  // Three-state terminal counters across the currently loaded drafts in the active section
+  const terminalCounts = useMemo(() => {
+    let enriched = 0, noEvidence = 0, techError = 0, pending = 0;
+    for (const d of drafts) {
+      const er = d?.enrichment_result;
+      if (er === 'enriched') enriched++;
+      else if (er === 'not_enriched_no_grounded_evidence') noEvidence++;
+      else if (er === 'not_enriched_tech_error') techError++;
+      else pending++;
+    }
+    return { enriched, noEvidence, techError, pending, total: drafts.length };
+  }, [drafts]);
 
   const totalPages = Math.max(1, Math.ceil(filteredDrafts.length / PAGE_SIZE));
   const paginatedDrafts = useMemo(
@@ -753,25 +807,53 @@ export function ChatGptAgentManager() {
         await fetchRunsForDrafts([draftId]);
       }
 
-      // Final summary
+      // Final summary — read REAL terminal state per row from DB,
+      // not just "edge function returned no error".
       const total = ids.length;
-      const okCount = succeeded.length;
-      const failCount = failed.length;
-      const skipCount = skipped.length;
+      let trueEnriched = 0;
+      let trueNoEvidence = 0;
+      let trueTechError = 0;
+      let truePending = 0;
+      try {
+        const { data: finalRows } = await (supabase
+          .from('intake_drafts')
+          .select('id, enrichment_result, enrichment_reason') as any)
+          .in('id', ids);
+        const byId = new Map<string, any>((finalRows || []).map((r: any) => [r.id, r]));
+        for (const id of ids) {
+          const er = byId.get(id)?.enrichment_result;
+          if (er === 'enriched') trueEnriched++;
+          else if (er === 'not_enriched_no_grounded_evidence') trueNoEvidence++;
+          else if (er === 'not_enriched_tech_error') trueTechError++;
+          else truePending++;
+        }
+      } catch {
+        // If the read fails, fall back to optimistic counts so the toast still appears
+        trueEnriched = succeeded.length;
+        trueTechError = failed.length;
+        truePending = skipped.length;
+      }
       const fmtList = (items: string[], max = 8) =>
         items.slice(0, max).map(s => `• ${s}`).join('\n') +
         (items.length > max ? `\n… and ${items.length - max} more` : '');
       const failLines = failed.map(f => `• ${f.title}: ${f.step} — ${f.error}`);
       const skipLines = skipped.map(s => `• ${s.title}`);
       const descParts: string[] = [];
-      if (failLines.length) descParts.push(`Failed:\n${fmtList(failLines)}`);
-      if (skipLines.length) descParts.push(`Skipped:\n${fmtList(skipLines)}`);
-      if (!descParts.length) descParts.push(`All ${okCount} draft(s) processed successfully.`);
-      const type = failCount > 0 ? 'error' : (stoppedEarly ? 'warning' : 'success');
+      descParts.push(
+        `Terminal state breakdown (of ${total}):\n` +
+        `  ✅ ${trueEnriched} enriched (grounded evidence written)\n` +
+        `  ⚪ ${trueNoEvidence} no grounded evidence (terminal — not retried)\n` +
+        `  ❌ ${trueTechError} tech error (retryable)\n` +
+        `  ⏳ ${truePending} pending / not yet finalized`
+      );
+      if (failLines.length) descParts.push(`Edge function errors:\n${fmtList(failLines)}`);
+      if (skipLines.length) descParts.push(`Skipped (stopped early):\n${fmtList(skipLines)}`);
+      const hasIssues = trueTechError > 0 || truePending > 0 || failed.length > 0;
+      const type = hasIssues ? (stoppedEarly ? 'warning' : 'error') : 'success';
       const titleIcon = stoppedEarly ? '⏹ Pipeline stopped' : 'Pipeline finished';
       addMessage(
         type,
-        `${titleIcon} — ✅ ${okCount} succeeded · ❌ ${failCount} failed · ⏭ ${skipCount} skipped (of ${total})`,
+        `${titleIcon} — ✅ ${trueEnriched} enriched · ⚪ ${trueNoEvidence} no-evidence · ❌ ${trueTechError} tech-error · ⏳ ${truePending} pending (of ${total})`,
         descParts.join('\n\n'),
       );
     } catch (err: any) {
@@ -962,19 +1044,37 @@ export function ChatGptAgentManager() {
               ))}
             </TabsList>
 
-            {/* Scope clarity (All Sections only) */}
-            {activeSection === ALL_SECTIONS_VALUE && (
-              <div className="mb-3 px-3 py-2 rounded-md border bg-muted/40 text-xs">
-                <div className="text-foreground font-medium">
-                  Viewing all ChatGPT Agent drafts: {Object.values(sectionCounts).reduce((a, b) => a + (b || 0), 0)} total
-                </div>
-                {filteredDrafts.length !== drafts.length && (
-                  <div className="text-muted-foreground mt-0.5">
-                    {filteredDrafts.length} visible after filters
+            {/* Scope clarity + three-state terminal counters */}
+            <div className="mb-3 px-3 py-2 rounded-md border bg-muted/40 text-xs space-y-1.5">
+              {activeSection === ALL_SECTIONS_VALUE && (
+                <>
+                  <div className="text-foreground font-medium">
+                    Viewing all ChatGPT Agent drafts: {Object.values(sectionCounts).reduce((a, b) => a + (b || 0), 0)} total
                   </div>
-                )}
+                  {filteredDrafts.length !== drafts.length && (
+                    <div className="text-muted-foreground">
+                      {filteredDrafts.length} visible after filters
+                    </div>
+                  )}
+                </>
+              )}
+              <div className="flex flex-wrap gap-1.5 items-center">
+                <span className="text-muted-foreground">Enrichment outcome (loaded {terminalCounts.total}):</span>
+                <Badge variant="outline" className="text-[10px] gap-1 border-green-500 text-green-700 bg-green-50 dark:bg-green-950/30 dark:text-green-400" title="Row has at least one externally-grounded verified fact written">
+                  ✅ {terminalCounts.enriched} enriched
+                </Badge>
+                <Badge variant="outline" className="text-[10px] gap-1 border-muted-foreground/40 text-muted-foreground bg-muted/30" title="Full Stages 1–3 attempted, no trustworthy evidence found — terminal, not retried">
+                  ⚪ {terminalCounts.noEvidence} no grounded evidence
+                </Badge>
+                <Badge variant="outline" className="text-[10px] gap-1 border-destructive text-destructive bg-destructive/10" title="Technical failure — retryable via Run All Needed Fixes">
+                  ❌ {terminalCounts.techError} tech error
+                </Badge>
+                <Badge variant="outline" className="text-[10px] gap-1" title="Pipeline not yet finalized for these rows">
+                  ⏳ {terminalCounts.pending} pending
+                </Badge>
               </div>
-            )}
+            </div>
+
 
             {/* Search box (production fields) */}
             <div className="mb-3">
@@ -1167,12 +1267,36 @@ export function ChatGptAgentManager() {
                                 <TableCell>
                                   <div className="flex items-start gap-1.5 flex-wrap">
                                     <span className="text-sm font-medium line-clamp-2">{d.publish_title || d.normalized_title || d.raw_title}</span>
-                                    {isAiFixed(draftRuns[d.id]) && (
-                                      <Badge variant="outline" className="text-[10px] gap-1 border-green-500 text-green-700 bg-green-50 dark:bg-green-950/30 dark:text-green-400 shrink-0">
-                                        <Sparkles className="h-2.5 w-2.5" />
-                                        AI Fixed
-                                      </Badge>
-                                    )}
+                                    {(() => {
+                                      const state = terminalStateOf(d, draftRuns[d.id]);
+                                      if (state === 'enriched') {
+                                        const grade = d?.enrichment_grade as string | undefined;
+                                        const completeness = d?.enrichment_completeness as number | undefined;
+                                        return (
+                                          <>
+                                            <Badge variant="outline" className="text-[10px] gap-1 border-green-500 text-green-700 bg-green-50 dark:bg-green-950/30 dark:text-green-400 shrink-0" title={d?.enrichment_reason || 'Externally-grounded facts written'}>
+                                              <Sparkles className="h-2.5 w-2.5" />
+                                              Enriched{grade ? ` · ${grade}` : ''}{typeof completeness === 'number' ? ` · ${completeness}%` : ''}
+                                            </Badge>
+                                          </>
+                                        );
+                                      }
+                                      if (state === 'no_grounded_evidence') {
+                                        return (
+                                          <Badge variant="outline" className="text-[10px] gap-1 border-muted-foreground/40 text-muted-foreground bg-muted/30 shrink-0" title={d?.enrichment_reason || 'No trustworthy evidence found after Stages 1–3 — terminal'}>
+                                            ⚪ No grounded evidence
+                                          </Badge>
+                                        );
+                                      }
+                                      if (state === 'tech_error') {
+                                        return (
+                                          <Badge variant="outline" className="text-[10px] gap-1 border-destructive text-destructive bg-destructive/10 shrink-0" title={d?.enrichment_reason || 'Technical failure — retryable'}>
+                                            ❌ Tech error · retryable
+                                          </Badge>
+                                        );
+                                      }
+                                      return null;
+                                    })()}
                                     {processingChunkIds.has(d.id) && (
                                       <Badge variant="outline" className="text-[10px] gap-1 border-blue-500 text-blue-600 shrink-0">
                                         <Loader2 className="h-2.5 w-2.5 animate-spin" />

@@ -613,36 +613,29 @@ export function ChatGptAgentManager() {
           const { data: { session: freshSession } } = await supabase.auth.getSession();
           // Retry-once safety net for transient transport errors (cold-start / network blip).
           // Only retries on "Failed to send a request" / "Failed to fetch" — never on in-function errors.
-          let res: Awaited<ReturnType<typeof supabase.functions.invoke>> | null = null;
+          let res = await supabase.functions.invoke('intake-ai-pipeline', {
+            body: { draft_id: draftId, aiModel, step: 'auto' },
+            headers: { Authorization: `Bearer ${freshSession?.access_token}` },
+          });
           let transportRetry = false;
-          for (let attempt = 0; attempt < 2; attempt++) {
-            res = await supabase.functions.invoke('intake-ai-pipeline', {
-              body: { draft_id: draftId, aiModel, step: 'auto' },
-              headers: { Authorization: `Bearer ${freshSession?.access_token}` },
-            });
+          {
             const errMsg = res.error?.message || '';
             const isTransport = !!res.error && /failed to (send a request|fetch)|networkerror|load failed/i.test(errMsg);
-            if (!isTransport) break;
-            if (attempt === 0) {
+            if (isTransport) {
               transportRetry = true;
               await new Promise(r => setTimeout(r, 2000));
-              continue;
+              res = await supabase.functions.invoke('intake-ai-pipeline', {
+                body: { draft_id: draftId, aiModel, step: 'auto' },
+                headers: { Authorization: `Bearer ${freshSession?.access_token}` },
+              });
             }
           }
-          if (res!.error) {
-            const errMsg = res!.error.message || String(res!.error);
+          if (res.error) {
+            const errMsg = res.error.message || String(res.error);
             const label = transportRetry ? `${errMsg} (transport error, retry failed)` : errMsg;
             failed.push({ id: draftId, title: titleOf(draftId), step: lastStep || '?', error: label });
             draftFailed = true;
             break;
-          }
-          const res2 = res!;
-          // re-bind so subsequent code continues to use `res`
-          // (kept as `res` below for minimal diff)
-          // @ts-ignore
-          ;(res as any) = res2;
-          if (false) {
-            // placeholder — original error branch already handled above
           }
           if (res.data?.error) {
             failed.push({ id: draftId, title: titleOf(draftId), step: res.data.ran_step || lastStep || '?', error: res.data.error });

@@ -346,24 +346,39 @@ Deno.serve(async (req) => {
       }
 
       else if (chosenStep === 'enrich') {
+        // ── Three-state terminal contract for the enrich step ──
+        // Every exit path MUST set enrichment_result to one of:
+        //   'enriched' | 'not_enriched_no_grounded_evidence' | 'not_enriched_tech_error'
+        // plus enrichment_reason. Grade/completeness/source-trace live in
+        // additive columns and never affect the top-level enum.
         const empty = getEmptyImportantFields(draft);
         if (empty.length === 0) {
+          // No empty important fields → row is already complete by definition.
+          // This counts as enriched (richest possible) since every important
+          // field is already populated from prior runs / direct upload.
           stepStatus = 'skipped';
           stepReason = 'no empty important fields';
+          update.enrichment_result = 'enriched';
+          update.enrichment_grade = 'full';
+          update.enrichment_completeness = 100;
           update.enrichment_reason = 'all important fields already populated';
         } else {
-          // Build the priority-tiered evidence bundle. Allow Firecrawl official
-          // refresh (PDF + HTML) when the row is thin or critical fields missing.
-          // Persist any fetched content back to the draft row so subsequent
-          // runs reuse the cache.
-          const evidenceResult = await buildEnrichmentEvidence(draft, {
-            allowOfficialFetch: true,
-            persistFetch: async (patch) => {
-              try { await (client as any).from('intake_drafts').update(patch).eq('id', draftId); }
-              catch (e) { console.error('[pipeline] persistFetch error:', e); }
-            },
-          });
-          // Always pass deterministic hints first (cheap, never wrong).
+          // Build evidence (Stages 1–3) with Firecrawl official refresh + discovery.
+          let evidenceResult: Awaited<ReturnType<typeof buildEnrichmentEvidence>>;
+          try {
+            evidenceResult = await buildEnrichmentEvidence(draft, {
+              allowOfficialFetch: true,
+              persistFetch: async (patch) => {
+                try { await (client as any).from('intake_drafts').update(patch).eq('id', draftId); }
+                catch (e) { console.error('[pipeline] persistFetch error:', e); }
+              },
+            });
+          } catch (eb) {
+            // Evidence builder itself failed (Firecrawl/Network). Treat as tech error.
+            throw eb;
+          }
+
+          // Apply deterministic hints first (cheap, never wrong).
           const pre = deterministicExtract(draft);
           for (const [k, v] of Object.entries(pre)) {
             if (v && empty.includes(k) && shouldOverwrite(k, (draft as any)[k], v)) {
@@ -371,6 +386,8 @@ Deno.serve(async (req) => {
             }
           }
           const stillEmpty = empty.filter(f => !update[f]);
+
+          // Only call AI if Stage gates produced grounded evidence to lean on.
           if (stillEmpty.length > 0 && !evidenceResult.noDataDecision) {
             const fillTool = buildFillEmptyToolSchema(stillEmpty);
             const fillPrompt = `Fill ONLY the listed empty fields using ONLY the grounded evidence below.\n` +
@@ -384,16 +401,70 @@ Deno.serve(async (req) => {
               }
             }
           }
-          if (fieldsUpdated.length > 0) {
+
+          // ── Grade + completeness decision (only when at least one field was written) ──
+          const gs = evidenceResult.groundedSources;
+          const hasExternalGroundedFact =
+            gs.officialPdfFetched ||
+            gs.officialHtmlFetched ||
+            gs.discoveryPromoted ||
+            // Tier-1 row/structured fields count as externally grounded ONLY if
+            // they were already verified by source (verification_status verified
+            // or source_verified_on present). Otherwise they are weak hints only.
+            ((String(draft.verification_status || '').toLowerCase().includes('verified') ||
+              !!draft.source_verified_on || !!draft.source_verified_on_date) &&
+              gs.rowFields.length + gs.structuredJsonFields.length >= 1);
+
+          // Strict rule: title normalization / guessed org alone NEVER counts.
+          // We require either a Stage-2 fetched body or a verified row.
+          const wroteFields = fieldsUpdated.length > 0;
+
+          if (wroteFields && hasExternalGroundedFact) {
+            // Pick a grade.
+            let grade: string;
+            if (gs.officialPdfFetched) grade = 'official_pdf';
+            else if (gs.officialHtmlFetched) grade = 'official_refresh';
+            else if (gs.discoveryPromoted) grade = 'partial_verified';
+            else grade = fieldsUpdated.length >= 4 ? 'full' : (fieldsUpdated.length >= 2 ? 'partial_verified' : 'minimal_verified');
+            const totalImportant = empty.length;
+            const completeness = Math.min(100, Math.round((fieldsUpdated.length / Math.max(1, totalImportant)) * 100));
             update.enrichment_result = 'enriched';
-            update.enrichment_reason = `enriched: ${evidenceResult.reason}; wrote ${fieldsUpdated.length} fields`;
-          } else if (evidenceResult.noDataDecision) {
-            update.enrichment_result = 'not_enriched_no_data';
-            update.enrichment_reason = evidenceResult.reason;
+            update.enrichment_grade = grade;
+            update.enrichment_completeness = completeness;
+            update.enrichment_reason = `enriched(${grade}): ${evidenceResult.reason}; wrote ${fieldsUpdated.length}/${totalImportant} fields`;
+            update.enrichment_source_trace = {
+              wrote_fields: fieldsUpdated,
+              row_fields_grounded: gs.rowFields,
+              structured_json_grounded_keys: gs.structuredJsonFields.slice(0, 30),
+              official_pdf_fetched: gs.officialPdfFetched,
+              official_html_fetched: gs.officialHtmlFetched,
+              official_fetch_url: draft.official_fetch_url || null,
+              official_fetch_at: draft.official_fetch_at || null,
+              discovery: evidenceResult.discovery,
+              evidence_reason: evidenceResult.reason,
+            };
           } else {
-            // Evidence existed but AI returned nothing fillable.
-            update.enrichment_result = 'not_enriched_no_data';
-            update.enrichment_reason = `ai_returned_no_fields_despite_evidence: ${evidenceResult.reason}`;
+            // No externally-grounded fact + nothing reliable to write → honest no-evidence.
+            // (This is NOT a tech error — Stage 1–3 ran successfully and just
+            //  found nothing trustworthy to lean on.)
+            update.enrichment_result = 'not_enriched_no_grounded_evidence';
+            update.enrichment_grade = null;
+            update.enrichment_completeness = 0;
+            update.enrichment_reason = wroteFields
+              ? `no_grounded_evidence: AI returned values but none from a verified external source. ${evidenceResult.reason}`
+              : `no_grounded_evidence: ${evidenceResult.reason}`;
+            update.enrichment_source_trace = {
+              wrote_fields: fieldsUpdated,
+              official_pdf_fetched: gs.officialPdfFetched,
+              official_html_fetched: gs.officialHtmlFetched,
+              discovery: evidenceResult.discovery,
+              evidence_reason: evidenceResult.reason,
+            };
+            // If AI proposed values without grounding, do NOT persist those weak writes.
+            if (wroteFields) {
+              for (const f of fieldsUpdated) delete update[f];
+              fieldsUpdated.length = 0;
+            }
           }
         }
       }
@@ -469,6 +540,22 @@ Deno.serve(async (req) => {
     // Apply update + release lock in one go (lock is always cleared so orphan
     // running rows can never get stuck).
     update.pipeline_lock_token = null;
+
+    // ── PRE-COMMIT ASSERTION: prevent NULL-result completed rows by construction ──
+    // If the enrich step is the one we ran, enrichment_result MUST be one of the
+    // three terminal states. If it's somehow missing, mark as tech_error so the
+    // runner retries instead of silently writing a NULL-result completed row.
+    if (chosenStep === 'enrich' && update.pipeline_status === 'completed') {
+      const allowed = new Set(['enriched', 'not_enriched_no_grounded_evidence', 'not_enriched_tech_error']);
+      const finalResult = (update.enrichment_result ?? draft.enrichment_result) as string | null | undefined;
+      if (!finalResult || !allowed.has(finalResult)) {
+        console.error('[pipeline] terminal-write contract violated for', draftId, 'result=', finalResult);
+        update.pipeline_status = 'failed';
+        update.pipeline_last_error = `enrich: terminal contract violated (result=${finalResult ?? 'null'})`;
+        update.enrichment_result = 'not_enriched_tech_error';
+        update.enrichment_reason = `terminal_contract_violated: result was ${finalResult ?? 'null'}`;
+      }
+    }
 
     const { error: writeErr } = await (client as any).from('intake_drafts').update(update).eq('id', draftId);
     if (writeErr) {

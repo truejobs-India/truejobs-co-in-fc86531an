@@ -525,33 +525,222 @@ async function performOfficialFetch(
   return audit;
 }
 
+// ── Stage-3 discovery helpers ──────────────────────────────────────────
+const STOPWORDS = new Set([
+  'the', 'and', 'for', 'with', 'from', 'into', 'over', 'this', 'that',
+  'recruitment', 'notification', 'online', 'form', 'apply', 'admit',
+  'card', 'result', 'answer', 'key', 'exam', 'date', 'last', 'post',
+  'posts', 'vacancy', 'vacancies', 'a', 'an', 'of', 'in', 'to', 'on',
+]);
+
+function tokenize(s: string | null | undefined): Set<string> {
+  if (!s) return new Set();
+  return new Set(
+    String(s).toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .split(/\s+/)
+      .filter(t => t.length >= 3 && !STOPWORDS.has(t))
+  );
+}
+
+function hostMatchesTrustedTld(host: string): boolean {
+  return TRUSTED_TLDS.some(t => host.endsWith(t));
+}
+
+function hostHasInstitutionHint(host: string): boolean {
+  return INSTITUTION_HOST_HINTS.some(h => host.includes(h));
+}
+
+function isAggregatorHost(host: string): boolean {
+  return AGGREGATOR_DOMAINS.some(d => host === d || host.endsWith('.' + d));
+}
+
 /**
- * Build the full enrichment evidence bundle with the 4-step gate baked in.
- * Returns the bundle plus a no-data decision derived AFTER all fetch attempts.
+ * Validate a discovered URL: domain check + content relevance check.
+ * Returns confidence: strong / medium / weak / rejected.
+ */
+function validateDiscoveryCandidate(
+  url: string,
+  fetchedTitle: string,
+  fetchedText: string,
+  rowTokens: Set<string>,
+): { confidence: DiscoveryResult['confidence']; reasons: string[]; matchedTokens: string[] } {
+  const reasons: string[] = [];
+  let host = '';
+  try { host = new URL(url).hostname.toLowerCase().replace(/^www\./, ''); }
+  catch { return { confidence: 'rejected', reasons: ['invalid url'], matchedTokens: [] }; }
+
+  if (isAggregatorHost(host)) return { confidence: 'rejected', reasons: ['aggregator domain'], matchedTokens: [] };
+
+  const tldOk = hostMatchesTrustedTld(host);
+  const hintOk = hostHasInstitutionHint(host);
+  if (!tldOk && !hintOk) {
+    return { confidence: 'rejected', reasons: ['untrusted domain (no tld + no institution hint)'], matchedTokens: [] };
+  }
+
+  // Content relevance: token overlap of fetched title + first 4KB body vs row tokens
+  const contentTokens = new Set([...tokenize(fetchedTitle), ...tokenize(fetchedText.slice(0, 4000))]);
+  const matched = [...rowTokens].filter(t => contentTokens.has(t));
+  if (rowTokens.size === 0) {
+    reasons.push('no row tokens to match');
+    return { confidence: 'weak', reasons, matchedTokens: matched };
+  }
+
+  const overlapRatio = matched.length / Math.max(1, rowTokens.size);
+  if (matched.length >= 4 && tldOk) { reasons.push(`token_overlap=${matched.length}`, 'tld_trusted'); return { confidence: 'strong', reasons, matchedTokens: matched }; }
+  if (matched.length >= 3) { reasons.push(`token_overlap=${matched.length}`); return { confidence: 'medium', reasons, matchedTokens: matched }; }
+  if (overlapRatio >= 0.25) { reasons.push(`overlap_ratio=${overlapRatio.toFixed(2)}`); return { confidence: 'weak', reasons, matchedTokens: matched }; }
+  return { confidence: 'rejected', reasons: [`weak content overlap (${matched.length} matched)`], matchedTokens: matched };
+}
+
+/**
+ * Stage-3 discovery: only fires when no primary URL exists AND the row has
+ * a meaningful title/org. Uses existing source_url / primary_cta_url as a
+ * candidate (already-known URL the system hasn't promoted as official),
+ * fetches it, and validates by domain + content overlap.
+ *
+ * NEVER auto-promotes to official_notification_link unless validation = strong
+ * AND content matches title/org tokens. The pipeline performs the actual write.
+ */
+async function runStage3Discovery(
+  draft: Record<string, any>,
+  primaryUrls: OfficialUrl[],
+): Promise<DiscoveryResult> {
+  // Skip if a primary official URL already exists
+  if (primaryUrls.some(u => u.trust === 'primary')) {
+    return { confidence: 'none', status: 'none', evidence: { skipped: 'primary official url exists' } };
+  }
+
+  // Build row tokens for content matching
+  const rowTokens = new Set([
+    ...tokenize(draft.publish_title),
+    ...tokenize(draft.normalized_title),
+    ...tokenize(draft.raw_title),
+    ...tokenize(draft.organisation_name),
+    ...tokenize(draft.organization_authority),
+    ...tokenize(draft.post_name),
+    ...tokenize(draft.exam_name),
+  ]);
+  if (rowTokens.size < 2) {
+    return { confidence: 'none', status: 'none', evidence: { skipped: 'row has no meaningful tokens' } };
+  }
+
+  // Candidate URLs to validate (already on the row, NOT yet trusted as official)
+  const candidates: { url: string; origin: string }[] = [];
+  const seen = new Set<string>();
+  const tryAdd = (url: string | null | undefined, origin: string) => {
+    if (!url || typeof url !== 'string') return;
+    const u = url.trim();
+    if (!u || !/^https?:\/\//i.test(u)) return;
+    if (seen.has(u)) return;
+    let host = '';
+    try { host = new URL(u).hostname.toLowerCase().replace(/^www\./, ''); } catch { return; }
+    if (isAggregatorHost(host)) return;
+    seen.add(u);
+    candidates.push({ url: u, origin });
+  };
+  tryAdd(draft.source_url, 'source_url');
+  tryAdd(draft.primary_cta_url, 'primary_cta_url');
+  tryAdd(draft.official_source_used, 'official_source_used');
+
+  if (candidates.length === 0) {
+    return { confidence: 'none', status: 'none', evidence: { skipped: 'no candidate urls on row' } };
+  }
+
+  // Fetch + validate the most promising candidate (prefer one with trusted TLD)
+  candidates.sort((a, b) => {
+    const ah = (() => { try { return new URL(a.url).hostname.toLowerCase(); } catch { return ''; } })();
+    const bh = (() => { try { return new URL(b.url).hostname.toLowerCase(); } catch { return ''; } })();
+    return (hostMatchesTrustedTld(bh) ? 1 : 0) - (hostMatchesTrustedTld(ah) ? 1 : 0);
+  });
+
+  const best = candidates[0];
+  try {
+    const r = await scrapePage(best.url, { formats: ['markdown'], onlyMainContent: true });
+    if (!r.success || !r.markdown) {
+      return {
+        candidateUrl: best.url,
+        confidence: 'rejected',
+        status: 'rejected',
+        evidence: { origin: best.origin, fetch_error: r.error || 'no markdown' },
+      };
+    }
+    const fetchedTitle = (r.metadata?.title as string | undefined) || '';
+    const v = validateDiscoveryCandidate(best.url, fetchedTitle, String(r.markdown), rowTokens);
+    const status: DiscoveryResult['status'] =
+      v.confidence === 'rejected' ? 'rejected' :
+      v.confidence === 'strong' ? 'validated' : 'candidate';
+    return {
+      candidateUrl: best.url,
+      confidence: v.confidence,
+      status,
+      evidence: {
+        origin: best.origin,
+        fetched_title: fetchedTitle.slice(0, 200),
+        matched_tokens: v.matchedTokens.slice(0, 12),
+        row_token_count: rowTokens.size,
+        reasons: v.reasons,
+      },
+    };
+  } catch (e) {
+    return {
+      candidateUrl: best.url,
+      confidence: 'rejected',
+      status: 'rejected',
+      evidence: { origin: best.origin, error: e instanceof Error ? e.message.slice(0, 200) : String(e).slice(0, 200) },
+    };
+  }
+}
+
+/**
+ * Build the full enrichment evidence bundle with the staged retrieval gate.
+ * Stages: 1 = row evidence, 2 = official refresh (HTML+PDF), 3 = discovery.
+ * Returns the bundle plus a no-data decision derived AFTER all stages.
  */
 export async function buildEnrichmentEvidence(
   draft: Record<string, any>,
   options: BuildOptions = {},
 ): Promise<EnrichmentEvidenceResult> {
   const fetchAudit: EnrichmentEvidenceResult['fetchAudit'] = { attempted: false };
+  let discovery: DiscoveryResult = { confidence: 'none', status: 'none', evidence: {} };
 
-  // Step 1 — collect what we already have.
+  // Stage 1 — collect what we already have.
   let candidates = collectFieldCandidates(draft);
   const urls = collectOfficialUrls(draft);
 
-  // Step 2 — decide whether to fetch official source(s).
+  // Stage 2 — official refresh when triggers fire.
   if (options.allowOfficialFetch) {
     const decision = shouldFetchOfficial(draft, candidates, urls);
     if (decision.fetch) {
       const audit = await performOfficialFetch(draft, urls, options.persistFetch);
       Object.assign(fetchAudit, audit);
-      // Re-collect candidates — fetched text may add evidence the AI can use,
-      // but Tier 1 facts only come from explicit row/structured fields, so
-      // recollection here is mainly for honesty in counts.
       candidates = collectFieldCandidates(draft);
     } else {
       fetchAudit.attempted = false;
       fetchAudit.cachedAt = draft.official_fetch_at;
+    }
+  }
+
+  // Stage 3 — discovery only when no primary URL and Stage 2 produced nothing.
+  const hasPrimary = urls.some(u => u.trust === 'primary');
+  const stage2Yielded = !!(draft.official_fetch_pdf_text || draft.official_fetch_html_text);
+  if (options.allowOfficialFetch && !hasPrimary && !stage2Yielded) {
+    try {
+      discovery = await runStage3Discovery(draft, urls);
+      // Persist discovery outcome for auditing (does NOT auto-promote).
+      if (options.persistFetch && discovery.status !== 'none') {
+        try {
+          await options.persistFetch({
+            discovered_official_url: discovery.candidateUrl ?? null,
+            discovery_confidence: discovery.confidence,
+            discovery_status: discovery.status,
+            discovery_evidence: discovery.evidence as any,
+          });
+        } catch (e) { console.error('[intake-evidence] persist discovery failed:', e); }
+      }
+    } catch (e) {
+      console.error('[intake-evidence] stage 3 error:', e);
+      discovery = { confidence: 'rejected', status: 'rejected', evidence: { error: e instanceof Error ? e.message : String(e) } };
     }
   }
 
@@ -563,7 +752,6 @@ export async function buildEnrichmentEvidence(
   const tier4 = renderTier4(draft);
 
   // Tier 1 + Tier 2 + official URLs are NEVER trimmed.
-  // If we exceed the soft cap, drop Tier 4 first, then Tier 3.
   const header = [
     '# ENRICHMENT EVIDENCE BUNDLE',
     draft.raw_title ? `Title: ${draft.raw_title}` : '',
@@ -571,26 +759,35 @@ export async function buildEnrichmentEvidence(
     draft.source_url ? `Source URL: ${draft.source_url}` : '',
     draft.source_domain ? `Source Domain: ${draft.source_domain}` : '',
     `Verification: ${draft.verification_status || '—'} (${draft.verification_confidence || '—'}, verified_on=${draft.source_verified_on_date || draft.source_verified_on || '—'})`,
+    discovery.status !== 'none'
+      ? `Stage-3 discovery: candidate=${discovery.candidateUrl || '—'} confidence=${discovery.confidence} status=${discovery.status}`
+      : '',
   ].filter(Boolean).join('\n');
 
   const protectedBlocks = [header, tier1, officialBlock, tier2].filter(Boolean).join('\n\n');
   let bundle = [protectedBlocks, tier3, tier4].filter(Boolean).join('\n\n');
-  if (bundle.length > TOTAL_SOFT_CAP) {
-    bundle = [protectedBlocks, tier3].filter(Boolean).join('\n\n');
-  }
-  if (bundle.length > TOTAL_SOFT_CAP) {
-    bundle = protectedBlocks;
-  }
+  if (bundle.length > TOTAL_SOFT_CAP) bundle = [protectedBlocks, tier3].filter(Boolean).join('\n\n');
+  if (bundle.length > TOTAL_SOFT_CAP) bundle = protectedBlocks;
 
-  // 4-step gate to decide no-data honestly.
+  // Grounded-source trace (used by pipeline for grade decision).
+  const sd = safeParseStruct(draft.structured_data_json) || {};
+  const groundedSources = {
+    rowFields: STRUCTURED_FIELDS.filter(f => nonEmpty(draft[f])),
+    structuredJsonFields: Object.keys(sd).filter(k => nonEmpty((sd as any)[k])),
+    officialPdfFetched: !!draft.official_fetch_pdf_text,
+    officialHtmlFetched: !!draft.official_fetch_html_text,
+    discoveryPromoted: discovery.confidence === 'strong' && discovery.status === 'validated',
+  };
+
+  // Final no-data gate (after Stages 1–3).
   const groundedFieldCount = candidates.size;
   const hasFetchedContent = !!(draft.official_fetch_pdf_text || draft.official_fetch_html_text);
   const hasRawText = typeof draft.raw_text === 'string' && draft.raw_text.length > 200;
-
   const noData =
     groundedFieldCount === 0 &&
     !hasFetchedContent &&
-    !hasRawText;
+    !hasRawText &&
+    !groundedSources.discoveryPromoted;
 
   let reason: string;
   if (!noData) {
@@ -603,6 +800,7 @@ export async function buildEnrichmentEvidence(
       parts.push(`official_fetch=${bits.join('+')}`);
     }
     if (hasRawText) parts.push(`raw_text=${(draft.raw_text as string).length}c`);
+    if (groundedSources.discoveryPromoted) parts.push('discovery=validated');
     reason = `evidence_ok: ${parts.join(', ')}`;
   } else {
     const attempted: string[] = [];
@@ -618,6 +816,11 @@ export async function buildEnrichmentEvidence(
     } else {
       attempted.push('no_official_urls');
     }
+    if (discovery.status !== 'none') {
+      attempted.push(`discovery=${discovery.status}(${discovery.confidence})`);
+    } else {
+      attempted.push('discovery=skipped');
+    }
     attempted.push(`structured_data_json_facts=${groundedFieldCount}`);
     attempted.push(`raw_text_len=${(draft.raw_text || '').toString().length}`);
     reason = `no_data: ${attempted.join(' | ')}`;
@@ -629,6 +832,8 @@ export async function buildEnrichmentEvidence(
     noDataDecision: noData,
     reason,
     fetchAudit,
+    discovery,
+    groundedSources,
   };
 }
 

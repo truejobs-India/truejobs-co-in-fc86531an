@@ -143,6 +143,7 @@ export function ChatGptAgentManager() {
       }
       const { data, error } = await q
         .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
         .limit(activeSection === ALL_SECTIONS_VALUE ? 2000 : 500);
       if (error) throw error;
       setDrafts(data || []);

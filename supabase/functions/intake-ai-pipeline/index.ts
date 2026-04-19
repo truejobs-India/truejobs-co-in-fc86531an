@@ -232,7 +232,11 @@ Deno.serve(async (req) => {
     let stepStatus: 'ok' | 'skipped' | 'error' = 'ok';
     let stepReason: string | null = null;
     let stepError: string | null = null;
-    const update: Record<string, any> = { pipeline_current_step: chosenStep };
+    // IMPORTANT: do NOT pre-set pipeline_current_step here. We only advance
+    // the step pointer when the step actually succeeds — so transient
+    // failures (parser, timeout, quota) are retried on the same step rather
+    // than silently skipped on the next run.
+    const update: Record<string, any> = {};
 
     try {
       // ─── STEP EXECUTION ─────────────────────────────────────────────────
@@ -337,10 +341,20 @@ Deno.serve(async (req) => {
         if (empty.length === 0) {
           stepStatus = 'skipped';
           stepReason = 'no empty important fields';
-        } else if (!hasSubstantialEvidence(draft)) {
-          stepStatus = 'skipped';
-          stepReason = 'insufficient evidence';
+          update.enrichment_reason = 'all important fields already populated';
         } else {
+          // Build the priority-tiered evidence bundle. Allow Firecrawl official
+          // refresh (PDF + HTML) when the row is thin or critical fields missing.
+          // Persist any fetched content back to the draft row so subsequent
+          // runs reuse the cache.
+          const evidenceResult = await buildEnrichmentEvidence(draft, {
+            allowOfficialFetch: true,
+            persistFetch: async (patch) => {
+              try { await (client as any).from('intake_drafts').update(patch).eq('id', draftId); }
+              catch (e) { console.error('[pipeline] persistFetch error:', e); }
+            },
+          });
+          // Always pass deterministic hints first (cheap, never wrong).
           const pre = deterministicExtract(draft);
           for (const [k, v] of Object.entries(pre)) {
             if (v && empty.includes(k) && shouldOverwrite(k, (draft as any)[k], v)) {
@@ -348,10 +362,11 @@ Deno.serve(async (req) => {
             }
           }
           const stillEmpty = empty.filter(f => !update[f]);
-          if (stillEmpty.length > 0) {
-            const evidence = buildEvidence(draft);
+          if (stillEmpty.length > 0 && !evidenceResult.noDataDecision) {
             const fillTool = buildFillEmptyToolSchema(stillEmpty);
-            const fillPrompt = `These fields are currently empty and need to be filled ONLY if grounded evidence exists:\n${stillEmpty.join(', ')}\n\nEvidence:\n${evidence}`;
+            const fillPrompt = `Fill ONLY the listed empty fields using ONLY the grounded evidence below.\n` +
+              `Rules: prefer values tagged trust=primary; never invent; if all sources for a field are stale or only secondary, leave the field empty.\n\n` +
+              `Empty fields:\n${stillEmpty.join(', ')}\n\nEvidence:\n${evidenceResult.bundle}`;
             const fillResult = await callAI(lovableKey, FILL_EMPTY_FIELDS_PROMPT, fillPrompt, fillTool, aiModel);
             for (const f of stillEmpty) {
               const v = fillResult[f];
@@ -360,7 +375,17 @@ Deno.serve(async (req) => {
               }
             }
           }
-          update.enrichment_result = fieldsUpdated.length > 0 ? 'enriched' : 'not_enriched_no_data';
+          if (fieldsUpdated.length > 0) {
+            update.enrichment_result = 'enriched';
+            update.enrichment_reason = `enriched: ${evidenceResult.reason}; wrote ${fieldsUpdated.length} fields`;
+          } else if (evidenceResult.noDataDecision) {
+            update.enrichment_result = 'not_enriched_no_data';
+            update.enrichment_reason = evidenceResult.reason;
+          } else {
+            // Evidence existed but AI returned nothing fillable.
+            update.enrichment_result = 'not_enriched_no_data';
+            update.enrichment_reason = `ai_returned_no_fields_despite_evidence: ${evidenceResult.reason}`;
+          }
         }
       }
 
@@ -412,13 +437,15 @@ Deno.serve(async (req) => {
     // Decide pipeline state + write update
     let nextStep: PipelineStep | null = null;
     if (stepStatus !== 'error') {
-      // Compute the post-update view to decide next step
+      // Only on success/skip do we advance the step pointer.
+      update.pipeline_current_step = chosenStep;
       const postDraft = { ...draft, ...update };
       const dec = decideNextStep(postDraft);
       nextStep = dec.step;
     }
 
     if (stepStatus === 'error') {
+      // Keep pipeline_current_step UNCHANGED so the next run retries this step.
       update.pipeline_status = 'failed';
       update.pipeline_last_error = `${chosenStep}: ${stepError || 'unknown'}`;
       update.pipeline_finished_at = new Date().toISOString();
@@ -430,13 +457,19 @@ Deno.serve(async (req) => {
       update.pipeline_status = 'running';
     }
 
-    // Apply update + release lock in one go
+    // Apply update + release lock in one go (lock is always cleared so orphan
+    // running rows can never get stuck).
     update.pipeline_lock_token = null;
 
     const { error: writeErr } = await (client as any).from('intake_drafts').update(update).eq('id', draftId);
     if (writeErr) {
       console.error('[pipeline] write error:', writeErr);
-      await releaseLock({ pipeline_status: 'failed', pipeline_last_error: `write: ${writeErr.message}` });
+      // Honest terminal status on write failure — release lock + mark failed.
+      await releaseLock({
+        pipeline_status: 'failed',
+        pipeline_last_error: `write: ${writeErr.message}`,
+        pipeline_finished_at: new Date().toISOString(),
+      });
       await logRun(client, draftId, chosenStep, 'error', `write: ${writeErr.message}`, [], aiModel, duration);
       return json({ error: writeErr.message, ran_step: chosenStep }, 500);
     }

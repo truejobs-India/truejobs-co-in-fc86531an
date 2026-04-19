@@ -26,6 +26,10 @@ export const GEMINI_DIRECT_MODEL_MAP: Record<string, { geminiModel: string; time
   'vertex-3.1-flash-lite': { geminiModel: 'gemini-3.1-flash-lite-preview', timeoutMs: 60_000 },
 };
 
+// Re-export grounded-evidence helpers so callers can import them from one place.
+export { buildEnrichmentEvidence, collectOfficialUrls, extractJsonObject } from './intake-evidence.ts';
+export type { EnrichmentEvidenceResult, OfficialUrl } from './intake-evidence.ts';
+
 export const BEDROCK_MODELS = new Set(['nova-pro', 'nova-premier', 'nemotron-120b', 'mistral']);
 export const AZURE_OPENAI_MODELS = new Set(['azure-gpt4o-mini', 'azure-gpt41-mini', 'azure-gpt5-mini']);
 export const AZURE_DEEPSEEK_MODELS = new Set(['azure-deepseek-v3', 'azure-deepseek-r1']);

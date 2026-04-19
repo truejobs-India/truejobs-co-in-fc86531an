@@ -183,6 +183,12 @@ Deno.serve(async (req) => {
       return json({ error: 'locked', message: 'Draft is being processed by another worker' }, 409);
     }
 
+    // ── Background execution wrapper ──
+    // Firecrawl PDF/HTML fetches + 180s DeepSeek calls easily exceed the
+    // 150s edge idle timeout. Run the actual step in the background and
+    // return immediately so the client (which polls draft status) never
+    // hits a 504. The lock + final status write happen inside the bg task.
+    const runStep = async () => {
     const nextLockToken = crypto.randomUUID();
     let lockQuery = (client as any)
       .from('intake_drafts')

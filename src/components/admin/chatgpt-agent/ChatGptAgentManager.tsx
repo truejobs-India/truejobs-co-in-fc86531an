@@ -1267,12 +1267,36 @@ export function ChatGptAgentManager() {
                                 <TableCell>
                                   <div className="flex items-start gap-1.5 flex-wrap">
                                     <span className="text-sm font-medium line-clamp-2">{d.publish_title || d.normalized_title || d.raw_title}</span>
-                                    {isAiFixed(draftRuns[d.id]) && (
-                                      <Badge variant="outline" className="text-[10px] gap-1 border-green-500 text-green-700 bg-green-50 dark:bg-green-950/30 dark:text-green-400 shrink-0">
-                                        <Sparkles className="h-2.5 w-2.5" />
-                                        AI Fixed
-                                      </Badge>
-                                    )}
+                                    {(() => {
+                                      const state = terminalStateOf(d, draftRuns[d.id]);
+                                      if (state === 'enriched') {
+                                        const grade = d?.enrichment_grade as string | undefined;
+                                        const completeness = d?.enrichment_completeness as number | undefined;
+                                        return (
+                                          <>
+                                            <Badge variant="outline" className="text-[10px] gap-1 border-green-500 text-green-700 bg-green-50 dark:bg-green-950/30 dark:text-green-400 shrink-0" title={d?.enrichment_reason || 'Externally-grounded facts written'}>
+                                              <Sparkles className="h-2.5 w-2.5" />
+                                              Enriched{grade ? ` · ${grade}` : ''}{typeof completeness === 'number' ? ` · ${completeness}%` : ''}
+                                            </Badge>
+                                          </>
+                                        );
+                                      }
+                                      if (state === 'no_grounded_evidence') {
+                                        return (
+                                          <Badge variant="outline" className="text-[10px] gap-1 border-muted-foreground/40 text-muted-foreground bg-muted/30 shrink-0" title={d?.enrichment_reason || 'No trustworthy evidence found after Stages 1–3 — terminal'}>
+                                            ⚪ No grounded evidence
+                                          </Badge>
+                                        );
+                                      }
+                                      if (state === 'tech_error') {
+                                        return (
+                                          <Badge variant="outline" className="text-[10px] gap-1 border-destructive text-destructive bg-destructive/10 shrink-0" title={d?.enrichment_reason || 'Technical failure — retryable'}>
+                                            ❌ Tech error · retryable
+                                          </Badge>
+                                        );
+                                      }
+                                      return null;
+                                    })()}
                                     {processingChunkIds.has(d.id) && (
                                       <Badge variant="outline" className="text-[10px] gap-1 border-blue-500 text-blue-600 shrink-0">
                                         <Loader2 className="h-2.5 w-2.5 animate-spin" />

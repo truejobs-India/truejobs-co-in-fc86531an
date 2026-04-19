@@ -1,61 +1,42 @@
 
-## Approved plan — proceed in this order
+## Plan: Lock draft row order so enrichment doesn't reshuffle
 
-### Step 1: Prove the exact cause of 108 (read-only, no code changes)
+### Root cause (confirmed via earlier analysis)
+`fetchDrafts` in `ChatGptAgentManager.tsx` orders rows by `updated_at DESC`. Enrichment writes to the row → `updated_at` bumps → row jumps position on the next refetch. User saw "UKMSSB ANM Health Worker Online Form" move from row 1 → row 13 after enrichment.
 
-Run two diagnostics:
-
-1. SQL: `SELECT section_bucket, COUNT(*) FROM intake_drafts WHERE source_channel='chatgpt_agent' GROUP BY 1 ORDER BY 2 DESC` — confirms total per bucket (production_v1 + legacy combined).
-2. Read `ChatGptAgentManager.tsx` — confirm default `activeSection` value, the fetch query's WHERE clauses, and any default secondary filter state.
-
-Expected proof: default tab = `job_postings`; 108 = all chatgpt_agent rows in `job_postings` (43 new production_v1 + 65 pre-existing legacy). Will report exact numbers before touching code.
-
-### Step 2: Implement 4 additive UI changes
-
-Single file: `src/components/admin/chatgpt-agent/ChatGptAgentManager.tsx`. No DB, no parser, no schema.
-
-**2a. Per-upload toast (this-run scope only)**
-After import, group just-imported rows by `section_bucket` in memory:
+### Fix (single file, minimal change)
+**File:** `src/components/admin/chatgpt-agent/ChatGptAgentManager.tsx`
+**Change:** In the `fetchDrafts` query, replace the existing `.order('updated_at', { ascending: false })` with:
 ```
-Imported this run: 144 · 0 skipped · 0 failed
-Jobs 43 · Admit Cards 27 · Results 26 · Other 23 · Answer Keys 20 · Exam Dates 5
+.order('created_at', { ascending: false })
+.order('id', { ascending: false })
 ```
-Numbers come only from current upload payload — never mixed with totals.
 
-**2b. Section tab badges (all-drafts scope)**
-One lightweight query on mount + after each import:
-`select section_bucket, count(*) from intake_drafts where source_channel='chatgpt_agent' group by 1`
+- `created_at` is set once at INSERT and never mutated by enrichment, AI processing, edits, or status changes → row position is frozen at import time.
+- `id` tiebreaker prevents flicker for rows sharing the same `created_at` (bulk imports).
 
-Render count as `<Badge variant="secondary">` next to each tab label. Reflects ALL chatgpt_agent drafts in DB, not just latest upload.
+### Strict scope guard
+Touch ONLY the `.order(...)` line(s) in `fetchDrafts`. Do not modify:
+- filter logic, fetch WHERE clauses, badges, tabs, toast, "Select all visible", scope banner, Section column
+- enrichment edge function, schema, RLS, any other component
+- any sort logic in other admin views
 
-**2c. "All Sections" tab**
-Add `'__all__'` as the first tab. When active:
-- fetch query drops the `section_bucket` filter
-- table gains a "Section" column
-- search + 5 filter dropdowns remain applied identically
+### Deep verification report (after change)
 
-**Scope clarity line (above table, All Sections only):**
-```
-Viewing all ChatGPT Agent drafts: 298 total
-108 visible after filters
-```
-Always visible in All Sections view; the second line only appears when filters/search reduce the visible count below total.
+I will:
+1. **Code audit** — read the modified `fetchDrafts` and confirm the only diff is the `.order()` line; diff against original to prove zero collateral edits elsewhere in the file.
+2. **DB sanity** — SQL query the top 15 `chatgpt_agent` job_postings rows by `created_at DESC, id DESC` and list them. This is the order the UI must now show.
+3. **Live preview check** — open the admin Drafts view, capture the top 15 rows in `job_postings`, confirm they match the SQL list exactly.
+4. **Enrichment stability test** — pick the row currently at position #1 (e.g. "UKMSSB ANM Health Worker Online Form" if still top), trigger enrichment, refetch, confirm it remains at position #1. Capture before/after.
+5. **Cross-tab spot check** — repeat row-order check on `admit_cards` and `All Sections` tabs to confirm consistent ordering everywhere `fetchDrafts` is used.
+6. **Untouched-area regression** — confirm badges (108/55/46/35/24/8/1/1/278), filter dropdowns, "Select all visible (N)", scope banner, and import toast all still function identically (no value or label changed).
 
-**2d. Honest "Select all visible (N)" label**
-Rename current "Select All" to `Select all visible (N)` where `N = filteredDrafts.length` (after section + status + search + filter dropdowns). Same behavior, truthful label. Works identically on per-section tabs and All Sections tab.
-
-### Step 3: Post-implementation verification report
-
-Will report:
-- exact cause of 108 with SQL + code evidence
-- exact counts: latest upload (per-bucket) vs all drafts (per-bucket)
-- confirmation toast shows per-run counts only (never mixed with totals)
-- confirmation badges show all-drafts counts with clear labeling
-- confirmation `Select all visible (N)` matches the actual visible row count under all filter/search/tab combinations
-- confirmation All Sections scope line renders correctly with and without active filters
-
-### Files changed
-- `src/components/admin/chatgpt-agent/ChatGptAgentManager.tsx` (only)
+### Report format
+A single summary will list:
+- exact line(s) changed (before → after)
+- SQL-derived expected top-15 vs UI-observed top-15 (match/mismatch per row)
+- enrichment stability result (row stayed at #1: yes/no)
+- regression check results for each untouched feature
 
 ### Risk
-Very low. Additive UI only. No DB writes, no parser changes, no schema. One file.
+Minimal. One ordering change. No DB writes, no schema, no edge functions, no other UI.

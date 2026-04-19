@@ -2863,6 +2863,7 @@ export type Database = {
           discovered_at: string | null
           draft_content_html: string | null
           draft_content_text: string | null
+          enrichment_reason: string | null
           enrichment_result: string | null
           exam_date: string | null
           exam_name: string | null
@@ -2881,6 +2882,11 @@ export type Database = {
           normalized_title: string | null
           notification_date: string | null
           official_apply_link: string | null
+          official_fetch_at: string | null
+          official_fetch_html_text: string | null
+          official_fetch_pdf_text: string | null
+          official_fetch_status: string | null
+          official_fetch_url: string | null
           official_notification_link: string | null
           official_reference_url: string | null
           official_source_used: string | null
@@ -2970,6 +2976,7 @@ export type Database = {
           discovered_at?: string | null
           draft_content_html?: string | null
           draft_content_text?: string | null
+          enrichment_reason?: string | null
           enrichment_result?: string | null
           exam_date?: string | null
           exam_name?: string | null
@@ -2988,6 +2995,11 @@ export type Database = {
           normalized_title?: string | null
           notification_date?: string | null
           official_apply_link?: string | null
+          official_fetch_at?: string | null
+          official_fetch_html_text?: string | null
+          official_fetch_pdf_text?: string | null
+          official_fetch_status?: string | null
+          official_fetch_url?: string | null
           official_notification_link?: string | null
           official_reference_url?: string | null
           official_source_used?: string | null
@@ -3077,6 +3089,7 @@ export type Database = {
           discovered_at?: string | null
           draft_content_html?: string | null
           draft_content_text?: string | null
+          enrichment_reason?: string | null
           enrichment_result?: string | null
           exam_date?: string | null
           exam_name?: string | null
@@ -3095,6 +3108,11 @@ export type Database = {
           normalized_title?: string | null
           notification_date?: string | null
           official_apply_link?: string | null
+          official_fetch_at?: string | null
+          official_fetch_html_text?: string | null
+          official_fetch_pdf_text?: string | null
+          official_fetch_status?: string | null
+          official_fetch_url?: string | null
           official_notification_link?: string | null
           official_reference_url?: string | null
           official_source_used?: string | null

@@ -162,19 +162,19 @@ export function ChatGptAgentManager() {
     matchedIds: string[];
     bySection: Record<string, number>;
   }> => {
-    // 1) Paginate all chatgpt_agent drafts (id + section_bucket only)
+    // 1) Paginate all chatgpt_agent drafts (id + section_bucket + enrichment_result)
     const PAGE = 1000;
-    const allDrafts: { id: string; section_bucket: string | null }[] = [];
+    const allDrafts: { id: string; section_bucket: string | null; enrichment_result: string | null }[] = [];
     let from = 0;
     while (true) {
       const { data, error } = await (supabase
         .from('intake_drafts')
-        .select('id, section_bucket') as any)
+        .select('id, section_bucket, enrichment_result') as any)
         .eq('source_channel', 'chatgpt_agent')
         .order('id', { ascending: true })
         .range(from, from + PAGE - 1);
       if (error) throw error;
-      const rows = (data || []) as { id: string; section_bucket: string | null }[];
+      const rows = (data || []) as { id: string; section_bucket: string | null; enrichment_result: string | null }[];
       allDrafts.push(...rows);
       if (rows.length < PAGE) break;
       from += PAGE;
@@ -182,43 +182,56 @@ export function ChatGptAgentManager() {
 
     if (allDrafts.length === 0) return { matchedIds: [], bySection: {} };
 
-    // 2) Fetch pipeline runs for those ids in chunks of 500, paginated
-    const runsMap = new Map<string, PipelineRun[]>();
-    const ids = allDrafts.map(d => d.id);
-    const CHUNK = 500;
-    for (let i = 0; i < ids.length; i += CHUNK) {
-      const chunk = ids.slice(i, i + CHUNK);
-      let rFrom = 0;
-      while (true) {
-        const { data, error } = await (supabase as any)
-          .from('intake_pipeline_runs')
-          .select('draft_id, step, status, reason, created_at')
-          .in('draft_id', chunk)
-          .order('created_at', { ascending: false })
-          .range(rFrom, rFrom + PAGE - 1);
-        if (error) throw error;
-        const rows = (data || []) as any[];
-        for (const r of rows) {
-          const arr = runsMap.get(r.draft_id) || [];
-          arr.push({ step: r.step, status: r.status, reason: r.reason, created_at: r.created_at });
-          runsMap.set(r.draft_id, arr);
+    // 2) Partition by enrichment_result FIRST (authoritative).
+    // - 'enriched' or 'not_enriched_no_grounded_evidence' → fixed (excluded)
+    // - 'not_enriched_tech_error' → unfixed (included)
+    // - NULL → legacy row, fall back to runs-based predicate
+    const matchedIds: string[] = [];
+    const bySection: Record<string, number> = {};
+    const addUnfixed = (d: { id: string; section_bucket: string | null }) => {
+      matchedIds.push(d.id);
+      const key = d.section_bucket || 'unknown';
+      bySection[key] = (bySection[key] || 0) + 1;
+    };
+
+    const legacyDrafts = allDrafts.filter(d => d.enrichment_result == null);
+    for (const d of allDrafts) {
+      if (d.enrichment_result === 'not_enriched_tech_error') addUnfixed(d);
+      // 'enriched' & 'not_enriched_no_grounded_evidence' are skipped (terminal/fixed)
+    }
+
+    // 3) For legacy NULL rows only, fetch runs and apply old predicate
+    if (legacyDrafts.length > 0) {
+      const runsMap = new Map<string, PipelineRun[]>();
+      const ids = legacyDrafts.map(d => d.id);
+      const CHUNK = 500;
+      for (let i = 0; i < ids.length; i += CHUNK) {
+        const chunk = ids.slice(i, i + CHUNK);
+        let rFrom = 0;
+        while (true) {
+          const { data, error } = await (supabase as any)
+            .from('intake_pipeline_runs')
+            .select('draft_id, step, status, reason, created_at')
+            .in('draft_id', chunk)
+            .order('created_at', { ascending: false })
+            .range(rFrom, rFrom + PAGE - 1);
+          if (error) throw error;
+          const rows = (data || []) as any[];
+          for (const r of rows) {
+            const arr = runsMap.get(r.draft_id) || [];
+            arr.push({ step: r.step, status: r.status, reason: r.reason, created_at: r.created_at });
+            runsMap.set(r.draft_id, arr);
+          }
+          if (rows.length < PAGE) break;
+          rFrom += PAGE;
         }
-        if (rows.length < PAGE) break;
-        rFrom += PAGE;
+      }
+      for (const d of legacyDrafts) {
+        const runs = runsMap.get(d.id);
+        if (!isAiFixed(d, runs)) addUnfixed(d);
       }
     }
 
-    // 3) Apply existing predicate (verbatim)
-    const matchedIds: string[] = [];
-    const bySection: Record<string, number> = {};
-    for (const d of allDrafts) {
-      const runs = runsMap.get(d.id);
-      if (!isAiFixed(runs)) {
-        matchedIds.push(d.id);
-        const key = d.section_bucket || 'unknown';
-        bySection[key] = (bySection[key] || 0) + 1;
-      }
-    }
     return { matchedIds, bySection };
   }, [isAiFixed]);
 

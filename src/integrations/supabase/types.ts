@@ -5259,6 +5259,14 @@ export type Database = {
           viewed_at: string
         }[]
       }
+      get_intake_drafts_columns: {
+        Args: never
+        Returns: {
+          column_name: string
+          data_type: string
+          ordinal_position: number
+        }[]
+      }
       get_user_role: {
         Args: { _user_id: string }
         Returns: Database["public"]["Enums"]["app_role"]

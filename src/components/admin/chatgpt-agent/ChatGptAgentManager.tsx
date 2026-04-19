@@ -53,6 +53,9 @@ import {
 import { ChatGptAgentDraftEditor } from './ChatGptAgentDraftEditor';
 import { ChatGptAgentDuplicateFinder } from './ChatGptAgentDuplicateFinder';
 import { PipelineStepBadges, type PipelineRun } from './PipelineStepBadges';
+import { CHATGPT_AGENT_FILTER } from './filter';
+import { exportChatGptAgentDraftsToExcel } from './exportDrafts';
+import { Download } from 'lucide-react';
 
 const ALL_SECTIONS: SectionBucket[] = [
   'job_postings', 'admit_cards', 'results', 'answer_keys',
@@ -92,6 +95,35 @@ export function ChatGptAgentManager() {
   const [existingIdentitiesAttempted, setExistingIdentitiesAttempted] = useState<Set<string>>(new Set());
   const [productionImportSummary, setProductionImportSummary] = useState<{ total: number; inserted_new: number; updated_existing: number; skipped_empty: number; failed: { row: number; reason: string }[] } | null>(null);
   const [importing, setImporting] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  const handleExportAllDrafts = useCallback(async () => {
+    if (exporting) return;
+    setExporting(true);
+    const tId = toast.loading('Preparing full-fidelity export…');
+    try {
+      const result = await exportChatGptAgentDraftsToExcel((msg) => {
+        toast.loading(msg, { id: tId });
+      });
+      toast.success(
+        `Exported ${result.rowsExported} drafts → ${result.filename}`,
+        {
+          id: tId,
+          description:
+            `${result.columnsWritten} columns (${result.columnsFromSchema} schema + ${result.splitFields} split fields` +
+            (result.unexpectedColumns.length ? `, ${result.unexpectedColumns.length} unexpected` : '') +
+            `). See Export_Metadata sheet.`,
+          duration: 8000,
+        },
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      toast.error('Export failed — no file written', { id: tId, description: msg, duration: 12000 });
+      console.error('[chatgpt-agent export]', err);
+    } finally {
+      setExporting(false);
+    }
+  }, [exporting]);
 
   // Editor & dedup
   const [editDraft, setEditDraft] = useState<any>(null);
@@ -267,10 +299,8 @@ export function ChatGptAgentManager() {
   const fetchDrafts = useCallback(async () => {
     setLoading(true);
     try {
-      let q = (supabase
-        .from('intake_drafts')
-        .select('*') as any)
-        .eq('source_channel', 'chatgpt_agent');
+      let q: any = (supabase.from('intake_drafts') as any).select('*');
+      q = CHATGPT_AGENT_FILTER.apply(q);
       if (activeSection !== ALL_SECTIONS_VALUE) {
         q = q.eq('section_bucket', activeSection);
       }
@@ -910,6 +940,20 @@ export function ChatGptAgentManager() {
                 <span><Upload className="h-4 w-4 mr-1" />Upload Excel</span>
               </Button>
             </label>
+
+            {/* Full-fidelity export — every column, every row, audit-grade */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportAllDrafts}
+              disabled={exporting}
+              title="Download every ChatGPT Agent draft into a single Excel file (full-fidelity, no field omitted)"
+            >
+              {exporting
+                ? <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                : <Download className="h-4 w-4 mr-1" />}
+              {exporting ? 'Exporting…' : 'Download all (Excel)'}
+            </Button>
 
             {/* AI Model — restricted to routable models only */}
             <AiModelSelector

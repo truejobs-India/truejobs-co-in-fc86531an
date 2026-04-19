@@ -611,12 +611,29 @@ export function ChatGptAgentManager() {
           if (stopRequestedRef.current) break;
           // Refresh session before each step — long Gemini calls can expire the JWT mid-run
           const { data: { session: freshSession } } = await supabase.auth.getSession();
-          const res = await supabase.functions.invoke('intake-ai-pipeline', {
+          // Retry-once safety net for transient transport errors (cold-start / network blip).
+          // Only retries on "Failed to send a request" / "Failed to fetch" — never on in-function errors.
+          let res = await supabase.functions.invoke('intake-ai-pipeline', {
             body: { draft_id: draftId, aiModel, step: 'auto' },
             headers: { Authorization: `Bearer ${freshSession?.access_token}` },
           });
+          let transportRetry = false;
+          {
+            const errMsg = res.error?.message || '';
+            const isTransport = !!res.error && /failed to (send a request|fetch)|networkerror|load failed/i.test(errMsg);
+            if (isTransport) {
+              transportRetry = true;
+              await new Promise(r => setTimeout(r, 2000));
+              res = await supabase.functions.invoke('intake-ai-pipeline', {
+                body: { draft_id: draftId, aiModel, step: 'auto' },
+                headers: { Authorization: `Bearer ${freshSession?.access_token}` },
+              });
+            }
+          }
           if (res.error) {
-            failed.push({ id: draftId, title: titleOf(draftId), step: lastStep || '?', error: res.error.message || String(res.error) });
+            const errMsg = res.error.message || String(res.error);
+            const label = transportRetry ? `${errMsg} (transport error, retry failed)` : errMsg;
+            failed.push({ id: draftId, title: titleOf(draftId), step: lastStep || '?', error: label });
             draftFailed = true;
             break;
           }

@@ -120,7 +120,97 @@ export function ChatGptAgentManager() {
     }
     if (!latest['validate'] || latest['validate'].status !== 'ok') return false;
     return !Object.values(latest).some(r => r.status === 'error');
-  }, []);
+
+  // Cross-section unfixed scan state
+  const [scanning, setScanning] = useState(false);
+  const [crossSectionScope, setCrossSectionScope] = useState<{
+    total: number;
+    bySection: Record<string, number>;
+    matchedIds: Set<string>;
+  } | null>(null);
+
+  const scanAllUnfixedAcrossSections = useCallback(async (): Promise<{
+    matchedIds: string[];
+    bySection: Record<string, number>;
+  }> => {
+    // 1) Paginate all chatgpt_agent drafts (id + section_bucket only)
+    const PAGE = 1000;
+    const allDrafts: { id: string; section_bucket: string | null }[] = [];
+    let from = 0;
+    while (true) {
+      const { data, error } = await (supabase
+        .from('intake_drafts')
+        .select('id, section_bucket') as any)
+        .eq('source_channel', 'chatgpt_agent')
+        .order('id', { ascending: true })
+        .range(from, from + PAGE - 1);
+      if (error) throw error;
+      const rows = (data || []) as { id: string; section_bucket: string | null }[];
+      allDrafts.push(...rows);
+      if (rows.length < PAGE) break;
+      from += PAGE;
+    }
+
+    if (allDrafts.length === 0) return { matchedIds: [], bySection: {} };
+
+    // 2) Fetch pipeline runs for those ids in chunks of 500, paginated
+    const runsMap = new Map<string, PipelineRun[]>();
+    const ids = allDrafts.map(d => d.id);
+    const CHUNK = 500;
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      const chunk = ids.slice(i, i + CHUNK);
+      let rFrom = 0;
+      while (true) {
+        const { data, error } = await (supabase as any)
+          .from('intake_pipeline_runs')
+          .select('draft_id, step, status, reason, created_at')
+          .in('draft_id', chunk)
+          .order('created_at', { ascending: false })
+          .range(rFrom, rFrom + PAGE - 1);
+        if (error) throw error;
+        const rows = (data || []) as any[];
+        for (const r of rows) {
+          const arr = runsMap.get(r.draft_id) || [];
+          arr.push({ step: r.step, status: r.status, reason: r.reason, created_at: r.created_at });
+          runsMap.set(r.draft_id, arr);
+        }
+        if (rows.length < PAGE) break;
+        rFrom += PAGE;
+      }
+    }
+
+    // 3) Apply existing predicate (verbatim)
+    const matchedIds: string[] = [];
+    const bySection: Record<string, number> = {};
+    for (const d of allDrafts) {
+      const runs = runsMap.get(d.id);
+      if (!isAiFixed(runs)) {
+        matchedIds.push(d.id);
+        const key = d.section_bucket || 'unknown';
+        bySection[key] = (bySection[key] || 0) + 1;
+      }
+    }
+    return { matchedIds, bySection };
+  }, [isAiFixed]);
+
+  const handleSelectAllUnfixed = useCallback(async () => {
+    setScanning(true);
+    try {
+      const { matchedIds, bySection } = await scanAllUnfixedAcrossSections();
+      if (matchedIds.length === 0) {
+        toast.message('No unfixed drafts found across any section');
+        return;
+      }
+      const idSet = new Set(matchedIds);
+      setSelected(idSet);
+      setCrossSectionScope({ total: matchedIds.length, bySection, matchedIds: idSet });
+      toast.success(`Selected ${matchedIds.length} unfixed drafts across all sections`);
+    } catch (err) {
+      toast.error(`Failed to scan drafts: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setScanning(false);
+    }
+  }, [scanAllUnfixedAcrossSections]);
 
   // Section counts
   const [sectionCounts, setSectionCounts] = useState<Record<string, number>>({});

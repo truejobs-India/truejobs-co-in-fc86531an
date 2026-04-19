@@ -1044,19 +1044,37 @@ export function ChatGptAgentManager() {
               ))}
             </TabsList>
 
-            {/* Scope clarity (All Sections only) */}
-            {activeSection === ALL_SECTIONS_VALUE && (
-              <div className="mb-3 px-3 py-2 rounded-md border bg-muted/40 text-xs">
-                <div className="text-foreground font-medium">
-                  Viewing all ChatGPT Agent drafts: {Object.values(sectionCounts).reduce((a, b) => a + (b || 0), 0)} total
-                </div>
-                {filteredDrafts.length !== drafts.length && (
-                  <div className="text-muted-foreground mt-0.5">
-                    {filteredDrafts.length} visible after filters
+            {/* Scope clarity + three-state terminal counters */}
+            <div className="mb-3 px-3 py-2 rounded-md border bg-muted/40 text-xs space-y-1.5">
+              {activeSection === ALL_SECTIONS_VALUE && (
+                <>
+                  <div className="text-foreground font-medium">
+                    Viewing all ChatGPT Agent drafts: {Object.values(sectionCounts).reduce((a, b) => a + (b || 0), 0)} total
                   </div>
-                )}
+                  {filteredDrafts.length !== drafts.length && (
+                    <div className="text-muted-foreground">
+                      {filteredDrafts.length} visible after filters
+                    </div>
+                  )}
+                </>
+              )}
+              <div className="flex flex-wrap gap-1.5 items-center">
+                <span className="text-muted-foreground">Enrichment outcome (loaded {terminalCounts.total}):</span>
+                <Badge variant="outline" className="text-[10px] gap-1 border-green-500 text-green-700 bg-green-50 dark:bg-green-950/30 dark:text-green-400" title="Row has at least one externally-grounded verified fact written">
+                  ✅ {terminalCounts.enriched} enriched
+                </Badge>
+                <Badge variant="outline" className="text-[10px] gap-1 border-muted-foreground/40 text-muted-foreground bg-muted/30" title="Full Stages 1–3 attempted, no trustworthy evidence found — terminal, not retried">
+                  ⚪ {terminalCounts.noEvidence} no grounded evidence
+                </Badge>
+                <Badge variant="outline" className="text-[10px] gap-1 border-destructive text-destructive bg-destructive/10" title="Technical failure — retryable via Run All Needed Fixes">
+                  ❌ {terminalCounts.techError} tech error
+                </Badge>
+                <Badge variant="outline" className="text-[10px] gap-1" title="Pipeline not yet finalized for these rows">
+                  ⏳ {terminalCounts.pending} pending
+                </Badge>
               </div>
-            )}
+            </div>
+
 
             {/* Search box (production fields) */}
             <div className="mb-3">

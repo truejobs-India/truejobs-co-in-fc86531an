@@ -95,6 +95,35 @@ export function ChatGptAgentManager() {
   const [existingIdentitiesAttempted, setExistingIdentitiesAttempted] = useState<Set<string>>(new Set());
   const [productionImportSummary, setProductionImportSummary] = useState<{ total: number; inserted_new: number; updated_existing: number; skipped_empty: number; failed: { row: number; reason: string }[] } | null>(null);
   const [importing, setImporting] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  const handleExportAllDrafts = useCallback(async () => {
+    if (exporting) return;
+    setExporting(true);
+    const tId = toast.loading('Preparing full-fidelity export…');
+    try {
+      const result = await exportChatGptAgentDraftsToExcel((msg) => {
+        toast.loading(msg, { id: tId });
+      });
+      toast.success(
+        `Exported ${result.rowsExported} drafts → ${result.filename}`,
+        {
+          id: tId,
+          description:
+            `${result.columnsWritten} columns (${result.columnsFromSchema} schema + ${result.splitFields} split fields` +
+            (result.unexpectedColumns.length ? `, ${result.unexpectedColumns.length} unexpected` : '') +
+            `). See Export_Metadata sheet.`,
+          duration: 8000,
+        },
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      toast.error('Export failed — no file written', { id: tId, description: msg, duration: 12000 });
+      console.error('[chatgpt-agent export]', err);
+    } finally {
+      setExporting(false);
+    }
+  }, [exporting]);
 
   // Editor & dedup
   const [editDraft, setEditDraft] = useState<any>(null);
@@ -911,6 +940,20 @@ export function ChatGptAgentManager() {
                 <span><Upload className="h-4 w-4 mr-1" />Upload Excel</span>
               </Button>
             </label>
+
+            {/* Full-fidelity export — every column, every row, audit-grade */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportAllDrafts}
+              disabled={exporting}
+              title="Download every ChatGPT Agent draft into a single Excel file (full-fidelity, no field omitted)"
+            >
+              {exporting
+                ? <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                : <Download className="h-4 w-4 mr-1" />}
+              {exporting ? 'Exporting…' : 'Download all (Excel)'}
+            </Button>
 
             {/* AI Model — restricted to routable models only */}
             <AiModelSelector

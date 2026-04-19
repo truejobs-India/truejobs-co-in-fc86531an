@@ -233,7 +233,7 @@ Deno.serve(async (req) => {
     const { data: draft } = await client.from('intake_drafts').select('*').eq('id', draftId).single();
     if (!draft) {
       await releaseLock({ pipeline_status: 'failed', pipeline_last_error: 'draft vanished' });
-      return json({ error: 'Draft not found post-lock' }, 404);
+      return;
     }
 
     const t0 = Date.now();

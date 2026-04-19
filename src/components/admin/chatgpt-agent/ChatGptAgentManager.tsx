@@ -1156,6 +1156,46 @@ export function ChatGptAgentManager() {
               <Search className="h-4 w-4 mr-1" />Find Duplicates
             </Button>
 
+            {/* Destructive zone — drafts only, never touches public live records */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  disabled={deleting}
+                  title="Delete ChatGPT Agent drafts (does not affect public live pages)"
+                >
+                  {deleting
+                    ? <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                    : <Trash2 className="h-4 w-4 mr-1" />}
+                  Delete <ChevronDown className="h-3 w-3 ml-1" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-72">
+                <DropdownMenuItem
+                  onSelect={openDeleteSelected}
+                  disabled={selected.size === 0}
+                  className="text-destructive focus:text-destructive"
+                >
+                  Delete selected drafts{selected.size > 0 ? ` (${selected.size})` : ''}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onSelect={openDeleteAllUnpublished}
+                  className="text-destructive focus:text-destructive"
+                >
+                  Delete all unpublished drafts (across all sections)
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={openDeleteAllPublished}
+                  className="text-destructive focus:text-destructive"
+                >
+                  Delete all published drafts — drafts only, public pages stay live
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
             <Button variant="ghost" size="icon" onClick={() => { fetchDrafts(); fetchCounts(); }}>
               <RefreshCw className="h-4 w-4" />
             </Button>

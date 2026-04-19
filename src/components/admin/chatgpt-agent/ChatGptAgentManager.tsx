@@ -1063,12 +1063,53 @@ export function ChatGptAgentManager() {
                   ? `Clear selection (${selected.size})`
                   : `Select all visible (${filteredDrafts.length})`}
               </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs gap-1"
+                onClick={handleSelectAllUnfixed}
+                disabled={aiProcessing || scanning}
+                title="Scan every chatgpt_agent draft across all sections and select those that still need AI fixes"
+              >
+                {scanning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                {scanning ? 'Scanning…' : 'Select all unfixed across all sections'}
+              </Button>
               {activeSection === ALL_SECTIONS_VALUE && (
                 <span className="text-[11px] text-muted-foreground">
                   Across all sections
                 </span>
               )}
             </div>
+
+            {/* Cross-section selection scope banner */}
+            {crossSectionScope && selected.size > 0 && (() => {
+              const visibleIds = new Set(filteredDrafts.map(d => d.id));
+              let visibleHere = 0;
+              crossSectionScope.matchedIds.forEach(id => { if (visibleIds.has(id)) visibleHere++; });
+              const hidden = crossSectionScope.total - visibleHere;
+              if (hidden <= 0) return null;
+              return (
+                <div className="mb-2 px-3 py-2 rounded-md border border-primary/30 bg-primary/5 text-xs flex items-center gap-3 flex-wrap">
+                  <span className="font-medium text-foreground">Selection spans all sections</span>
+                  <span className="text-muted-foreground">
+                    Total: <strong className="text-foreground">{crossSectionScope.total}</strong>
+                    {' · '}Visible here: <strong className="text-foreground">{visibleHere}</strong>
+                    {' · '}Hidden in other sections: <strong className="text-foreground">{hidden}</strong>
+                  </span>
+                  <span className="text-muted-foreground">
+                    ({Object.entries(crossSectionScope.bySection).map(([k, v]) => `${SECTION_BUCKET_LABELS[k as SectionBucket] || k}: ${v}`).join(' · ')})
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 text-xs ml-auto"
+                    onClick={() => { setSelected(new Set()); setCrossSectionScope(null); }}
+                  >
+                    Clear
+                  </Button>
+                </div>
+              );
+            })()}
 
             {/* Shared table content for all tabs */}
             {[ALL_SECTIONS_VALUE, ...ALL_SECTIONS].map(s => (

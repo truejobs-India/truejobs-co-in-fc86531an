@@ -1,79 +1,48 @@
 
-## Deep end-to-end verification plan for ChatGPT Agent enrichment system
+## Diagnosis: why the toast says "278/278 not enriched"
 
-This is a verification-only task (no new feature build), but it requires write-capable tools (deploy edge functions, invoke pipeline, query DB after live runs, capture screenshots). Read-only mode cannot perform steps 2, 9, partial 8.
+The toast IS truthful now (it reads real DB state per row). The actual numbers:
 
-### What I will verify, and how
+| Bucket | Count | What it really is |
+|---|---|---|
+| ✅ enriched | 88 | already good (59 completed + 18 legacy + 10 mid-flight + 1 seo_fix-failed) |
+| ⚪ no_grounded_evidence | 14 | 12 + 2 honestly terminal (pipeline went through enrich, found nothing) |
+| ❌ tech_error | 0 | none |
+| ⏳ pending (NULL `enrichment_result`) | **194 + 2 legacy = 196** | requeued rows still parked at `classify` |
+| 🔄 stuck `running` (orphans) | 24 | crashed mid-pipeline; the ones with `enrichment_result` set are partial |
 
-**1. Migration & schema (DB read)**
-- Confirm columns exist and are typed correctly: `enrichment_grade`, `enrichment_completeness`, `enrichment_source_trace`, `discovered_official_url`, `discovery_confidence`, `discovery_status`, `discovery_evidence` via `information_schema.columns`
-- Confirm zero rows with `pipeline_status='completed' AND enrichment_result IS NULL`
-- Confirm 218 requeued rows are in correct pre-run state
-- Confirm 6 orphan `running` rows finalized
+**Two real problems to fix, not toast-level:**
 
-**2. Edge function deployment (deploy + diff)**
-- Re-deploy `intake-ai-pipeline` to ensure latest code is live
-- Curl-invoke a tiny dry-run to confirm boot + version
+### Problem 1 — 24 orphan "running" rows
+Their `pipeline_lock_token IS NULL` but `pipeline_status='running'` from earlier crashed batches. The runner never finalized them. `terminalStateOf` reads their already-written `enrichment_result` (so 10 already correctly show `enriched`, 14 show `no_grounded_evidence`), but the row is still locked-looking to the rest of the system because `pipeline_status='running'`. Need to flip these to `completed` (since `enrichment_result` is set) so they stop blocking.
 
-**3. Code-path audit (read-only)**
-For each function in `supabase/functions/_shared/intake-evidence.ts`, `intake-ai.ts`, and `intake-ai-pipeline/index.ts`:
-- Single terminal-write contract (grep all exit paths)
-- Pre-commit no-NULL assertion
-- Stage-2 trigger broadening
-- Stage-3 discovery: candidate → fetch → domain+content gates → staging-only write
-- Aggregator blocklist applied at every promotion site
-- Conflict resolver: fresher official wins
-- AI evidence-tag verification (rejects fields whose source tag doesn't resolve)
-- JSON cleanup parser robustness
-- Lock acquire/release on all paths (including throws)
-- Timeout + retry classes mapped to `not_enriched_tech_error`
+### Problem 2 — 194 requeued rows never advanced
+They were reset to `pipeline_current_step='classify'`, `pipeline_status='failed'`, `pipeline_last_error='requeued_for_new_three_state_pipeline'`, `enrichment_result=NULL`. The "Run All Needed Fixes" runner DOES select them (correctly — they're `pending` per `terminalStateOf`). But during the most recent run the user only processed a subset — the runner stopped, was killed, or hit batch limits. They are sitting healthy and re-runnable.
 
-**4. State-model behavior (DB + UI)**
-Tabulate writes for each of the 3 terminal states by grepping `enrichment_result =` writes; confirm UI reads (`isAiFixed`, `terminalStateOf`, `scanAllUnfixedAcrossSections`, bulk runner toast) match the matrix.
+### Plan
 
-**5. Live full-run (write)**
-- Trigger "Run All Needed Fixes" on the 218 requeued rows in batches via `supabase--curl_edge_functions` (or by clicking through browser if needed)
-- Wait for completion; poll `intake_drafts` until `pipeline_status` settles for all
-- Report final 3-state counts on all 278
+**Step 1 — One-shot SQL recovery (orphans + cleanup):**
+- For the 24 `pipeline_status='running'` rows where `enrichment_result IN ('enriched','not_enriched_no_grounded_evidence')`: set `pipeline_status='completed'`, `pipeline_current_step='validate'`, clear lock fields. They're done.
+- For the 2 legacy `not_enriched_no_data` rows: reset to `pipeline_status='failed'`, `pipeline_current_step='classify'`, `enrichment_result=NULL` so they get the new three-state path.
 
-**6. Per-stage contribution counts**
-Query `enrichment_source_trace` + `enrichment_grade` to bucket: row-evidence-only, official-HTML-contributed, official-PDF-contributed, discovery-promoted, minimal_verified
+**Step 2 — Re-run "Run All Needed Fixes" on the now-clean 196 unfixed:**
+- After Step 1, "Select all unfixed across all sections" will pick exactly the 194 + 2 = 196 truly pending rows.
+- Click "Run All Needed Fixes" — these will go classify → enrich → improve_title → ... → validate → completed, each terminating in one of the three states.
+- The toast will then show truthful final counts: ~90+ enriched / some no-evidence / some tech-error / 0 pending.
 
-**7. Spot-checks (10 rows)**
-- 2 rows per grade (full / official_pdf / official_refresh / partial / minimal_verified)
-- 1 conflict resolution example (stale structured value vs fresher PDF)
-- 1 successful discovery promotion
-- 1 rejected discovery candidate (kept in `discovered_*` only)
-- 1 row terminating as `not_enriched_no_grounded_evidence` with reason
-- 1 row terminating as `not_enriched_tech_error` with error class
-For each: show written fields next to source-trace URL + fetched_at + excerpt.
+**Step 3 — Verification queries after run:**
+- Count `enrichment_result` distribution (should sum to 278, zero NULL with `pipeline_status='completed'`)
+- Per-stage contribution from `enrichment_grade`
+- Spot-check 5 of the 194 → confirm grounded source_trace
 
-**8. UI verification (browser)**
-Screenshot `/admin` → ChatGPT Agent section showing:
-- 3-state counter banner with real numbers
-- Per-row grade badges
-- "Select all unfixed" yields zero after run (proves no_grounded_evidence is excluded)
-- Re-running "Run All Needed Fixes" picks zero rows (proves terminal states stay terminal)
-- Tech-error row, if any, IS included
+### Why this is the right fix
+- The toast is no longer lying — fixing it would re-introduce the dishonest "succeeded" inflation. Keep the truthful toast.
+- The 194 are honestly NOT enriched yet because the previous bulk run didn't finish them. The system isn't broken; the work just wasn't completed.
+- After Step 2 they'll each get an honest terminal state.
 
-**9. Regression checks (read + UI)**
-- Row ordering query unchanged
-- Tabs/filter counts match DB
-- Single-row publish dry-run unchanged
-- Bulk publish excludes no_grounded_evidence by default; opt-in includes them
+### Files / actions
+- One small SQL migration (orphan finalize + 2-row reset). No code changes.
+- User clicks "Select all unfixed" → "Run All Needed Fixes" → wait → I deliver final verification.
 
-**10. Final report** delivered in the exact 9-section structure requested, with raw counts, code excerpts proving each claim, DB query results, and screenshots.
-
-### Capabilities required (currently blocked in read-only)
-- `supabase--deploy_edge_functions` for #2
-- `supabase--curl_edge_functions` to run the pipeline batches for #5
-- `psql` / migration tool to run the live-run polling and post-run analytics queries
-- `browser--*` for UI screenshots in #8
-- ~30–60 minutes of pipeline run time for the 218 requeued rows (uses `EdgeRuntime.waitUntil`)
-
-### What I will NOT do
-- No code changes unless I find a bug during the audit; if I find one I will stop and report it before fixing
-- No new features
-- No changes outside the verification surface
-
-Approve and I will execute this audit and deliver the 9-section report with hard evidence.
+### Risk
+Low. SQL only touches misclassified pipeline-state fields, never overwrites real `enrichment_result` values.

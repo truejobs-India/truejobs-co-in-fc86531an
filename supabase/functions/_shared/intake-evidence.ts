@@ -243,8 +243,8 @@ export function collectOfficialUrls(draft: Record<string, any>): OfficialUrl[] {
       if (!url) return;
       try {
         const host = new URL(url).hostname.toLowerCase();
-        if (host.endsWith('.gov.in') || host.endsWith('.nic.in')) {
-          push(url, origin + '(gov-domain)', 'secondary_domain');
+        if (TRUSTED_TLDS.some(t => host.endsWith(t))) {
+          push(url, origin + '(trusted-tld)', 'secondary_domain');
         }
       } catch { /* ignore */ }
     };

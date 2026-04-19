@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 
 import { Progress } from '@/components/ui/progress';
 import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 import {
   Upload, Search, Sparkles, Loader2, Copy, ChevronDown,
   Send, AlertTriangle, Link2Off, Link2, RefreshCw, Wand2, StopCircle, Eye, EyeOff, ExternalLink,
@@ -120,6 +121,97 @@ export function ChatGptAgentManager() {
     if (!latest['validate'] || latest['validate'].status !== 'ok') return false;
     return !Object.values(latest).some(r => r.status === 'error');
   }, []);
+
+  // Cross-section unfixed scan state
+  const [scanning, setScanning] = useState(false);
+  const [crossSectionScope, setCrossSectionScope] = useState<{
+    total: number;
+    bySection: Record<string, number>;
+    matchedIds: Set<string>;
+  } | null>(null);
+
+  const scanAllUnfixedAcrossSections = useCallback(async (): Promise<{
+    matchedIds: string[];
+    bySection: Record<string, number>;
+  }> => {
+    // 1) Paginate all chatgpt_agent drafts (id + section_bucket only)
+    const PAGE = 1000;
+    const allDrafts: { id: string; section_bucket: string | null }[] = [];
+    let from = 0;
+    while (true) {
+      const { data, error } = await (supabase
+        .from('intake_drafts')
+        .select('id, section_bucket') as any)
+        .eq('source_channel', 'chatgpt_agent')
+        .order('id', { ascending: true })
+        .range(from, from + PAGE - 1);
+      if (error) throw error;
+      const rows = (data || []) as { id: string; section_bucket: string | null }[];
+      allDrafts.push(...rows);
+      if (rows.length < PAGE) break;
+      from += PAGE;
+    }
+
+    if (allDrafts.length === 0) return { matchedIds: [], bySection: {} };
+
+    // 2) Fetch pipeline runs for those ids in chunks of 500, paginated
+    const runsMap = new Map<string, PipelineRun[]>();
+    const ids = allDrafts.map(d => d.id);
+    const CHUNK = 500;
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      const chunk = ids.slice(i, i + CHUNK);
+      let rFrom = 0;
+      while (true) {
+        const { data, error } = await (supabase as any)
+          .from('intake_pipeline_runs')
+          .select('draft_id, step, status, reason, created_at')
+          .in('draft_id', chunk)
+          .order('created_at', { ascending: false })
+          .range(rFrom, rFrom + PAGE - 1);
+        if (error) throw error;
+        const rows = (data || []) as any[];
+        for (const r of rows) {
+          const arr = runsMap.get(r.draft_id) || [];
+          arr.push({ step: r.step, status: r.status, reason: r.reason, created_at: r.created_at });
+          runsMap.set(r.draft_id, arr);
+        }
+        if (rows.length < PAGE) break;
+        rFrom += PAGE;
+      }
+    }
+
+    // 3) Apply existing predicate (verbatim)
+    const matchedIds: string[] = [];
+    const bySection: Record<string, number> = {};
+    for (const d of allDrafts) {
+      const runs = runsMap.get(d.id);
+      if (!isAiFixed(runs)) {
+        matchedIds.push(d.id);
+        const key = d.section_bucket || 'unknown';
+        bySection[key] = (bySection[key] || 0) + 1;
+      }
+    }
+    return { matchedIds, bySection };
+  }, [isAiFixed]);
+
+  const handleSelectAllUnfixed = useCallback(async () => {
+    setScanning(true);
+    try {
+      const { matchedIds, bySection } = await scanAllUnfixedAcrossSections();
+      if (matchedIds.length === 0) {
+        toast.message('No unfixed drafts found across any section');
+        return;
+      }
+      const idSet = new Set(matchedIds);
+      setSelected(idSet);
+      setCrossSectionScope({ total: matchedIds.length, bySection, matchedIds: idSet });
+      toast.success(`Selected ${matchedIds.length} unfixed drafts across all sections`);
+    } catch (err) {
+      toast.error(`Failed to scan drafts: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setScanning(false);
+    }
+  }, [scanAllUnfixedAcrossSections]);
 
   // Section counts
   const [sectionCounts, setSectionCounts] = useState<Record<string, number>>({});
@@ -971,12 +1063,53 @@ export function ChatGptAgentManager() {
                   ? `Clear selection (${selected.size})`
                   : `Select all visible (${filteredDrafts.length})`}
               </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs gap-1"
+                onClick={handleSelectAllUnfixed}
+                disabled={aiProcessing || scanning}
+                title="Scan every chatgpt_agent draft across all sections and select those that still need AI fixes"
+              >
+                {scanning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                {scanning ? 'Scanning…' : 'Select all unfixed across all sections'}
+              </Button>
               {activeSection === ALL_SECTIONS_VALUE && (
                 <span className="text-[11px] text-muted-foreground">
                   Across all sections
                 </span>
               )}
             </div>
+
+            {/* Cross-section selection scope banner */}
+            {crossSectionScope && selected.size > 0 && (() => {
+              const visibleIds = new Set(filteredDrafts.map(d => d.id));
+              let visibleHere = 0;
+              crossSectionScope.matchedIds.forEach(id => { if (visibleIds.has(id)) visibleHere++; });
+              const hidden = crossSectionScope.total - visibleHere;
+              if (hidden <= 0) return null;
+              return (
+                <div className="mb-2 px-3 py-2 rounded-md border border-primary/30 bg-primary/5 text-xs flex items-center gap-3 flex-wrap">
+                  <span className="font-medium text-foreground">Selection spans all sections</span>
+                  <span className="text-muted-foreground">
+                    Total: <strong className="text-foreground">{crossSectionScope.total}</strong>
+                    {' · '}Visible here: <strong className="text-foreground">{visibleHere}</strong>
+                    {' · '}Hidden in other sections: <strong className="text-foreground">{hidden}</strong>
+                  </span>
+                  <span className="text-muted-foreground">
+                    ({Object.entries(crossSectionScope.bySection).map(([k, v]) => `${SECTION_BUCKET_LABELS[k as SectionBucket] || k}: ${v}`).join(' · ')})
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 text-xs ml-auto"
+                    onClick={() => { setSelected(new Set()); setCrossSectionScope(null); }}
+                  >
+                    Clear
+                  </Button>
+                </div>
+              );
+            })()}
 
             {/* Shared table content for all tabs */}
             {[ALL_SECTIONS_VALUE, ...ALL_SECTIONS].map(s => (

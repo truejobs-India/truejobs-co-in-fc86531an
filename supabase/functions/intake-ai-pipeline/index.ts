@@ -211,9 +211,12 @@ Deno.serve(async (req) => {
 
     if (lockErr) {
       console.error('[pipeline] lock error:', lockErr);
-      return json({ error: `Lock error: ${lockErr.message}` }, 500);
+      return;
     }
-    if (!lockRow) return json({ error: 'locked', message: 'Draft is being processed by another worker' }, 409);
+    if (!lockRow) {
+      console.warn('[pipeline] lock lost mid-flight for', draftId);
+      return;
+    }
 
     const releaseLock = async (extra: Record<string, any> = {}) => {
       try {

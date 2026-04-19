@@ -794,25 +794,53 @@ export function ChatGptAgentManager() {
         await fetchRunsForDrafts([draftId]);
       }
 
-      // Final summary
+      // Final summary — read REAL terminal state per row from DB,
+      // not just "edge function returned no error".
       const total = ids.length;
-      const okCount = succeeded.length;
-      const failCount = failed.length;
-      const skipCount = skipped.length;
+      let trueEnriched = 0;
+      let trueNoEvidence = 0;
+      let trueTechError = 0;
+      let truePending = 0;
+      try {
+        const { data: finalRows } = await (supabase
+          .from('intake_drafts')
+          .select('id, enrichment_result, enrichment_reason') as any)
+          .in('id', ids);
+        const byId = new Map<string, any>((finalRows || []).map((r: any) => [r.id, r]));
+        for (const id of ids) {
+          const er = byId.get(id)?.enrichment_result;
+          if (er === 'enriched') trueEnriched++;
+          else if (er === 'not_enriched_no_grounded_evidence') trueNoEvidence++;
+          else if (er === 'not_enriched_tech_error') trueTechError++;
+          else truePending++;
+        }
+      } catch {
+        // If the read fails, fall back to optimistic counts so the toast still appears
+        trueEnriched = succeeded.length;
+        trueTechError = failed.length;
+        truePending = skipped.length;
+      }
       const fmtList = (items: string[], max = 8) =>
         items.slice(0, max).map(s => `• ${s}`).join('\n') +
         (items.length > max ? `\n… and ${items.length - max} more` : '');
       const failLines = failed.map(f => `• ${f.title}: ${f.step} — ${f.error}`);
       const skipLines = skipped.map(s => `• ${s.title}`);
       const descParts: string[] = [];
-      if (failLines.length) descParts.push(`Failed:\n${fmtList(failLines)}`);
-      if (skipLines.length) descParts.push(`Skipped:\n${fmtList(skipLines)}`);
-      if (!descParts.length) descParts.push(`All ${okCount} draft(s) processed successfully.`);
-      const type = failCount > 0 ? 'error' : (stoppedEarly ? 'warning' : 'success');
+      descParts.push(
+        `Terminal state breakdown (of ${total}):\n` +
+        `  ✅ ${trueEnriched} enriched (grounded evidence written)\n` +
+        `  ⚪ ${trueNoEvidence} no grounded evidence (terminal — not retried)\n` +
+        `  ❌ ${trueTechError} tech error (retryable)\n` +
+        `  ⏳ ${truePending} pending / not yet finalized`
+      );
+      if (failLines.length) descParts.push(`Edge function errors:\n${fmtList(failLines)}`);
+      if (skipLines.length) descParts.push(`Skipped (stopped early):\n${fmtList(skipLines)}`);
+      const hasIssues = trueTechError > 0 || truePending > 0 || failed.length > 0;
+      const type = hasIssues ? (stoppedEarly ? 'warning' : 'error') : 'success';
       const titleIcon = stoppedEarly ? '⏹ Pipeline stopped' : 'Pipeline finished';
       addMessage(
         type,
-        `${titleIcon} — ✅ ${okCount} succeeded · ❌ ${failCount} failed · ⏭ ${skipCount} skipped (of ${total})`,
+        `${titleIcon} — ✅ ${trueEnriched} enriched · ⚪ ${trueNoEvidence} no-evidence · ❌ ${trueTechError} tech-error · ⏳ ${truePending} pending (of ${total})`,
         descParts.join('\n\n'),
       );
     } catch (err: any) {

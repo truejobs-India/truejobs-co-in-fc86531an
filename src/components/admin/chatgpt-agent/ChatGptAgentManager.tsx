@@ -378,6 +378,19 @@ export function ChatGptAgentManager() {
 
   const publishedCount = useMemo(() => drafts.filter(d => d.processing_status === 'published').length, [drafts]);
 
+  // Three-state terminal counters across the currently loaded drafts in the active section
+  const terminalCounts = useMemo(() => {
+    let enriched = 0, noEvidence = 0, techError = 0, pending = 0;
+    for (const d of drafts) {
+      const er = d?.enrichment_result;
+      if (er === 'enriched') enriched++;
+      else if (er === 'not_enriched_no_grounded_evidence') noEvidence++;
+      else if (er === 'not_enriched_tech_error') techError++;
+      else pending++;
+    }
+    return { enriched, noEvidence, techError, pending, total: drafts.length };
+  }, [drafts]);
+
   const totalPages = Math.max(1, Math.ceil(filteredDrafts.length / PAGE_SIZE));
   const paginatedDrafts = useMemo(
     () => filteredDrafts.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),

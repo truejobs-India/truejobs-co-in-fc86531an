@@ -696,6 +696,146 @@ export function ChatGptAgentManager() {
       addMessage('error', 'Unpublish failed', err?.message || 'Unknown error');
     }
   };
+  // ── Delete (drafts only — never touches public live records) ──────────
+  // Scope guard: every delete query is .eq('source_channel','chatgpt_agent')
+  // so we can never accidentally delete other intake_drafts rows.
+  type DeleteMode =
+    | { kind: 'selected'; ids: string[]; publishedInSelection: number }
+    | { kind: 'all_unpublished'; count: number }
+    | { kind: 'all_published'; count: number };
+  const [deleteMode, setDeleteMode] = useState<DeleteMode | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleting, setDeleting] = useState(false);
+
+  // Re-query exact DB counts at click time so the dialog never lies
+  // (manager is paginated, so visible counts can drift from DB).
+  const fetchScopedCount = async (extra?: (qb: any) => any): Promise<number> => {
+    let qb: any = supabase.from('intake_drafts').select('id', { count: 'exact', head: true });
+    qb = CHATGPT_AGENT_FILTER.apply(qb);
+    if (extra) qb = extra(qb);
+    const { count, error } = await qb;
+    if (error) throw error;
+    return count || 0;
+  };
+
+  const openDeleteSelected = async () => {
+    const ids = Array.from(selected);
+    if (ids.length === 0) { addMessage('info', 'Select drafts first'); return; }
+    try {
+      // Count how many of the selected ids are published — re-queried from DB
+      let publishedInSelection = 0;
+      const CHUNK = 500;
+      for (let i = 0; i < ids.length; i += CHUNK) {
+        const chunk = ids.slice(i, i + CHUNK);
+        const c = await fetchScopedCount((qb) => qb.in('id', chunk).eq('processing_status', 'published'));
+        publishedInSelection += c;
+      }
+      setDeleteConfirmText('');
+      setDeleteMode({ kind: 'selected', ids, publishedInSelection });
+    } catch (err: any) {
+      addMessage('error', 'Could not resolve selection', err?.message || 'Unknown error');
+    }
+  };
+
+  const openDeleteAllUnpublished = async () => {
+    try {
+      const count = await fetchScopedCount((qb) => qb.neq('processing_status', 'published'));
+      if (count === 0) { addMessage('info', 'No unpublished drafts to delete'); return; }
+      setDeleteConfirmText('');
+      setDeleteMode({ kind: 'all_unpublished', count });
+    } catch (err: any) {
+      addMessage('error', 'Could not resolve count', err?.message || 'Unknown error');
+    }
+  };
+
+  const openDeleteAllPublished = async () => {
+    try {
+      const count = await fetchScopedCount((qb) => qb.eq('processing_status', 'published'));
+      if (count === 0) { addMessage('info', 'No published drafts to delete'); return; }
+      setDeleteConfirmText('');
+      setDeleteMode({ kind: 'all_published', count });
+    } catch (err: any) {
+      addMessage('error', 'Could not resolve count', err?.message || 'Unknown error');
+    }
+  };
+
+  // Resolves the target id list at execute time (always re-queries DB),
+  // then deletes in chunks of 500 with the chatgpt_agent guard always present.
+  const executeDelete = async () => {
+    if (!deleteMode) return;
+    setDeleting(true);
+    try {
+      // Step 1: resolve ids from DB (never trust UI for "all_*")
+      let targetIds: string[] = [];
+      if (deleteMode.kind === 'selected') {
+        targetIds = [...deleteMode.ids];
+      } else {
+        const PAGE = 1000;
+        let from = 0;
+        // paginate (Supabase JS limit) per project policy
+        while (true) {
+          let qb: any = supabase.from('intake_drafts').select('id').order('id');
+          qb = CHATGPT_AGENT_FILTER.apply(qb);
+          qb = deleteMode.kind === 'all_published'
+            ? qb.eq('processing_status', 'published')
+            : qb.neq('processing_status', 'published');
+          const { data, error } = await qb.range(from, from + PAGE - 1);
+          if (error) throw error;
+          const rows = data || [];
+          targetIds.push(...rows.map((r: any) => r.id));
+          if (rows.length < PAGE) break;
+          from += PAGE;
+        }
+      }
+
+      const total = targetIds.length;
+      if (total === 0) {
+        addMessage('info', 'Nothing to delete');
+        setDeleting(false);
+        setDeleteMode(null);
+        return;
+      }
+
+      // Step 2: chunked delete with hard guard
+      const CHUNK = 500;
+      let deleted = 0;
+      const errors: string[] = [];
+      for (let i = 0; i < targetIds.length; i += CHUNK) {
+        const chunk = targetIds.slice(i, i + CHUNK);
+        const { error, count } = await supabase
+          .from('intake_drafts')
+          .delete({ count: 'exact' })
+          .eq('source_channel', 'chatgpt_agent') // hard scope guard
+          .in('id', chunk);
+        if (error) {
+          errors.push(error.message);
+        } else {
+          deleted += count || 0;
+        }
+      }
+
+      if (errors.length > 0) {
+        addMessage(
+          deleted > 0 ? 'warning' : 'error',
+          `Deleted ${deleted} of ${total} drafts. ${errors.length} batch(es) failed.`,
+          errors.slice(0, 5).join('\n'),
+        );
+      } else {
+        addMessage('success', `Deleted ${deleted} draft${deleted === 1 ? '' : 's'}`,
+          'Pipeline run history cascade-cleaned. Public live pages were not touched.');
+      }
+    } catch (err: any) {
+      addMessage('error', 'Delete failed', err?.message || 'Unknown error');
+    } finally {
+      setDeleting(false);
+      setDeleteMode(null);
+      setDeleteConfirmText('');
+      setSelected(new Set());
+      fetchDrafts();
+      fetchCounts();
+    }
+  };
+
   const AI_ACTIONS = [
     { label: 'Fix', action: 'fix' },
     { label: 'Enrich', action: 'enrich' },

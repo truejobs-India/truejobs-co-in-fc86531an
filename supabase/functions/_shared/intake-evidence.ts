@@ -49,7 +49,22 @@ const STRUCTURED_FIELDS = [
 const AGGREGATOR_DOMAINS = [
   'sarkariresult.com', 'freejobalert.com', 'sarkarinaukri.com',
   'jobsarkari.com', 'rojgarresult.com', 'sarkari-result.com',
-  'sarkariexam.com', 'sarkariresults.com',
+  'sarkariexam.com', 'sarkariresults.com', 'jagranjosh.com',
+  'careerpower.in', 'adda247.com', 'gradeup.co', 'oliveboard.in',
+  'testbook.com', 'byjus.com', 'unacademy.com', 'shiksha.com',
+  'collegedunia.com', 'careers360.com', 'getmyuni.com',
+];
+
+// Officially trusted TLDs/suffixes for India government / institutional sources.
+// Trust requires content validation in addition to TLD; TLD alone is never sufficient.
+const TRUSTED_TLDS = ['.gov.in', '.nic.in', '.ac.in', '.edu.in', '.res.in', '.gov', '.gov.bd'];
+
+// Institution-style host substrings used as a content-relevance hint when the
+// TLD is allowed but generic (e.g. .org.in commissions, courts).
+const INSTITUTION_HOST_HINTS = [
+  'commission', 'university', 'court', 'judiciary', 'recruitment',
+  'service', 'board', 'council', 'institute', 'authority',
+  'ministry', 'department', 'sarkari', 'gov',
 ];
 
 // ── Types ───────────────────────────────────────────────────────────────

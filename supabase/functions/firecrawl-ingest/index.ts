@@ -33,10 +33,17 @@ const LIMITS = {
   private: { maxDetailScrapes: 10, discoverMaxUrls: 300, extractBatchMax: 30 },
   government: { maxDetailScrapes: 15, discoverMaxUrls: 500, extractBatchMax: 30 },
   sitemap: { maxDetailScrapes: 8, discoverMaxUrls: 400, extractBatchMax: 30 },
+  // Peak (5x): aggressive but capped. Used only when source_type endswith _peak.
+  government_peak: { maxDetailScrapes: 75, discoverMaxUrls: 2500, extractBatchMax: 100 },
+  sitemap_peak: { maxDetailScrapes: 40, discoverMaxUrls: 2000, extractBatchMax: 100 },
 };
 
 /** Hard cap: never scrape more than this many detail pages in one discover run */
 const HARD_SCRAPE_CAP = 25;
+/** Peak hard cap: 5x the normal cap, still non-negotiable per invocation */
+const HARD_SCRAPE_CAP_PEAK = 125;
+/** Peak concurrency: parallel scrape worker pool size (only when isPeak) */
+const PEAK_CONCURRENCY = 5;
 
 /** Recovery pass: max drafts to attempt per invocation */
 const RECOVERY_MAX_PER_RUN = 10;
@@ -47,22 +54,42 @@ const domainFailCount = new Map<string, number>();
 const DOMAIN_MIN_INTERVAL_MS = 2000;
 const DOMAIN_COOLDOWN_THRESHOLD = 3;
 const DOMAIN_COOLDOWN_MS = 30_000;
+// Peak overrides (only consulted when isPeak === true)
+const DOMAIN_MIN_INTERVAL_MS_PEAK = 750;
+const DOMAIN_COOLDOWN_THRESHOLD_PEAK = 5;
+const DOMAIN_COOLDOWN_MS_PEAK = 20_000;
+
+/** Returns true if this source is a Peak (aggressive) variant. */
+function isPeak(sourceType: string | null | undefined): boolean {
+  return sourceType === 'firecrawl_sitemap_peak' || sourceType === 'government_peak';
+}
+
+function getCooldownThreshold(peak: boolean): number {
+  return peak ? DOMAIN_COOLDOWN_THRESHOLD_PEAK : DOMAIN_COOLDOWN_THRESHOLD;
+}
+
+function getHardScrapeCap(peak: boolean): number {
+  return peak ? HARD_SCRAPE_CAP_PEAK : HARD_SCRAPE_CAP;
+}
 
 function extractDomainFromUrl(url: string): string {
   try { return new URL(url).hostname; } catch { return 'unknown'; }
 }
 
-function getDomainThrottleDelay(url: string): number {
+function getDomainThrottleDelay(url: string, peak = false): number {
   const domain = extractDomainFromUrl(url);
   const now = Date.now();
+  const minInterval = peak ? DOMAIN_MIN_INTERVAL_MS_PEAK : DOMAIN_MIN_INTERVAL_MS;
+  const cooldownThreshold = peak ? DOMAIN_COOLDOWN_THRESHOLD_PEAK : DOMAIN_COOLDOWN_THRESHOLD;
+  const cooldownMs = peak ? DOMAIN_COOLDOWN_MS_PEAK : DOMAIN_COOLDOWN_MS;
 
   // Check cooldown
   const fails = domainFailCount.get(domain) || 0;
-  if (fails >= DOMAIN_COOLDOWN_THRESHOLD) {
+  if (fails >= cooldownThreshold) {
     const lastFetch = domainLastFetch.get(domain) || 0;
     const elapsed = now - lastFetch;
-    if (elapsed < DOMAIN_COOLDOWN_MS) {
-      return DOMAIN_COOLDOWN_MS - elapsed;
+    if (elapsed < cooldownMs) {
+      return cooldownMs - elapsed;
     }
     // Cooldown expired, reset
     domainFailCount.set(domain, 0);
@@ -71,8 +98,8 @@ function getDomainThrottleDelay(url: string): number {
   // Normal throttle
   const lastFetch = domainLastFetch.get(domain) || 0;
   const elapsed = now - lastFetch;
-  if (elapsed < DOMAIN_MIN_INTERVAL_MS) {
-    return DOMAIN_MIN_INTERVAL_MS - elapsed;
+  if (elapsed < minInterval) {
+    return minInterval - elapsed;
   }
   return 0;
 }
@@ -83,20 +110,21 @@ function recordDomainSuccess(url: string): void {
   domainFailCount.set(domain, 0);
 }
 
-function recordDomainFailure(url: string): boolean {
+function recordDomainFailure(url: string, peak = false): boolean {
   const domain = extractDomainFromUrl(url);
   domainLastFetch.set(domain, Date.now());
   const count = (domainFailCount.get(domain) || 0) + 1;
   domainFailCount.set(domain, count);
-  if (count >= DOMAIN_COOLDOWN_THRESHOLD) {
+  const threshold = peak ? DOMAIN_COOLDOWN_THRESHOLD_PEAK : DOMAIN_COOLDOWN_THRESHOLD;
+  if (count >= threshold) {
     console.warn(`[domain-throttle] Domain ${domain} hit cooldown (${count} consecutive failures)`);
     return true; // in cooldown
   }
   return false;
 }
 
-async function throttledScrapePage(url: string, options?: Parameters<typeof scrapePage>[1]) {
-  const delay = getDomainThrottleDelay(url);
+async function throttledScrapePage(url: string, options?: Parameters<typeof scrapePage>[1], peak = false) {
+  const delay = getDomainThrottleDelay(url, peak);
   if (delay > 0) {
     console.log(`[domain-throttle] Waiting ${delay}ms before scraping ${extractDomainFromUrl(url)}`);
     await new Promise(r => setTimeout(r, delay));
@@ -105,12 +133,14 @@ async function throttledScrapePage(url: string, options?: Parameters<typeof scra
   if (result.success) {
     recordDomainSuccess(url);
   } else {
-    recordDomainFailure(url);
+    recordDomainFailure(url, peak);
   }
   return result;
 }
 
 function getSourceLimits(sourceType: string) {
+  if (sourceType === 'government_peak') return LIMITS.government_peak;
+  if (sourceType === 'firecrawl_sitemap_peak') return LIMITS.sitemap_peak;
   if (sourceType === 'government') return LIMITS.government;
   if (sourceType === 'firecrawl_sitemap') return LIMITS.sitemap;
   return LIMITS.private;
@@ -368,13 +398,15 @@ async function handleDiscoverSource(
   if (!source) return jsonResponse({ error: 'Source not found' }, 404);
 
   const limits = getSourceLimits(source.source_type);
+  const peak = isPeak(source.source_type);
+  const hardCap = getHardScrapeCap(peak);
   const maxDetailScrapes = Math.min(
     (body.max_detail_scrapes as number) || limits.maxDetailScrapes,
-    source.max_pages_per_run || 15,
-    HARD_SCRAPE_CAP
+    source.max_pages_per_run || (peak ? 250 : 15),
+    hardCap
   );
 
-  console.log(`[firecrawl-ingest] discover-source: ${source.source_name} (type=${source.source_type}, max_detail: ${maxDetailScrapes})`);
+  console.log(`[firecrawl-ingest] discover-source: ${source.source_name} (type=${source.source_type}, peak=${peak}, max_detail: ${maxDetailScrapes})`);
 
   const { data: run } = await client
     .from('firecrawl_fetch_runs')
@@ -500,15 +532,15 @@ async function handleDiscoverSource(
 
     for (const candidate of recruitmentCandidates) {
       // Hard cap check
-      if (stats.pagesScraped >= HARD_SCRAPE_CAP) {
-        console.log(`[firecrawl-ingest] Hard scrape cap reached (${HARD_SCRAPE_CAP}), stopping detail scraping`);
+      if (stats.pagesScraped >= hardCap) {
+        console.log(`[firecrawl-ingest] Hard scrape cap reached (${hardCap}), stopping detail scraping`);
         break;
       }
 
       // Domain cooldown check
       const domain = extractDomainFromUrl(candidate.normalized);
       const fails = domainFailCount.get(domain) || 0;
-      if (fails >= DOMAIN_COOLDOWN_THRESHOLD) {
+      if (fails >= getCooldownThreshold(peak)) {
         stats.domainCooldowns++;
         detailResults.push({ url: candidate.normalized, error: 'Domain in cooldown' });
         continue;
@@ -518,7 +550,7 @@ async function handleDiscoverSource(
         const detailResult = await throttledScrapePage(candidate.normalized, {
           formats: ['markdown', 'links'],
           onlyMainContent: true,
-        });
+        }, peak);
 
         stats.pagesScraped++;
         stats.detailPageFollowUps++;
@@ -719,6 +751,7 @@ async function handleScrapePending(
 
   const { data: source } = await client.from('firecrawl_sources').select('id, source_name, source_type').eq('id', sourceId).single();
   if (!source) return jsonResponse({ error: 'Source not found' }, 404);
+  const peak = isPeak(source.source_type);
 
   const { data: items, error } = await client
     .from('firecrawl_staged_items')
@@ -755,7 +788,7 @@ async function handleScrapePending(
     // Domain cooldown check
     const domain = extractDomainFromUrl(item.page_url);
     const fails = domainFailCount.get(domain) || 0;
-    if (fails >= DOMAIN_COOLDOWN_THRESHOLD) {
+    if (fails >= getCooldownThreshold(peak)) {
       domainCooldowns++;
       results.push({ url: item.page_url, status: 'domain_cooldown' });
       continue;
@@ -765,7 +798,7 @@ async function handleScrapePending(
       const scrapeResult = await throttledScrapePage(item.page_url, {
         formats: ['markdown', 'links'],
         onlyMainContent: true,
-      });
+      }, peak);
 
       if (!scrapeResult.success || !scrapeResult.markdown) {
         failedCount++;
@@ -1352,8 +1385,9 @@ async function handleDiscoverGovt(
   const { data: source } = await client.from('firecrawl_sources').select('*').eq('id', sourceId).single();
   if (!source) return jsonResponse({ error: 'Source not found' }, 404);
 
-  const maxPages = source.max_pages_per_run || 50;
-  console.log(`[firecrawl-ingest] discover-govt: ${source.source_name} (max: ${maxPages})`);
+  const peak = isPeak(source.source_type);
+  const maxPages = source.max_pages_per_run || (peak ? 250 : 50);
+  console.log(`[firecrawl-ingest] discover-govt: ${source.source_name} (peak=${peak}, max: ${maxPages})`);
 
   const { data: run } = await client
     .from('firecrawl_fetch_runs')
@@ -1366,8 +1400,8 @@ async function handleDiscoverGovt(
   try {
     let discoveredLinks: string[] = [];
     if (source.crawl_mode === 'map') {
-      // Aggressive: up to maxPages*10, cap 2000
-      const mapLimit = Math.min(maxPages * 10, 2000);
+      // Aggressive: peak uses *20 cap 10000, normal uses *10 cap 2000
+      const mapLimit = peak ? Math.min(maxPages * 20, 10_000) : Math.min(maxPages * 10, 2000);
       const mapResult = await mapUrl(source.seed_url, { limit: mapLimit, includeSubdomains: false });
       if (!mapResult.success) {
         const errMsg = mapResult.error || 'Map failed';
@@ -1377,7 +1411,7 @@ async function handleDiscoverGovt(
       }
       discoveredLinks = mapResult.links || [];
     } else {
-      const scrapeResult = await throttledScrapePage(source.seed_url, { formats: ['markdown', 'links'], onlyMainContent: true });
+      const scrapeResult = await throttledScrapePage(source.seed_url, { formats: ['markdown', 'links'], onlyMainContent: true }, peak);
       if (!scrapeResult.success) {
         const errMsg = scrapeResult.error || 'Scrape failed';
         if (runId) await finalizeRun(client, runId, 'error', { errorLog: errMsg });
@@ -1482,10 +1516,11 @@ async function handleGovtScrapeExtract(
   const sourceId = body.source_id as string;
   if (!sourceId) return jsonResponse({ error: 'source_id required' }, 400);
 
-  const maxItems = Math.min(Math.max((body.max_items as number) || 20, 1), 50);
-
   const { data: source } = await client.from('firecrawl_sources').select('*').eq('id', sourceId).single();
   if (!source) return jsonResponse({ error: 'Source not found' }, 404);
+  const peak = isPeak(source.source_type);
+  // Peak gets 5x the per-call ceiling (50 → 250); still capped by HARD_SCRAPE_CAP_PEAK below
+  const maxItems = Math.min(Math.max((body.max_items as number) || 20, 1), peak ? 250 : 50);
 
   const { data: items, error } = await client
     .from('firecrawl_staged_items')
@@ -1513,7 +1548,7 @@ async function handleGovtScrapeExtract(
     // Domain cooldown check
     const domain = extractDomainFromUrl(item.page_url);
     const fails = domainFailCount.get(domain) || 0;
-    if (fails >= DOMAIN_COOLDOWN_THRESHOLD) {
+    if (fails >= getCooldownThreshold(peak)) {
       domainCooldowns++;
       results.push({ url: item.page_url, status: 'domain_cooldown' });
       continue;
@@ -1523,7 +1558,7 @@ async function handleGovtScrapeExtract(
       const scrapeResult = await throttledScrapePage(item.page_url, {
         formats: ['markdown', 'links'],
         onlyMainContent: true,
-      });
+      }, peak);
 
       if (!scrapeResult.success || !scrapeResult.markdown) {
         failed++;
@@ -1572,7 +1607,7 @@ async function handleGovtScrapeExtract(
 
           console.log(`[govt-scrape-extract] PDF follow-up for ${item.page_url}: trying ${bestPdf.url}`);
 
-          const pdfResult = await throttledScrapePage(bestPdf.url, { formats: ['markdown'], onlyMainContent: true });
+          const pdfResult = await throttledScrapePage(bestPdf.url, { formats: ['markdown'], onlyMainContent: true }, peak);
           if (pdfResult.success && pdfResult.markdown) {
             pdfFollowUps++;
             const mergedText = markdown + '\n\n--- PDF CONTENT ---\n\n' + pdfResult.markdown;

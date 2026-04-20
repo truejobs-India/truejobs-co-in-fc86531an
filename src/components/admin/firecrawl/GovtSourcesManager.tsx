@@ -133,7 +133,23 @@ async function invokeFirecrawl(action: string, body: Record<string, unknown> = {
 }
 
 /* ─── Component ─── */
-export function GovtSourcesManager() {
+interface GovtSourcesManagerProps {
+  /** Override the source_type used for filtering / inserts. Defaults to 'government'. */
+  sourceTypeOverride?: string;
+  /** Override the card title. */
+  titleOverride?: string;
+  /** Default max_pages_per_run for newly-added sources. */
+  defaultMaxPagesPerRun?: number;
+  /** Optional title-row badge (e.g. PEAK indicator). */
+  titleBadge?: React.ReactNode;
+}
+
+export function GovtSourcesManager({
+  sourceTypeOverride = 'government',
+  titleOverride,
+  defaultMaxPagesPerRun = 50,
+  titleBadge,
+}: GovtSourcesManagerProps = {}) {
   const { toast } = useAdminToast();
   const [sources, setSources] = useState<GovtSource[]>([]);
   const [loading, setLoading] = useState(true);
@@ -220,7 +236,8 @@ export function GovtSourcesManager() {
       stats[sid][es] = (stats[sid][es] || 0) + 1;
     }
     setPipelineStats(stats);
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceTypeOverride]);
 
   /* ─── Fetch sources ─── */
   const fetchSources = useCallback(async () => {
@@ -228,7 +245,7 @@ export function GovtSourcesManager() {
     const { data, error } = await supabase
       .from('firecrawl_sources')
       .select('*')
-      .eq('source_type', 'government')
+      .eq('source_type', sourceTypeOverride)
       .order('source_name');
 
     if (error) {
@@ -240,7 +257,8 @@ export function GovtSourcesManager() {
       })) || []);
     }
     setLoading(false);
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceTypeOverride]);
 
   useEffect(() => { fetchSources(); fetchPipelineStats(); }, [fetchSources, fetchPipelineStats]);
 
@@ -455,10 +473,10 @@ export function GovtSourcesManager() {
     const rows = toSave.map(p => ({
       source_name: p.label,
       seed_url: p.normalized,
-      source_type: 'government' as const,
+      source_type: sourceTypeOverride,
       crawl_mode: 'map',
       extraction_mode: 'markdown',
-      max_pages_per_run: 50,
+      max_pages_per_run: defaultMaxPagesPerRun,
       is_enabled: false,
       default_bucket: 'staging',
       priority: 'Medium',
@@ -492,10 +510,10 @@ export function GovtSourcesManager() {
     const { error } = await supabase.from('firecrawl_sources').insert({
       source_name: inferLabel(domain),
       seed_url: normalized,
-      source_type: 'government',
+      source_type: sourceTypeOverride,
       crawl_mode: 'map',
       extraction_mode: 'markdown',
-      max_pages_per_run: 50,
+      max_pages_per_run: defaultMaxPagesPerRun,
       is_enabled: false,
       default_bucket: 'staging',
       priority: 'Medium',
@@ -531,7 +549,7 @@ export function GovtSourcesManager() {
     const { error } = await supabase
       .from('firecrawl_sources')
       .update({ is_enabled: enable, updated_at: new Date().toISOString() })
-      .eq('source_type', 'government')
+      .eq('source_type', sourceTypeOverride)
       .in('id', ids);
     if (error) {
       toast({ title: 'Bulk toggle failed', description: error.message, variant: 'destructive' });
@@ -561,8 +579,9 @@ export function GovtSourcesManager() {
             <CollapsibleTrigger className="flex items-center gap-2 cursor-pointer hover:opacity-80">
               <Globe className="h-5 w-5 text-green-600" />
               <CardTitle className="text-base">
-                Firecrawl Government Sources ({sources.length})
+                {titleOverride ?? 'Firecrawl Government Sources'} ({sources.length})
               </CardTitle>
+              {titleBadge}
               {open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
             </CollapsibleTrigger>
             <div className="flex items-center gap-1.5 flex-wrap">

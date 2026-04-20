@@ -31,20 +31,28 @@ function json(data: any, status = 200) {
   });
 }
 
-/** Map our internal model id to the Lovable AI Gateway model name. */
-function resolveGatewayModel(model: string | undefined | null): string {
-  switch (model) {
-    case 'gemini-pro-image':
-    case 'vertex-3-pro-image':
-      return 'google/gemini-3-pro-image-preview';
-    case 'gemini-flash-image-2':
-    case 'vertex-3.1-flash-image':
-      return 'google/gemini-3.1-flash-image-preview';
-    case 'gemini-flash-image':
-    default:
-      return 'google/gemini-2.5-flash-image';
-  }
-}
+/**
+ * Models we can call directly via the Lovable AI Gateway from inside this
+ * function (fast path — no extra edge invocation, no auth hop).
+ * Everything else is delegated to `generate-vertex-image`, which already
+ * implements the full provider matrix used by the blog FeaturedImageGenerator.
+ */
+const NATIVE_GATEWAY_MODELS: Record<string, string> = {
+  'gemini-flash-image': 'google/gemini-2.5-flash-image',
+  'gemini-flash-image-2': 'google/gemini-3.1-flash-image-preview',
+  'gemini-pro-image': 'google/gemini-3-pro-image-preview',
+};
+
+/** Models accepted on the wire — kept aligned with KNOWN_IMAGE_MODEL_KEYS in generate-vertex-image. */
+const ALLOWED_IMAGE_MODELS = new Set<string>([
+  ...Object.keys(NATIVE_GATEWAY_MODELS),
+  'vertex-3-pro-image',
+  'vertex-3.1-flash-image',
+  'azure-flux-kontext',
+  'azure-flux2-pro',
+  'azure-mai-image-2',
+  'nova-canvas',
+]);
 
 async function recordError(client: any, draftId: string, message: string) {
   try {

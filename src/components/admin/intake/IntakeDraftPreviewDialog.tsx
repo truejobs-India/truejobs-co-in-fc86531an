@@ -248,19 +248,55 @@ function ContentBlock({ html }: { html: string | null }) {
 
 /* ─── Shared: Official links ─── */
 function LinksBlock({ draft }: { draft: any }) {
-  if (!draft.official_apply_link && !draft.official_notification_link) return null;
+  const links: Array<{ url: string; label: string; primary?: boolean }> = [];
+  if (draft.primary_cta_url) links.push({ url: draft.primary_cta_url, label: draft.primary_cta_label || 'Apply Now', primary: true });
+  if (draft.official_apply_link) links.push({ url: draft.official_apply_link, label: 'Apply Now', primary: !draft.primary_cta_url });
+  if (draft.official_notification_link) links.push({ url: draft.official_notification_link, label: 'Official Notification' });
+  if (draft.official_reference_url) links.push({ url: draft.official_reference_url, label: 'Official Reference' });
+  if (draft.official_website_url) links.push({ url: draft.official_website_url, label: 'Official Website' });
+  if (draft.secondary_official_url) links.push({ url: draft.secondary_official_url, label: 'Additional Source' });
+
+  if (links.length === 0) return null;
   return (
     <div className="mt-8 flex flex-wrap gap-3">
-      {draft.official_apply_link && (
-        <a href={draft.official_apply_link} target="_blank" rel="noopener noreferrer">
-          <Button size="lg"><ExternalLink className="h-4 w-4 mr-2" /> Apply Now</Button>
+      {links.map((l, i) => (
+        <a key={i} href={l.url} target="_blank" rel="noopener noreferrer">
+          <Button size="lg" variant={l.primary ? 'default' : 'outline'}>
+            <ExternalLink className="h-4 w-4 mr-2" /> {l.label}
+          </Button>
         </a>
-      )}
-      {draft.official_notification_link && (
-        <a href={draft.official_notification_link} target="_blank" rel="noopener noreferrer">
-          <Button size="lg" variant="outline"><ExternalLink className="h-4 w-4 mr-2" /> Official Notification</Button>
-        </a>
-      )}
+      ))}
+    </div>
+  );
+}
+
+/* ─── Shared helpers ─── */
+function pickTitle(d: any): string {
+  return d.publish_title || d.draft_heading_h1 || d.normalized_title || d.raw_title || 'Untitled';
+}
+function pickOrg(d: any): string | null {
+  return d.organization_authority || d.organisation_name || null;
+}
+
+function CoverImage({ draft, title }: { draft: any; title: string }) {
+  if (!draft.image_url) return null;
+  return (
+    <img
+      src={draft.image_url}
+      alt={draft.image_alt_text || title}
+      className="w-full h-48 sm:h-64 object-cover rounded-lg mb-4"
+      loading="lazy"
+    />
+  );
+}
+
+function MetaBadges({ draft }: { draft: any }) {
+  if (!draft.category_family && !draft.update_type && !draft.section_bucket) return null;
+  return (
+    <div className="flex flex-wrap gap-1.5 mt-2">
+      {draft.category_family && <Badge variant="secondary" className="capitalize text-[10px]">{String(draft.category_family).replace(/_/g, ' ')}</Badge>}
+      {draft.update_type && <Badge variant="outline" className="capitalize text-[10px]">{String(draft.update_type).replace(/_/g, ' ')}</Badge>}
+      {draft.section_bucket && <Badge variant="outline" className="capitalize text-[10px]">{String(draft.section_bucket).replace(/_/g, ' ')}</Badge>}
     </div>
   );
 }

@@ -76,17 +76,20 @@ function extractDomainFromUrl(url: string): string {
   try { return new URL(url).hostname; } catch { return 'unknown'; }
 }
 
-function getDomainThrottleDelay(url: string): number {
+function getDomainThrottleDelay(url: string, peak = false): number {
   const domain = extractDomainFromUrl(url);
   const now = Date.now();
+  const minInterval = peak ? DOMAIN_MIN_INTERVAL_MS_PEAK : DOMAIN_MIN_INTERVAL_MS;
+  const cooldownThreshold = peak ? DOMAIN_COOLDOWN_THRESHOLD_PEAK : DOMAIN_COOLDOWN_THRESHOLD;
+  const cooldownMs = peak ? DOMAIN_COOLDOWN_MS_PEAK : DOMAIN_COOLDOWN_MS;
 
   // Check cooldown
   const fails = domainFailCount.get(domain) || 0;
-  if (fails >= DOMAIN_COOLDOWN_THRESHOLD) {
+  if (fails >= cooldownThreshold) {
     const lastFetch = domainLastFetch.get(domain) || 0;
     const elapsed = now - lastFetch;
-    if (elapsed < DOMAIN_COOLDOWN_MS) {
-      return DOMAIN_COOLDOWN_MS - elapsed;
+    if (elapsed < cooldownMs) {
+      return cooldownMs - elapsed;
     }
     // Cooldown expired, reset
     domainFailCount.set(domain, 0);
@@ -95,8 +98,8 @@ function getDomainThrottleDelay(url: string): number {
   // Normal throttle
   const lastFetch = domainLastFetch.get(domain) || 0;
   const elapsed = now - lastFetch;
-  if (elapsed < DOMAIN_MIN_INTERVAL_MS) {
-    return DOMAIN_MIN_INTERVAL_MS - elapsed;
+  if (elapsed < minInterval) {
+    return minInterval - elapsed;
   }
   return 0;
 }
@@ -107,20 +110,21 @@ function recordDomainSuccess(url: string): void {
   domainFailCount.set(domain, 0);
 }
 
-function recordDomainFailure(url: string): boolean {
+function recordDomainFailure(url: string, peak = false): boolean {
   const domain = extractDomainFromUrl(url);
   domainLastFetch.set(domain, Date.now());
   const count = (domainFailCount.get(domain) || 0) + 1;
   domainFailCount.set(domain, count);
-  if (count >= DOMAIN_COOLDOWN_THRESHOLD) {
+  const threshold = peak ? DOMAIN_COOLDOWN_THRESHOLD_PEAK : DOMAIN_COOLDOWN_THRESHOLD;
+  if (count >= threshold) {
     console.warn(`[domain-throttle] Domain ${domain} hit cooldown (${count} consecutive failures)`);
     return true; // in cooldown
   }
   return false;
 }
 
-async function throttledScrapePage(url: string, options?: Parameters<typeof scrapePage>[1]) {
-  const delay = getDomainThrottleDelay(url);
+async function throttledScrapePage(url: string, options?: Parameters<typeof scrapePage>[1], peak = false) {
+  const delay = getDomainThrottleDelay(url, peak);
   if (delay > 0) {
     console.log(`[domain-throttle] Waiting ${delay}ms before scraping ${extractDomainFromUrl(url)}`);
     await new Promise(r => setTimeout(r, delay));
@@ -129,12 +133,14 @@ async function throttledScrapePage(url: string, options?: Parameters<typeof scra
   if (result.success) {
     recordDomainSuccess(url);
   } else {
-    recordDomainFailure(url);
+    recordDomainFailure(url, peak);
   }
   return result;
 }
 
 function getSourceLimits(sourceType: string) {
+  if (sourceType === 'government_peak') return LIMITS.government_peak;
+  if (sourceType === 'firecrawl_sitemap_peak') return LIMITS.sitemap_peak;
   if (sourceType === 'government') return LIMITS.government;
   if (sourceType === 'firecrawl_sitemap') return LIMITS.sitemap;
   return LIMITS.private;

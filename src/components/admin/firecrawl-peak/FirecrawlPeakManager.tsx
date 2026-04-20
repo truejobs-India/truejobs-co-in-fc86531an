@@ -14,7 +14,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useAdminToast } from '@/contexts/AdminMessagesContext';
-import { Zap, Download, Loader2, AlertTriangle } from 'lucide-react';
+import { Zap, Download, Loader2 } from 'lucide-react';
 import { FirecrawlSourcesManager } from '@/components/admin/firecrawl/FirecrawlSourcesManager';
 import { GovtSourcesManager } from '@/components/admin/firecrawl/GovtSourcesManager';
 import { DraftJobsSection } from '@/components/admin/firecrawl/DraftJobsSection';

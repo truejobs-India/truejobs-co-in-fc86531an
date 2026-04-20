@@ -18,6 +18,7 @@ import { Loader2, Save, Trash2, Send, ExternalLink, Image as ImageIcon } from 'l
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { SECTION_BUCKET_LABELS, type SectionBucket } from './chatgptAgentExcelParser';
+import { getLastUsedModel } from '@/lib/aiModels';
 
 interface ChatGptAgentDraftEditorProps {
   draft: any;
@@ -101,8 +102,10 @@ export function ChatGptAgentDraftEditor({ draft, onClose, onSaved, onPublish }: 
     setRegenImage(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
+      // Honour the model selected in the manager toolbar (persisted via useLastUsedModel).
+      const imageModel = getLastUsedModel('image', 'gemini-flash-image');
       const res = await supabase.functions.invoke('intake-generate-image', {
-        body: { draft_id: draft.id, imageModel: 'gemini-flash-image' },
+        body: { draft_id: draft.id, imageModel },
         headers: { Authorization: `Bearer ${session?.access_token}` },
       });
       if (res.error) throw new Error(res.error.message);

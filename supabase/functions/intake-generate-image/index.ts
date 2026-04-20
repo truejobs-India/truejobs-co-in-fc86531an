@@ -87,6 +87,9 @@ Deno.serve(async (req) => {
     const draftId = body.draft_id as string;
     const imageModel = (body.imageModel as string) || 'gemini-flash-image';
     if (!draftId || typeof draftId !== 'string') return json({ error: 'Missing draft_id' }, 400);
+    if (!ALLOWED_IMAGE_MODELS.has(imageModel)) {
+      return json({ error: `Unknown imageModel "${imageModel}"` }, 400);
+    }
 
     const { data: draft, error: fetchErr } = await client.from('intake_drafts').select('*').eq('id', draftId).single();
     if (fetchErr || !draft) return json({ error: 'Draft not found' }, 404);
@@ -97,44 +100,89 @@ Deno.serve(async (req) => {
       return json({ ok: false, skipped: true, reason: 'no image_prompt' });
     }
 
-    const gatewayModel = resolveGatewayModel(imageModel);
-
-    // ── Call the gateway ──
+    // ── Obtain a raw image (base64) for the requested model ──
+    // Fast path: native Lovable AI Gateway for Gemini image models.
+    // Slow path: delegate to generate-vertex-image (covers Vertex / Azure FLUX / FLUX2 / MAI / Nova).
     let imageBase64 = '';
     try {
-      const resp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${lovableKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: gatewayModel,
-          messages: [{ role: 'user', content: prompt }],
-          modalities: ['image', 'text'],
-        }),
-      });
-      if (!resp.ok) {
-        const errText = (await resp.text()).slice(0, 300);
-        const msg = `gateway ${resp.status}: ${errText}`;
-        await recordError(client, draftId, msg);
-        return json({ ok: false, error: msg, model: gatewayModel }, 200); // non-blocking
-      }
-      const data = await resp.json();
-      const choice = data.choices?.[0]?.message;
-      const imgs = choice?.images || [];
-      for (const img of imgs) {
-        const url = img?.image_url?.url || img?.url || '';
-        if (typeof url === 'string' && url.startsWith('data:')) {
-          const m = url.match(/^data:(image\/\w+);base64,(.+)$/s);
-          if (m) { imageBase64 = m[2]; break; }
+      if (NATIVE_GATEWAY_MODELS[imageModel]) {
+        const gatewayModel = NATIVE_GATEWAY_MODELS[imageModel];
+        const resp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${lovableKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: gatewayModel,
+            messages: [{ role: 'user', content: prompt }],
+            modalities: ['image', 'text'],
+          }),
+        });
+        if (!resp.ok) {
+          const errText = (await resp.text()).slice(0, 300);
+          const msg = `gateway ${resp.status}: ${errText}`;
+          await recordError(client, draftId, msg);
+          return json({ ok: false, error: msg, model: gatewayModel }, 200);
         }
+        const data = await resp.json();
+        const imgs = data.choices?.[0]?.message?.images || [];
+        for (const img of imgs) {
+          const url = img?.image_url?.url || img?.url || '';
+          if (typeof url === 'string' && url.startsWith('data:')) {
+            const m = url.match(/^data:(image\/\w+);base64,(.+)$/s);
+            if (m) { imageBase64 = m[2]; break; }
+          }
+        }
+      } else {
+        // Delegate — same shape as blog FeaturedImageGenerator call.
+        const title = (draft as any).publish_title || (draft as any).normalized_title || (draft as any).raw_title || `Draft ${draftId}`;
+        const category = (draft as any).publish_category || (draft as any).category || 'General';
+        const tags = Array.isArray((draft as any).tags) ? (draft as any).tags : [];
+        const { data: delegated, error: delegErr } = await client.functions.invoke('generate-vertex-image', {
+          body: {
+            slug: draftId,
+            title,
+            category,
+            tags,
+            model: imageModel,
+            imageCount: 1,
+            aspectRatio: '1:1',
+            purpose: 'intake',
+            prompt, // generate-vertex-image treats body.prompt as additional context
+          },
+        });
+        if (delegErr) {
+          const msg = `delegate generate-vertex-image failed: ${delegErr.message || String(delegErr)}`;
+          await recordError(client, draftId, msg);
+          return json({ ok: false, error: msg, model: imageModel }, 200);
+        }
+        if (delegated?.success === false) {
+          const msg = `delegate error: ${delegated.error || 'unknown'}`;
+          await recordError(client, draftId, msg);
+          return json({ ok: false, error: msg, model: imageModel }, 200);
+        }
+        const imgUrl: string | undefined = delegated?.data?.images?.[0]?.url;
+        if (!imgUrl) {
+          await recordError(client, draftId, 'delegate returned no image url');
+          return json({ ok: false, error: 'no image url from generate-vertex-image' }, 200);
+        }
+        // Download the uploaded image and convert to base64 for re-cropping to 512x512.
+        const imgResp = await fetch(imgUrl);
+        if (!imgResp.ok) {
+          await recordError(client, draftId, `download delegated image failed: ${imgResp.status}`);
+          return json({ ok: false, error: `download ${imgResp.status}` }, 200);
+        }
+        const buf = new Uint8Array(await imgResp.arrayBuffer());
+        let binary = '';
+        for (let i = 0; i < buf.length; i++) binary += String.fromCharCode(buf[i]);
+        imageBase64 = btoa(binary);
       }
     } catch (e) {
-      const msg = `gateway fetch failed: ${e instanceof Error ? e.message : String(e)}`;
+      const msg = `image source fetch failed: ${e instanceof Error ? e.message : String(e)}`;
       await recordError(client, draftId, msg);
       return json({ ok: false, error: msg }, 200);
     }
 
     if (!imageBase64) {
-      await recordError(client, draftId, 'no image returned by gateway');
+      await recordError(client, draftId, 'no image returned');
       return json({ ok: false, error: 'no image returned' }, 200);
     }
 

@@ -18,7 +18,7 @@ import { Loader2, Save, Trash2, Send, ExternalLink, Image as ImageIcon } from 'l
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { SECTION_BUCKET_LABELS, type SectionBucket } from './chatgptAgentExcelParser';
-import { getLastUsedModel } from '@/lib/aiModels';
+import { getLastUsedModel } from '@/components/admin/AiModelSelector';
 
 interface ChatGptAgentDraftEditorProps {
   draft: any;

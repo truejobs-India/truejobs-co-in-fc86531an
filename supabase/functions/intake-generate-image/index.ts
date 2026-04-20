@@ -136,7 +136,12 @@ Deno.serve(async (req) => {
         const title = (draft as any).publish_title || (draft as any).normalized_title || (draft as any).raw_title || `Draft ${draftId}`;
         const category = (draft as any).publish_category || (draft as any).category || 'General';
         const tags = Array.isArray((draft as any).tags) ? (draft as any).tags : [];
-        const { data: delegated, error: delegErr } = await client.functions.invoke('generate-vertex-image', {
+        // Use a per-request client carrying the original admin user's token so
+        // generate-vertex-image's verifyAdmin() succeeds.
+        const userClient = createClient(supabaseUrl, serviceRoleKey, {
+          global: { headers: { Authorization: authHeader } },
+        });
+        const { data: delegated, error: delegErr } = await userClient.functions.invoke('generate-vertex-image', {
           body: {
             slug: draftId,
             title,

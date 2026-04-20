@@ -550,7 +550,7 @@ async function handleDiscoverSource(
         const detailResult = await throttledScrapePage(candidate.normalized, {
           formats: ['markdown', 'links'],
           onlyMainContent: true,
-        });
+        }, peak);
 
         stats.pagesScraped++;
         stats.detailPageFollowUps++;

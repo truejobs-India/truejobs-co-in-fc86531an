@@ -448,6 +448,12 @@ export async function parseMasterFileWorkbook(buffer: ArrayBuffer): Promise<Mast
 export interface ParsedRow extends MasterFileParsedRow {
   structured_data_json: Record<string, any>;
   needs_review_reasons: string[];
+  // legacy field shims used by the existing Manager UI; map from new fields where applicable
+  exam_name?: string | null;
+  result_date?: string | null;
+  admit_card_date?: string | null;
+  age_limit_text?: string | null;
+  review_notes?: string | null;
 }
 export interface ParseResult {
   rows: ParsedRow[];
@@ -460,6 +466,16 @@ export interface ParseResult {
 }
 export interface ProductionParsedRow extends MasterFileParsedRow {
   structured_data_json: Record<string, any>;
+  // legacy field shims for ChatGptAgentManager rendering
+  official_website_url?: string | null;
+  primary_cta_label?: string | null;
+  primary_cta_url?: string | null;
+  secondary_official_url?: string | null;
+  verification_status?: string | null;
+  official_source_used?: string | null;
+  source_verified_on?: string | null;
+  source_verified_on_date?: string | null;
+  production_notes?: string | null;
 }
 export interface ProductionParseResult {
   ok: true;
@@ -469,7 +485,19 @@ export interface ProductionParseResult {
 }
 
 function masterToProductionShape(r: MasterFileParsedRow): ProductionParsedRow {
-  return { ...r, structured_data_json: { ...r.source_row_json, _format: 'master_file_v1' } };
+  return {
+    ...r,
+    structured_data_json: { ...r.source_row_json, _format: 'master_file_v1' },
+    official_website_url: r.official_website_link,
+    primary_cta_label: r.cta_label,
+    primary_cta_url: r.cta_url,
+    secondary_official_url: r.official_reference_url,
+    verification_status: null,
+    official_source_used: null,
+    source_verified_on: null,
+    source_verified_on_date: null,
+    production_notes: null,
+  };
 }
 
 /** Shim: always treat any workbook as Master-File format. */
@@ -480,7 +508,9 @@ export async function parseProductionExcelWorkbook(
   buffer: ArrayBuffer,
 ): Promise<ProductionParseResult | { ok: false; reason: string; detected: string[]; missing: string[]; sheetUsed: string | null }> {
   const r = await parseMasterFileWorkbook(buffer);
-  if (!r.ok) return { ok: false, reason: r.reason, detected: [], missing: [], sheetUsed: r.sheet_used };
+  if (r.ok !== true) {
+    return { ok: false, reason: r.reason, detected: [], missing: [], sheetUsed: r.sheet_used };
+  }
   return {
     ok: true,
     rows: r.rows.map(masterToProductionShape),

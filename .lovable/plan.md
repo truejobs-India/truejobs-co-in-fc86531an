@@ -1,46 +1,46 @@
 
 
 ## Goal
-Make the ChatGPT-Agent image-model dropdown show **all** image models (Gemini Flash/Pro/Flash-2, Vertex 3 Pro/3.1 Flash, Azure FLUX.1 Kontext, Azure FLUX.2 Pro, Azure MAI-Image-2, Amazon Nova Canvas) and actually use the selected one — by reusing the blog's existing `generate-vertex-image` edge function (no rebuild).
+Make the ChatGPT-Agent draft editor show the cover/featured image **the same way the Blog editor does** — with a proper preview block, URL field, file upload tab, and remove button — so admins can see exactly how it will appear to users.
 
-## Why the current dropdown is short
-`ChatGptAgentManager.tsx` hard-restricts the selector with:
-```ts
-const ALLOWED_IMAGE_MODELS = ['gemini-flash-image','gemini-flash-image-2','gemini-pro-image']
-```
-because the new `intake-generate-image` function only routes those 3. Meanwhile `generate-vertex-image` (used by the blog `FeaturedImageGenerator`) already supports **all 9** image models with proper provider routing (Gemini Direct, Lovable Gateway, Azure FLUX/FLUX2/MAI, Bedrock Nova Canvas).
+## What's different today
+| Blog editor | ChatGPT Agent editor (current) |
+|---|---|
+| `CoverImageUploader` — full-width preview, URL tab, Upload tab, remove ✕ | Tiny 128×128 thumb only |
+| Visible `cover_image_url` input | No URL/manual input |
+| Manual upload to `blog-assets` | No upload path |
+| `FeaturedImageGenerator`-style "Regenerate" button | "Generate / Regenerate" button (already present) |
 
-## Approach — reuse, don't rebuild
-Keep `intake-generate-image` as the orchestrator (it owns draft lookup, prompt building, 512×512 cropping, upload, `runtime_meta` writes). Inside it, **delegate the actual image generation call** to `generate-vertex-image` for any model outside the 3 native gateway ones. This mirrors the blog flow exactly.
+## Changes (1 file)
 
-## Changes (3 files)
+### `src/components/admin/chatgpt-agent/ChatGptAgentDraftEditor.tsx`
+In the **Master-File tab → Image (512×512)** block, replace the current small thumbnail with the same UX the blog uses:
 
-### 1. `supabase/functions/intake-generate-image/index.ts`
-- Accept the full set of `imageModel` keys: `gemini-flash-image`, `gemini-flash-image-2`, `gemini-pro-image`, `vertex-3-pro-image`, `vertex-3.1-flash-image`, `azure-flux-kontext`, `azure-flux2-pro`, `azure-mai-image-2`, `nova-canvas`.
-- Routing rule:
-  - If model is one of the 3 Lovable-Gateway Gemini models → keep current direct gateway call (already works, fast path).
-  - Else → invoke `generate-vertex-image` via `supabase.functions.invoke()` with `{ slug: draftId, title: draft.publish_title, model: imageModel, imageCount: 1, aspectRatio: '1:1', purpose: 'intake', customPrompt: draft.image_prompt }` and use its returned base64 / URL.
-- Continue post-processing: download → `ImageScript` center-cover crop → exact 512×512 PNG → upload to `blog-assets/chatgpt-agent-intake/<draftId>.png` → write `image_url` + `runtime_meta.image_model_used`.
-- Errors stay non-blocking: failure writes `runtime_meta.image_error` only, never touches `master_file_raw`, returns 200.
+1. **Reuse the existing `CoverImageUploader` component** (`src/components/admin/blog/CoverImageUploader.tsx`) bound to the draft's `image_url` field via the existing `val()`/`set()` helpers. This gives us for free:
+   - URL / Upload tabs
+   - Direct upload to the `blog-assets` bucket
+   - Full-width preview (`w-full h-32 object-cover`) — exactly what users see
+   - Remove (✕) button
+2. **Keep the existing controls** below the preview:
+   - "Generate / Regenerate" button (already wired to `handleRegenerateImage`)
+   - Image Prompt textarea
+   - Image Alt Text input
+   - `runtime_meta.image_error` display
+3. **Persist URL/upload edits**: because `CoverImageUploader.onChange` will call `set('image_url', url)`, the existing save flow already writes `image_url` to `intake_drafts` — no extra wiring needed.
+4. **Add an aspect note** under the preview: "Generated images are saved at exactly 512×512." (purely informational — no behaviour change).
 
-### 2. `src/components/admin/chatgpt-agent/ChatGptAgentManager.tsx`
-- Expand `ALLOWED_IMAGE_MODELS` to all 9 supported keys (matches `KNOWN_IMAGE_MODEL_KEYS` in `generate-vertex-image`).
-- No UI restructuring — `AiModelSelector capability="image"` already groups built-in vs API and shows the API badge.
+No changes to the image-generation pipeline, no changes to the model selector, no changes to the database, no changes to other components.
 
-### 3. `src/components/admin/chatgpt-agent/ChatGptAgentDraftEditor.tsx`
-- Replace the hardcoded `imageModel: 'gemini-flash-image'` in the manual Generate/Regenerate button with the model already persisted via `getLastUsedModel('image', …)` so the per-draft button honours the selector choice (same pattern the blog uses).
-
-## Verification (after implementation)
-For each of the 9 models I will:
-1. Deploy `intake-generate-image`.
-2. Use `supabase--curl_edge_functions` to invoke it against a test draft with each `imageModel` key.
-3. Check `supabase--edge_function_logs intake-generate-image` and `generate-vertex-image` for routing confirmation (`resolvedProvider`, `resolvedRuntimeModelId`).
-4. Confirm `intake_drafts.image_url` is set, file is exactly 512×512 PNG, and `runtime_meta.image_model_used` matches the requested key.
-5. Negative test: force a bad model key → expect 400 with clear error, no `master_file_raw` mutation, draft enrichment status untouched.
+## Verification (manual, after implementation)
+- Open a draft in the ChatGPT-Agent → Master-File tab.
+- Confirm the preview block matches the blog editor visually (same width, same controls).
+- Upload a custom image → preview updates → save → reopen → image persists.
+- Paste a URL → preview updates → save → persists.
+- Click ✕ → preview clears → save → `image_url` set to null in DB.
+- Click "Generate" → AI image appears in the same preview frame.
 
 ## Out of scope
-- No changes to `aiModels.ts` (registry already has all 9 image models).
-- No changes to `AiModelSelector.tsx` (already capability-aware).
-- No changes to text-enrichment flow.
-- No automatic fallback between image providers (per project policy).
+- No redesign of the rest of the editor.
+- No changes to image model routing or 512×512 cropping.
+- No new storage buckets.
 

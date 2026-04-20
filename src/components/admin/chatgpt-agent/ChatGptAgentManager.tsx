@@ -1049,7 +1049,41 @@ export function ChatGptAgentManager() {
             draftIndex: i + 1, totalDrafts: ids.length,
             currentStep: lastStep, stepIndex: safety, draftId,
           });
-          if (!res.data?.next_step) break;
+          // Edge function runs the step in a background task (EdgeRuntime.waitUntil)
+          // and immediately returns 202 with next_step=null. We must poll the draft
+          // row until the background step has written its result (lock released),
+          // then decide whether to invoke the next step.
+          let polls = 0;
+          let terminal = false;
+          while (polls++ < 90) { // up to ~90 * 2s = 3min per step
+            if (stopRequestedRef.current) break;
+            await new Promise(r => setTimeout(r, 2000));
+            const { data: row } = await (supabase
+              .from('intake_drafts')
+              .select('pipeline_status, pipeline_lock_token, pipeline_current_step, pipeline_last_error') as any)
+              .eq('id', draftId)
+              .maybeSingle();
+            if (!row) continue;
+            if (row.pipeline_lock_token) continue; // bg still running
+            if (row.pipeline_status === 'failed') {
+              failed.push({
+                id: draftId, title: titleOf(draftId),
+                step: row.pipeline_current_step || lastStep || '?',
+                error: row.pipeline_last_error || 'pipeline failed',
+              });
+              draftFailed = true;
+              terminal = true;
+              break;
+            }
+            if (row.pipeline_status === 'completed') {
+              terminal = true;
+              break;
+            }
+            // pipeline_status === 'running' with no lock means this step finished
+            // successfully and more steps remain — break to re-invoke.
+            break;
+          }
+          if (terminal || draftFailed) break;
         }
         if (stopRequestedRef.current && !draftFailed && !succeeded.includes(draftId)) {
           // current draft was interrupted between steps — count as skipped (partial)

@@ -244,7 +244,7 @@ export function GovtSourcesManager({
     const { data, error } = await supabase
       .from('firecrawl_sources')
       .select('*')
-      .eq('source_type', 'government')
+      .eq('source_type', sourceTypeOverride)
       .order('source_name');
 
     if (error) {

@@ -1190,6 +1190,30 @@ export function ChatGptAgentManager() {
               allowedValues={[...ALLOWED_MODELS]}
             />
 
+            {/* Image Model — restricted to intake-generate-image supported models */}
+            <AiModelSelector
+              value={imageModel}
+              onValueChange={setImageModel}
+              capability="image"
+              size="sm"
+              allowedValues={[...ALLOWED_IMAGE_MODELS]}
+            />
+
+            {/* Generate images for selected drafts (non-blocking; per-row image_prompt) */}
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={selected.size === 0 || imageGenerating}
+              onClick={handleGenerateImagesForSelected}
+              title="Generate 512x512 images from each row's image_prompt"
+              className="gap-1"
+            >
+              {imageGenerating
+                ? <Loader2 className="h-4 w-4 animate-spin" />
+                : <ImageIcon className="h-4 w-4" />}
+              Generate Images{selected.size > 0 ? ` (${selected.size})` : ''}
+            </Button>
+
             {/* Primary: Run All Needed Fixes (sequential per-draft pipeline) */}
             <Button
               size="sm"

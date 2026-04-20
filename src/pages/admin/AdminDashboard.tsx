@@ -63,6 +63,7 @@ import { ChatbotSettingsManager } from '@/components/admin/ChatbotSettingsManage
 import { ChatbotAnalytics } from '@/components/admin/ChatbotAnalytics';
 import { SitewideSeoAudit } from '@/components/admin/SitewideSeoAudit';
 import { FirecrawlDraftsManager } from '@/components/admin/firecrawl/FirecrawlDraftsManager';
+import { FirecrawlPeakManager } from '@/components/admin/firecrawl-peak/FirecrawlPeakManager';
 import { IntakeDraftsManager } from '@/components/admin/intake/IntakeDraftsManager';
 import { NotificationCentre } from '@/components/admin/notifications/NotificationCentre';
 import { ChatGptAgentManager } from '@/components/admin/chatgpt-agent/ChatGptAgentManager';
@@ -332,6 +333,10 @@ function AdminDashboardInner() {
                   <Bug className="h-4 w-4" />
                   <span className="hidden sm:inline">Firecrawl</span>
                 </TabsTrigger>
+                <TabsTrigger value="firecrawl-peak" className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4" />
+                  <span className="hidden sm:inline">Firecrawl - P</span>
+                </TabsTrigger>
                 <TabsTrigger value="intake" className="flex items-center gap-2">
                   <ClipboardList className="h-4 w-4" />
                   <span className="hidden sm:inline">Intake</span>
@@ -438,6 +443,10 @@ function AdminDashboardInner() {
 
               <TabsContent value="firecrawl" className="w-full max-w-none">
                 <FirecrawlDraftsManager />
+              </TabsContent>
+
+              <TabsContent value="firecrawl-peak" className="w-full max-w-none">
+                <FirecrawlPeakManager />
               </TabsContent>
 
               <TabsContent value="intake" className="w-full max-w-none">

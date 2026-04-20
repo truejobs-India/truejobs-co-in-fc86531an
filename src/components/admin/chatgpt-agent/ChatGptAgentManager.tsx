@@ -881,6 +881,53 @@ export function ChatGptAgentManager() {
     { label: 'Normalize Fields', action: 'normalize_fields' },
   ];
 
+  // ── Image generation (V1, simple sequential, non-blocking per-row) ──
+  const handleGenerateImagesForSelected = async () => {
+    const ids = Array.from(selected).filter(id => {
+      const d = drafts.find(x => x.id === id);
+      return !!(d as any)?.image_prompt;
+    });
+    if (ids.length === 0) {
+      addMessage('info', 'No selected drafts with image_prompt');
+      return;
+    }
+    setImageGenerating(true);
+    setImageProgress({ current: 0, total: ids.length });
+    addMessage('info', `🖼 Generating images`, `Using ${imageModel} for ${ids.length} draft(s)…`);
+    let ok = 0; let failed = 0;
+    const errors: string[] = [];
+    try {
+      for (let i = 0; i < ids.length; i++) {
+        const draftId = ids[i];
+        setImageProgress({ current: i, total: ids.length });
+        const { data: { session } } = await supabase.auth.getSession();
+        const res = await supabase.functions.invoke('intake-generate-image', {
+          body: { draft_id: draftId, imageModel },
+          headers: { Authorization: `Bearer ${session?.access_token}` },
+        });
+        if (res.error) {
+          failed++; errors.push(`${draftId.slice(0, 8)}: ${res.error.message || 'invoke error'}`);
+        } else if (res.data?.ok) {
+          ok++;
+        } else {
+          failed++;
+          errors.push(`${draftId.slice(0, 8)}: ${res.data?.error || res.data?.reason || 'unknown'}`);
+        }
+        setImageProgress({ current: i + 1, total: ids.length });
+      }
+      addMessage(
+        failed === 0 ? 'success' : 'warning',
+        `Images: ${ok} done, ${failed} failed`,
+        errors.slice(0, 8).join('\n') || undefined,
+      );
+    } catch (err: any) {
+      addMessage('error', 'Image generation error', err?.message || 'Unknown error');
+    }
+    setImageGenerating(false);
+    setImageProgress(null);
+    fetchDrafts();
+  };
+
   const handleAiAction = async (action: string) => {
     const ids = Array.from(selected);
     if (ids.length === 0) {

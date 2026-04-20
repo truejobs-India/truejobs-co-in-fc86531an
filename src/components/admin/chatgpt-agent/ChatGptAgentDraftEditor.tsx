@@ -204,7 +204,6 @@ export function ChatGptAgentDraftEditor({ draft, onClose, onSaved, onPublish }: 
                     {draft?.image_url ? 'Regenerate' : 'Generate'}
                   </Button>
                 </div>
-                {draft?.image_url && (
                 <CoverImageUploader
                   value={val('image_url') || ''}
                   onChange={(url) => set('image_url', url || null)}

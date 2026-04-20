@@ -14,7 +14,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Loader2, Save, Trash2, Send, ExternalLink } from 'lucide-react';
+import { Loader2, Save, Trash2, Send, ExternalLink, Image as ImageIcon } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { SECTION_BUCKET_LABELS, type SectionBucket } from './chatgptAgentExcelParser';
@@ -42,6 +42,7 @@ export function ChatGptAgentDraftEditor({ draft, onClose, onSaved, onPublish }: 
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [regenImage, setRegenImage] = useState(false);
 
   const val = (field: string) => edits[field] !== undefined ? edits[field] : (draft?.[field] ?? '');
   const set = (field: string, value: any) => setEdits(prev => ({ ...prev, [field]: value }));
@@ -93,6 +94,28 @@ export function ChatGptAgentDraftEditor({ draft, onClose, onSaved, onPublish }: 
       await onPublish(draft.id);
     } finally {
       setPublishing(false);
+    }
+  };
+
+  const handleRegenerateImage = async () => {
+    setRegenImage(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await supabase.functions.invoke('intake-generate-image', {
+        body: { draft_id: draft.id, imageModel: 'gemini-flash-image' },
+        headers: { Authorization: `Bearer ${session?.access_token}` },
+      });
+      if (res.error) throw new Error(res.error.message);
+      if (res.data?.ok) {
+        toast({ title: 'Image generated' });
+        onSaved();
+      } else {
+        toast({ title: 'Image generation failed', description: res.data?.error || res.data?.reason, variant: 'destructive' });
+      }
+    } catch (e: any) {
+      toast({ title: 'Image generation error', description: e?.message, variant: 'destructive' });
+    } finally {
+      setRegenImage(false);
     }
   };
 

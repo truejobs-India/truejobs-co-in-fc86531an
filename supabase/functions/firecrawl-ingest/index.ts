@@ -398,13 +398,15 @@ async function handleDiscoverSource(
   if (!source) return jsonResponse({ error: 'Source not found' }, 404);
 
   const limits = getSourceLimits(source.source_type);
+  const peak = isPeak(source.source_type);
+  const hardCap = getHardScrapeCap(peak);
   const maxDetailScrapes = Math.min(
     (body.max_detail_scrapes as number) || limits.maxDetailScrapes,
-    source.max_pages_per_run || 15,
-    HARD_SCRAPE_CAP
+    source.max_pages_per_run || (peak ? 250 : 15),
+    hardCap
   );
 
-  console.log(`[firecrawl-ingest] discover-source: ${source.source_name} (type=${source.source_type}, max_detail: ${maxDetailScrapes})`);
+  console.log(`[firecrawl-ingest] discover-source: ${source.source_name} (type=${source.source_type}, peak=${peak}, max_detail: ${maxDetailScrapes})`);
 
   const { data: run } = await client
     .from('firecrawl_fetch_runs')

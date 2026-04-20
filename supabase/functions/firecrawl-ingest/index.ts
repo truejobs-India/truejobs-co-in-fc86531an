@@ -1411,7 +1411,7 @@ async function handleDiscoverGovt(
       }
       discoveredLinks = mapResult.links || [];
     } else {
-      const scrapeResult = await throttledScrapePage(source.seed_url, { formats: ['markdown', 'links'], onlyMainContent: true });
+      const scrapeResult = await throttledScrapePage(source.seed_url, { formats: ['markdown', 'links'], onlyMainContent: true }, peak);
       if (!scrapeResult.success) {
         const errMsg = scrapeResult.error || 'Scrape failed';
         if (runId) await finalizeRun(client, runId, 'error', { errorLog: errMsg });

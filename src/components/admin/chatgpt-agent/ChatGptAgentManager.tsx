@@ -22,7 +22,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import {
   Upload, Search, Sparkles, Loader2, Copy, ChevronDown,
-  Send, AlertTriangle, Link2Off, Link2, RefreshCw, Wand2, StopCircle, Eye, EyeOff, ExternalLink, Trash2,
+  Send, AlertTriangle, Link2Off, Link2, RefreshCw, Wand2, StopCircle, Eye, EyeOff, ExternalLink, Trash2, Image as ImageIcon,
 } from 'lucide-react';
 
 const LIVE_SITE_ORIGIN = 'https://truejobs.co.in';
@@ -78,6 +78,11 @@ const ALLOWED_MODELS = [
   'nova-pro', 'nova-premier', 'mistral', 'nemotron-120b',
   'azure-gpt4o-mini', 'azure-gpt41-mini', 'azure-gpt5-mini',
   'azure-deepseek-v3', 'azure-deepseek-r1',
+] as const;
+
+/** Image models supported by intake-generate-image edge function. */
+const ALLOWED_IMAGE_MODELS = [
+  'gemini-flash-image', 'gemini-flash-image-2', 'gemini-pro-image',
 ] as const;
 
 export function ChatGptAgentManager() {

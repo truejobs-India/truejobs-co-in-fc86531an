@@ -44,14 +44,10 @@ import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSel
 import { useAdminMessages } from '@/hooks/useAdminMessages';
 import { AdminMessageLog } from '@/components/admin/AdminMessageLog';
 import {
-  parseExcelWorkbook,
-  parseProductionExcelWorkbook,
-  detectProductionFormat,
+  parseMasterFileWorkbook,
   SECTION_BUCKET_LABELS,
-  type ParseResult,
-  type ParsedRow,
-  type ProductionParseResult,
-  type ProductionParsedRow,
+  type MasterFileParseResult,
+  type MasterFileParsedRow,
   type SectionBucket,
 } from './chatgptAgentExcelParser';
 import { ChatGptAgentDraftEditor } from './ChatGptAgentDraftEditor';

@@ -257,7 +257,8 @@ export function GovtSourcesManager({
       })) || []);
     }
     setLoading(false);
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceTypeOverride]);
 
   useEffect(() => { fetchSources(); fetchPipelineStats(); }, [fetchSources, fetchPipelineStats]);
 
@@ -578,8 +579,9 @@ export function GovtSourcesManager({
             <CollapsibleTrigger className="flex items-center gap-2 cursor-pointer hover:opacity-80">
               <Globe className="h-5 w-5 text-green-600" />
               <CardTitle className="text-base">
-                Firecrawl Government Sources ({sources.length})
+                {titleOverride ?? 'Firecrawl Government Sources'} ({sources.length})
               </CardTitle>
+              {titleBadge}
               {open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
             </CollapsibleTrigger>
             <div className="flex items-center gap-1.5 flex-wrap">

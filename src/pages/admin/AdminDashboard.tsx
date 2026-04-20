@@ -445,6 +445,10 @@ function AdminDashboardInner() {
                 <FirecrawlDraftsManager />
               </TabsContent>
 
+              <TabsContent value="firecrawl-peak" className="w-full max-w-none">
+                <FirecrawlPeakManager />
+              </TabsContent>
+
               <TabsContent value="intake" className="w-full max-w-none">
                 <IntakeDraftsManager />
               </TabsContent>

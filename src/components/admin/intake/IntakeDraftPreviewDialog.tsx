@@ -17,7 +17,7 @@ interface Props {
   onClose: () => void;
 }
 
-const SELECT_FIELDS = 'normalized_title, raw_title, draft_content_html, summary, seo_title, meta_description, slug, content_type, publish_target, organisation_name, post_name, closing_date, opening_date, qualification_text, salary_text, age_limit_text, vacancy_count, application_mode, job_location, exam_name, official_notification_link, official_apply_link';
+const SELECT_FIELDS = 'normalized_title, raw_title, draft_content_html, summary, seo_title, meta_description, slug, content_type, publish_target, organisation_name, post_name, closing_date, opening_date, qualification_text, salary_text, age_limit_text, vacancy_count, application_mode, job_location, exam_name, official_notification_link, official_apply_link, image_url, image_alt_text, publish_title, draft_heading_h1, enrichment_result, category_family, update_type, organization_authority, primary_cta_url, primary_cta_label, official_reference_url, official_website_url, secondary_official_url, section_bucket';
 
 export function IntakeDraftPreviewDialog({ draftId, open, onClose }: Props) {
   const [draft, setDraft] = useState<any>(null);

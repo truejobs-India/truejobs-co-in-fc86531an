@@ -33,10 +33,17 @@ const LIMITS = {
   private: { maxDetailScrapes: 10, discoverMaxUrls: 300, extractBatchMax: 30 },
   government: { maxDetailScrapes: 15, discoverMaxUrls: 500, extractBatchMax: 30 },
   sitemap: { maxDetailScrapes: 8, discoverMaxUrls: 400, extractBatchMax: 30 },
+  // Peak (5x): aggressive but capped. Used only when source_type endswith _peak.
+  government_peak: { maxDetailScrapes: 75, discoverMaxUrls: 2500, extractBatchMax: 100 },
+  sitemap_peak: { maxDetailScrapes: 40, discoverMaxUrls: 2000, extractBatchMax: 100 },
 };
 
 /** Hard cap: never scrape more than this many detail pages in one discover run */
 const HARD_SCRAPE_CAP = 25;
+/** Peak hard cap: 5x the normal cap, still non-negotiable per invocation */
+const HARD_SCRAPE_CAP_PEAK = 125;
+/** Peak concurrency: parallel scrape worker pool size (only when isPeak) */
+const PEAK_CONCURRENCY = 5;
 
 /** Recovery pass: max drafts to attempt per invocation */
 const RECOVERY_MAX_PER_RUN = 10;
@@ -47,6 +54,23 @@ const domainFailCount = new Map<string, number>();
 const DOMAIN_MIN_INTERVAL_MS = 2000;
 const DOMAIN_COOLDOWN_THRESHOLD = 3;
 const DOMAIN_COOLDOWN_MS = 30_000;
+// Peak overrides (only consulted when isPeak === true)
+const DOMAIN_MIN_INTERVAL_MS_PEAK = 750;
+const DOMAIN_COOLDOWN_THRESHOLD_PEAK = 5;
+const DOMAIN_COOLDOWN_MS_PEAK = 20_000;
+
+/** Returns true if this source is a Peak (aggressive) variant. */
+function isPeak(sourceType: string | null | undefined): boolean {
+  return sourceType === 'firecrawl_sitemap_peak' || sourceType === 'government_peak';
+}
+
+function getCooldownThreshold(peak: boolean): number {
+  return peak ? DOMAIN_COOLDOWN_THRESHOLD_PEAK : DOMAIN_COOLDOWN_THRESHOLD;
+}
+
+function getHardScrapeCap(peak: boolean): number {
+  return peak ? HARD_SCRAPE_CAP_PEAK : HARD_SCRAPE_CAP;
+}
 
 function extractDomainFromUrl(url: string): string {
   try { return new URL(url).hostname; } catch { return 'unknown'; }

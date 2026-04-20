@@ -437,3 +437,70 @@ export async function parseMasterFileWorkbook(buffer: ArrayBuffer): Promise<Mast
     },
   };
 }
+
+// ───────────────────────────────────────────────────────────────────────
+// Back-compat shims — keep the existing Manager UI building while the
+// new Master-File flow is wired in. These wrap parseMasterFileWorkbook
+// and present the legacy ParseResult / ProductionParseResult shapes.
+// TODO: remove once the Manager is migrated to MasterFileParseResult.
+// ───────────────────────────────────────────────────────────────────────
+
+export interface ParsedRow extends MasterFileParsedRow {
+  structured_data_json: Record<string, any>;
+  needs_review_reasons: string[];
+}
+export interface ParseResult {
+  rows: ParsedRow[];
+  summary: {
+    total: number; imported: number; skipped: number; needsReview: number;
+    duplicateSkipped: number; missingLinkCount: number;
+    perSection: Record<string, number>;
+    sheetsDetected: string[]; sheetsUsed: string[]; sheetsSkipped: string[];
+  };
+}
+export interface ProductionParsedRow extends MasterFileParsedRow {
+  structured_data_json: Record<string, any>;
+}
+export interface ProductionParseResult {
+  ok: true;
+  rows: ProductionParsedRow[];
+  sheetUsed: string;
+  summary: { total: number; parsed: number; skipped_empty: number };
+}
+
+function masterToProductionShape(r: MasterFileParsedRow): ProductionParsedRow {
+  return { ...r, structured_data_json: { ...r.source_row_json, _format: 'master_file_v1' } };
+}
+
+/** Shim: always treat any workbook as Master-File format. */
+export function detectProductionFormat(_buffer: ArrayBuffer): boolean { return true; }
+
+/** Shim: return Master-File parse in the legacy ProductionParseResult shape. */
+export async function parseProductionExcelWorkbook(
+  buffer: ArrayBuffer,
+): Promise<ProductionParseResult | { ok: false; reason: string; detected: string[]; missing: string[]; sheetUsed: string | null }> {
+  const r = await parseMasterFileWorkbook(buffer);
+  if (!r.ok) return { ok: false, reason: r.reason, detected: [], missing: [], sheetUsed: r.sheet_used };
+  return {
+    ok: true,
+    rows: r.rows.map(masterToProductionShape),
+    sheetUsed: r.summary.sheet_used,
+    summary: {
+      total: r.summary.total_rows_found,
+      parsed: r.summary.imported,
+      skipped_empty: r.summary.skipped_empty,
+    },
+  };
+}
+
+/** Shim: legacy ParseResult — never used now (Master-File always detected). */
+export function parseExcelWorkbook(_buffer: ArrayBuffer): ParseResult {
+  return {
+    rows: [],
+    summary: {
+      total: 0, imported: 0, skipped: 0, needsReview: 0,
+      duplicateSkipped: 0, missingLinkCount: 0,
+      perSection: {}, sheetsDetected: [], sheetsUsed: [], sheetsSkipped: [],
+    },
+  };
+}

@@ -82,7 +82,12 @@ const ALLOWED_MODELS = [
 
 /** Image models supported by intake-generate-image edge function. */
 const ALLOWED_IMAGE_MODELS = [
+  // Native Lovable AI Gateway (fast path inside intake-generate-image)
   'gemini-flash-image', 'gemini-flash-image-2', 'gemini-pro-image',
+  // Delegated to generate-vertex-image (same routing as blog FeaturedImageGenerator)
+  'vertex-3-pro-image', 'vertex-3.1-flash-image',
+  'azure-flux-kontext', 'azure-flux2-pro', 'azure-mai-image-2',
+  'nova-canvas',
 ] as const;
 
 export function ChatGptAgentManager() {

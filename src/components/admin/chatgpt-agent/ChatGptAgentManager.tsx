@@ -22,7 +22,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import {
   Upload, Search, Sparkles, Loader2, Copy, ChevronDown,
-  Send, AlertTriangle, Link2Off, Link2, RefreshCw, Wand2, StopCircle, Eye, EyeOff, ExternalLink, Trash2,
+  Send, AlertTriangle, Link2Off, Link2, RefreshCw, Wand2, StopCircle, Eye, EyeOff, ExternalLink, Trash2, Image as ImageIcon,
 } from 'lucide-react';
 
 const LIVE_SITE_ORIGIN = 'https://truejobs.co.in';
@@ -80,6 +80,11 @@ const ALLOWED_MODELS = [
   'azure-deepseek-v3', 'azure-deepseek-r1',
 ] as const;
 
+/** Image models supported by intake-generate-image edge function. */
+const ALLOWED_IMAGE_MODELS = [
+  'gemini-flash-image', 'gemini-flash-image-2', 'gemini-pro-image',
+] as const;
+
 export function ChatGptAgentManager() {
   const { messages, addMessage, dismissMessage, clearAll, toggleExpand } = useAdminMessages('chatgpt-agent');
   const [activeSection, setActiveSection] = useState<ActiveSection>('job_postings');
@@ -90,6 +95,9 @@ export function ChatGptAgentManager() {
   const [currentPage, setCurrentPage] = useState(1);
   const PAGE_SIZE = 20;
   const [aiModel, setAiModel] = useState(() => getLastUsedModel('text', 'gemini-flash', [...ALLOWED_MODELS]));
+  const [imageModel, setImageModel] = useState(() => getLastUsedModel('image', 'gemini-flash-image', [...ALLOWED_IMAGE_MODELS]));
+  const [imageGenerating, setImageGenerating] = useState(false);
+  const [imageProgress, setImageProgress] = useState<{ current: number; total: number } | null>(null);
 
   // Upload state — supports BOTH legacy and new production format
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -510,24 +518,51 @@ export function ChatGptAgentManager() {
           // identity + lossless backup
           import_identity: r.import_identity,
           source_row_json: r.source_row_json as any,
-          // 16 production fields
+          // Master-File typed fields (V1)
           record_id: r.record_id,
           publish_status: r.publish_status,
           category_family: r.category_family,
           update_type: r.update_type,
           organization_authority: r.organization_authority,
           publish_title: r.publish_title,
-          official_website_url: r.official_website_url,
+          official_website_url: r.official_website_url ?? null,
           official_reference_url: r.official_reference_url,
-          primary_cta_label: r.primary_cta_label,
-          primary_cta_url: r.primary_cta_url,
-          secondary_official_url: r.secondary_official_url,
-          verification_status: r.verification_status,
+          primary_cta_label: r.primary_cta_label ?? null,
+          primary_cta_url: r.primary_cta_url ?? null,
+          secondary_official_url: r.secondary_official_url ?? null,
+          verification_status: r.verification_status ?? null,
           verification_confidence: r.verification_confidence,
-          official_source_used: r.official_source_used,
-          source_verified_on: r.source_verified_on,
-          source_verified_on_date: r.source_verified_on_date,
-          production_notes: r.production_notes,
+          official_source_used: r.official_source_used ?? null,
+          source_verified_on: r.source_verified_on ?? null,
+          source_verified_on_date: r.source_verified_on_date ?? null,
+          production_notes: r.production_notes ?? null,
+          // ── New Master-File fields (V1) ──
+          row_prompt: (r as any).row_prompt ?? null,
+          cta_label: (r as any).cta_label ?? null,
+          cta_color: (r as any).cta_color ?? null,
+          cta_url: (r as any).cta_url ?? null,
+          image_prompt: (r as any).image_prompt ?? null,
+          image_alt_text: (r as any).image_alt_text ?? null,
+          draft_heading_h1: (r as any).draft_heading_h1 ?? null,
+          content_status: (r as any).content_status ?? null,
+          reference_no: (r as any).reference_no ?? null,
+          seo_primary_keyword: (r as any).seo_primary_keyword ?? null,
+          seo_secondary_keywords: (r as any).seo_secondary_keywords ?? null,
+          verification_notes: (r as any).verification_notes ?? null,
+          // mirror summary/seo into existing typed fields too
+          summary: (r as any).summary ?? null,
+          seo_title: (r as any).seo_title ?? null,
+          meta_description: (r as any).meta_description ?? null,
+          slug: (r as any).slug ?? null,
+          post_name: (r as any).post_name ?? null,
+          qualification_text: (r as any).qualification_text ?? null,
+          application_mode: (r as any).application_mode ?? null,
+          opening_date: (r as any).opening_date ?? null,
+          closing_date: (r as any).closing_date ?? null,
+          notification_date: (r as any).notification_date ?? null,
+          exam_date: (r as any).exam_date ?? null,
+          official_apply_link: (r as any).official_apply_link ?? null,
+          vacancy_count: (r as any).vacancy_count ?? null,
           // legacy mirrors
           raw_title: r.raw_title,
           normalized_title: r.normalized_title,
@@ -846,6 +881,53 @@ export function ChatGptAgentManager() {
     { label: 'Normalize Fields', action: 'normalize_fields' },
   ];
 
+  // ── Image generation (V1, simple sequential, non-blocking per-row) ──
+  const handleGenerateImagesForSelected = async () => {
+    const ids = Array.from(selected).filter(id => {
+      const d = drafts.find(x => x.id === id);
+      return !!(d as any)?.image_prompt;
+    });
+    if (ids.length === 0) {
+      addMessage('info', 'No selected drafts with image_prompt');
+      return;
+    }
+    setImageGenerating(true);
+    setImageProgress({ current: 0, total: ids.length });
+    addMessage('info', `🖼 Generating images`, `Using ${imageModel} for ${ids.length} draft(s)…`);
+    let ok = 0; let failed = 0;
+    const errors: string[] = [];
+    try {
+      for (let i = 0; i < ids.length; i++) {
+        const draftId = ids[i];
+        setImageProgress({ current: i, total: ids.length });
+        const { data: { session } } = await supabase.auth.getSession();
+        const res = await supabase.functions.invoke('intake-generate-image', {
+          body: { draft_id: draftId, imageModel },
+          headers: { Authorization: `Bearer ${session?.access_token}` },
+        });
+        if (res.error) {
+          failed++; errors.push(`${draftId.slice(0, 8)}: ${res.error.message || 'invoke error'}`);
+        } else if (res.data?.ok) {
+          ok++;
+        } else {
+          failed++;
+          errors.push(`${draftId.slice(0, 8)}: ${res.data?.error || res.data?.reason || 'unknown'}`);
+        }
+        setImageProgress({ current: i + 1, total: ids.length });
+      }
+      addMessage(
+        failed === 0 ? 'success' : 'warning',
+        `Images: ${ok} done, ${failed} failed`,
+        errors.slice(0, 8).join('\n') || undefined,
+      );
+    } catch (err: any) {
+      addMessage('error', 'Image generation error', err?.message || 'Unknown error');
+    }
+    setImageGenerating(false);
+    setImageProgress(null);
+    fetchDrafts();
+  };
+
   const handleAiAction = async (action: string) => {
     const ids = Array.from(selected);
     if (ids.length === 0) {
@@ -1107,6 +1189,30 @@ export function ChatGptAgentManager() {
               size="sm"
               allowedValues={[...ALLOWED_MODELS]}
             />
+
+            {/* Image Model — restricted to intake-generate-image supported models */}
+            <AiModelSelector
+              value={imageModel}
+              onValueChange={setImageModel}
+              capability="image"
+              size="sm"
+              allowedValues={[...ALLOWED_IMAGE_MODELS]}
+            />
+
+            {/* Generate images for selected drafts (non-blocking; per-row image_prompt) */}
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={selected.size === 0 || imageGenerating}
+              onClick={handleGenerateImagesForSelected}
+              title="Generate 512x512 images from each row's image_prompt"
+              className="gap-1"
+            >
+              {imageGenerating
+                ? <Loader2 className="h-4 w-4 animate-spin" />
+                : <ImageIcon className="h-4 w-4" />}
+              Generate Images{selected.size > 0 ? ` (${selected.size})` : ''}
+            </Button>
 
             {/* Primary: Run All Needed Fixes (sequential per-draft pipeline) */}
             <Button

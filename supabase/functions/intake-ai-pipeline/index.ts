@@ -61,6 +61,7 @@ function buildEvidence(draft: any, extra?: { hints?: string }): string {
     draft.source_name ? `Source Name: ${draft.source_name}` : '',
     draft.raw_file_url ? `File URL: ${draft.raw_file_url}` : '',
     draft.raw_text ? `Content:\n${(draft.raw_text as string).slice(0, 4000)}` : '',
+    draft.row_prompt ? `Row Prompt (admin-provided guidance):\n${(draft.row_prompt as string).slice(0, 4000)}` : '',
     parsedTags.length > 0 ? `Import tags: ${parsedTags.join(', ')}` : '',
     structuredPayload ? `Original Import Payload:\n${structuredPayload}` : '',
     rawHtml ? `Source HTML (excerpt):\n${rawHtml}` : '',
@@ -76,6 +77,7 @@ function buildSmallEvidence(draft: any): string {
     draft.post_name ? `Post: ${draft.post_name}` : '',
     draft.exam_name ? `Exam: ${draft.exam_name}` : '',
     draft.source_url ? `Source URL: ${draft.source_url}` : '',
+    draft.row_prompt ? `Row Prompt:\n${(draft.row_prompt as string).slice(0, 2000)}` : '',
     draft.raw_text ? `Content:\n${(draft.raw_text as string).slice(0, 3000)}` : '',
   ].filter(Boolean).join('\n\n');
 }

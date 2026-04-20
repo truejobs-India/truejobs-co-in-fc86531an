@@ -14,7 +14,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Loader2, Save, Trash2, Send, ExternalLink } from 'lucide-react';
+import { Loader2, Save, Trash2, Send, ExternalLink, Image as ImageIcon } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { SECTION_BUCKET_LABELS, type SectionBucket } from './chatgptAgentExcelParser';
@@ -42,6 +42,7 @@ export function ChatGptAgentDraftEditor({ draft, onClose, onSaved, onPublish }: 
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [regenImage, setRegenImage] = useState(false);
 
   const val = (field: string) => edits[field] !== undefined ? edits[field] : (draft?.[field] ?? '');
   const set = (field: string, value: any) => setEdits(prev => ({ ...prev, [field]: value }));
@@ -96,6 +97,28 @@ export function ChatGptAgentDraftEditor({ draft, onClose, onSaved, onPublish }: 
     }
   };
 
+  const handleRegenerateImage = async () => {
+    setRegenImage(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await supabase.functions.invoke('intake-generate-image', {
+        body: { draft_id: draft.id, imageModel: 'gemini-flash-image' },
+        headers: { Authorization: `Bearer ${session?.access_token}` },
+      });
+      if (res.error) throw new Error(res.error.message);
+      if (res.data?.ok) {
+        toast({ title: 'Image generated' });
+        onSaved();
+      } else {
+        toast({ title: 'Image generation failed', description: res.data?.error || res.data?.reason, variant: 'destructive' });
+      }
+    } catch (e: any) {
+      toast({ title: 'Image generation error', description: e?.message, variant: 'destructive' });
+    } finally {
+      setRegenImage(false);
+    }
+  };
+
   const handleDelete = async () => {
     setDeleting(true);
     try {
@@ -135,11 +158,69 @@ export function ChatGptAgentDraftEditor({ draft, onClose, onSaved, onPublish }: 
           <Tabs defaultValue={isProduction ? 'production' : 'fields'} className="mt-2">
             <TabsList className="w-full">
               {isProduction && <TabsTrigger value="production" className="flex-1">Production</TabsTrigger>}
+              <TabsTrigger value="masterfile" className="flex-1">Master-File</TabsTrigger>
               <TabsTrigger value="fields" className="flex-1">Fields</TabsTrigger>
               <TabsTrigger value="seo" className="flex-1">SEO</TabsTrigger>
               <TabsTrigger value="dates" className="flex-1">Dates</TabsTrigger>
               <TabsTrigger value="diagnostics" className="flex-1">Info</TabsTrigger>
             </TabsList>
+
+            {/* ── MASTER-FILE TAB (new V1 fields) ── */}
+            <TabsContent value="masterfile" className="space-y-3 mt-3">
+              <div>
+                <Label className="text-xs">Row Prompt (used by AI text enrichment)</Label>
+                <Textarea value={val('row_prompt')} onChange={e => set('row_prompt', e.target.value)} rows={5} className="font-mono text-xs" />
+              </div>
+              <div>
+                <Label className="text-xs">Draft Heading (H1)</Label>
+                <Input value={val('draft_heading_h1')} onChange={e => set('draft_heading_h1', e.target.value)} />
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <Label className="text-xs">CTA Label</Label>
+                  <Input value={val('cta_label')} onChange={e => set('cta_label', e.target.value)} />
+                </div>
+                <div>
+                  <Label className="text-xs">CTA Color</Label>
+                  <Input value={val('cta_color')} onChange={e => set('cta_color', e.target.value)} />
+                </div>
+                <div>
+                  <Label className="text-xs">CTA URL</Label>
+                  <div className="flex gap-1">
+                    <Input value={val('cta_url')} onChange={e => set('cta_url', e.target.value)} className="flex-1" />
+                    {openLink(draft?.cta_url)}
+                  </div>
+                </div>
+              </div>
+              <div className="border-t pt-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-semibold">Image (512×512)</Label>
+                  <Button size="sm" variant="outline" onClick={handleRegenerateImage} disabled={regenImage || !val('image_prompt')}>
+                    {regenImage ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <ImageIcon className="h-3 w-3 mr-1" />}
+                    {draft?.image_url ? 'Regenerate' : 'Generate'}
+                  </Button>
+                </div>
+                {draft?.image_url && (
+                  <div className="rounded border overflow-hidden bg-muted/30 inline-block">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={draft.image_url} alt={draft.image_alt_text || 'Generated image'} className="w-32 h-32 object-cover" />
+                  </div>
+                )}
+                <div>
+                  <Label className="text-xs">Image Prompt</Label>
+                  <Textarea value={val('image_prompt')} onChange={e => set('image_prompt', e.target.value)} rows={3} className="text-xs" />
+                </div>
+                <div>
+                  <Label className="text-xs">Image Alt Text</Label>
+                  <Input value={val('image_alt_text')} onChange={e => set('image_alt_text', e.target.value)} />
+                </div>
+                {draft?.runtime_meta?.image_error && (
+                  <p className="text-[11px] text-destructive">
+                    Last error: {String(draft.runtime_meta.image_error)}
+                  </p>
+                )}
+              </div>
+            </TabsContent>
 
             {/* ── PRODUCTION FORMAT TAB ── */}
             {isProduction && (

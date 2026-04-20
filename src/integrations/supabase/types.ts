@@ -2856,9 +2856,13 @@ export type Database = {
           classification_reason: string | null
           closing_date: string | null
           confidence_score: number | null
+          content_status: string | null
           content_type: string | null
           correction_last_date: string | null
           created_at: string
+          cta_color: string | null
+          cta_label: string | null
+          cta_url: string | null
           department_name: string | null
           discovered_at: string | null
           discovered_official_url: string | null
@@ -2867,6 +2871,7 @@ export type Database = {
           discovery_status: string | null
           draft_content_html: string | null
           draft_content_text: string | null
+          draft_heading_h1: string | null
           enrichment_completeness: number | null
           enrichment_grade: string | null
           enrichment_reason: string | null
@@ -2877,6 +2882,9 @@ export type Database = {
           faq_json: Json | null
           how_to_apply_text: string | null
           id: string
+          image_alt_text: string | null
+          image_prompt: string | null
+          image_url: string | null
           import_identity: string
           import_row_number: number | null
           import_source_sheet: string | null
@@ -2937,12 +2945,17 @@ export type Database = {
           review_status: string
           reviewed_at: string | null
           reviewed_by: string | null
+          row_prompt: string | null
+          row_type: string | null
+          runtime_meta: Json | null
           salary_text: string | null
           scrape_run_id: string | null
           secondary_official_url: string | null
           secondary_tags: Json | null
           section_bucket: string | null
           selection_process_text: string | null
+          seo_primary_keyword: string | null
+          seo_secondary_keywords: string | null
           seo_title: string | null
           slug: string | null
           source_channel: string | null
@@ -2959,6 +2972,7 @@ export type Database = {
           updated_at: string
           vacancy_count: number | null
           verification_confidence: string | null
+          verification_notes: string | null
           verification_status: string | null
         }
         Insert: {
@@ -2976,9 +2990,13 @@ export type Database = {
           classification_reason?: string | null
           closing_date?: string | null
           confidence_score?: number | null
+          content_status?: string | null
           content_type?: string | null
           correction_last_date?: string | null
           created_at?: string
+          cta_color?: string | null
+          cta_label?: string | null
+          cta_url?: string | null
           department_name?: string | null
           discovered_at?: string | null
           discovered_official_url?: string | null
@@ -2987,6 +3005,7 @@ export type Database = {
           discovery_status?: string | null
           draft_content_html?: string | null
           draft_content_text?: string | null
+          draft_heading_h1?: string | null
           enrichment_completeness?: number | null
           enrichment_grade?: string | null
           enrichment_reason?: string | null
@@ -2997,6 +3016,9 @@ export type Database = {
           faq_json?: Json | null
           how_to_apply_text?: string | null
           id?: string
+          image_alt_text?: string | null
+          image_prompt?: string | null
+          image_url?: string | null
           import_identity: string
           import_row_number?: number | null
           import_source_sheet?: string | null
@@ -3057,12 +3079,17 @@ export type Database = {
           review_status?: string
           reviewed_at?: string | null
           reviewed_by?: string | null
+          row_prompt?: string | null
+          row_type?: string | null
+          runtime_meta?: Json | null
           salary_text?: string | null
           scrape_run_id?: string | null
           secondary_official_url?: string | null
           secondary_tags?: Json | null
           section_bucket?: string | null
           selection_process_text?: string | null
+          seo_primary_keyword?: string | null
+          seo_secondary_keywords?: string | null
           seo_title?: string | null
           slug?: string | null
           source_channel?: string | null
@@ -3079,6 +3106,7 @@ export type Database = {
           updated_at?: string
           vacancy_count?: number | null
           verification_confidence?: string | null
+          verification_notes?: string | null
           verification_status?: string | null
         }
         Update: {
@@ -3096,9 +3124,13 @@ export type Database = {
           classification_reason?: string | null
           closing_date?: string | null
           confidence_score?: number | null
+          content_status?: string | null
           content_type?: string | null
           correction_last_date?: string | null
           created_at?: string
+          cta_color?: string | null
+          cta_label?: string | null
+          cta_url?: string | null
           department_name?: string | null
           discovered_at?: string | null
           discovered_official_url?: string | null
@@ -3107,6 +3139,7 @@ export type Database = {
           discovery_status?: string | null
           draft_content_html?: string | null
           draft_content_text?: string | null
+          draft_heading_h1?: string | null
           enrichment_completeness?: number | null
           enrichment_grade?: string | null
           enrichment_reason?: string | null
@@ -3117,6 +3150,9 @@ export type Database = {
           faq_json?: Json | null
           how_to_apply_text?: string | null
           id?: string
+          image_alt_text?: string | null
+          image_prompt?: string | null
+          image_url?: string | null
           import_identity?: string
           import_row_number?: number | null
           import_source_sheet?: string | null
@@ -3177,12 +3213,17 @@ export type Database = {
           review_status?: string
           reviewed_at?: string | null
           reviewed_by?: string | null
+          row_prompt?: string | null
+          row_type?: string | null
+          runtime_meta?: Json | null
           salary_text?: string | null
           scrape_run_id?: string | null
           secondary_official_url?: string | null
           secondary_tags?: Json | null
           section_bucket?: string | null
           selection_process_text?: string | null
+          seo_primary_keyword?: string | null
+          seo_secondary_keywords?: string | null
           seo_title?: string | null
           slug?: string | null
           source_channel?: string | null
@@ -3199,6 +3240,7 @@ export type Database = {
           updated_at?: string
           vacancy_count?: number | null
           verification_confidence?: string | null
+          verification_notes?: string | null
           verification_status?: string | null
         }
         Relationships: []

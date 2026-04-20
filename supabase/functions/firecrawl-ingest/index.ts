@@ -1607,7 +1607,7 @@ async function handleGovtScrapeExtract(
 
           console.log(`[govt-scrape-extract] PDF follow-up for ${item.page_url}: trying ${bestPdf.url}`);
 
-          const pdfResult = await throttledScrapePage(bestPdf.url, { formats: ['markdown'], onlyMainContent: true });
+          const pdfResult = await throttledScrapePage(bestPdf.url, { formats: ['markdown'], onlyMainContent: true }, peak);
           if (pdfResult.success && pdfResult.markdown) {
             pdfFollowUps++;
             const mergedText = markdown + '\n\n--- PDF CONTENT ---\n\n' + pdfResult.markdown;

@@ -333,6 +333,10 @@ function AdminDashboardInner() {
                   <Bug className="h-4 w-4" />
                   <span className="hidden sm:inline">Firecrawl</span>
                 </TabsTrigger>
+                <TabsTrigger value="firecrawl-peak" className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4" />
+                  <span className="hidden sm:inline">Firecrawl - P</span>
+                </TabsTrigger>
                 <TabsTrigger value="intake" className="flex items-center gap-2">
                   <ClipboardList className="h-4 w-4" />
                   <span className="hidden sm:inline">Intake</span>

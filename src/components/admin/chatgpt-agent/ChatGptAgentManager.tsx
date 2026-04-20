@@ -1811,7 +1811,7 @@ export function ChatGptAgentManager() {
                   {Object.entries(parseResult.summary.perSection).map(([k, v]) => (
                     <div key={k} className="flex justify-between text-xs">
                       <span>{SECTION_BUCKET_LABELS[k as SectionBucket] || k}</span>
-                      <span className="font-medium">{v}</span>
+                      <span className="font-medium">{Number(v)}</span>
                     </div>
                   ))}
                 </div>

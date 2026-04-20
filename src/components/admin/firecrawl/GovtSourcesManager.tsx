@@ -236,7 +236,8 @@ export function GovtSourcesManager({
       stats[sid][es] = (stats[sid][es] || 0) + 1;
     }
     setPipelineStats(stats);
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceTypeOverride]);
 
   /* ─── Fetch sources ─── */
   const fetchSources = useCallback(async () => {
@@ -471,10 +472,10 @@ export function GovtSourcesManager({
     const rows = toSave.map(p => ({
       source_name: p.label,
       seed_url: p.normalized,
-      source_type: 'government' as const,
+      source_type: sourceTypeOverride,
       crawl_mode: 'map',
       extraction_mode: 'markdown',
-      max_pages_per_run: 50,
+      max_pages_per_run: defaultMaxPagesPerRun,
       is_enabled: false,
       default_bucket: 'staging',
       priority: 'Medium',
@@ -508,10 +509,10 @@ export function GovtSourcesManager({
     const { error } = await supabase.from('firecrawl_sources').insert({
       source_name: inferLabel(domain),
       seed_url: normalized,
-      source_type: 'government',
+      source_type: sourceTypeOverride,
       crawl_mode: 'map',
       extraction_mode: 'markdown',
-      max_pages_per_run: 50,
+      max_pages_per_run: defaultMaxPagesPerRun,
       is_enabled: false,
       default_bucket: 'staging',
       priority: 'Medium',
@@ -547,7 +548,7 @@ export function GovtSourcesManager({
     const { error } = await supabase
       .from('firecrawl_sources')
       .update({ is_enabled: enable, updated_at: new Date().toISOString() })
-      .eq('source_type', 'government')
+      .eq('source_type', sourceTypeOverride)
       .in('id', ids);
     if (error) {
       toast({ title: 'Bulk toggle failed', description: error.message, variant: 'destructive' });

@@ -93,7 +93,6 @@ Deno.serve(async (req) => {
 
     // ── Call the gateway ──
     let imageBase64 = '';
-    let mimeType = 'image/png';
     try {
       const resp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
         method: 'POST',
@@ -117,7 +116,7 @@ Deno.serve(async (req) => {
         const url = img?.image_url?.url || img?.url || '';
         if (typeof url === 'string' && url.startsWith('data:')) {
           const m = url.match(/^data:(image\/\w+);base64,(.+)$/s);
-          if (m) { mimeType = m[1]; imageBase64 = m[2]; break; }
+          if (m) { imageBase64 = m[2]; break; }
         }
       }
     } catch (e) {

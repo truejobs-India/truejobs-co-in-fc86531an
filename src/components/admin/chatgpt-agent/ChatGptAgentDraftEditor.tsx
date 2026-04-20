@@ -19,6 +19,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { SECTION_BUCKET_LABELS, type SectionBucket } from './chatgptAgentExcelParser';
 import { getLastUsedModel } from '@/components/admin/AiModelSelector';
+import { CoverImageUploader } from '@/components/admin/blog/CoverImageUploader';
 
 interface ChatGptAgentDraftEditorProps {
   draft: any;
@@ -203,12 +204,13 @@ export function ChatGptAgentDraftEditor({ draft, onClose, onSaved, onPublish }: 
                     {draft?.image_url ? 'Regenerate' : 'Generate'}
                   </Button>
                 </div>
-                {draft?.image_url && (
-                  <div className="rounded border overflow-hidden bg-muted/30 inline-block">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={draft.image_url} alt={draft.image_alt_text || 'Generated image'} className="w-32 h-32 object-cover" />
-                  </div>
-                )}
+                <CoverImageUploader
+                  value={val('image_url') || ''}
+                  onChange={(url) => set('image_url', url || null)}
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Generated images are saved at exactly 512×512.
+                </p>
                 <div>
                   <Label className="text-xs">Image Prompt</Label>
                   <Textarea value={val('image_prompt')} onChange={e => set('image_prompt', e.target.value)} rows={3} className="text-xs" />

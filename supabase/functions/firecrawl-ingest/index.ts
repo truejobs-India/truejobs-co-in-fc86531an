@@ -532,15 +532,15 @@ async function handleDiscoverSource(
 
     for (const candidate of recruitmentCandidates) {
       // Hard cap check
-      if (stats.pagesScraped >= HARD_SCRAPE_CAP) {
-        console.log(`[firecrawl-ingest] Hard scrape cap reached (${HARD_SCRAPE_CAP}), stopping detail scraping`);
+      if (stats.pagesScraped >= hardCap) {
+        console.log(`[firecrawl-ingest] Hard scrape cap reached (${hardCap}), stopping detail scraping`);
         break;
       }
 
       // Domain cooldown check
       const domain = extractDomainFromUrl(candidate.normalized);
       const fails = domainFailCount.get(domain) || 0;
-      if (fails >= DOMAIN_COOLDOWN_THRESHOLD) {
+      if (fails >= getCooldownThreshold(peak)) {
         stats.domainCooldowns++;
         detailResults.push({ url: candidate.normalized, error: 'Domain in cooldown' });
         continue;

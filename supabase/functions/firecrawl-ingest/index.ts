@@ -1516,10 +1516,11 @@ async function handleGovtScrapeExtract(
   const sourceId = body.source_id as string;
   if (!sourceId) return jsonResponse({ error: 'source_id required' }, 400);
 
-  const maxItems = Math.min(Math.max((body.max_items as number) || 20, 1), 50);
-
   const { data: source } = await client.from('firecrawl_sources').select('*').eq('id', sourceId).single();
   if (!source) return jsonResponse({ error: 'Source not found' }, 404);
+  const peak = isPeak(source.source_type);
+  // Peak gets 5x the per-call ceiling (50 → 250); still capped by HARD_SCRAPE_CAP_PEAK below
+  const maxItems = Math.min(Math.max((body.max_items as number) || 20, 1), peak ? 250 : 50);
 
   const { data: items, error } = await client
     .from('firecrawl_staged_items')
@@ -1547,7 +1548,7 @@ async function handleGovtScrapeExtract(
     // Domain cooldown check
     const domain = extractDomainFromUrl(item.page_url);
     const fails = domainFailCount.get(domain) || 0;
-    if (fails >= DOMAIN_COOLDOWN_THRESHOLD) {
+    if (fails >= getCooldownThreshold(peak)) {
       domainCooldowns++;
       results.push({ url: item.page_url, status: 'domain_cooldown' });
       continue;
@@ -1557,7 +1558,7 @@ async function handleGovtScrapeExtract(
       const scrapeResult = await throttledScrapePage(item.page_url, {
         formats: ['markdown', 'links'],
         onlyMainContent: true,
-      });
+      }, peak);
 
       if (!scrapeResult.success || !scrapeResult.markdown) {
         failed++;

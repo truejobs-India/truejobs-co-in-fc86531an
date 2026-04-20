@@ -1385,8 +1385,9 @@ async function handleDiscoverGovt(
   const { data: source } = await client.from('firecrawl_sources').select('*').eq('id', sourceId).single();
   if (!source) return jsonResponse({ error: 'Source not found' }, 404);
 
-  const maxPages = source.max_pages_per_run || 50;
-  console.log(`[firecrawl-ingest] discover-govt: ${source.source_name} (max: ${maxPages})`);
+  const peak = isPeak(source.source_type);
+  const maxPages = source.max_pages_per_run || (peak ? 250 : 50);
+  console.log(`[firecrawl-ingest] discover-govt: ${source.source_name} (peak=${peak}, max: ${maxPages})`);
 
   const { data: run } = await client
     .from('firecrawl_fetch_runs')
@@ -1399,8 +1400,8 @@ async function handleDiscoverGovt(
   try {
     let discoveredLinks: string[] = [];
     if (source.crawl_mode === 'map') {
-      // Aggressive: up to maxPages*10, cap 2000
-      const mapLimit = Math.min(maxPages * 10, 2000);
+      // Aggressive: peak uses *20 cap 10000, normal uses *10 cap 2000
+      const mapLimit = peak ? Math.min(maxPages * 20, 10_000) : Math.min(maxPages * 10, 2000);
       const mapResult = await mapUrl(source.seed_url, { limit: mapLimit, includeSubdomains: false });
       if (!mapResult.success) {
         const errMsg = mapResult.error || 'Map failed';

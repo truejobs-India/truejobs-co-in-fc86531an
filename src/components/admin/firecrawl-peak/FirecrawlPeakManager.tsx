@@ -231,9 +231,9 @@ export function FirecrawlPeakManager() {
       />
       <FirecrawlSourcesManager sourceTypeFilter="firecrawl_sitemap_peak" />
 
-      {/* Draft sections — peak-tagged */}
-      <DraftJobsSection sourceTypeTag="government_peak" />
-      <DraftJobsSection sourceTypeTag="firecrawl_sitemap_peak" />
+      {/* Draft sections — peak-tagged (cast: types not yet regenerated for new tags) */}
+      <DraftJobsSection sourceTypeTag={'government_peak' as any} />
+      <DraftJobsSection sourceTypeTag={'firecrawl_sitemap_peak' as any} />
     </div>
   );
 }

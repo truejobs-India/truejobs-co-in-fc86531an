@@ -133,7 +133,23 @@ async function invokeFirecrawl(action: string, body: Record<string, unknown> = {
 }
 
 /* ─── Component ─── */
-export function GovtSourcesManager() {
+interface GovtSourcesManagerProps {
+  /** Override the source_type used for filtering / inserts. Defaults to 'government'. */
+  sourceTypeOverride?: string;
+  /** Override the card title. */
+  titleOverride?: string;
+  /** Default max_pages_per_run for newly-added sources. */
+  defaultMaxPagesPerRun?: number;
+  /** Optional title-row badge (e.g. PEAK indicator). */
+  titleBadge?: React.ReactNode;
+}
+
+export function GovtSourcesManager({
+  sourceTypeOverride = 'government',
+  titleOverride,
+  defaultMaxPagesPerRun = 50,
+  titleBadge,
+}: GovtSourcesManagerProps = {}) {
   const { toast } = useAdminToast();
   const [sources, setSources] = useState<GovtSource[]>([]);
   const [loading, setLoading] = useState(true);

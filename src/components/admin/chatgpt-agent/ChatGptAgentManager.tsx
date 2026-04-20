@@ -44,10 +44,14 @@ import { AiModelSelector, getLastUsedModel } from '@/components/admin/AiModelSel
 import { useAdminMessages } from '@/hooks/useAdminMessages';
 import { AdminMessageLog } from '@/components/admin/AdminMessageLog';
 import {
-  parseMasterFileWorkbook,
+  parseExcelWorkbook,
+  parseProductionExcelWorkbook,
+  detectProductionFormat,
   SECTION_BUCKET_LABELS,
-  type MasterFileParseResult,
-  type MasterFileParsedRow,
+  type ParseResult,
+  type ParsedRow,
+  type ProductionParseResult,
+  type ProductionParsedRow,
   type SectionBucket,
 } from './chatgptAgentExcelParser';
 import { ChatGptAgentDraftEditor } from './ChatGptAgentDraftEditor';
@@ -87,10 +91,10 @@ export function ChatGptAgentManager() {
   const PAGE_SIZE = 20;
   const [aiModel, setAiModel] = useState(() => getLastUsedModel('text', 'gemini-flash', [...ALLOWED_MODELS]));
 
-  // Upload state — Master-File single-format
+  // Upload state — supports BOTH legacy and new production format
   const [uploadOpen, setUploadOpen] = useState(false);
-  const [parseResult, setParseResult] = useState<any>(null);
-  const [productionResult, setProductionResult] = useState<MasterFileParseResult & { ok: true } | null>(null);
+  const [parseResult, setParseResult] = useState<ParseResult | null>(null);
+  const [productionResult, setProductionResult] = useState<ProductionParseResult | null>(null);
   const [productionPreClassify, setProductionPreClassify] = useState<{ insert: number; update: number } | null>(null);
   const [existingIdentitiesAttempted, setExistingIdentitiesAttempted] = useState<Set<string>>(new Set());
   const [productionImportSummary, setProductionImportSummary] = useState<{ total: number; inserted_new: number; updated_existing: number; skipped_empty: number; failed: { row: number; reason: string }[] } | null>(null);

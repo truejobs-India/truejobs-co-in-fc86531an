@@ -102,14 +102,15 @@ function InfoItem({ label, value, icon: Icon }: { label: string; value: string |
 
 /* ─── Jobs Preview (mirrors EmploymentNewsJobDetail) ─── */
 function JobPreview({ draft }: { draft: any }) {
-  const title = draft.normalized_title || draft.raw_title || 'Untitled';
+  const title = pickTitle(draft);
+  const org = pickOrg(draft);
   return (
     <Card>
       <CardContent className="p-6 sm:p-8">
-        {draft.organisation_name && (
-          <p className="text-sm font-semibold text-primary">{draft.organisation_name}</p>
-        )}
+        <CoverImage draft={draft} title={title} />
+        {org && <p className="text-sm font-semibold text-primary">{org}</p>}
         <h1 className="text-2xl sm:text-3xl font-bold mt-1">{title}</h1>
+        <MetaBadges draft={draft} />
 
         {/* Badges */}
         <div className="flex flex-wrap gap-2 mt-3">
@@ -137,7 +138,7 @@ function JobPreview({ draft }: { draft: any }) {
         )}
 
         {/* Content */}
-        <ContentBlock html={draft.draft_content_html} />
+        <ContentBlock html={draft.enrichment_result || draft.draft_content_html} />
 
         {/* Official links */}
         <LinksBlock draft={draft} />
@@ -148,16 +149,19 @@ function JobPreview({ draft }: { draft: any }) {
 
 /* ─── Exam Preview (mirrors GovtExamDetail) ─── */
 function ExamPreview({ draft }: { draft: any }) {
-  const title = draft.exam_name || draft.normalized_title || draft.raw_title || 'Untitled';
+  const title = draft.exam_name || pickTitle(draft);
+  const org = pickOrg(draft);
   return (
     <Card>
       <CardContent className="p-6 sm:p-8">
-        {draft.organisation_name && (
+        <CoverImage draft={draft} title={title} />
+        {org && (
           <p className="text-sm font-semibold text-primary flex items-center gap-1.5">
-            <GraduationCap className="h-4 w-4" /> {draft.organisation_name}
+            <GraduationCap className="h-4 w-4" /> {org}
           </p>
         )}
         <h1 className="text-2xl sm:text-3xl font-bold mt-1">{title}</h1>
+        <MetaBadges draft={draft} />
 
         {draft.post_name && (
           <p className="text-sm text-muted-foreground mt-1">Post: {draft.post_name}</p>
@@ -189,7 +193,7 @@ function ExamPreview({ draft }: { draft: any }) {
         )}
 
         {/* Content */}
-        <ContentBlock html={draft.draft_content_html} />
+        <ContentBlock html={draft.enrichment_result || draft.draft_content_html} />
 
         {/* Official links */}
         <LinksBlock draft={draft} />
@@ -200,12 +204,15 @@ function ExamPreview({ draft }: { draft: any }) {
 
 /* ─── Fallback Preview (generic) ─── */
 function FallbackPreview({ draft }: { draft: any }) {
-  const title = draft.normalized_title || draft.raw_title || 'Untitled';
+  const title = pickTitle(draft);
+  const org = pickOrg(draft);
   return (
     <Card>
       <CardContent className="p-6">
+        <CoverImage draft={draft} title={title} />
         <h1 className="text-xl font-bold">{title}</h1>
-        {draft.organisation_name && <p className="text-sm text-muted-foreground mt-1">{draft.organisation_name}</p>}
+        {org && <p className="text-sm text-muted-foreground mt-1">{org}</p>}
+        <MetaBadges draft={draft} />
 
         {draft.summary && (
           <div className="mt-4 bg-muted/30 rounded-lg p-4">
@@ -213,7 +220,7 @@ function FallbackPreview({ draft }: { draft: any }) {
           </div>
         )}
 
-        <ContentBlock html={draft.draft_content_html} />
+        <ContentBlock html={draft.enrichment_result || draft.draft_content_html} />
         <LinksBlock draft={draft} />
       </CardContent>
     </Card>
